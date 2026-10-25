@@ -1,0 +1,21 @@
+{
+  "name": "wowdeck-backend",
+  "version": "0.2.0",
+  "description": "Standalone WoW addon management engine for the WoWDeck Addon Manager Decky plugin",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "bun run build && bun test",
+    "build": "bun run build:binary",
+    "build:binary": "mkdir -p out && bun build --compile --target=bun-linux-x64 src/main.ts --outfile out/wowdeck",
+    "run:dev": "bun run src/main.ts"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.2",
+    "@types/bun": "^1.2.0"
+  },
+  "dependencies": {
+    "fflate": "^0.8.3"
+  }
+}

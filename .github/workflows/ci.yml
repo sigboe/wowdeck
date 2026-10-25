@@ -1,0 +1,97 @@
+name: CI
+
+on:
+  push:
+    branches: [main, next]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run lint
+      - run: pnpm run format:check
+      - run: pnpm run typecheck
+      - run: pnpm run build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: dist/
+          retention-days: 7
+
+  backend:
+    name: Backend engine
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # tests/wowup-import-compat.test.ts runs upstream's import code; the
+      # reference checkout is untracked, so fetch the pinned commit here.
+      - name: Fetch the WowUp reference checkout
+        run: make wowup
+      - uses: oven-sh/setup-bun@v2
+        with:
+          # Keep in step with the nix-locked bun (flake.lock): bun's
+          # --compile output varies a lot between versions (1.4.2 is
+          # ~82 MB; current "latest" is ~109 MB), and release binaries
+          # must match what local builds produce.
+          bun-version: 1.4.2
+      - run: bun install --frozen-lockfile
+        working-directory: backend
+      - run: bun run typecheck
+        working-directory: backend
+      # The integration tests spawn backend/out/wowdeck, so the engine must
+      # exist before the suite runs on a fresh checkout.
+      - run: bun run build
+        working-directory: backend
+      - run: bun test
+        working-directory: backend
+      - uses: actions/upload-artifact@v4
+        with:
+          name: backend-binary
+          path: backend/out/wowdeck
+          retention-days: 7
+
+  package:
+    name: Package plugin zip
+    needs: [frontend, backend]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: dist/
+      - uses: actions/download-artifact@v4
+        with:
+          name: backend-binary
+          path: backend/out/
+      - run: python3 tools/test_package.py -v
+      # package.json, plugin.json and backend/package.json must agree; the
+      # tag-triggered release workflow refuses to publish otherwise.
+      - run: python3 tools/test_version.py -v
+      # tools/package.py reads CURSEFORGE_API_KEY and bundles it into the
+      # generated bin/bundled-curseforge-key resource — a repository
+      # secret, never checked into source. GitHub Actions itself withholds
+      # secrets from a pull_request run triggered by a fork, so those runs
+      # — and any run in a repo where the secret was never configured at
+      # all — correctly produce a no-bundled-key package; the plugin's own
+      # user-key fallback (Options) covers that case. See
+      # docs/curseforge-api-key.md for how to configure the secret.
+      - run: chmod +x backend/out/wowdeck && python3 tools/package.py
+        env:
+          CURSEFORGE_API_KEY: ${{ secrets.CURSEFORGE_API_KEY }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: plugin-zip
+          path: build/*.zip

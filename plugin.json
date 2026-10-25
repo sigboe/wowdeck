@@ -1,0 +1,12 @@
+{
+  "version": "0.2.0",
+  "name": "WoWDeck",
+  "author": "sigboe",
+  "flags": [],
+  "api_version": 1,
+  "publish": {
+    "tags": ["game"],
+    "description": "Manage World of Warcraft addons: install, update and remove addons from your Deck.",
+    "image": "https://raw.githubusercontent.com/sigboe/wowdeck/main/docs/screenshot.png"
+  }
+}

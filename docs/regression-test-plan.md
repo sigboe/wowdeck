@@ -1,0 +1,407 @@
+# Regression test plan
+
+## Contents
+
+- [1. How to use this plan](#1-how-to-use-this-plan)
+  - [Test data you need](#test-data-you-need)
+- [2. Automated gates (T1–T3, no device)](#2-automated-gates-t1t3-no-device)
+  - [2b. Guideline audit (device, read-only, no human needed)](#2b-guideline-audit-device-read-only-no-human-needed)
+- [3. Install and engine (T6)](#3-install-and-engine-t6)
+- [4. UI regression (the rework, T6)](#4-ui-regression-the-rework-t6)
+  - [4.1 QAM shell and tabs](#41-qam-shell-and-tabs)
+  - [4.2 My Addons](#42-my-addons)
+  - [4.3 Get Addons (widened QAM tab)](#43-get-addons-widened-qam-tab)
+  - [4.4 Details modal](#44-details-modal)
+  - [4.5 Options](#45-options)
+  - [4.5b Steam library (BEYOND-05)](#45b-steam-library-beyond-05)
+  - [4.5c WoWDeck update notice (the plugin's own update check)](#45c-wowdeck-update-notice-the-plugins-own-update-check)
+  - [4.6 WTF backup (folds in WF-01 `deck_verification`)](#46-wtf-backup-folds-in-wf-01-deck_verification)
+- [5. In-game and notifications](#5-in-game-and-notifications)
+- [6. Robustness (the pre-release list)](#6-robustness-the-pre-release-list)
+- [7. Known risks to look at first](#7-known-risks-to-look-at-first)
+- [8. Result record](#8-result-record)
+
+The plan for checking a build before it is called good. It covers the whole
+plugin, not only the latest change. Written 2026-10-15 after the Steam-native UI
+rework (`dd81038`, `7e66f0d`), which changed nearly every screen and has **not
+yet been run on a Deck**.
+
+Related documents:
+
+- `docs/UI_DEVELOPMENT_BEST_PRACTICES.md` §8: test tiers (T1–T6), the rule that
+  an agent may not claim hardware verification (§8.3), and the report template
+  (§8.5). §8.6 is the short UI checklist; this plan contains it and goes wider.
+- `docs/steam-deck.md`: SSH access, packaging with patchelf, and the original
+  pre-release list (folded into section 6 here).
+- `docs/wtf-backup.md`: how WTF backup and restore are meant to behave.
+
+## 1. How to use this plan
+
+| Run | When | What | Time |
+|---|---|---|---|
+| **Gate** | Every commit | Section 2 (automated) | ~3 min |
+| **Smoke** | Every deploy to the Deck | Section 2 + every case marked **S** | ~15 min |
+| **Full** | Before a release, and the first time after a large UI change (now) | Every case | ~2 h |
+
+- Cases are written for a controller first. "A, B, X, Y, L1, R1, Menu" are the
+  Deck's buttons; "touch" means the touchscreen.
+- Priority: **P0** = data loss, crash or a dead plugin; **P1** = a main task
+  can't be done; **P2** = looks wrong or is awkward.
+- Record results with the template in section 8. If a case fails, write down
+  what you saw and keep going; don't stop the run for a P2.
+- Deploys, input and changes on the Deck follow `AGENTS.md` ("The owner's
+  Steam Deck"): a test request approves them within the WoW installation and
+  our plugin.
+
+### Test data you need
+
+- At least one WoW installation with **10+ addons**, including:
+  - one with an update waiting. To get one, install an addon and then
+    edit its version in the `.toc`, or keep an old copy around;
+  - one unmanaged folder (copied in by hand, not known to any provider);
+  - one addon that is a git checkout (a folder with `.git`);
+  - one addon with a required dependency (for example an Ace3 user).
+- For the installation picker: a second installation (a second flavor
+  such as `_classic_`, or a manual path).
+- For the long-list tests: about 100 addons in one installation. A copied
+  AddOns folder is fine.
+- A WTF folder with real data. Back it up by hand first (`cp -a WTF
+  WTF.manual`) before any restore test.
+- An SD card containing a WoW installation or a backup folder.
+- Optional: a desktop WowUp install for the round-trip cases.
+
+## 2. Automated gates (T1–T3, no device)
+
+Run inside `nix develop` (or through `make`):
+
+| ID | Command | Pass |
+|---|---|---|
+| G-1 | `pnpm run lint && pnpm run typecheck && pnpm run format:check` | no output errors |
+| G-2 | `pnpm test` | all pass (309 at `8ee6b5b`); the script runs every `src/**/*.test.ts` (`bun test ./src`; `make test` runs G-2, the G-4 tests and G-5 together) |
+| G-3 | `pnpm run build` | `dist/index.js` built |
+| G-4 | `cd backend && bun run typecheck && bun test && bun run build` | all pass |
+| G-5 | `python3 tools/test_package.py && python3 tools/test_main_bridge.py` | 19 + 8 tests OK |
+| G-6 | `python3 tools/package.py` | one zip, `build/WoWDeck.zip`, and no `build/wowdeck/` left (unless `--keep-stage`); the packager's ELF check passes (engine interpreter `/lib64/ld-linux-x86-64.so.2`). Note the sha256 |
+| G-7 | `unzip -l "build/WoWDeck.zip"` | no `curseForgeAPIKey-dontcommit`, no `.env`, no source maps with secrets |
+
+A failing gate blocks the deploy. The gates prove the code builds and the
+logic tests pass. They don't prove anything about layout, focus or the device
+(§8.2 of the guide).
+
+### 2b. Guideline audit (device, read-only, no human needed)
+
+Run recipe R8 of the UI guide (`tools/deck-ui/audit-view.mjs` and
+`audit-focus.js` with `walk.mjs`) on every view: My Addons, Get Addons tab,
+Options, each page tab, Details, Manage backups, Restore, Import, Export. Pass:
+no INSET, TOUCH (other than Steam's classic rows), SMALL_TEXT or CLIPPED issue.
+First run (2026-10-15) found: the My Addons installation picker (content touching
+its highlight), the Game version value overflowing, sub-12 px text in Details,
+the status tag and the glyph fallback; all fixed in the next build.
+
+## 3. Install and engine (T6)
+
+| ID | Pri | S | Steps | Expected |
+|---|---|---|---|---|
+| E-1 | P0 | S | Install the zip through Decky (or copy it and reload Decky). Open the QAM → WoWDeck | The plugin opens on My Addons; no "Engine is not running" |
+| E-2 | P0 | S | SSH: `sha256sum` of the installed `dist/index.js` and the engine binary, compare with the build | Same as the local build |
+| E-3 | P0 | | SSH: `file` / `readelf -l` on the engine binary | Interpreter `/lib64/ld-linux-x86-64.so.2` |
+| E-4 | P1 | | Kill the engine process (`kill <pid>`), open the plugin | "Engine is not running" row with a Retry button; Retry brings it back |
+| E-5 | P0 | | Decky → reload plugin, or restart Steam | Engine respawns; the plugin opens on the last tab |
+| E-6 | P1 | | Read the latest plugin log under `~/homebrew/logs/` | No exceptions. (Decky lowers the log level once the UI connects, so a clean log doesn't prove much.) |
+
+## 4. UI regression (the rework, T6)
+
+### 4.1 QAM shell and tabs
+
+| ID | Pri | S | Steps | Expected |
+|---|---|---|---|---|
+| Q-1 | P1 | S | Open the plugin; press L1/R1 | Tabs move My Addons → Get Addons → Options and **stop at the ends** (R1 on Options and L1 on My Addons do nothing; owner decision 2026-10-20: with three tabs in a narrow bar, wrapping is more jarring, and Steam's own bars differ). Steam-style pills: selected grey, focused white; inactive tabs show icons only |
+| Q-1b | P1 | S | Look at the glyphs at both ends of the tab bar, with the Deck's own controls and (if you have one) an Xbox/PlayStation pad | **The same glyphs Steam shows in its own Library tab bar for that controller** (LB/RB on Xbox, L1/R1 on Deck/PlayStation). If they differ from the Library, note both |
+| Q-2 | P2 | | Touch each tab | Same as Q-1 |
+| Q-3 | P2 | | Compare the tab bar with the plugin list's look (font, spacing, section titles) | Section titles are 12 px uppercase grey like Steam's; rows have Steam's separators and focus highlight. Nothing is squeezed or overlapping |
+| Q-4 | P1 | | Close the QAM on Options, reopen | Comes back on Options |
+| Q-5 | P1 | S | With more than one installation, My Addons: look at the top at rest, then scroll the list down | The tab bar and the **Installation** picker sit directly under Decky's title with no gap, at rest and while scrolling (a floating pane, opaque) while rows scroll under them; picking another installation reloads the list. Other tabs: only the tab bar floats |
+| Q-6 | P1 | S | Focus the tab bar, then scroll a long list a little and look at the tab bar and the line under the floating pane | The tab bar is never cut or faded (the glyph keycaps and pills are whole); a soft fade appears **under** the floating pane only once the list is scrolled, never at rest and never over the tab bar or a focused row |
+| Q-7 | P2 | S | Open the plugin and look at the title | "WoWDeck Manager" on one line; Decky's back button has no fade over it; about 16 px between the title and the tab bar, like Steam's own QAM pages ("Quick Settings") |
+
+### 4.2 My Addons
+
+| ID | Pri | S | Steps | Expected |
+|---|---|---|---|---|
+| M-1 | P1 | S | D-pad Down through the list | One stop per addon; the page scrolls with focus; nothing skipped |
+| M-2 | P1 | S | Focus an addon; look at the footer | A **Details**, Menu **Options**, and X **Update** only when that addon has an update |
+| M-3 | P1 | S | A on a managed addon | Details opens (carousel, description, changelog); B closes and focus returns near the row |
+| M-4 | P1 | S | X on an addon with an update | Spinner on the row, then a toast "Updated <name>" with the plugin icon; the row's "→ new version" disappears |
+| M-5 | P1 | S | Menu on an addon | Steam context menu: Update (blue, if offered), Details, Ignore, then a separator and Remove (red). B closes it. **Check where it appears** inside the QAM |
+| M-6 | P1 | | Touch the ⋯ button on a row | Same menu as M-5; tapping it doesn't also open Details |
+| M-7 | P1 | | Touch the row itself | Opens Details |
+| M-8 | P0 | | Menu → Remove → confirm | Folder gone from AddOns; toast "Removed"; a dependency installed only for it is also removed (autoremove) |
+| M-9 | P1 | | Menu → Remove → cancel | Nothing removed |
+| M-10 | P1 | | A on an unmanaged addon | Opens the menu (no Details for unmanaged); Remove deletes the folder after confirm |
+| M-11 | P1 | | Menu → Ignore | Row disappears; the **Show ignored addons** toggle appears; turning it on shows the row **greyed (Steam's disabled grey) with an IGNORED tag**, still selectable; Unignore brings it back |
+| M-12 | P1 | S | **Update all (N)** | A progress bar replaces the buttons, then a toast "N updated"; button reads "All up to date" |
+| M-13 | P1 | | Refresh (↻) | Spinner, then the list with fresh update info |
+| M-14 | P2 | | 100-addon installation: hold Down from top to bottom | No stutter worse than Steam's own lists; last row reachable; Up returns to the top |
+| M-15 | P2 | | Empty installation | "No addons found…" text, no crash |
+| M-16 | P1 | | A git-checkout folder in AddOns, then turn on **Show ignored addons** | Hidden until the toggle is on; then a row "Git checkout, not managed" with no footer actions, no ⋯ and no menu; never changed by Update all |
+| M-17 | P1 | | Delete one folder of a managed addon (e.g. a suite's library folder) over SSH, reopen My Addons | Row says "files missing"; Menu shows **Reinstall to repair** first, in blue |
+| M-18 | P0 | | Menu → Reinstall to repair | Toast "Reinstalled"; the folder is back; "files missing" gone |
+| M-19 | P2 | | Menu on an up-to-date managed addon | **Reinstall** after Details; it rewrites the files; toast "Reinstalled". Afterwards Details offers no "Roll back" to the version already installed, and an older version kept from an earlier update is still offered |
+| M-20 | P2 | | Ignore an addon | Row says "ignored" (the reason text for menu-ignored addons) |
+| M-22 | P1 | S | Scroll far down My Addons, then press Up repeatedly back to the top (and the same in Options, Get Addons, Manage backups) | **Every single press** that would bring the focused row near an edge scrolls the list a little, like Neovim's scrolloff: the row never slides under the title or the floating tab bar, and there is never a run of presses with no scrolling followed by a jump. In the QAM the row stays around the middle |
+| M-23 | P1 | S | Far down the list: open the **Installation** dropdown and back out; open Details (A) and close it; open the context menu (Menu) and back out | Each time focus returns to **the same row** and the list stays where it was |
+| M-24 | P1 | S | Options (Menu) on DBM, Plater or WeakAuras (installed from CurseForge; the item only shows when a pre-release is newer than stable, or the addon is already on Beta/Alpha) → **Release channel: Stable** → Beta | A second menu with Stable (marked), Beta, Alpha. Picking Alpha (DBM/Plater/WeakAuras have alphas) shows the row's spinner, then the toast "<name>: Alpha – Installed <alpha version>"; the row has an **ALPHA** tag and its version is the alpha. Picking the marked channel does nothing |
+| M-25 | P1 | | On an alpha-installed addon switch back to **Stable** | The **stable** release is installed at once (downgrade on purpose); the tag is gone; no update is offered afterwards |
+| M-26 | P2 | | Details (A) on such an addon | Footer has ≡ Release channel; it opens the same menu and closes Details after a pick. Not shown for GitHub/WoWInterface/TukUI addons |
+| M-27 | P1 | S | Start a long action from a row's **Options** menu (Release channel → another channel, or Update / Reinstall); with ignored addons, turn **Show ignored** on first | The list **stays on screen** the whole time (never empty), the row shows its spinner, Show ignored stays on; the row updates when the install ends |
+| M-28 | P2 | | While such an install runs, open Get Addons and search, or open Details | Results and the description load without waiting for the install |
+| M-29 | P1 | S | My Addons toolbar: Refresh, **filter glyph**, Update all. Press the glyph, type "dbm" on the keyboard, press Filter | Only matching rows; the heading reads "INSTALLED (1 of N)"; the glyph is blue; footer on the glyph shows X **Show all**. No new rows above the list. Press X: everything is back |
+| M-30 | P2 | | Filter for something that matches nothing; open the filter and press **Show all**; open it and press B | "No addons match …" with what to press; Show all clears it; B keeps the filter as it was |
+| M-31 | P1 | S | With two or more installations, focus **Update all** | Footer shows ≡ **Update all installations**; it runs with "Updating all installations…" (the progress bar stays **inside the panel**, S32; the same for the WTF backup progress in Options) and a toast with the total. With one installation the ≡ action is absent. With nothing to update here, the button stays reachable when other installations exist |
+| M-32 | P2 | | An installation on an SD card that is removed: Update all installations | That installation's updates fail with "… is not available: its folder is missing (is the SD card in?)"; nothing is written under the card's mount path; the other installations still update |
+| M-33 | P1 | S | An addon installed as another's dependency (Syndicator via Baganator) | **LIBRARY** tag and "needed by Baganator" on its row. **Show libraries** (bottom, saved) hides and shows such rows. Remove on Baganator: the confirmation says it also removes Syndicator |
+| M-34 | P2 | | An addon whose TOC needs a folder that is missing | The row says "missing <name>" and sorts with the other problems |
+| M-35 | P1 | S | Update an addon (or let auto-update do it), then its Options menu | "Roll back to <old version>" right after "Release channel"; it puts the old files back (toast) and offers "Undo rollback (<new version>)"; using it toasts "Returned <name> to <new version>" |
+| M-36 | P1 | | Options → Updates → **Previous versions kept** | Shows the space ("17 MB for 1 addon"); **Clear** empties it ("None kept") and the rollback item disappears. **Keep previous versions** off: updates keep nothing |
+| M-37 | P1 | S | Options → Updates → **Update automatically** on; WoW's Steam page → Check for updates (or restart / wake the Deck) | Waiting updates install by themselves; toast "N addons updated automatically"; the toggle's description shows the last run. Off by default |
+| M-38 | P1 | | Roll an addon back, then check again with auto-update on | The addon is **paused** (PAUSED tag; toast "Automatic updates paused for it"): no automatic update, also not for a newer release; still offered as an update by hand. Rolling forward to the latest, or updating by hand, resumes it |
+| M-38b | P1 | S | Auto-update on: an addon's Options menu → **Pause automatic updates**, then **Resume** | PAUSED tag on, then off; the items appear only while automatic updates are on |
+| M-39 | P1 | | With WoW running, trigger a check with auto-update on | Nothing is updated; toast "Automatic update waited: WoW was running" |
+| M-40 | P1 | S | An addon you put in AddOns yourself (not installed by WoWDeck) | Row is greyed out with an **UNMANAGED** tag and "Installed manually"; it sorts with the ignored rows at the end. **Show unmanaged addons** (bottom, saved) hides and shows such rows |
+| M-41 | P1 | S | A CurseForge addon whose author left the file name as its version (Controller Forever, AtlasLoot Classic) with an update waiting | Next version reads like a version ("12488") or, when the file name has none, "16 Oct release"; never "ControllerForever.zip" |
+| M-42 | P1 | S | On an unmanaged addon known to CurseForge (Speedy AutoLoot, Details) the footer shows **X Find online source**: press X (or Options → **Find online source…**); then a sub-folder (OmniCC_Config) and a private one | A dialog lists sources whose release installs that folder as Get Addons rows (summary, downloads, date), the best one focused (B closes it); a sub-folder finds its main addon; none: "No online source found." A opens the source's Details (B returns to the same row); X, in the row or in Details ("Use this source"), closes both and installs: toast "<name> now updates from <source>", the row turns into a normal managed one on the latest version, and its menu offers "Roll back to <the hand-copied version>", which puts the hand-copied files back |
+| M-21 | P1 | S | Order of My Addons | Updates first, then "files missing" / "not on …", then A–Z, ignored last. After X updates the top row, it moves to its A–Z place: **note where focus lands** (wanted: on the next row with an update, not the top of the page) |
+
+### 4.3 Get Addons (widened QAM tab)
+
+Revised 2026-10-19 (UI-02 rev 2): Get Addons maps Steam's Friends & Chat
+pattern — a collapsed destination list (Search, Latest, Popular, From URL)
+beside a pane that holds the selected destination's browse UI. Focusing a
+destination slides the QAM open without a press; the list is replaced as the
+main navigation. The launcher rows, the full-screen page and rev 1's detail
+pane are gone; the page-era cases G-10…G-27 and the detail-pane cases are
+retired. Facts to know while testing: Steam's own browses widen by two root
+classes on the QAM's `BasicUI` div; the plugin re-applies and enforces them
+while a destination is focused; if the mechanism is missing everything
+degrades to collapsed. Addon details use the details modal.
+
+| ID | Pri | S | Steps | Expected |
+|---|---|---|---|---|
+| GA-1 | P1 | S | Enter Get Addons fresh, by touch, and bumper-cycled back from My Addons/Options | One title bar: Decky's, left-aligned against its back button. **Install into**, then a vertical destination list (Search, Latest, Popular, From URL, each with an icon); focus lands on the plugin-tab nav bar, QAM at the standard width; no pane |
+| GA-2 | P1 | S | Down/Up through the destinations, both directions, quickly | Focusing a destination selects it and slides the QAM open (≈0.3 s) with that destination's browse UI in the pane — no press; the destination list stays visible beside it; focus clamps at the first and last destination |
+| GA-3 | P1 | S | In the pane: Search text keys, Latest/Popular lists, Popular's Category, From URL | The pane (~550 px) holds the destination's own controls and results; Category belongs to the Popular pane; result rows keep full size; the destination list keeps ~240 px |
+| GA-4 | P1 | S | Pane: long result list, changelog-length descriptions in Details | The pane scrolls like the rest of the QAM; the floating tab bar still keeps rows clear of the title |
+| GA-5 | P1 | S | Right or A from a destination; then Left/B | Right/A moves focus into the pane; B (or Left out of the pane) slides the QAM closed and leaves focus on the plugin-tab nav bar, not on a destination row |
+| GA-6 | P1 | S | Load more at the end of Latest/Popular | The row stays "Loading…" then ten more rows; focus on the first new row; until the end or 200 results |
+| GA-7 | P1 | S | X on a result row; install from Details; addon with a required dependency | X installs into the selected installation: row spinner, toast, installed state; Details' Install does the same; dependencies install with their addon |
+| GA-8 | P1 | S | L1/R1 while a destination is focused (QAM wide) | The QAM slides closed and the plugin tab switches (clamped — L1 on My Addons does nothing); bumping back to Get Addons lands collapsed on the nav bar, never slid out |
+| GA-9 | P1 | S | Wide: open and back out of **Install into**, **Category** (Popular), a release-channel menu, and the Details modal | Widened mode survives the G4 round-trips without flapping; focus returns to the same row; picking a category reloads the Popular pane |
+| GA-10 | P1 | S | A on a result row in any destination, collapsed and wide | The existing Details modal opens (not a pane); close returns to the row; X installs |
+| GA-11 | P2 | | Touch: tap a destination (opens the pane), tap a row, tap Details' Install | Same behavior as the controller cases; rows do not double-activate |
+| GA-12 | P0 | S | Fallback drill (Steam-update simulation, see below): focus every destination, search, install one addon; read the console over SSH or CDP | Everything stays collapsed at the standard width; browse, search and install all still work; no console errors (at most one `warn`); other Valve sections never widen |
+| GA-13 | P1 | S | Recovery: make the widening mechanism available again (undo the simulation), close and reopen the QAM | Without a plugin reload, focusing a destination widens again on the next Get Addons mount |
+| GA-14 | P1 | S | Close the QAM mid-browse (destination focused, widened) and reopen; again via Decky's title back button; also leave from My Addons afterwards | Every reopen shows Get Addons collapsed on the nav bar at standard width — no stray widened state; loaded lists/search text may persist ("the store remembers") |
+| GA-15 | P0 | S | Decky → reload plugin while widened and mid-browse, then CDP into `QuickAccess_uid2` and look for `.QAMFriendExpanded` on the `BasicUI` div | The reloaded world starts collapsed: no widened classes left on Steam's DOM (uninstalled widening would widen every QAM section forever); Get Addons opens collapsed on the nav bar |
+| GA-16 | P1 | S | Widened, then fast repeated modals (dropdown open/close ×5, Menu, confirm dialogs) | No flap: widened through a modal, collapsed only on its triggers; a Steam class-drop re-applies within ~100 ms of the mount |
+| GA-17 | P1 | | Switch destinations while the pane is open, install everything already installed, overflow a long results list | The pane never shows another destination's content; installed rows read ✓ Installed right after X |
+
+Browse bar and zero-capability screens (ADR 0002, `.scratch/get-addons-filter-bar`,
+device-passed 2026-10-23 on the Deck screen, pane 506 CSS px):
+
+| ID | Pri | S | Steps | Expected |
+|---|---|---|---|---|
+| GA-18 | P1 | S | Right/A from Latest and from Popular, with results loaded; then Up | Focus lands on the first result row, never on the bar; Up reaches the bar (Source, and Category on Popular). Search and From URL start on their text field |
+| GA-19 | P1 | S | Popular with two discover sources on (WowUp Hub + CurseForge) | One bar row: **Source** and **Category** inline side by side, values truncated with an ellipsis, nothing wraps; with one source on, Source is hidden and Category closes up to the left. No "(off)"/"(not set up)" entry in either menu |
+| GA-20 | P1 | S | Popular open on row 3; R1 to Options, toggle a discover source off; L1 back to Popular | Same list, same source, focus back on row 3; the bar stays one row (a segment may hide); results never reload or jump |
+| GA-21 | P1 | S | Turn every discover source off (CurseForge and WowUp Hub); open Latest, then Popular | The zero-source screen, not results: each destination with its own icon (clock for Latest, flame for Popular) and words ("No addon source is on for Latest" / "…for Popular"), body naming the sources that can serve it, **Open addon sources** focused on entry; no turn-on offer row. Search with no name-search source shows the same shape naming those sources. Destination rows read "Needs an addon source" |
+| GA-22 | P1 | S | A on **Open addon sources** | Options opens at Addon sources; the compatible rows (WowUp Hub, CurseForge) pulse together with Steam's own row highlight, full row size and no outline, three times (~1.8 s), and the first one's toggle has focus. Nothing was turned on. Moving focus clears the marks; focus is never trapped |
+| GA-23 | P1 | S | From URL: a direct .zip link (test data), Look up, X; then a WoWInterface link with WoWInterface off | The zip installs into the selected installation as a Zip addon; the WoWInterface result shows its "turned off: installs, but won't get updates" notice on an **Open addon sources** row; A jumps to Options with WoWInterface marked and focused, nothing turned on (Get Addons never enables a source) |
+| GA-24 | P1 | S | ADR 0001 pattern with the bar in place: focus destinations, Right into the pane, B | The destination list still slides the pane open on focus and stays beside it; B collapses the QAM and leaves focus on the plugin-tab nav bar; details stay a modal |
+| GA-25 | P1 | S | PC-20 fix, in-pane segment menus (ADR 0002 rev 2026-10-24): wide in Latest/Popular, open the Source menu, pick another source; then Popular's Category menu, scroll it, pick a category; B out of an open menu | Both menus open as a list inside the pane below the segment, current choice checked, focus on it; **the QAM never moves and never hides while opening or closing** (no contract-then-widen, no black gap); a pick reloads the list and focus returns to the segment's button; B closes the menu back to the button without collapsing the session; Up/Down move within the menu and stop at its ends (Steam's own navigation fired the close instead — DEVICE); Left/Right under an open menu do nothing; the long Category list scrolls and the focused entry stays visible |
+
+### 4.4 Details modal
+
+| ID | Pri | S | Steps | Expected |
+|---|---|---|---|---|
+| D-1 | P1 | S | Open Details from My Addons and from the page | Same layout as before the rework (news-card style) |
+| D-1b | P1 | S | Open Details on the Deck screen and, if possible, on an external 1080p screen; compare with a Steam news item | Same look as the news view: the screen behind is **blurred and dimmed, not black**; pages fill the width (80 %) and reach the bottom behind the footer; the end of a long description scrolls fully above the footer |
+| D-2 | P2 | | Screenshots gallery: D-pad through the image buttons, A to enlarge | Works; B closes the enlarged image first, then the modal |
+| D-3 | P2 | | Long description | Whole card scrolls |
+| D-3b | P1 | S | Long description: Up/Down mid-page, then hold Down to the end, release, press Down again; press Up at the top; Left on the first page, Right on the last | **No sound** while it scrolls or pages; **one** "can't move" sound per press at the top, the bottom, the first and the last page; holding into the end makes no repeated sounds (S29) |
+| D-4 | P1 | | Install / Update button in Details | Same result as GA-7 / M-4 |
+| D-5 | P1 | S | Details of a result with required dependencies (e.g. an addon that needs Ace3 on CurseForge), then Details from My Addons of an installed addon with `## Dependencies` | Result: "Needs N other addons, installed automatically" under the status line. Installed: "Requires Ace3, …"; a dependency whose folder is not in AddOns adds "· Missing: …" in amber. No line when there are none |
+| D-5b | P1 | S | Details of "DBM - Dungeons" and of "BigWigs" from Get Addons; Details of an installed addon with dependencies from My Addons | A **Relationships** page after Changelog: DBM - Dungeons shows Required → DBM-Core with INSTALLED; BigWigs shows Embedded libraries. No Relationships page for an addon without dependencies (DBM-Core itself). From My Addons: the TOC's dependencies with Installed / Missing |
+| D-5d | P1 | S | My Addons: Menu (☰) on a multi-folder addon (DBM) › **Folders…**; on an unmanaged folder too. Press A on a folder row; A on Show with no file manager running; then with Dolphin running as a non-Steam game, and in a nested desktop session, Show again | Folders… sits just above Remove, enabled even while busy. The dialog: Show row first (greyed "Show in file manager" with "Requires a file manager that is already running. Tip: …non-Steam game or in a nested desktop session." under it when none runs), the AddOns folder (~/…), then one row per folder, main first, a deleted one "Missing from AddOns". A on a folder copies its path (toast with the path). Greyed Show toasts "No file manager found" and **never starts one**; with Dolphin running the row reads "Show in Dolphin"; Show opens AddOns with the folders selected **as a tab in the Dolphin window that is already open** (no second Dolphin process), and, with Dolphin as a non-Steam game, closes the dialog and the QAM and switches to Dolphin |
+| D-5c | P2 | | My Addons Details of a multi-client addon (DBM) | The status line shows one game version, the installation's ("WoW 1.60.1" on Forever), not a list of interface numbers |
+| D-6 | P2 | | Details of an addon with a long status line (long version string), on the Deck and at 1080p | The provider chip says "CurseForge" (not "Curse"); the line wraps **only between facts**, no line starts or ends with "·"; a fact longer than the line ends in "…" |
+
+### 4.5 Options
+
+| ID | Pri | S | Steps | Expected |
+|---|---|---|---|---|
+| O-1 | P1 | S | D-pad from top to bottom of Options | Every row reachable; dropdowns, toggles and drill-in rows look like Steam's settings |
+| O-2 | P1 | | WoW installations: **Find WoW installations** | Finds the Steam/Lutris/Proton installs; toast with the count |
+| O-3 | P1 | | **Add installation manually**: Browse, then back out of the picker without choosing | Focus is back **on the Browse button** |
+| O-3b | P1 | | Browse, pick a folder | The path is filled in and focus is **on Display name (optional)** |
+| O-3c | P1 | | **Game version** dropdown: open it, back out; open it, pick another | Both times focus returns to **Game version**, the page does not jump |
+| O-3d | P1 | S | Anywhere in Options (e.g. Safety backups to keep, Active installation, Export): open the dropdown/modal and come back | Focus returns to the same row every time; note any jump |
+| O-3e | P1 | | Scroll far down Options, then Up to the top | Rows stay clear of the title (as M-22) |
+| O-3f | P2 | | Move through every text field in Options (WoW folder, Display name, CurseForge key if shown, GitHub token) and Import/Export | Each is a row with its label above (QAM) or beside (dialogs) the input, and the **whole row lights up** when the field has focus, the same for all of them |
+| O-4 | P0 | | **Installation details** → **Remove this installation…** → confirm | Removed from the list; **no files deleted** on disk |
+| O-5 | P1 | | **Installation details** → **Rescan addons** | Addons changed outside WoWDeck show up; toast "Addons rescanned" |
+| O-5b | P1 | S | Options → **Installation details** | A dialog titled with the installation's name: Game version (1.60.1), Build (70338), Game type (Forever, with "World of Warcraft: Forever · _classic_beta_"), Added, Game folder (~/…), Addons ("16 installed, 15 managed"), then Rescan and Remove (red), Close. No AddOns folder row. D-pad reaches every row; B closes |
+| O-5c | P1 | S | Options → **Active installation**, press **Y** | Footer shows Y **Installation details**; Y opens it. The description reads "Version 1.60.1 · Detected automatically" and wraps only between the two facts. There is no separate "Installation details" row |
+| O-5d | P1 | S | **Add installation manually** → Browse → pick a WoW version folder (e.g. `_classic_era_`) | Display name fills in ("Classic Era") and Game version switches from Auto to the detected version at once; both can be changed. A name you typed is kept. The label is "Display name" (no "optional") |
+| O-5e | P0 | S | From Options open **Export addon list**, **Import addon list**, **Manage backups**, **Installation details** (Y on Active installation) and each dropdown; back out with B each time | Focus returns to the **same row** every time (regression 2026-10-17) |
+| O-6 | P1 | | Addon list: **Export** → Generate, Copy, Save to file | Export code shown; file written |
+| O-7 | P1 | | **Import** from a string and from a file (WowUp's own `.txt` export too) | Preview lists names; "Install N new" installs them; each result line starts with the addon's name ("Alpha: installed" / "Beta: failed, …"); footer is action first, Close second |
+| O-8 | P1 | | CurseForge: bundled key status; **Recheck bundled key** | Shows working; the key itself is never displayed |
+| O-9 | P2 | | Enter your own CurseForge key, then clear it | Saved hidden; fallback to the bundled key afterwards |
+| O-10 | P2 | | GitHub personal access token: save, clear | "A token is saved (hidden)"; clear works |
+| O-11 | P1 | | Providers: turn one off | Its results vanish from Search; turning it back on restores them |
+| O-12 | P2 | | Notifications: **Update available toast** off/on | Respected by the once-a-day toast (L-3) |
+| O-13 | P2 | | Diagnostics: **Show diagnostics** | Versions, paths and recent errors; no secrets |
+
+### 4.5b Steam library (BEYOND-05)
+
+| ID | Pri | S | Steps | Expected |
+|---|---|---|---|---|
+| L-1 | P1 | S | Options → Steam library → **World of Warcraft in Steam**; type "wow"; pick the WoW entry | The picker lists non-Steam games, likely WoW entries first; "wow" also finds "World of Warcraft" by its initials. After A: toast "Linked to Steam"; the row says "<name>: its game page shows addon updates" |
+| L-2 | P1 | S | Library → the WoW entry's page | A **WOW ADDONS** band between the hero and the Play row: "N addon updates …" (green) or "All addons are up to date"; buttons Update all (only with updates), Check for updates, Open. Focus starts on **Play**; Up reaches the band |
+| L-3 | P1 | | Check for updates; Open | Check: a toast "Checked for addon updates" with the result. Open: the QAM opens WoWDeck Manager on My Addons |
+| L-4 | P1 | | Update all on the band (with updates waiting) | All installations update; toast with the count; the band then says all is up to date |
+| L-5 | P1 | S | Another game's page; WoW's page again; restart the Deck and open WoW's page | No band on other games; exactly one band on WoW's; the link survives the restart |
+| L-6 | P2 | | Picker → **Unlink** | Toast "Unlinked from Steam"; no band on WoW's page any more |
+| L-7 | P1 | S | Home screen with the linked game in Recent; also the Library grid | A round badge in the tile's top-right corner: **green with a download arrow** when updates wait, **dark with a check** when all are current, **blue** while checking. It follows the tile when focus moves (big/small tile). Not on other games |
+| L-8 | P1 | | Restart the Deck, wait on the home screen; then open the game page within 15 minutes | The badge's appearance checks in the background (the badge turns blue briefly); the game page shows the counts without a second check. With **Check for updates when shown** off, neither checks |
+| L-9 | P2 | | Options → **Show a badge on its tile** off, then on | The badge disappears and comes back. The picker lists Battle.net / Blizzard entries first along with WoW ones |
+
+### 4.5c WoWDeck update notice (the plugin's own update check)
+
+The plugin is not in the Decky store, so `system.updateCheck` asks GitHub's
+`releases/latest` **once per engine session** — unauthenticated, or through
+the configured GitHub token when GitHub accepts it — and maps every
+unreachable state (private repo beyond the token's reach, offline, rate
+limited) to "couldn't check" — never an error. What the row shows depends on
+the **repo's** state, so the
+real-data cases slot into the release sequence itself
+(`docs/development.md`, "Releasing"): PU-1–PU-2 any time before the public
+flip (PU-1b when a token that can read the repo is configured), PU-3 right
+after it, PU-4–PU-7 in the release window (tag pushed, Deck
+not yet updated), PU-8 after updating the Deck, PU-11–PU-15 (the **Update** button,
+`system.updateStage`) in the same window as PU-4. The engine states and version
+parsing are already covered by `backend/tests/plugin-update-check.test.ts`
+`backend/tests/update-stager.test.ts` and `src/pluginUpdate.test.ts`
+(gate G-2); these cases are the device tier.
+The log line to watch, `[plugin-update] …`, is in
+`~/homebrew/logs/wowdeck/<date>.log` on the Deck.
+
+| ID | Pri | S | Steps | Expected |
+|---|---|---|---|---|
+| PU-1 | P1 | S | Repo private (the state until the public flip), no token or one GitHub won't accept for it: reload the plugin, open Options → Updates | Row "WoWDeck \<version\>" / "Couldn't check for a newer release"; **no toast, no error**; one log line `[plugin-update] check unavailable: … HTTP 404` (verified DEVICE 2026-10-25) |
+| PU-1b | P1 | | Private repo, GitHub token configured with read access to it — a fine-grained PAT needs **this repo selected** and **Contents: Read** (the owner's pre-flip setup): reload the plugin | Row "WoWDeck \<version\>" / "Up to date"; no toast; the log shows the one successful call — the token is used opportunistically and never logged (verified DEVICE 2026-10-25, owner-run: repo-scoped classic token saved in Options, row "Up to date", no `plugin-update` line in the fresh session log) |
+| PU-2 | P1 | | Wi-Fi off, reload the plugin (a fresh engine session), open Options → Updates | Same row as PU-1; the log shows the network error; the engine and every other feature start normally |
+| PU-3 | P1 | S | Right after the public flip, no newer tag (latest == running version) | Row "WoWDeck \<version\>" / "Up to date"; no toast |
+| PU-4 | P0 | S | Release window: tag `vX.Y.Z` pushed, Deck still on the older version; reload the plugin | One toast "WoWDeck X.Y.Z available" / "Link in Options → Updates"; row "WoWDeck update available" / "\<old\> → \<new\> · https://github.com/sigboe/wowdeck/releases…"; the log shows the one successful call |
+| PU-5 | P1 | | Same session as PU-4: leave and re-enter Options, switch tabs, close and reopen the QAM | Row stays correct; **no second toast**; no second `releases/latest` call in the log (once per engine session) |
+| PU-6 | P1 | | Same session: suspend, resume | No WoWDeck toast on wake (the addon-updates toast of N-1 is a different, once-a-day one) |
+| PU-7 | P2 | | Decky → reload WoWDeck during PU-4's window | The toast may show again — once per plugin load is by design; still no extra GitHub call while the engine session lives |
+| PU-8 | P1 | S | Update the Deck to the new release (Install from URL again, README "Update"), open Options → Updates | Row "WoWDeck \<new\>" / "Up to date"; no toast — the notice the release window raised is now cleared |
+| PU-9 | P2 | | During PU-4: try to reach the release page from the row with the controller | The row shows the URL **as text** — nothing focusable. Decide before release: acceptable for check-and-link, or the row should open the page (currently it cannot) |
+| PU-10 | P2 | | Public repo whose newest release is a draft/prerelease only (`releases/latest` answers 404) | Reads "Couldn't check for a newer release", like PU-1 — never a failure; informational, matches the engine contract |
+| PU-11 | P0 | S | Release window (PU-4's state), release has `WoWDeck.zip`: press **Update** on the row | Button reads "Preparing…", then Decky's own install prompt for WoWDeck \<new\>; log `[self-update] staged WoWDeck X.Y.Z …`; a 0600 `wowdeck-update-X.Y.Z.zip` in the temp dir |
+| PU-12 | P0 | | PU-11's prompt: confirm | Decky installs and reloads WoWDeck; the open panel closes (decky-loader #976); reopening shows the new version and PU-8's row |
+| PU-13 | P1 | | PU-11's prompt: cancel | Nothing changes; the old version keeps running; the button is usable again |
+| PU-14 | P1 | | Private repo with PU-1b's token, release window: press **Update** | Same as PU-11 — the download uses the token, never logged |
+| PU-15 | P2 | | No newer release, or a release without `WoWDeck.zip` | No **Update** button on the row |
+
+### 4.6 WTF backup (folds in WF-01 `deck_verification`)
+
+Back up WTF by hand before starting this section.
+
+| ID | Pri | S | Steps | Expected |
+|---|---|---|---|---|
+| W-1 | P1 | S | Options → WTF backup | Caption plus "Last backup …" or "No backups yet" for the active installation |
+| W-2 | P0 | S | **Back up now** | Progress bar with percent, then a "Backup created" notification (also when you left Options while it ran); the zip is under `<plugin data>/wtf-backups/<flavor>/` |
+| W-3 | P1 | | **Manage backups** | Dialog in Steam's style; each backup is one row (no Restore/Delete buttons on it, a chevron); A Restore, X Delete in the footer; B closes. Scroll down and back up: rows keep room above them |
+| W-3b | P1 | | Touch: tap a backup | The Restore dialog opens with a red **Delete this backup…** row; tapping it asks to confirm and deletes. For a damaged backup, or while WoW runs, the dialog says why and Restore is off, but Delete works |
+| W-4 | P0 | | Change something in WTF (or log in and out in WoW), then Restore | Restore dialog: green "from this device" line, Config.wtf toggle **off**, focus starts on the toggle, Restore first and Cancel second. After restore the change is gone and a "Safety backup" row exists |
+| W-5 | P0 | | Restore the safety backup | The state before W-4 returns |
+| W-6 | P0 | | Start WoW, open WTF backup | Amber "WoW is running" note; Restore refused; Back up still works. **This is spike S2** (does `/proc` detection see WoW under Proton) |
+| W-7 | P0 | | Cancel during a long backup | No `.partial` file or zip left behind |
+| W-8 | P0 | | Reload the plugin or restart the Deck during a backup | Next start: no stray `.partial`, `.WTF-restore-*` or `WTF-pre-restore-*`; WTF intact |
+| W-9 | P1 | | **Backup folder** → choose an SD-card folder | List switches to it; remove the card → "folder not available"; Use default folder returns |
+| W-10 | P1 | | **Import from file…** with a copied zip | Added to the list |
+| W-11 | P1 | | Restore a backup made on another computer or by WowUp | Red "from another computer" line; Config.wtf toggle **on**; disabled when the backup has no Config.wtf |
+| W-12 | P1 | | Desktop WowUp round trip (optional) | A Deck backup restores in WowUp; a WowUp backup restores here |
+| W-13 | P2 | | **Safety backups to keep** = 1, restore twice | Only one safety backup remains |
+| W-14 | P1 | | Delete a backup (X in the list) → confirm | File gone; Cancel keeps it |
+
+## 5. In-game and notifications
+
+| ID | Pri | S | Steps | Expected |
+|---|---|---|---|---|
+| N-1 | P1 | | With an update waiting, suspend and resume (or restart the plugin) | One "updates available" toast with the plugin icon; not again the same day |
+| N-2 | P2 | | Start WoW after the plugin has run | The companion data addon (`wowup_data_addon`) is present and not shown in My Addons |
+
+## 6. Robustness (the pre-release list)
+
+| ID | Pri | S | Steps | Expected |
+|---|---|---|---|---|
+| R-1 | P0 | | Suspend the Deck during Update all; resume | No crash; every addon either old or new, never a half-written folder; a retry finishes the job |
+| R-2 | P0 | | Turn Wi-Fi off in the middle of a download | Error toast; the addon is still intact at its old version |
+| R-3 | P1 | | Close the QAM while a request runs; reopen | No crash; state correct after a refresh |
+| R-4 | P1 | | WoW installed on the SD card; card removed and reinserted | Clear error while missing; works again after reinsert |
+| R-5 | P2 | | Desktop Mode: open the plugin through Decky there | Same behaviour with mouse and keyboard |
+| R-6 | P1 | | No network at all, open each tab | Error rows with Retry; nothing hangs forever |
+
+## 7. Known risks to look at first
+
+These are the places most likely to be wrong, so check them first in a full
+run. Updated 2026-10-15 after the owner's first device pass and the fixes for
+it; again 2026-10-18 for the widened-QAM rework:
+
+1. Q-1b: the glyphs come from Steam's own glyph component, found at runtime;
+   if the lookup misses, text "L1/R1" shows instead.
+2. M-22, O-3e, GA-3 (the browse pane), W-3: Valve's 250 px buffer above the
+   focused row, measured below Decky's title / the page's header and bar.
+3. M-23, O-3b–O-3d, GA-9: focus coming back to the same row after a dropdown,
+   modal or picker (focus memory, S21) — plus the widening surviving the G4
+   remount without flapping.
+4. GA-12/GA-13: the fallback world — a Steam update renaming every hashed
+   class must leave Get Addons collapsed-only and silent, and widening must
+   come back on its own when the mechanism does.
+5. GA-14: the close-collapse depends on Steam's QuickAccess window flipping
+   `document.hidden` (the same reach as @decky/ui's own
+   `useQuickAccessVisible`, G10/G13; UNVERIFIED on this device). If a Steam
+   build closes the QAM without the flip, widened mode would survive into the
+   reopen — check the reopen closely.
+6. GA-15: a plugin reload mid-widened must revert the classes the old instance
+   applied; widening everything forever would be the failure.
+7. B-exit (GA-5, GA-14): B out of the pane or the destination list collapses
+   and focuses the plugin-tab nav bar itself (Steam's `NavigateBack` landed on
+   the destination row, which widened again); the title bar's own back button
+   still returns to the plugin list. Note whether leaving mid-session leaves
+   anything widened.
+8. GA-16: widened-enforcement racing an intentional collapse (Steam's own
+   class-drop mid-interaction) — no flap, and never widened against the
+   machine's wanted mode.
+9. W-3, W-3b: backup rows without buttons; Delete in the Restore dialog;
+   scrolling up in Manage backups (the margin carried through DialogBody).
+   Q-6: no fade over the tab bar.
+10. M-5: where the context menu opens inside the QAM.
+
+## 8. Result record
+
+Copy for each run, into the commit notes or `ActionItems.yaml`:
+
+```
+Regression run <date> — <Smoke|Full>
+- Build: <commit>, zip sha256 <first 16>
+- Device: <LCD/OLED>, SteamOS <ver>, Steam <date>, Decky <ver>
+- Tester: <who>  (agent runs are T1-T3 only, guide §8.3)
+- Gates G-1..G-7: pass | fail (<which>)
+- Passed: <ids>
+- Failed: <id>: <what happened>  (P0/P1/P2)
+- Not run: <ids> and why
+```

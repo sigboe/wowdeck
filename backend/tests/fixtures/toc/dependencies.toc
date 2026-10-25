@@ -1,0 +1,6 @@
+## Interface: 110002
+## Title: DepAddon
+## Version: 3.1.4
+## Dependencies: Ace3, LibSharedMedia-3.0
+## OptionalDeps: AceGUI-3.0, AceConfig-3.0
+## RequiredDeps: SomeRequired

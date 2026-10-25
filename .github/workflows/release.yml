@@ -1,0 +1,119 @@
+name: Release
+
+# A tag is the release: `make version-set VERSION=X.Y.Z` → commit →
+# `make release-tag` → `git push origin vX.Y.Z`. This workflow then runs the
+# same checks as CI, packages the zip and publishes it as the GitHub Release
+# that Decky's "install from URL", Direct Updater and the README link all
+# resolve against (releases/latest/download/<asset>).
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run lint
+      - run: pnpm run format:check
+      - run: pnpm run typecheck
+      - run: pnpm run build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: dist/
+          retention-days: 7
+
+  backend:
+    name: Backend engine
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch the WowUp reference checkout
+        run: make wowup
+      - uses: oven-sh/setup-bun@v2
+        with:
+          # Keep in step with the nix-locked bun (flake.lock); see ci.yml.
+          bun-version: 1.4.2
+      - run: bun install --frozen-lockfile
+        working-directory: backend
+      - run: bun run typecheck
+        working-directory: backend
+      # The integration tests spawn backend/out/wowdeck.
+      - run: bun run build
+        working-directory: backend
+      - run: bun test
+        working-directory: backend
+      - uses: actions/upload-artifact@v4
+        with:
+          name: backend-binary
+          path: backend/out/wowdeck
+          retention-days: 7
+
+  release:
+    name: Publish GitHub Release
+    needs: [frontend, backend]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: dist/
+      - uses: actions/download-artifact@v4
+        with:
+          name: backend-binary
+          path: backend/out/
+
+      # The tag, the three versioned files and the zip inside the release must
+      # all say the same number; nothing downstream can notice a mismatch.
+      - name: Check the tag matches the tree's version
+        run: |
+          set -euo pipefail
+          python3 tools/version.py check
+          version="$(python3 tools/version.py show)"
+          if [ "v${version}" != "${GITHUB_REF_NAME}" ]; then
+            echo "tag ${GITHUB_REF_NAME} does not match version ${version}" >&2
+            exit 1
+          fi
+
+      - run: python3 tools/test_package.py -v
+      # Same bundled-key handling as ci.yml: the secret is optional and the
+      # plugin's user-key fallback covers builds without it. See
+      # docs/curseforge-api-key.md.
+      - run: chmod +x backend/out/wowdeck && python3 tools/package.py
+        env:
+          CURSEFORGE_API_KEY: ${{ secrets.CURSEFORGE_API_KEY }}
+
+      - name: Checksum the asset
+        run: sha256sum build/*.zip
+
+      # The asset keeps the zip's own name, which is the plugin's display
+      # name by design: Decky's install-from-URL takes the plugin name from
+      # the last URL segment and compares it with the installed plugin, so
+      # any other asset name breaks updating from a URL (see
+      # tools/package.py's zip_path()). Do not add a version-named copy.
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" build/*.zip \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes \
+            --verify-tag

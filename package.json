@@ -1,0 +1,64 @@
+{
+  "name": "wowdeck",
+  "version": "0.2.0",
+  "description": "WoWDeck Addon Manager for Decky - manage World of Warcraft addons on Steam Deck",
+  "type": "module",
+  "scripts": {
+    "build": "rollup -c",
+    "watch": "rollup -c -w",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src",
+    "format": "prettier --write src",
+    "format:check": "prettier --check src",
+    "test": "bun test ./src"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sigboe/wowdeck.git"
+  },
+  "keywords": [
+    "decky",
+    "plugin",
+    "steam-deck",
+    "world-of-warcraft",
+    "addons"
+  ],
+  "author": "sigboe",
+  "license": "GPL-3.0",
+  "bugs": {
+    "url": "https://github.com/sigboe/wowdeck/issues"
+  },
+  "homepage": "https://github.com/sigboe/wowdeck#readme",
+  "devDependencies": {
+    "@decky/rollup": "^1.0.2",
+    "@decky/ui": "^4.11.0",
+    "@eslint/js": "^9.39.5",
+    "@rollup/rollup-linux-x64-gnu": "^4.53.3",
+    "@types/jsdom": "^30.0.0",
+    "@types/react": "19.1.1",
+    "@types/react-dom": "19.1.1",
+    "bun-types": "^1.4.2",
+    "eslint": "^9.39.0",
+    "jsdom": "^30.1.2",
+    "prettier": "^3.7.4",
+    "rollup": "^4.53.3",
+    "typescript": "^5.6.2",
+    "typescript-eslint": "^8.49.0"
+  },
+  "dependencies": {
+    "@decky/api": "^1.1.3",
+    "dompurify": "^3.4.16",
+    "marked": "^18.1.0",
+    "react-icons": "^5.3.0",
+    "tslib": "^2.7.0"
+  },
+  "pnpm": {
+    "peerDependencyRules": {
+      "ignoreMissing": [
+        "react",
+        "react-dom",
+        "react-router"
+      ]
+    }
+  }
+}

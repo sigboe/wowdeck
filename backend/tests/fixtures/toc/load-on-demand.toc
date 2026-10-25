@@ -1,0 +1,5 @@
+## Interface: 110002
+## Title: LoadOnDemandAddon
+## Version: 0.9
+## LoadOnDemand: 1
+## X-Part-Of: BigSuite

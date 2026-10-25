@@ -1,0 +1,4 @@
+## Interface: 110002
+## Title: MissingVersionAddon
+## Notes: No version tag here
+## Author: Someone

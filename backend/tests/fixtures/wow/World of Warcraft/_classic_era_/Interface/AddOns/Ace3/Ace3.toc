@@ -1,0 +1,5 @@
+## Interface: 11503
+## Title: Ace3
+## Author: Ace3 Development Team
+## Version: Release-11305-69
+## X-Curse-Project-ID: 5

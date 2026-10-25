@@ -1,0 +1,29 @@
+name: Feature request
+description: Suggest something WoWDeck should do, or do better
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: The situation or annoyance — not the solution, yet.
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: What should happen instead?
+      description: >-
+        Your idea, including anything you tried that almost worked.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Where does it belong?
+      options:
+        - My Addons
+        - Get Addons
+        - Options
+        - The game page in Steam
+        - Whole plugin / other

@@ -1,0 +1,5 @@
+this is not a toc file
+just some lua code that happens to be in a file named .toc
+## this line has the wrong prefix format: yes
+##Broken : syntax
+no tags here

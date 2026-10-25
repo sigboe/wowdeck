@@ -1,0 +1,10 @@
+## Interface: 110002, 110005
+## Title: TestAddon
+## Notes: A test addon with |cFFFF0000color codes|r and |T/interface/icon:16|t textures
+## Author: TestAuthor
+## Version: 1.2.3
+## X-Website: https://example.com/testaddon
+## DefaultState: enabled
+## SavedVariables: TestAddonDB
+
+local TestAddon = {}

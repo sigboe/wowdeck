@@ -1,0 +1,8 @@
+## Interface: 110002
+## Title: TestAddon|cFFFF8800 : Localized|r
+## Notes: Notes with |TInterface\\Icons\\INV_Misc_QuestionMark:16|t icon
+## Author: Àuthor Ünïcode
+## Version: v2.0-локализованная
+## X-Curse-Project-ID: 123456
+## X-WoWI-ID: 7890
+## X-Wago-ID: abc123de

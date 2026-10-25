@@ -1,0 +1,288 @@
+{
+  "addons": [
+    {
+      "id": 2797823,
+      "repository": "https://github.com/Merathilis/ElvUI_MerathilisUI",
+      "repository_name": "ElvUI_MerathilisUI",
+      "source": "GitHub",
+      "description": "<div align=\"center\"><img src=\"https://raw.githubusercontent.com/Merathilis/ElvUI_MerathilisUI/development/m4.png\"/><br><img src=\"https://img.shields.io/badge/ElvUI-15.26-blue.svg?longCache=true&style=for-the-badge\"/><img src=\"https://img.shields.io/badge/Version-7.39-orange.svg?longCache=true&style=for-the-badge\"/></div><hr><br><p><img src=\"https://raw.githubusercontent.com/Merathilis/ElvUI_MerathilisUI/development/.github/media/screenshot-retail.jpg\" alt=\"MerathilisUI on Retail\"></p><p align=\"center\"; style=\"color:red;font-size:8px\">Screenshot also shows other AddOns.</p><hr><p><a href=\"https://discordapp.com/invite/28We6esE9v\"><img src=\"https://img.shields.io/discord/284626725403361281?color=orange&amp;label=discord&amp;logo=discord&amp;style=for-the-badge\" alt=\"Discord\"></a> <a href=\"https://github.com/sponsors/Merathilis\"><img src=\"https://img.shields.io/badge/sponsor-30363D?style=for-the-badge&amp;logo=GitHub-Sponsors&amp;logoColor=#EA4AAA\" alt=\"Sponsor\"></a> <a href=\"https://www.patreon.com/merathilisui\"><img src=\"https://img.shields.io/badge/Patreon-F96854?style=for-the-badge&amp;logo=patreon&amp;logoColor=white\" alt=\"Patreon\"></a> <a href=\"https://paypal.me/merathilis\"><img src=\"https://img.shields.io/badge/PayPal-00457C?style=for-the-badge&amp;logo=paypal&amp;logoColor=white\" alt=\"Donate\"></a> <a href=\"https://ko-fi.com/C0C2CR58G\"><img src=\"https://img.shields.io/badge/%E2%9D%A4%EF%B8%8FDonate-Ko--Fi-red?style=for-the-badge&amp;logo=heart\" alt=\"ko-fi\"></a> <a href=\"https://saythanks.io/to/Merathilis\"><img src=\"https://img.shields.io/badge/Say%20Thanks-!-1EAEDB.svg?longCache=true&amp;style=for-the-badge\" alt=\"Say Thanks!\"></a></p><p>Download Sites: <a href=\"https://wowup.io/addons/2797823\">WowUP</a> | <a href=\"https://www.curseforge.com/wow/addons/merathilis-ui\">Curse</a> | <a href=\"https://addons.wago.io/addons/elvui-merathilisui\">Wago</a> | <a href=\"https://www.wowinterface.com/downloads/info24117\">WoWInterface</a> | <a href=\"https://github.com/Merathilis/ElvUI_MerathilisUI/releases\">Github Release</a></p><hr><p><strong>A complete, polished look for ElvUI - plus the features ElvUI doesn't ship.</strong></p><p>MerathilisUI is a plugin for ElvUI (Retail). It gives your interface a clean, transparent design with class-colored gradients and adds a set of modules that go beyond what ElvUI offers out of the box. Everything is modular: turn off what you don't need, keep the rest.</p><h2>Why MerathilisUI instead of plain ElvUI?</h2><ul><li><strong>One-click complete UI</strong> - The installer sets up ElvUI, your chat, action bars, data texts, nameplates, unit frames and profiles for popular addons in a few steps. Choose between a <strong>General</strong>, <strong>Dark</strong> or <strong>Gradient</strong> layout.</li><li><strong>A consistent design everywhere</strong> - Blizzard windows, ElvUI and supported addons get the same shadows, gradients and flat widgets, including the ElvUI options window itself.</li><li><strong>Features ElvUI doesn't have</strong> - A categorized bag view, a full Armory character panel, a chat sidebar, Mythic+ info on hover, a buff reminder and more (see below).</li><li><strong>Actively maintained</strong> - Regular updates for the current Retail patch, and bugs reported on Discord get fixed.</li></ul><!-- SCREENSHOT: The three installer layouts side by side (General / Dark / Gradient), e.g. the same scene with the unit frames visible --><h2>Feature Highlights</h2><h3>Bags</h3><ul><li><strong>Categorized Bags</strong> - Replaces the bag frame with a category sidebar: pinned and recent items, custom categories, sub-headers per expansion and per equipment set</li><li>Merges identical stacks into one slot and shrinks the bag and bank windows to fit their contents</li><li>Shows which items are part of an equipment set</li></ul><!-- SCREENSHOT: Opened bags with the category sidebar and a few expansion sub-headers visible --><h3>Armory (Character Frame)</h3><ul><li>Redesigned character and inspect frame with class backgrounds</li><li>Item level, enchants and sockets per slot, with a warning for missing enchants</li><li>Shows the highest item level you can reach with the items in your bags</li><li>Built-in equipment set manager and socket panel</li></ul><!-- SCREENSHOT: Character frame with Armory enabled (class background, enchant texts, stat panel) --><h3>Chat &amp; Minimap</h3><ul><li><strong>Chat Sidebar</strong> - Friends and guild online, durability, voice chat and copy chat in one bar next to the chat</li><li><strong>Location Panel</strong> - Zone text and coordinates above the minimap</li><li><strong>Minimap Button Bar</strong> - Collects the addon buttons from your minimap into one bar</li></ul><!-- SCREENSHOT: Chat panel with the sidebar, ideally with the portal flyout opened --><!-- SCREENSHOT: Minimap with the Location Panel above and the button bar --><h3>Combat &amp; Group Content</h3><ul><li><strong>NameHover</strong> - Unit info at your cursor; in Mythic+ it shows how much Enemy Forces an enemy is worth and your current pull progress</li><li><strong>Buff Reminder</strong> - Reminds you of missing raid buffs, flasks, food, runes, weapon enchants and poisons</li><li><strong>Movement Alert</strong> - Shows the cooldowns of your movement spells, optionally with Text to Speech</li><li><strong>Loot Spec Manager</strong> - Switches your loot specialization automatically per boss in raids and Mythic+</li><li><strong>Spec Bar</strong> - Switch your specialization with one click</li><li><strong>Vehicle / Skyriding Bar</strong> - Styled vehicle bar with a vigor bar and speed display</li><li><strong>Faction Indicator</strong> - Faction crest of the opposing faction on unit frames and nameplates</li></ul><!-- SCREENSHOT: NameHover on an enemy in a Mythic+ dungeon showing the Enemy Forces text --><!-- SCREENSHOT: Buff Reminder showing a few missing buffs --><h3>Notifications</h3><ul><li>Rare mobs, new mail, Great Vault rewards, Call to Arms, low durability, full bags, guild events, Quick Join requests and currency cap warnings</li></ul><!-- SCREENSHOT: One or two notification toasts (e.g. rare mob + Great Vault) --><h3>Quality of Life</h3><ul><li>Mail: open or delete multiple mails at once, send templates and quick attach</li><li>Profession tabs, Pet Journal filter by type, tertiary stats in the auction house</li><li>Copy your current transmog as a list, Wowhead links in the Achievement and World Map frame</li><li>Styled game menu, AFK screen and cursor ring with GCD and cast progress</li></ul><!-- SCREENSHOT: Styled game menu (Esc) --><h3>Unit Frames &amp; Theme</h3><ul><li>Gradient, Dark and class-colored health, power and castbars</li><li>Additional styling for player, target, party, raid and boss frames</li></ul><!-- SCREENSHOT: Raid or party frames in Gradient mode --><h2>Installation</h2><p>The installer starts automatically the first time you log in with MerathilisUI. You can open it again at any time with the <strong>Install</strong> button in the MerathilisUI options. Each step can be skipped if you want to keep your current ElvUI settings.</p><p><strong>Tip:</strong> Apply MerathilisUI to a new ElvUI profile, then you can always switch back.</p><p><strong>Note:</strong> Running the installer again after an update overwrites your own changes in the steps you apply.</p><!-- SCREENSHOT: Installer window (layout selection step) --><h2>Requirements</h2><ul><li><a href=\"https://tukui.org/elvui\">ElvUI</a></li><li><a href=\"https://www.curseforge.com/wow/addons/elvui-windtools\">ElvUI_WindTools</a></li></ul><p><strong>Recommended:</strong> mMediaTag &amp; Tools</p><h2>Profiles included for</h2><p>BigWigs, Details!, ls: Toasts, Capping, TomTom, Permoks Account Manager, Skiron Cooldown Manager, WindTools, mMediaTag and a Blizzard Edit Mode layout.</p><h2>Addon Skins</h2><p>BigWigs, Details!, BugSack, BagSync, Capping, Clique, ls: Toasts, Pawn, WIM, WowLua, Paragon Reputation, KeystoneLoot and more.</p><h2>Bug Reports &amp; Support</h2><p>Please join the <a href=\"https://discordapp.com/invite/28We6esE9v\">Discord</a> and read the bug report guidelines before posting. A good report (error message, steps to reproduce, list of your addons) helps a lot.</p><p>You can also open an <a href=\"https://github.com/Merathilis/ElvUI_MerathilisUI/issues\">issue</a> here on GitHub.</p><h2>Credits</h2><p>Special thanks to Benik for the help from the very beginning, and to Elv, Simpy, DarthPredator, Blazeflack, Azilroka and all other addon authors whose work inspired MerathilisUI. See <a href=\"CREDITS.md\">CREDITS.md</a> for the full list.</p><hr><br>",
+      "homepage": "https://www.merathilisui.com/",
+      "image_url": "https://repository-images.githubusercontent.com/403342598/6c9a3f1a-99ff-4471-8413-e112575517c6",
+      "owner_image_url": "https://avatars.githubusercontent.com/u/272403?u=3508a6a2bfd0d1dbf54f8fa51b5051ee488c7fc1&v=4",
+      "owner_name": "Merathilis",
+      "total_download_count": 0,
+      "funding_links": [
+        {
+          "platform": "PATREON",
+          "url": "https://undefined/addons/2797823/funding/patreon"
+        },
+        {
+          "platform": "KO_FI",
+          "url": "https://undefined/addons/2797823/funding/ko_fi"
+        },
+        {
+          "platform": "CUSTOM",
+          "url": "https://undefined/addons/2797823/funding/custom"
+        }
+      ],
+      "topics": [],
+      "releases": [
+        {
+          "download_count": 226,
+          "download_url": "https://github.com/Merathilis/ElvUI_MerathilisUI/releases/download/7.39/ElvUI_MerathilisUI-7.39.zip",
+          "external_id": "607955901",
+          "game_version": "120100",
+          "game_versions": [
+            {
+              "game_type": "retail",
+              "interface": "120100",
+              "title": "ElvUI MerathilisUI",
+              "version": "7.39",
+              "authors": "Merathilis"
+            }
+          ],
+          "id": 250587,
+          "name": "ElvUI_MerathilisUI-7.39.zip",
+          "prerelease": false,
+          "published_at": "2026-10-03T14:33:54.000Z",
+          "tag_name": "7.39",
+          "url": "https://api.github.com/repos/Merathilis/ElvUI_MerathilisUI/releases/assets/607955901",
+          "game_type": "retail",
+          "toc_title": "ElvUI MerathilisUI",
+          "toc_version": "7.39",
+          "addonFolders": [
+            {
+              "fingerprint": "91939837f32f72ddf31d2e6f70942d61",
+              "folder_name": "ElvUI_MerathilisUI",
+              "id": 41472
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 2797848,
+      "repository": "https://github.com/AcidWeb/OPie_ElvUI",
+      "repository_name": "OPie_ElvUI",
+      "source": "GitHub",
+      "description": "<h1>OPie: ElvUI</h1><p><a href=\"https://addons.wago.io/addons/opie-elvui-skin\">Wago Addons</a></p><p><a href=\"https://www.wowinterface.com/downloads/info26446-OPieElvUISkin.html\">WoWInterface</a></p><h2>COPYRIGHT</h2><p>All Rights Reserved unless otherwise explicitly stated.</p><p>Copyright (c) 2022-2026 Paweł Jastrzębski <a href=\"mailto:pawelj@iosphe.re\">pawelj@iosphe.re</a></p>",
+      "homepage": "",
+      "image_url": "https://repository-images.githubusercontent.com/561471141/45b1f579-e14e-41ee-bb48-d88496d971f7",
+      "owner_image_url": "https://avatars.githubusercontent.com/u/3713734?v=4",
+      "owner_name": "AcidWeb",
+      "total_download_count": 141,
+      "funding_links": [
+        {
+          "platform": "GITHUB",
+          "url": "https://undefined/addons/2797848/funding/github"
+        },
+        {
+          "platform": "CUSTOM",
+          "url": "https://undefined/addons/2797848/funding/custom"
+        }
+      ],
+      "topics": [],
+      "releases": [
+        {
+          "download_count": 2106,
+          "download_url": "https://github.com/AcidWeb/OPie_ElvUI/releases/download/v1.4.1/OPie_ElvUI-v1.4.1.zip",
+          "external_id": "354046497",
+          "game_version": "50503",
+          "game_versions": [
+            {
+              "game_type": "retail",
+              "interface": "11508, 20505, 50503, 120001",
+              "title": "OPie: ElvUI",
+              "version": "1.4.1",
+              "authors": "AcidWeb"
+            }
+          ],
+          "id": 59420,
+          "name": "OPie_ElvUI-v1.4.1.zip",
+          "prerelease": false,
+          "published_at": "2026-02-11T06:39:53.000Z",
+          "tag_name": "v1.4.1",
+          "url": "https://api.github.com/repos/AcidWeb/OPie_ElvUI/releases/assets/354046497",
+          "game_type": "mists",
+          "toc_title": "OPie: ElvUI",
+          "toc_version": "1.4.1",
+          "addonFolders": [
+            {
+              "fingerprint": "d568d9f8f21ec3c4d6d91fa68ca7424b",
+              "folder_name": "OPie_ElvUI",
+              "id": 39502
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 2797903,
+      "repository": "https://github.com/PeluxGit/ElvUI-Dynamic-Group-Frames-Plugin",
+      "repository_name": "ElvUI-Dynamic-Group-Frames-Plugin",
+      "source": "GitHub",
+      "description": "<h1>ElvUI Dynamic Group Frames (EDGF)</h1><p>Keep your raid frames consistent, no matter how subgroups are filled.</p><p><strong>EDGF</strong> is an ElvUI plugin that <strong>automatically switches</strong> between the <strong>Party</strong>, <strong>Raid1</strong>, <strong>Raid2</strong>, and <strong>Raid3</strong> <strong>group unit frames</strong> based on the <em>actual number of players</em> in your group/raid (not on whether certain unit “positions” exist). This is ideal when subgroups are <strong>not</strong> filled contiguously (e.g., 10 players spread across 3 subgroups) but you still want a clean <strong>2×5</strong> look.</p><hr><h2>Highlights</h2><ul><li><strong>Bucketed switching</strong><br>Configure thresholds for <strong>Party</strong>, <strong>Raid1</strong>, and <strong>Raid2</strong>. Anything above Raid2 uses <strong>Raid3</strong>.</li><li><strong>Optional Party usage</strong><br>A <strong>Use Party Frames</strong> toggle lets you skip Party entirely and start at <strong>Raid1</strong> from 1 player.</li><li><strong>Works with raid-wide sorting</strong><br>Keeps your layout coherent even when subgroups are uneven.</li><li><strong>Hands-off safeguards</strong><br>Internally ensures essential options so layouts behave as expected.</li><li><strong>Safe in combat</strong><br>Changes are deferred and applied automatically when you leave combat.</li></ul><hr><h2>Requirements</h2><ul><li><strong>ElvUI</strong> (Retail)<br>Any modern ElvUI build with Party/Raid <strong>group unit frames</strong> enabled.</li><li>World of Warcraft (Retail).</li></ul><hr><h2>Install</h2><h3>Option 1: Addon Manager (recommended)</h3><p>Install via your addon manager from:</p><ul><li><a href=\"https://www.curseforge.com/wow/addons/elvui-dynamic-group-frames\">CurseForge</a></li><li><a href=\"https://addons.wago.io/addons/elvui-dynamic-group-frames\">Wago.io</a></li></ul><h3>Option 2: Manual Install</h3><ol><li><p>Download the latest release zip from <a href=\"https://github.com/PeluxGit/ElvUI-Dynamic-Group-Frames-Plugin/releases\">GitHub Releases</a>.</p></li><li><p>Extract to:</p><pre><code class=\"language-text\">World of Warcraft/_retail_/Interface/AddOns/ElvUI_DynamicGroupFrames</code></pre></li><li><p>Restart WoW or <code>/reload</code>.</p></li></ol><hr><h2>Configure</h2><p>ElvUI → <strong>UnitFrames</strong> → <strong>Dynamic Group Frames (EDGF)</strong></p><ul><li><strong>Enable</strong> — turn the plugin on/off.</li><li><strong>Use Party Frames</strong> — <strong>ON</strong> by default.<ul><li><strong>ON:</strong> Party frames are used for 1–5 players. The Party bucket is fixed at <strong>5</strong>.<ul><li><strong>Raid1</strong> range: <strong>6 … (Raid2 max − 1)</strong>.</li><li><strong>Raid2</strong> range: <strong>(Raid1 max + 1) … 40</strong>.</li></ul></li><li><strong>OFF:</strong> Party frames are <strong>hidden/disabled</strong>.<ul><li><strong>Raid1</strong> range: <strong>1 … (Raid2 max − 1)</strong>.</li><li><strong>Raid2</strong> range: <strong>(Raid1 max + 1) … 40</strong>.</li></ul></li></ul></li><li><strong>Buckets</strong> — three sliders (when Party is used, the Party slider is shown as <strong>fixed to 5</strong>):<ul><li><strong>Party</strong> (fixed to <strong>5</strong> when <em>Use Party Frames</em> is ON; hidden when OFF)</li><li><strong>Raid1</strong> (lower bound depends on <em>Use Party Frames</em>)</li><li><strong>Raid2</strong></li><li>Anything above <strong>Raid2</strong> uses <strong>Raid3</strong> automatically.</li></ul></li></ul><p>Click <strong>Apply Now</strong> (or type <strong><code>/edgf</code></strong>) to force an immediate update out of combat.</p><blockquote><p>The UI clamps values so <strong>Party &lt; Raid1 &lt; Raid2 ≤ 40</strong> at all times.You can still use ElvUI’s settings to style <strong>Party</strong>, <strong>Raid1</strong>, <strong>Raid2</strong>, and <strong>Raid3</strong> <strong>group unit frames</strong> independently (size, fonts, indicators, etc.). EDGF only decides <strong>which group frames are shown</strong> at any time.</p></blockquote><hr><h2>How it works</h2><ul><li>Detects current group size and selects:<ul><li>(<strong>Use Party = ON</strong>)<ul><li>1–5 → <strong>Party</strong></li><li>6…Raid1Max → <strong>Raid1</strong></li><li>(Raid1Max+1)…Raid2Max → <strong>Raid2</strong></li><li>&gt; Raid2Max → <strong>Raid3</strong></li></ul></li><li>(<strong>Use Party = OFF</strong>)<ul><li>1…Raid1Max → <strong>Raid1</strong></li><li>(Raid1Max+1)…Raid2Max → <strong>Raid2</strong></li><li>&gt; Raid2Max → <strong>Raid3</strong></li></ul></li></ul></li><li>Internally (out of combat) ensures options that keep raid-wide sorting layouts stable:<ul><li><code>raidWideSorting = true</code></li><li><code>groupFilter     = &quot;1,2,3,4,5,6,7,8&quot;</code></li><li><code>keepGroupsTogether = false</code></li><li><strong>numGroups = 8</strong> for all raid frames (raid1/raid2/raid3) to ensure no players are dropped</li><li>Party frames enforce a minimum of 1 group when enabled</li></ul></li><li><strong>Normalization safeguards</strong><br>On login and when options change, EDGF clamps bucket values to keep them coherent:<ul><li>With <em>Use Party Frames = ON</em>: <strong>Party = 5</strong>, <strong>Raid1 ≥ 6</strong>, <strong>Raid2 &gt; Raid1</strong>, <strong>Raid2 ≤ 40</strong></li><li>With <em>Use Party Frames = OFF</em>: <strong>Raid1 ≥ 1</strong>, <strong>Raid2 &gt; Raid1</strong>, <strong>Raid2 ≤ 40</strong></li></ul></li><li>Changes are throttled and deferred while in combat.</li></ul><hr><h2>Commands</h2><ul><li><strong><code>/edgf</code></strong> — Apply immediately (out of combat).<br>If used in combat, it queues and applies after combat ends.</li></ul><hr><h2>Tips &amp; Known Quirks</h2><ul><li><strong>ElvUI options will show <code>numGroups = 8</code></strong> for raid frames.<br>EDGF enforces this value to ensure all 8 subgroups are always shown, preventing players from being hidden.</li><li><strong>Visibility input</strong> in ElvUI will be overwritten by EDGF during the next roster change or when you press <strong>Apply Now</strong>.</li><li><strong>Per-bucket styling</strong> Tweak ElvUI's <strong>Party</strong>, <strong>Raid1</strong>, <strong>Raid2</strong>, <strong>Raid3</strong> pages to scale unit frames appropriately.</li></ul><hr><h2>Changelog</h2><p>See <a href=\"./CHANGELOG.md\">CHANGELOG.md</a>.</p><hr><h2>License</h2><p><a href=\"./LICENSE\">MIT</a></p>",
+      "homepage": "",
+      "image_url": "https://repository-images.githubusercontent.com/1078560444/1a1a90b3-5e29-4ab9-b94a-8997c321f431",
+      "owner_image_url": "https://avatars.githubusercontent.com/u/63825662?v=4",
+      "owner_name": "PeluxGit",
+      "total_download_count": 8,
+      "funding_links": [],
+      "topics": [],
+      "releases": [
+        {
+          "download_count": 391,
+          "download_url": "https://github.com/PeluxGit/ElvUI-Dynamic-Group-Frames-Plugin/releases/download/v2026-02-13/ElvUI_DynamicGroupFrames-v2026-02-13.zip",
+          "external_id": "355430357",
+          "game_version": "120001",
+          "game_versions": [
+            {
+              "game_type": "retail",
+              "interface": "120001",
+              "title": "ElvUI Dynamic Group Frames",
+              "version": "2026-02-13",
+              "authors": "PeluxGit"
+            }
+          ],
+          "id": 60076,
+          "name": "ElvUI_DynamicGroupFrames-v2026-02-13.zip",
+          "prerelease": false,
+          "published_at": "2026-02-13T16:18:35.000Z",
+          "tag_name": "v2026-02-13",
+          "url": "https://api.github.com/repos/PeluxGit/ElvUI-Dynamic-Group-Frames-Plugin/releases/assets/355430357",
+          "game_type": "retail",
+          "toc_title": "ElvUI Dynamic Group Frames",
+          "toc_version": "2026-02-13",
+          "addonFolders": [
+            {
+              "fingerprint": "0aa35eda67d0dcb20d93be8da81b8c63",
+              "folder_name": "ElvUI_DynamicGroupFrames",
+              "id": 40078
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 2797907,
+      "repository": "https://github.com/Toxicom/toxiui",
+      "repository_name": "toxiui",
+      "source": "GitHub",
+      "description": "<p><a href=\"https://discord.gg/r85TGUU7zA\"><img src=\"https://img.shields.io/discord/769550106948141086?style=for-the-badge&amp;logo=discord&amp;label=ToxiUI&amp;color=18a8ff\" alt=\"Discord\"></a></p><p><a href=\"https://www.curseforge.com/wow/addons/toxiui\"><img src=\"https://img.shields.io/curseforge/dt/676447?style=for-the-badge\" alt=\"CurseForge Downloads\"></a><a href=\"https://www.curseforge.com/wow/addons/toxiui\"><img src=\"https://img.shields.io/curseforge/game-versions/676447?style=for-the-badge\" alt=\"CurseForge Game Versions\"></a><a href=\"https://www.curseforge.com/wow/addons/toxiui\"><img src=\"https://img.shields.io/curseforge/v/676447?style=for-the-badge\" alt=\"CurseForge Version\"></a></p><p><a href=\"https://www.patreon.com/c/toxiui\"><img src=\"https://img.shields.io/badge/Patreon-F96854?style=for-the-badge&amp;logo=patreon&amp;logoColor=white\" alt=\"Patreon\"></a><a href=\"https://paypal.me/toxiui\"><img src=\"https://img.shields.io/badge/PayPal-00457C?style=for-the-badge&amp;logo=paypal&amp;logoColor=white\" alt=\"PayPal\"></a><a href=\"https://ko-fi.com/toxiui\"><img src=\"https://img.shields.io/badge/%E2%9D%A4%EF%B8%8FDonate-Ko--Fi-red?style=for-the-badge&amp;logo=heart\" alt=\"Ko-Fi\"></a></p><p><img src=\"https://media.forgecdn.net/attachments/description/676447/description_79cd99f7-eac7-4849-b97c-427f1c7140b6.png\" alt=\"Gameplay video\"></p><p><a href=\"https://www.youtube.com/watch?v=jizdfGCNxmU\"><img src=\"https://img.youtube.com/vi/jizdfGCNxmU/maxresdefault.jpg\" alt=\"Video thumbnail\"></a></p><h6>Click the image above to see the video</h6><p><img src=\"https://media.forgecdn.net/attachments/description/676447/description_241dfa18-3e41-4400-99a9-cc1eedeb24d9.png\" alt=\"Features\"></p><ul><li>Three themes to choose from: Gradient Mode, Dark Mode &amp; default</li><li>Beautiful Armory packed with information</li><li>Elegant WunderBar to have all the important information at your fingertips</li><li>Unique hand-made specialization icons</li><li>Custom text tags</li><li>Game Menu Skin to personalize your gameplay and provide useful information</li><li>Enhanced custom installer</li><li>Active Discord community</li><li>…and more!</li></ul><p><img src=\"https://media.forgecdn.net/attachments/description/676447/description_63516ad4-2c2e-4383-b5c8-29f43db86c80.png\" alt=\"Requirements\"></p><h2>Required AddOns:</h2><ul><li><a href=\"https://www.tukui.org/download.php?ui=elvui\">ElvUI</a></li></ul><h2>Recommended AddOns:</h2><ul><li><a href=\"https://www.curseforge.com/wow/addons/details\">Details! Damage Meter</a></li><li><a href=\"https://www.curseforge.com/wow/addons/elvui-windtools\">ElvUI WindTools</a> <em>(Retail only)</em></li></ul><h2>Additional supported AddOns:</h2><ul><li><a href=\"https://www.curseforge.com/wow/addons/big-wigs\">BigWigs</a></li><li><a href=\"https://www.curseforge.com/wow/addons/warpdeplete\">WarpDeplete (Retail only)</a></li><li><a href=\"https://www.curseforge.com/wow/addons/elvui-ratiominimapauras\">Ratio Minimap Auras</a></li></ul><p><img src=\"https://media.forgecdn.net/attachments/description/676447/description_eef9d427-56cd-4167-a38e-59f260b92ac1.png\" alt=\"Installation\"></p><ul><li>Make a backup of your WTF folder <em>(it is recommended to install ToxiUI on a clean profile)</em></li><li>Install the required addons</li><li>Enter game &amp; make sure that all of the AddOns are loaded correctly</li><li>Once you load up your character, the ToxiUI installer will pop-up</li><li>Simply <strong>follow</strong> the installers <strong>instructions very closely</strong></li><li>If you have any problems or issues at any step, please visit our discord server for support!</li></ul><p><a href=\"https://www.youtube.com/watch?v=C0YpDaEHvWU\"><img src=\"https://img.youtube.com/vi/C0YpDaEHvWU/maxresdefault.jpg\" alt=\"Installation video guide\"></a></p><h6>Click the image above to see the video</h6><h2><img src=\"https://media.forgecdn.net/attachments/description/676447/description_d643a212-3ccc-47e5-b892-363771a6ac65.png\" alt=\"Credits\"></h2><ul><li>Nawuko for developing the initial ToxiUI codebase</li><li>Ryada, Wolen and others for contributing to the project staying alive</li><li>Hekili for help with coding the first version of installer framework</li><li>Releaf for those lovely WunderBar icons</li><li>v0dKa for supporting heavily in the early days - real MVP</li><li>Redtuzk &amp; his team for the inspiration</li><li>ElvUI discord for continuous help and support</li><li>PayPal &amp; Patreon supporters! You guys rock!</li></ul><p><img src=\"https://media.forgecdn.net/attachments/description/676447/description_9d2a48cc-2282-4076-8652-49eb0a8d7f03.png\" alt=\"Discord\"></p><ul><li>If you're having any problems or just wanna chat with us, please join our <a href=\"https://discord.gg/r85TGUU7zA\">discord server</a></li></ul><h2>How to keep up to date with repo</h2><h3>Windows OS</h3><ol><li>Clone the repository</li><li><code>git checkout development</code></li><li>Create a <a href=\"https://www.howtogeek.com/howto/16226/complete-guide-to-symbolic-links-symlinks-on-windows-or-linux/\">symlink directory junction</a><ol><li>Open up Command Prompt <strong>as administator</strong></li><li><code>mklink /J &lt;new path&gt; &lt;old path&gt;</code></li></ol></li></ol><h4>Example:</h4><pre><code class=\"language-sh\">mklink /J &quot;D:\\Games\\World of Warcraft\\_retail_\\Interface\\AddOns\\ElvUI_ToxiUI\\&quot; C:\\Users\\Toxi\\Documents\\GitHub\\toxiui</code></pre><h2>Development workflow</h2><h3>Use the <code>development</code> branch</h3><p>The <code>stable</code> branch should be updated only every big (non-beta) release, so that we have a reference.</p><p>⚠️ <strong>2023-07-15:</strong> Moving the release CI to <code>development</code> branch. <code>stable</code> will only be used as a reference point, but even then not sure if needed with the amount of commits we have nowadays.</p><h3>Pull requests only</h3><p>⛔️ Please do not push code to the <code>stable</code> or <code>development</code> branches and only use Pull Requests.</p><h3>Code formatting</h3><p>Please install the stylua extension and setup to format on save</p><pre><code class=\"language-json\">// settings.json{  &quot;editor.formatOnSave&quot;: true,  &quot;[lua]&quot;: {    &quot;editor.defaultFormatter&quot;: &quot;JohnnyMorganz.stylua&quot;  }}</code></pre><p>🔗 https://marketplace.visualstudio.com/items?itemName=JohnnyMorganz.stylua</p><h2>Chat Commands:</h2><h3>General (user facing)</h3><p><em>Prefix: <code>/tx</code> <code>/txui</code> <code>/toxi</code> <code>/toxiui</code></em></p><p><code>/tx</code> - ElvUI TXUI Options Dialog <em>(alias of /tx settings)</em><br><code>/tx changelog</code> - ElvUI TXUI Options showing ONLY the changelog<br><code>/tx wb</code> - ElvUI TXUI Options showing ONLY WunderBar<br><code>/tx badge</code> - Disable chat badges <em>(only possible if you actually have a chat badge)</em><br><code>/tx export names</code> - Export a list of all character names where ElvUI was active<br><code>/tx reset</code> - Resets all TXUI Settings <em>(not the ElvUI profile itself, tho a re-install is needed to gain access to TXUI features back)</em><br><code>/tx status</code> - Shows the Diagnostic Popup <em>(alias of /tx info)</em><br><code>/tx install</code> - Shows the Installer Dialog for TXUI<br><code>/tx update</code> - Opens the Profile Updater <em>(alias of /tx u)</em></p><h3>Retail Only</h3><p><code>/cd</code> - Toggle Cooldown Manager settings window <em>(aliases: <code>/cdm</code>, <code>/wa</code>)</em><br><code>/em</code> - Open Edit Mode</p><h3>Dev Section (or beta builds)</h3><p><code>/tx dev profile [dps|healer]</code> - Install the ElvUI Profile without confirmation<br><code>/tx dev cvar</code> - Sets the default ElvUI Cvars <em>(+ personal change)</em><br><code>/tx dev chat</code> - Install a custom chat config<br><code>/tx dev wb</code> - Enables the wunderbar debug mode<br><code>/tx dev splash</code> - Shows the Splashscreen for 15 Seconds<br><code>/tx dev dpi</code> - Gives you a scaled pixel perfect number (Magic Config Number -&gt; Actual Number)</p><h3>Devs Only</h3><p><code>/tx dev toggle</code> - Toggles Developer mode, which activates overrides<br></p><h3>Exports</h3><p><code>/tx dev export names</code> - Triggers the import of badge names (decode)</p>",
+      "homepage": "",
+      "image_url": null,
+      "owner_image_url": "https://avatars.githubusercontent.com/u/69549795?u=67a18213386168ad9ed836cdf4b914ff9936c735&v=4",
+      "owner_name": "Toxicom",
+      "total_download_count": 0,
+      "funding_links": [],
+      "topics": [],
+      "releases": [
+        {
+          "download_count": 109,
+          "download_url": "https://github.com/Toxicom/toxiui/releases/download/v7.5.5/ElvUI_ToxiUI-v7.5.5.zip",
+          "external_id": "550201333",
+          "game_version": "50504",
+          "game_versions": [
+            {
+              "game_type": "classic",
+              "interface": "11508",
+              "title": "ElvUI ToxiUI Vanilla",
+              "version": "7.5.5",
+              "authors": "Toxi (Toxi#21206)"
+            },
+            {
+              "game_type": "retail",
+              "interface": "120100",
+              "title": "ElvUI ToxiUI",
+              "version": "7.5.5",
+              "authors": "Toxi (Toxi#21206)"
+            },
+            {
+              "game_type": "burningCrusade",
+              "interface": "20506",
+              "title": "ElvUI ToxiUI The Burning Crusade Anniversary",
+              "version": "7.5.5",
+              "authors": "Toxi (Toxi#21206)"
+            },
+            {
+              "game_type": "mists",
+              "interface": "50504",
+              "title": "ElvUI ToxiUI Mists of Pandaria",
+              "version": "7.5.5",
+              "authors": "Toxi (Toxi#21206)"
+            }
+          ],
+          "id": 238493,
+          "name": "ElvUI_ToxiUI-v7.5.5.zip",
+          "prerelease": false,
+          "published_at": "2026-09-08T09:13:06.000Z",
+          "tag_name": "v7.5.5",
+          "url": "https://api.github.com/repos/Toxicom/toxiui/releases/assets/550201333",
+          "game_type": "mists",
+          "toc_title": "ElvUI ToxiUI Mists of Pandaria",
+          "toc_version": "7.5.5",
+          "addonFolders": [
+            {
+              "fingerprint": "1b994e818bf83e9fbcc6a941812eb22a",
+              "folder_name": "ElvUI_ToxiUI",
+              "id": 41103
+            }
+          ]
+        },
+        {
+          "download_count": 12,
+          "download_url": "https://github.com/Toxicom/toxiui/releases/download/v7.4.4-beta.1/ElvUI_ToxiUI-v7.4.4-beta.1.zip",
+          "external_id": "400950104",
+          "game_version": "50503",
+          "game_versions": [
+            {
+              "game_type": "classic",
+              "interface": "11508",
+              "title": "ElvUI ToxiUI Vanilla",
+              "version": "7.4.4",
+              "authors": "Toxi (Toxi#21206)"
+            },
+            {
+              "game_type": "retail",
+              "interface": "120001",
+              "title": "ElvUI ToxiUI",
+              "version": "7.4.4",
+              "authors": "Toxi (Toxi#21206)"
+            },
+            {
+              "game_type": "burningCrusade",
+              "interface": "20505",
+              "title": "ElvUI ToxiUI The Burning Crusade Anniversary",
+              "version": "7.4.4",
+              "authors": "Toxi (Toxi#21206)"
+            },
+            {
+              "game_type": "mists",
+              "interface": "50503",
+              "title": "ElvUI ToxiUI Mists of Pandaria",
+              "version": "7.4.4",
+              "authors": "Toxi (Toxi#21206)"
+            }
+          ],
+          "id": 63314,
+          "name": "ElvUI_ToxiUI-v7.4.4-beta.1.zip",
+          "prerelease": true,
+          "published_at": "2026-04-20T18:43:29.000Z",
+          "tag_name": "v7.4.4-beta.1",
+          "url": "https://api.github.com/repos/Toxicom/toxiui/releases/assets/400950104",
+          "game_type": "mists",
+          "toc_title": "ElvUI ToxiUI Mists of Pandaria",
+          "toc_version": "7.4.4",
+          "addonFolders": [
+            {
+              "fingerprint": "1828bf767315697669896e24b589ff24",
+              "folder_name": "ElvUI_ToxiUI",
+              "id": 40458
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "count": 4
+}

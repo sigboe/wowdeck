@@ -1,0 +1,63 @@
+name: Bug report
+description: Something is broken or behaves unexpectedly
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report it. Please fill in what you can —
+        the logs are the fastest route to a fix.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, what happened instead.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: WoWDeck version
+      description: >-
+        Decky's plugin list shows it; Options → Diagnostics → Copy includes
+        it too.
+      placeholder: "0.1.1"
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: SteamOS and Decky Loader versions
+      description: SteamOS: Settings → System. Decky: its Settings → About.
+      placeholder: "SteamOS 3.7.x, Decky Loader 3.x.x"
+    validations:
+      required: true
+  - type: dropdown
+    id: source
+    attributes:
+      label: Addon source involved
+      options:
+        - CurseForge
+        - WowUp Hub
+        - TukUI
+        - GitHub
+        - WoWInterface
+        - Direct link / local file
+        - Not source-specific
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log output
+      description: >-
+        On the Deck, logs live in ~/homebrew/logs/wowdeck/ (engine.log,
+        plugin.log). Options → Diagnostics → Copy gathers them on-device.
+        Paste what looks related; redact anything private.
+      render: shell
+  - type: textarea
+    id: addons
+    attributes:
+      label: Affected addons (if any)
+      description: >-
+        Names or CurseForge/WowUp links, and whether other addons work fine.

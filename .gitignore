@@ -1,0 +1,63 @@
+lib-cov
+*.seed
+*.log
+*.csv
+*.dat
+*.out
+*.pid
+*.gz
+*.swp
+*.zip
+# ...except test-fixture archives, which are inputs
+!backend/tests/fixtures/**/*.zip
+
+pids
+logs
+results
+tmp
+
+# Coverage reports
+coverage
+
+# API keys and secrets
+.env
+curseForgeAPIKey-dontcommit
+CURSEFORGE_API_KEY
+
+# Dependency directories
+node_modules/
+bower_components
+.pnpm-store
+
+# Editors
+.idea
+*.iml
+.vscode/
+
+# WowUp read-only reference checkout, recreated by `make wowup` (not tracked)
+/wowup/
+
+# OS metadata
+.DS_Store
+Thumbs.db
+
+# Machine-local skill details (Deck address, personal test paths)
+.claude/skills/*/local.md
+
+# Build output
+dist/
+backend/out/
+build/
+
+# Python
+__pycache__/
+*.pyc
+
+# Decky CLI
+cli/
+out/
+
+# ignore loader's decky_plugin.py
+decky_plugin.py
+/.opencode-plugin
+/.scratch
