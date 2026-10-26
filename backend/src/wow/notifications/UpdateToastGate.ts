@@ -5,7 +5,8 @@
  * class owns the actual decision: whether the feature is on, whether
  * it's been checked too recently, and (when a check is actually due)
  * running it across every known installation and counting what's
- * eligible.
+ * eligible. The "too recently" rule and the concurrent-caller guard are
+ * shared with the plugin's own release check (CheckCadence).
  *
  * Deliberately NOT tied to My Addons' navigation lifecycle — the
  * frontend calls `checkNow()` exactly twice: once when the plugin
@@ -15,9 +16,8 @@
 
 import type { AddonService } from "../addons/AddonService";
 import type { StateStore } from "../storage/StateStore";
+import { DAY_MS, isDue, SingleFlight } from "./CheckCadence";
 import type { UpdateCheck } from "./UpdateCheck";
-
-const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
 export interface UpdateToastResult {
   shouldToast: boolean;
@@ -26,7 +26,7 @@ export interface UpdateToastResult {
 }
 
 export class UpdateToastGate {
-  #pending: Promise<UpdateToastResult> | null = null;
+  #flight = new SingleFlight<UpdateToastResult>();
 
   constructor(
     private service: AddonService,
@@ -40,12 +40,7 @@ export class UpdateToastGate {
    * instead of running the all-installations refresh twice.
    */
   async checkNow(): Promise<UpdateToastResult> {
-    if (!this.#pending) {
-      this.#pending = this.#run().finally(() => {
-        this.#pending = null;
-      });
-    }
-    return this.#pending;
+    return this.#flight.run(() => this.#run());
   }
 
   async #run(): Promise<UpdateToastResult> {
@@ -58,9 +53,8 @@ export class UpdateToastGate {
       return none;
     }
 
-    const last = this.store.settings.lastUpdateCheckAt;
     const now = Date.now();
-    if (last !== null && now - last < ONE_DAY_MS) {
+    if (!isDue(this.store.settings.lastUpdateCheckAt, now, DAY_MS)) {
       return none;
     }
 

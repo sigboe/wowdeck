@@ -36,6 +36,8 @@ function statusOf(over: Partial<PluginUpdateStatus> = {}): PluginUpdateStatus {
     latestVersion: "0.2.0",
     releaseUrl: "https://x",
     downloadUrl: "https://mock/WoWDeck.zip",
+    checked: true,
+    toastPending: false,
     ...over,
   };
 }
@@ -65,7 +67,7 @@ function makeStager(
     },
   };
   return {
-    stager: new UpdateStager(net, { checkOnce: async () => statusOf(status) }, token ? () => token : undefined, ROOT),
+    stager: new UpdateStager(net, { check: async () => statusOf(status) }, token ? () => token : undefined, ROOT),
     auths: () => auths,
   };
 }

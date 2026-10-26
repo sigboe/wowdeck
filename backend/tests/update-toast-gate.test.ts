@@ -170,6 +170,25 @@ describe("UpdateToastGate", () => {
     expect(provider.getAllCalls).toBe(2);
   });
 
+  test("a stamp in the future (the clock moved back) runs one check, then the day holds again", async () => {
+    const { store, gate, provider } = setup();
+    store.setInstallations([makeInstallation("retail", "11.0.2")]);
+    store.addons.create(
+      makeAddon({ id: "a1", name: "Bagnon", installationId: "retail", providerName: "TukUI", externalId: "1" }),
+    );
+    store.updateSettings({ lastUpdateCheckAt: Date.now() + ONE_DAY_MS * 30 });
+
+    // Trusting the stamp would silence the check for a month; it runs once
+    // and replaces the stamp with now…
+    await gate.checkNow();
+    expect(provider.getAllCalls).toBe(1);
+    expect(store.settings.lastUpdateCheckAt!).toBeLessThanOrEqual(Date.now());
+
+    // …so the next trigger is inside the day, not another run.
+    await gate.checkNow();
+    expect(provider.getAllCalls).toBe(1);
+  });
+
   test("disabled: never checks, never touches lastUpdateCheckAt, no network", async () => {
     const { store, gate, provider } = setup();
     const retail = makeInstallation("retail", "11.0.2");

@@ -11,7 +11,7 @@ export function register(server: JsonlServer, { store, registry, service, instal
     pid: process.pid,
   }));
 
-  server.on("system.updateCheck", async () => pluginUpdate.checkOnce());
+  server.on("system.updateCheck", async (params) => pluginUpdate.check({ notify: params.notify === true }));
 
   server.on("system.updateStage", async () => updateStager.stage());
 

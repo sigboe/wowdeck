@@ -366,22 +366,59 @@ export interface MethodMap {
   "system.updateCheck": {
     /**
      * Whether a newer WoWDeck release exists on GitHub — the plugin's own
-     * update notice. One call to GitHub's releases/latest API, at most
-     * once per engine session: the first caller runs it, everyone else
-     * gets the memoized result. Authenticated with the optional GitHub
-     * token when GitHub accepts it, so a still-private repo answers too.
-     * "unknown" — never an RPC error — when the check cannot run (offline,
-     * rate limited, nothing reachable). "available" carries the release
-     * page and the packaged WoWDeck.zip asset URL (what system.updateStage
-     * downloads); null when the release has no such asset.
+     * update notice. At most one call to GitHub's releases/latest API per
+     * 24 hours, following the same cadence rule as the addon check behind
+     * the SteamOS toast (CheckCadence): each check keeps its own stored
+     * timestamp, so a sleeping Deck re-checks on wake instead of trusting a
+     * session that may be weeks old. Inside the interval the stored answer
+     * is returned (recomputed against the running version) and `checked` is
+     * false. A failed check never advances the interval — instead it backs
+     * off: consecutive failures space the next network attempt 1h, 2h, then
+     * 4h (capped), and any success clears the backoff and re-arms the daily
+     * cadence; within a backoff window the stored answer serves without a
+     * request, exactly like the daily cap. Authenticated with the optional
+     * GitHub token when GitHub accepts it, so a still-private repo answers
+     * too. "unknown" — never an RPC error, never a toast — when the check
+     * cannot run (offline, rate limited, nothing reachable); background
+     * failures are visible only in the engine's structured stderr log.
+     * "available" carries the release page and the packaged WoWDeck.zip
+     * asset URL (what system.updateStage downloads); null when the release
+     * has no such asset.
      */
-    params: Record<string, never>;
+    params: {
+      /**
+       * A toast trigger (plugin load, wake from suspend): only such a call
+       * may report — and so spend — the version's once-only toast. Options
+       * and staging leave it unset; they show the update panel instead.
+       */
+      notify?: boolean;
+    };
     result: {
       status: "current" | "available" | "unknown";
       currentVersion: string;
       latestVersion: string | null;
       releaseUrl: string | null;
       downloadUrl: string | null;
+      /**
+       * True when a network attempt just ran (a failed one still serves the
+       * stored answer); false when the interval or a failure-backoff window
+       * served it without one. No surface keys on it: it makes the cadence
+       * observable over the RPC.
+       */
+      checked: boolean;
+      /**
+       * Whether the update toast should fire now: computed engine-side,
+       * true only for a `notify` call's first answer that finds
+       * `latestVersion` newer than the running version, with its
+       * WoWDeck.zip attached, *and* not already toast-shown. At-most-once
+       * per release version: the engine marks the version shown
+       * (PluginSettings.pluginUpdateToastShownFor) the moment it reports
+       * pending, so re-checks, plugin reloads, QAM churn and engine
+       * restarts can never re-toast it; a genuinely newer version is a new
+       * key and earns its own single toast. A cached answer (no network
+       * run) recomputes this without touching the network.
+       */
+      toastPending: boolean;
     };
   };
   "system.updateStage": {
@@ -837,6 +874,30 @@ export interface PluginSettings {
    * the first check ever runs.
    */
   lastUpdateCheckAt: number | null;
+  /**
+   * The last completed look for a newer WoWDeck release (system.updateCheck):
+   * what it answered and when it ran. Persisted like `lastUpdateCheckAt`, for
+   * the at-most-daily cap — inside the interval this answers without a
+   * network call. Null before the first successful check.
+   */
+  lastPluginUpdate: PluginUpdateSnapshot | null;
+  /**
+   * The WoWDeck release version the update toast was already shown for
+   * (system.updateCheck's toastPending): exactly one toast per release
+   * version, surviving restarts. Engine-written only — the engine marks
+   * the version the moment it reports the toast pending; never a user
+   * preference. Null before any toast fired.
+   */
+  pluginUpdateToastShownFor: string | null;
+  /**
+   * The failure backoff for system.updateCheck: how many consecutive
+   * checks failed and when the last one ran. After a failure the next
+   * network attempt waits 1h, 2h, then 4h (capped); any success clears
+   * this and restores the daily cadence. Engine-written only, never a
+   * user preference. Null while the last check succeeded (or none failed
+   * yet).
+   */
+  pluginUpdateBackoff: PluginUpdateBackoff | null;
   /** User-chosen folder for WTF backups (e.g. on an SD card); null = the plugin's own data folder. */
   wtfBackupDir: string | null;
   /** How many automatic pre-restore safety backups to keep per game version (1-10). */
@@ -909,6 +970,30 @@ export interface Diagnostics {
 // ---------------------------------------------------------------------------
 // Events emitted by the engine
 // ---------------------------------------------------------------------------
+
+/** The last completed WoWDeck release check, as persisted (see PluginSettings.lastPluginUpdate). */
+export interface PluginUpdateSnapshot {
+  /** Epoch ms of the check that produced this answer. */
+  checkedAt: number;
+  /** The newest stable release's version, without a leading v. */
+  latestVersion: string;
+  /** The release page to point the user at. */
+  releaseUrl: string | null;
+  /** The release's WoWDeck.zip asset, when the release published one. */
+  downloadUrl: string | null;
+}
+
+/**
+ * The WoWDeck release check's failure backoff, as persisted (see
+ * PluginSettings.pluginUpdateBackoff): after consecutive failures, the
+ * spacing the next network attempt waits out.
+ */
+export interface PluginUpdateBackoff {
+  /** Epoch ms of the most recent failed attempt. */
+  failedAt: number;
+  /** How many consecutive attempts have failed (1 = the first backoff step). */
+  failures: number;
+}
 
 /** One automatic update run (WF-02). */
 export interface AutoUpdateResult {

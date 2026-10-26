@@ -51,13 +51,14 @@ const STALE_AFTER_MS = 24 * 60 * 60 * 1000;
 export class UpdateStager {
   constructor(
     private net: Pick<NetworkClient, "downloadToFile">,
-    private check: { checkOnce(): Promise<PluginUpdateStatus> },
+    /** Asked without notify: staging never spends the toast. */
+    private check: { check(): Promise<PluginUpdateStatus> },
     private tokenProvider: () => string | undefined = () => undefined,
     private tempDir: string = tmpdir(),
   ) {}
 
   async stage(): Promise<StageOutcome> {
-    const status = await this.check.checkOnce();
+    const status = await this.check.check();
     if (status.status !== "available" || !status.latestVersion) {
       return status.status === "current"
         ? outcome("up_to_date", "WoWDeck is already up to date")
