@@ -50,6 +50,23 @@ plugins' settings, system files and sudo stay untouched.
 Small, functional commits with imperative messages scoped by area
 (e.g. "Get Addons: …", "docs: …").
 
+## Finishing an `/implement` run
+
+The run is not done until all three happen:
+
+1. Commit the code **and** every doc it touched (`GLOSSARY.md`, `docs/adr/`,
+   `docs/regression-test-plan.md`). No tracked file stays modified.
+2. Close the ticket yourself with `gh issue close` (comment format:
+   `docs/agents/issue-tracker.md`, "When a ticket closes"). Close the parent
+   spec too when this was its last ticket.
+3. State the ticket's status in the reply, before the seam line: "Closed
+   #n", or, when you keep it open, "#n stays open because …; it closes when
+   … / you need to …".
+
+Keeping a ticket open is allowed when closing would be wrong. You must say
+why and what closes it. Never leave a ticket open without saying so, and
+never suggest the next ticket while one is dangling.
+
 ## Branching and merging
 
 Work flows feature branch → `next` → `main`:
@@ -73,10 +90,9 @@ messages or PR descriptions — the owner asks for it per PR.
 ### Issue tracker
 
 GitHub Issues for finished work (`/to-spec`, `/to-tickets`, `/triage`);
-`.scratch/` (git-ignored) for drafts that outlive a session. `/implement`
-closes its own ticket: commits say `Refs #<n>`, and once the commit and
-review are done the agent closes the issue by hand. See
-`docs/agents/issue-tracker.md` (closing comment, the one exception).
+`.scratch/` (git-ignored) for drafts that outlive a session. Commits for a
+ticket say `Refs #<n>`; closing it is part of "Finishing an `/implement`
+run" above. Details in `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 

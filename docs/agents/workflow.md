@@ -4,7 +4,9 @@ A **seam** is the moment one stage of work ends and the next could begin: a
 skill finishes, or the last item of a report, ticket set or checklist is
 done. At every seam, end the reply with a seam line:
 
-> **Done:** <what finished, with counts: "all 7 tickets closed">.
+> **Done:** <what finished, with counts: "all 7 tickets closed">. After an
+> `/implement`, name the ticket's status: "#n closed", or "#n open: <why, and
+> what closes it>".
 > **Next:** `/<skill> <args>`: <one-line reason>. _(Or: `/<alt>` when <condition>.)_
 
 The owner decides; the seam line only proposes. Give one suggestion, plus at
@@ -44,7 +46,7 @@ Pick the row matching what just finished.
 | `/wayfinder` map, destination clear (no fog left) | `/to-spec` | |
 | `/to-spec` (spec issue `#n` published) | `/to-tickets #n` | `/implement #n` when the spec fits one session |
 | `/to-tickets` (tickets published) | `/implement #<first frontier ticket>` | `/implement-spec #<spec>` to run the whole set |
-| `/implement` of a ticket (closed on GitHub, see `issue-tracker.md` "When a ticket closes") | `/clear`, then the next frontier ticket; or `/pr` into `next` when the set is done (keep the context) | `deck-test` first when the change touches UI or device behaviour |
+| `/implement` of a ticket (closed on GitHub, or kept open with the reason stated; see `AGENTS.md` "Finishing an `/implement` run") | `/clear`, then the next frontier ticket; or `/pr` into `next` when the set is done (keep the context) | `deck-test` first when the change touches UI or device behaviour |
 | `/pr` opened | owner review and merge (keep the context) | `/retro` after a long or bumpy session |
 | A bug report or failing behaviour | `/diagnosing-bugs` | `/triage` when it arrived as a GitHub issue |
 | `/diagnosing-bugs` fixed it | commit with `Closes #n` when an issue exists | `deck-test` to confirm on device |
