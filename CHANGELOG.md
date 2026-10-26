@@ -6,6 +6,26 @@ Notable changes to WoWDeck Addon Manager. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- WoWDeck's own update check is capped at once every 24 hours instead of
+  once per engine session, and the answer is persisted. A Deck that sleeps
+  for weeks no longer sits on a session-old check, the check runs again on
+  waking, and a trigger inside the interval answers from the stored answer
+  without a request. A failed check does not count against the interval:
+  it keeps showing the stored answer and backs off silently (1h, 2h, then
+  4h). The addon update check behind the SteamOS toast keeps its own
+  independent daily stamp; the two share the cadence rule
+  (`CheckCadence.ts`), not a timer.
+- The update toast fires once per release version, on plugin load or
+  waking the Deck, and only once the release's `WoWDeck.zip` is attached.
+  Reloads, restarts and opening Options never repeat it.
+- **Update** moved from Options → Updates to a panel under the nav bar,
+  marked, like the Options tab, with an orange dot. Both show only while a
+  newer release with `WoWDeck.zip` is out; a release whose zip is not
+  attached yet is re-checked hourly instead of daily. The Updates row is
+  informational.
+
 ## [0.2.0] - 2026-10-25
 
 ### Added

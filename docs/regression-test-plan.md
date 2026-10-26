@@ -279,22 +279,60 @@ device-passed 2026-10-23 on the Deck screen, pane 506 CSS px):
 ### 4.5c WoWDeck update notice (the plugin's own update check)
 
 The plugin is not in the Decky store, so `system.updateCheck` asks GitHub's
-`releases/latest` **once per engine session** — unauthenticated, or through
-the configured GitHub token when GitHub accepts it — and maps every
+`releases/latest` **at most once every 24 hours** — unauthenticated, or
+through the configured GitHub token when GitHub accepts it — and maps every
 unreachable state (private repo beyond the token's reach, offline, rate
-limited) to "couldn't check" — never an error. What the row shows depends on
+limited) to "couldn't check" — never an error. The answer and when it ran are
+persisted (`lastPluginUpdate` in `~/homebrew/data/wowdeck/state.json`), so
+plugin load, waking the Deck and opening Options → Updates are only
+*triggers*: the stored stamp decides whether a request happens, and a trigger
+inside the interval answers from the stamp without a call. A failed check
+never advances the stamp; instead it **backs off**: consecutive failures
+space the next network attempt 1h, 2h, then 4h (capped), persisted in
+`pluginUpdateBackoff` so the window survives restarts, and any success
+clears it and re-arms the daily cadence. Within a window a trigger answers
+from the stored answer with no request, and so does the failed attempt
+itself, so the row and panel never blink away. Failed checks stay completely
+silent — no toast, no error, one `[plugin-update]` log line. The **toast**
+is gated once per *release version*, not per day: only a toast trigger
+(plugin load, wake — `notify`) can report it, never Options or staging, and
+only once the release has `WoWDeck.zip`. The engine marks the version shown
+(`pluginUpdateToastShownFor`, engine-written only) the moment it reports
+`toastPending`, so re-checks, plugin reloads, QAM churn and Deck restarts
+never re-toast a version already announced, while a genuinely newer release
+earns its own single toast. A stored answer that offers a release without
+its zip is re-asked after an hour, not a day. What the row shows depends on
 the **repo's** state, so the
 real-data cases slot into the release sequence itself
 (`docs/development.md`, "Releasing"): PU-1–PU-2 any time before the public
 flip (PU-1b when a token that can read the repo is configured), PU-3 right
 after it, PU-4–PU-7 in the release window (tag pushed, Deck
 not yet updated), PU-8 after updating the Deck, PU-11–PU-15 (the **Update** button,
-`system.updateStage`) in the same window as PU-4. The engine states and version
+`system.updateStage`) and PU-18–PU-19 (the panel and the update dot) in the
+same window as PU-4. The engine states and version
 parsing are already covered by `backend/tests/plugin-update-check.test.ts`
 `backend/tests/update-stager.test.ts` and `src/pluginUpdate.test.ts`
 (gate G-2); these cases are the device tier.
 The log line to watch, `[plugin-update] …`, is in
-`~/homebrew/logs/wowdeck/<date>.log` on the Deck.
+`~/homebrew/logs/wowdeck/<date>.log` on the Deck. To force a due check
+without waiting out the day, stop the plugin and set `lastPluginUpdate` to
+`null` (or its `checkedAt` to `0`) in `state.json` before reloading; to
+force a backoff window elapsed, set `pluginUpdateBackoff`'s `failedAt` to
+`0` there (or the field to `null`); to
+re-arm a toast for a version already marked shown, clear
+`pluginUpdateToastShownFor` there too.
+
+The v0.2.0 release window (2026-10-25/26) was the first one run end to end on
+device, and it went through the hardest path — private repo, repo-scoped PAT in
+Options → GitHub: the row raised the notice, **Update** staged the release,
+Decky's prompt installed it and the Deck came up on 0.2.0. That closes PU-11,
+PU-12, PU-13 and PU-14 (owner-run); PU-8 is verified. The toast-gate build
+passed PU-4, PU-5, PU-7, PU-16–PU-19 on 2026-10-26 with its engine built as
+0.1.9, so the real v0.2.0 release opened a window. PU-5b (full Deck restart),
+PU-5c (a second newer tag) and PU-6 (suspend/resume) still need a pass.
+The review fixes (toast only on `notify`, the stored answer surviving a
+failed check and a same-day rollback, the hourly re-ask without a zip)
+passed engine-only runs on the Deck the same day, and PU-15 passed on device.
 
 | ID | Pri | S | Steps | Expected |
 |---|---|---|---|---|
@@ -302,18 +340,24 @@ The log line to watch, `[plugin-update] …`, is in
 | PU-1b | P1 | | Private repo, GitHub token configured with read access to it — a fine-grained PAT needs **this repo selected** and **Contents: Read** (the owner's pre-flip setup): reload the plugin | Row "WoWDeck \<version\>" / "Up to date"; no toast; the log shows the one successful call — the token is used opportunistically and never logged (verified DEVICE 2026-10-25, owner-run: repo-scoped classic token saved in Options, row "Up to date", no `plugin-update` line in the fresh session log) |
 | PU-2 | P1 | | Wi-Fi off, reload the plugin (a fresh engine session), open Options → Updates | Same row as PU-1; the log shows the network error; the engine and every other feature start normally |
 | PU-3 | P1 | S | Right after the public flip, no newer tag (latest == running version) | Row "WoWDeck \<version\>" / "Up to date"; no toast |
-| PU-4 | P0 | S | Release window: tag `vX.Y.Z` pushed, Deck still on the older version; reload the plugin | One toast "WoWDeck X.Y.Z available" / "Link in Options → Updates"; row "WoWDeck update available" / "\<old\> → \<new\> · https://github.com/sigboe/wowdeck/releases…"; the log shows the one successful call |
-| PU-5 | P1 | | Same session as PU-4: leave and re-enter Options, switch tabs, close and reopen the QAM | Row stays correct; **no second toast**; no second `releases/latest` call in the log (once per engine session) |
-| PU-6 | P1 | | Same session: suspend, resume | No WoWDeck toast on wake (the addon-updates toast of N-1 is a different, once-a-day one) |
-| PU-7 | P2 | | Decky → reload WoWDeck during PU-4's window | The toast may show again — once per plugin load is by design; still no extra GitHub call while the engine session lives |
-| PU-8 | P1 | S | Update the Deck to the new release (Install from URL again, README "Update"), open Options → Updates | Row "WoWDeck \<new\>" / "Up to date"; no toast — the notice the release window raised is now cleared |
-| PU-9 | P2 | | During PU-4: try to reach the release page from the row with the controller | The row shows the URL **as text** — nothing focusable. Decide before release: acceptable for check-and-link, or the row should open the page (currently it cannot) |
+| PU-4 | P0 | S | Release window: tag `vX.Y.Z` pushed, Deck still on the older version, day's check due (clear `lastPluginUpdate` to force); reload the plugin | One toast "WoWDeck X.Y.Z available" / "Update in Options"; row "WoWDeck update available" / "\<old\> → \<new\> · https://github.com/sigboe/wowdeck/releases…"; the log shows the one successful call (verified DEVICE 2026-10-26, engine built as 0.1.9 against the real v0.2.0 release: one toast, `pluginUpdateToastShownFor` "0.2.0", row 0.1.9 → 0.2.0 with the release link) |
+| PU-5 | P1 | | Same day as PU-4: leave and re-enter Options, switch tabs, close and reopen the QAM, reload the plugin | Row stays correct; **no second toast for that version — ever**; no second `releases/latest` call in the log — the answer is stored for 24 h (`lastPluginUpdate`) and the toast mark for good (`pluginUpdateToastShownFor`), neither per engine session (verified DEVICE 2026-10-26: plugin reload plus QAM close/reopen — no second toast, `lastPluginUpdate.checkedAt` unchanged, no `[plugin-update]` line) |
+| PU-5b | P1 | | After PU-4's toast: restart the Deck entirely (not just reload the plugin), wait for the plugin to load again | No second toast; `state.json` still carries `pluginUpdateToastShownFor: "X.Y.Z"`; the row still says the update is available |
+| PU-5c | P2 | | A second, newer tag `vX.Y.Z+1` while the Deck is still on the old version, next day's check due | Exactly one more toast — "WoWDeck X.Y.Z+1 available" — and never two for the same version afterwards |
+| PU-6 | P1 | | Suspend and resume: a short sleep, then one that crosses the 24 h mark | Short sleep: no WoWDeck toast, no request (still inside the interval). Crossing the mark: the wake triggers one check — a toast only for a release version not already announced, a `[plugin-update]` line only when it failed. The addon-updates toast (N-1) is a different check with its own daily stamp |
+| PU-7 | P2 | | Decky → reload WoWDeck during PU-4's window | Inside the interval: no toast, no request — the stored answer is returned. When the day's check is due: one request, and a toast only if the newest version was not announced yet (verified DEVICE 2026-10-26 inside the interval, with PU-5) |
+| PU-8 | P1 | S | Update the Deck to the new release (Install from URL again, README "Update"), open Options → Updates | Row "WoWDeck \<new\>" / "Up to date"; no toast — the notice the release window raised is now cleared (verified DEVICE 2026-10-26, owner-run: the row reads "Up to date" on 0.2.0) |
+| PU-9 | P2 | | During PU-4: try to reach the release page from the row with the controller | The row shows the URL **as text** — nothing focusable. **Decided 2026-10-26 (owner): accepted** — updating is the **Update** button and the URL stays informational text; there is no link to press. Revisit only if users ask for one |
 | PU-10 | P2 | | Public repo whose newest release is a draft/prerelease only (`releases/latest` answers 404) | Reads "Couldn't check for a newer release", like PU-1 — never a failure; informational, matches the engine contract |
-| PU-11 | P0 | S | Release window (PU-4's state), release has `WoWDeck.zip`: press **Update** on the row | Button reads "Preparing…", then Decky's own install prompt for WoWDeck \<new\>; log `[self-update] staged WoWDeck X.Y.Z …`; a 0600 `wowdeck-update-X.Y.Z.zip` in the temp dir |
-| PU-12 | P0 | | PU-11's prompt: confirm | Decky installs and reloads WoWDeck; the open panel closes (decky-loader #976); reopening shows the new version and PU-8's row |
-| PU-13 | P1 | | PU-11's prompt: cancel | Nothing changes; the old version keeps running; the button is usable again |
-| PU-14 | P1 | | Private repo with PU-1b's token, release window: press **Update** | Same as PU-11 — the download uses the token, never logged |
-| PU-15 | P2 | | No newer release, or a release without `WoWDeck.zip` | No **Update** button on the row |
+| PU-16 | P1 | S | Wi-Fi off or repo unreachable, day's check due (PU-2's state): let one check fail, then reload the plugin and re-open Options several times within the hour | No request in the log for any trigger — the failure backed off; the row may keep yesterday's stored answer ("Up to date"/"update available") or say "Couldn't check" when none was stored; still no toast, no error, one `[plugin-update] check unavailable` line per real attempt only (verified DEVICE 2026-10-26, engine-only run with an unreachable releases URL: first trigger `checked: true` plus one log line, every later trigger and a fresh session `checked: false`, no request) |
+| PU-17 | P1 | | PU-16's state kept failing for 1h, then 2h more (offline overnight, say); Wi-Fi back | The next trigger after each window runs exactly one real attempt (`pluginUpdateBackoff.failures` grows: window 1h, then 2h, then 4h — capped); once one attempt succeeds, the normal daily cadence is back and `pluginUpdateBackoff` reads `null` in `state.json` (verified DEVICE 2026-10-26, engine-only, windows elapsed by editing `failedAt`: failures 1→6, 3.5 h after the 6th failure still no request (4 h cap), 4 h 01 m after one request that succeeded — backoff `null`, one toast-pending answer, then stored answers) |
+| PU-11 | P0 | S | Release window (PU-4's state), release has `WoWDeck.zip`: press **Update** on the update panel under Options' nav bar | Button reads "Preparing…", then Decky's own install prompt for WoWDeck \<new\>; log `[self-update] staged WoWDeck X.Y.Z …`; a 0600 `wowdeck-update-X.Y.Z.zip` in the temp dir (verified DEVICE 2026-10-26, owner-run: private repo + token) |
+| PU-12 | P0 | | PU-11's prompt: confirm | Decky installs and reloads WoWDeck; the open panel closes (decky-loader #976); reopening shows the new version and PU-8's row (verified DEVICE 2026-10-26, owner-run: the Deck came up on 0.2.0) |
+| PU-13 | P1 | | PU-11's prompt: cancel | Nothing changes; the old version keeps running; the button is usable again (verified DEVICE 2026-10-26, owner-run). Scope: the **loader's own** prompt is upstream — cancelling after decky-loader takes over can leave the plugin uninstalled; that is decky-loader's flow, not ours |
+| PU-14 | P1 | | Private repo with PU-1b's token, release window: press **Update** | Same as PU-11 — the download uses the token, never logged (verified DEVICE 2026-10-26, owner-run: this is the path the 0.2.0 pass used) |
+| PU-15 | P2 | | No newer release (or the check couldn't run); then a release without `WoWDeck.zip` | No update panel, Options looks as before; the Updates row has no button and reads up to date / couldn't check. Without the zip: no toast, no panel, no dot — the Updates row names the release and its link; once the zip is attached the next check (an hour later at most) brings the panel, the dot and the version's one toast (verified DEVICE 2026-10-26, engine built as 0.1.9 with a stored no-zip answer: no toast, dot or panel, row 0.1.9 → 0.2.0; aged 61 min, the reload re-checked GitHub, found the zip and showed one toast, the dot and the panel; a further reload did not toast again) |
+| PU-18 | P1 | S | Release window: open Options, press Down from the tabs; scroll; switch tabs (L1/R1) and back | Panel "WoWDeck X.Y.Z available" + **Update** floats under the nav bar, no animation; Down lands on it first; the list scrolls under it without hiding rows; the panel row is remembered like My Addons' installation switcher. The Updates row shows current → latest and the release link, no button (verified DEVICE 2026-10-26, engine built as 0.1.9 against the real v0.2.0 release: panel under the nav bar, focus lands on **Update**; row 0.1.9 → 0.2.0 · link, no button) |
+| PU-19 | P1 | S | Release window: look at the nav bar on My Addons, then move focus onto the Options tab (white pill) and open it; focus the panel's **Update** button; then update (PU-11) | An orange dot (Decky's badge colour, 10 px, thin dark ring) sits on the top-right corner of the Options tab pill on every tab, readable on the white focused pill, and on the **Update** button; no other tab carries one and no green, red or blue dot appears. After the update installs and the plugin reloads, both dots are gone (verified DEVICE 2026-10-26, engine built as 0.1.9 against the real v0.2.0 release: dot on the Options tab on My Addons and on the focused white pill, and on **Update**; back on a real 0.2.0 build both dots and the panel are gone, row "Up to date" — the install step itself is PU-11's) |
 
 ### 4.6 WTF backup (folds in WF-01 `deck_verification`)
 
