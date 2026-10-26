@@ -24,7 +24,7 @@ Pick the row matching what just finished.
 | `/wayfinder` map, destination clear (no fog left) | `/to-spec` | |
 | `/to-spec` (spec issue `#n` published) | `/to-tickets #n` | `/implement #n` when the spec fits one session |
 | `/to-tickets` (tickets published) | `/implement #<first frontier ticket>` | `/implement-spec #<spec>` to run the whole set |
-| `/implement` of a ticket | the next frontier ticket, or `/pr` into `next` when the set is done | `deck-test` first when the change touches UI or device behaviour |
+| `/implement` of a ticket (closed on GitHub, see `issue-tracker.md` "When a ticket closes") | the next frontier ticket, or `/pr` into `next` when the set is done | `deck-test` first when the change touches UI or device behaviour |
 | `/pr` opened | owner review and merge | `/retro` after a long or bumpy session |
 | A bug report or failing behaviour | `/diagnosing-bugs` | `/triage` when it arrived as a GitHub issue |
 | `/diagnosing-bugs` fixed it | commit with `Closes #n` when an issue exists | `deck-test` to confirm on device |
