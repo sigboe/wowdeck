@@ -46,7 +46,10 @@ import { register as registerWtf } from "./api/handlers/wtf";
 const BACKEND_VERSION = version;
 /** The WowUp Hub's API and its addon pages share one host (tests point both at a mock). */
 const HUB_URL = process.env.WOWDECK_HUB_URL ?? "https://hub.wowup.io";
-/** WoWDeck's own update check (tests point it at the mock hub too). */
+/**
+ * WoWDeck's own update check (tests point it at the mock hub too). Must end in
+ * `/releases/latest`: the Beta channel lists the releases beside it.
+ */
 const RELEASES_URL = process.env.WOWDECK_RELEASES_URL ?? "https://api.github.com/repos/sigboe/wowdeck/releases/latest";
 
 const dataDir = process.env.WOWDECK_DATA_DIR ?? join(tmpdir(), "wowdeck");
@@ -144,6 +147,8 @@ const pluginUpdate = new PluginUpdateCheck(
     writeBackoff: (backoff) => store.updateSettings({ pluginUpdateBackoff: backoff }),
     readToastShown: () => store.settings.pluginUpdateToastShownFor,
     writeToastShown: (version) => store.updateSettings({ pluginUpdateToastShownFor: version }),
+    readChannel: () => store.settings.pluginUpdateChannel,
+    writeChannel: (channel) => store.updateSettings({ pluginUpdateChannel: channel }),
   },
 );
 

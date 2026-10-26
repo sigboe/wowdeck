@@ -278,9 +278,14 @@ device-passed 2026-10-23 on the Deck screen, pane 506 CSS px):
 
 ### 4.5c WoWDeck update notice (the plugin's own update check)
 
-The plugin is not in the Decky store, so `system.updateCheck` asks GitHub's
-`releases/latest` **at most once every 24 hours** — unauthenticated, or
-through the configured GitHub token when GitHub accepts it — and maps every
+The plugin is not in the Decky store, so `system.updateCheck` asks GitHub
+**at most once every 24 hours** on the owner's update channel
+(`pluginUpdateChannel`, Stable unless picked): Stable asks `releases/latest`,
+Beta lists the releases and offers the newest stable or beta build, drafts
+left out. `system.setUpdateChannel` stores the channel and checks at once,
+past the interval and any backoff; a stored answer serves only the channel
+that produced it. Each ask goes unauthenticated, or
+through the configured GitHub token when GitHub accepts it, and maps every
 unreachable state (private repo beyond the token's reach, offline, rate
 limited) to "couldn't check" — never an error. The answer and when it ran are
 persisted (`lastPluginUpdate` in `~/homebrew/data/wowdeck/state.json`), so

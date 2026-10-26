@@ -26,8 +26,11 @@
  * toast, no error, one structured stderr line (below).
  *
  * The builds come from the update channel's build source (BuildSource):
- * Stable, GitHub's `releases/latest`, is the only one so far. Of the
- * candidates it returns, the newest is the answer.
+ * Stable asks GitHub's `releases/latest`, Beta lists the releases. Of the
+ * candidates it returns, the newest is the answer. The stored answer
+ * remembers its channel and serves only that channel, so a beta answered
+ * yesterday is never offered on Stable today. Switching channel
+ * (setChannel) checks at once, past the daily interval and any backoff.
  *
  * "unknown", never an error: the repo can be private beyond the token's
  * reach (the API answers 404), the Deck can be offline, GitHub can
@@ -35,15 +38,9 @@
  * surface as a user-facing failure.
  */
 
-import type { PluginUpdateBackoff, PluginUpdateSnapshot } from "../../api/contracts";
 import type { NetworkClient } from "../net/network";
-import {
-  type BuildSource,
-  type CandidateBuild,
-  GithubLatestReleaseSource,
-  RELEASES_PAGE,
-  type UpdateChannel,
-} from "../plugin/BuildSource";
+import type { PluginUpdateBackoff, PluginUpdateSnapshot, UpdateChannel } from "../../api/contracts";
+import { type BuildSource, buildSources, type CandidateBuild, RELEASES_PAGE } from "../plugin/BuildSource";
 import { compareVersions } from "../plugin/PluginVersion";
 import { backoffIntervalMs, DAY_MS, HOUR_MS, isDue, SingleFlight } from "./CheckCadence";
 
@@ -85,12 +82,16 @@ export interface PluginUpdateStore {
   readToastShown(): string | null;
   /** Marks the version shown — called the moment a check reports it pending. */
   writeToastShown(version: string): void;
+  /** The owner's update channel; Stable when none was ever picked. */
+  readChannel(): UpdateChannel;
+  writeChannel(channel: UpdateChannel): void;
 }
 
 function memoryStore(): PluginUpdateStore {
   let stamp: PluginUpdateSnapshot | null = null;
   let backoff: PluginUpdateBackoff | null = null;
   let toastShownFor: string | null = null;
+  let channel: UpdateChannel = "stable";
   return {
     read: () => stamp,
     write: (snapshot) => {
@@ -104,13 +105,16 @@ function memoryStore(): PluginUpdateStore {
     writeToastShown: (version) => {
       toastShownFor = version;
     },
+    readChannel: () => channel,
+    writeChannel: (value) => {
+      channel = value;
+    },
   };
 }
 
 export class PluginUpdateCheck {
   #flight = new SingleFlight<Omit<PluginUpdateStatus, "toastPending">>();
   readonly #sources: Record<UpdateChannel, BuildSource>;
-  readonly #channel: UpdateChannel = "stable";
 
   constructor(
     net: Pick<NetworkClient, "getJson">,
@@ -123,7 +127,24 @@ export class PluginUpdateCheck {
     private store: PluginUpdateStore = memoryStore(),
     private now: () => number = Date.now,
   ) {
-    this.#sources = { stable: new GithubLatestReleaseSource(net, releasesUrl, tokenProvider) };
+    this.#sources = buildSources(net, releasesUrl, tokenProvider);
+  }
+
+  channel(): UpdateChannel {
+    return this.store.readChannel();
+  }
+
+  /**
+   * Store the channel and check it at once, past the daily interval and any
+   * failure backoff, so the owner sees what the switch offers. Never spends
+   * the toast: the owner is looking at Options already.
+   */
+  async setChannel(channel: UpdateChannel): Promise<PluginUpdateStatus> {
+    this.store.writeChannel(channel);
+    // A check in flight asked the old channel; the switch waits it out
+    // instead of joining it.
+    const answer = await this.#flight.runAfterPending(() => this.#run({ force: true }));
+    return { ...answer, toastPending: false };
   }
 
   /**
@@ -140,10 +161,13 @@ export class PluginUpdateCheck {
     return opts.notify ? this.#toastGate(answer) : { ...answer, toastPending: false };
   }
 
-  async #run(): Promise<Omit<PluginUpdateStatus, "toastPending">> {
-    const stamp = this.store.read();
+  async #run({ force = false } = {}): Promise<Omit<PluginUpdateStatus, "toastPending">> {
+    const channel = this.store.readChannel();
+    const stored = this.store.read();
+    // Only this channel's answer serves; one from before channels was Stable's.
+    const stamp = stored !== null && (stored.channel ?? "stable") === channel ? stored : null;
     const now = this.now();
-    if (!isDue(stamp?.checkedAt ?? null, now, this.#interval(stamp))) {
+    if (!force && !isDue(stamp?.checkedAt ?? null, now, this.#interval(stamp))) {
       return this.#fromStamp(stamp!);
     }
     // The day's check is due, but failures back off: within the window the
@@ -151,10 +175,10 @@ export class PluginUpdateCheck {
     // daily cap's cached answer, so a Deck that cannot reach GitHub is not
     // re-asked by every trigger (plugin load, wake, Options visit).
     const backoff = this.store.readBackoff();
-    if (backoff !== null && !isDue(backoff.failedAt, now, backoffIntervalMs(backoff.failures))) {
+    if (!force && backoff !== null && !isDue(backoff.failedAt, now, backoffIntervalMs(backoff.failures))) {
       return stamp !== null ? this.#fromStamp(stamp) : this.#unknown(false);
     }
-    const fresh = await this.#fetch();
+    const fresh = await this.#fetch(channel);
     if (fresh !== null) {
       const snapshot = { ...fresh, checkedAt: this.now() };
       this.store.write(snapshot);
@@ -239,8 +263,8 @@ export class PluginUpdateCheck {
    * snapshot to store (checkedAt still unset), or null when the check could
    * not run or found no build with a parseable version.
    */
-  async #fetch(): Promise<PluginUpdateSnapshot | null> {
-    const builds = await this.#sources[this.#channel].candidates();
+  async #fetch(channel: UpdateChannel): Promise<PluginUpdateSnapshot | null> {
+    const builds = await this.#sources[channel].candidates();
     let newest: CandidateBuild | null = null;
     for (const build of builds ?? []) {
       // Sources only return parseable versions, so the comparison never
@@ -253,6 +277,7 @@ export class PluginUpdateCheck {
     // while the release is newer).
     return {
       checkedAt: 0,
+      channel,
       latestVersion: newest.version,
       releaseUrl: newest.releaseUrl,
       downloadUrl: newest.downloadUrl,

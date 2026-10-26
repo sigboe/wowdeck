@@ -99,6 +99,8 @@ let cfSeenAuth: string[] = [];
 /** What the mock /releases/latest answers, and the Authorization headers it saw. */
 let releasesLatest: { body?: unknown; status?: number } = {};
 let releasesSeenAuth: (string | null)[] = [];
+/** What the mock releases list (the Beta channel's source) answers. */
+let releasesList: unknown[] = [];
 /** What the mock /wowdeck-asset route serves (the staged-update zip). */
 let releasesAsset: Uint8Array = new Uint8Array();
 
@@ -170,6 +172,10 @@ beforeAll(async () => {
           return new Response(null, { status: releasesLatest.status });
         }
         return Response.json(releasesLatest.body);
+      }
+      if (url.pathname === "/releases") {
+        releasesSeenAuth.push(req.headers.get("authorization"));
+        return Response.json(releasesList);
       }
       if (url.pathname === "/wowdeck-asset") {
         return new Response(releasesAsset);
@@ -943,6 +949,47 @@ describe("system.updateCheck (the plugin's own update notice)", () => {
         rmSync(staged, { force: true });
       }
       releasesLatest = { body: { tag_name: `v${version}`, html_url: releaseUrl } };
+    }
+  });
+
+  test("the update channel: Stable by default, a switch checks at once, and Beta survives a restart", async () => {
+    const beta = "9997.0.0-beta.3";
+    releasesList = [
+      { tag_name: `v${beta}`, html_url: `https://github.com/sigboe/wowdeck/releases/tag/v${beta}`, prerelease: true },
+      { tag_name: "v9998.0.0-beta.1", draft: true },
+      { tag_name: `v${version}`, html_url: releaseUrl },
+    ];
+    const dataDir = join(ROOT, "data-channel");
+    const first = spawnEngine(dataDir);
+    const { call: call1 } = link(first);
+    try {
+      expect((await call1(1, "system.getUpdateChannel")).result).toEqual({ channel: "stable" });
+      expect((await call1(2, "system.updateCheck")).result.status).toBe("current");
+
+      // Inside the day's interval, yet the switch asks at once.
+      const baseline = releasesSeenAuth.length;
+      const switched = await call1(3, "system.setUpdateChannel", { channel: "beta" });
+      expect(switched.result).toMatchObject({ status: "available", latestVersion: beta, checked: true, toastPending: false });
+      expect(releasesSeenAuth.length).toBe(baseline + 1);
+
+      const bad = await call1(4, "system.setUpdateChannel", { channel: "nightly" });
+      expect(bad.error.code).toBe("invalid_request");
+      // Options cannot set it around the switch's check.
+      const set = await call1(5, "settings.set", { settings: { pluginUpdateChannel: "stable" } });
+      expect(set.result.settings.pluginUpdateChannel).toBe("beta");
+    } finally {
+      first.kill();
+    }
+
+    const second = spawnEngine(dataDir);
+    const { call: call2 } = link(second);
+    try {
+      expect((await call2(1, "system.getUpdateChannel")).result).toEqual({ channel: "beta" });
+      const res = await call2(2, "system.updateCheck");
+      expect(res.result).toMatchObject({ status: "available", latestVersion: beta, checked: false });
+    } finally {
+      second.kill();
+      releasesList = [];
     }
   });
 });

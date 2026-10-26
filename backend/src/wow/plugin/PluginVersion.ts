@@ -30,6 +30,11 @@ export function normalizeVersion(v: string): string | null {
   return parseVersion(trimmed) ? trimmed.replace(/^v/, "") : null;
 }
 
+/** Whether a WoWDeck version is a beta build (X.Y.Z-beta.N). */
+export function isBetaVersion(v: string): boolean {
+  return parseVersion(v)?.beta != null;
+}
+
 /**
  * Compare two versions: -1, 0 or 1; null when either side is not a WoWDeck
  * version — the caller treats "can't tell" as unknown.

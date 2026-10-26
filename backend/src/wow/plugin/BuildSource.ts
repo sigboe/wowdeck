@@ -4,9 +4,10 @@
  * candidate builds and offers the newest; the cadence, backoff and toast
  * gate stay in the check, so a source is only "one network answer".
  *
- * Stable is the only source for now: GitHub's `releases/latest`, which
- * never returns drafts or prereleases, so its one candidate is the newest
- * stable release.
+ * Stable asks GitHub's `releases/latest`, which never returns drafts or
+ * prereleases, so its one candidate is the newest stable release. Beta lists
+ * the releases: every stable release and beta pre-release is a candidate, so
+ * a stable release newer than the newest beta is offered on Beta too.
  *
  * The optional GitHub token setting (owned by the addon source,
  * GitHubProvider) is reused opportunistically: when GitHub accepts it — the
@@ -16,11 +17,9 @@
  * none.
  */
 
+import type { UpdateChannel } from "../../api/contracts";
 import type { NetworkClient } from "../net/network";
-import { normalizeVersion } from "./PluginVersion";
-
-/** An update channel's id. Stored as a string so later sources need no migration. */
-export type UpdateChannel = "stable";
+import { isBetaVersion, normalizeVersion } from "./PluginVersion";
 
 /** One build a channel offers. */
 export interface CandidateBuild {
@@ -50,6 +49,7 @@ const GH_HEADERS = { Accept: "application/vnd.github+json", "X-GitHub-Api-Versio
 
 interface GithubRelease {
   tag_name?: string;
+  draft?: boolean;
   html_url?: string;
   body?: string | null;
   assets?: { name?: string; url?: string; browser_download_url?: string }[];
@@ -67,8 +67,49 @@ export class GithubLatestReleaseSource implements BuildSource {
     const release = await getGithubJson<GithubRelease>(this.net, this.releasesUrl, this.tokenProvider);
     if (release === null) return null;
     const build = candidateOf(release);
-    return build ? [build] : [];
+    // A beta tag GitHub calls latest (published without the pre-release
+    // flag) is still a beta: Stable never offers one.
+    return build && !isBetaVersion(build.version) ? [build] : [];
   }
+}
+
+/**
+ * Beta: every release on the list, stable or beta pre-release, so the
+ * newest of either is offered. Drafts (visible only to a token with push
+ * access) are not published builds and are left out. One page of 100 is
+ * plenty: CI keeps only the newest three betas.
+ */
+export class GithubReleaseListSource implements BuildSource {
+  constructor(
+    private net: Pick<NetworkClient, "getJson">,
+    private listUrl: string,
+    private tokenProvider: () => string | undefined,
+  ) {}
+
+  async candidates(): Promise<CandidateBuild[] | null> {
+    const releases = await getGithubJson<GithubRelease[]>(this.net, `${this.listUrl}?per_page=100`, this.tokenProvider);
+    if (releases === null) return null;
+    if (!Array.isArray(releases)) return [];
+    return releases.flatMap((release) => {
+      const build = release && !release.draft ? candidateOf(release) : null;
+      return build ? [build] : [];
+    });
+  }
+}
+
+/**
+ * Each channel's source, given the releases/latest URL: the list is the same
+ * URL without `/latest` (WOWDECK_RELEASES_URL keeps that shape).
+ */
+export function buildSources(
+  net: Pick<NetworkClient, "getJson">,
+  latestUrl: string,
+  tokenProvider: () => string | undefined,
+): Record<UpdateChannel, BuildSource> {
+  return {
+    stable: new GithubLatestReleaseSource(net, latestUrl, tokenProvider),
+    beta: new GithubReleaseListSource(net, latestUrl.replace(/\/latest$/, ""), tokenProvider),
+  };
 }
 
 /**

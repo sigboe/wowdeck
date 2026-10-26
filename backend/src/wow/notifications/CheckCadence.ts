@@ -69,4 +69,18 @@ export class SingleFlight<T> {
     }
     return this.#pending;
   }
+
+  /**
+   * A run of its own, never joined to the one in flight: waits that one out
+   * first. For a caller whose inputs changed since the pending run started
+   * (an update channel switch).
+   */
+  async runAfterPending(start: () => Promise<T>): Promise<T> {
+    // Re-checked after every wait: another caller may have started a run
+    // while this one waited. The check and run() share a synchronous step.
+    while (this.#pending !== null) {
+      await this.#pending.catch(() => undefined);
+    }
+    return this.run(start);
+  }
 }

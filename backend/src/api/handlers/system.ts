@@ -2,7 +2,8 @@
 
 import type { JsonlServer } from "../../bridge/jsonl";
 import type { HandlerDeps } from "./deps";
-import { PROTOCOL_VERSION } from "../contracts";
+import { PROTOCOL_VERSION, UPDATE_CHANNELS } from "../contracts";
+import { ValidationError } from "../../wow/errors";
 
 export function register(server: JsonlServer, { store, registry, service, installationService, companionCoordinator, curseForgeAuth, recentErrors, backendVersion, pluginUpdate, updateStager }: HandlerDeps): void {
   server.on("system.getStatus", async () => ({
@@ -12,6 +13,15 @@ export function register(server: JsonlServer, { store, registry, service, instal
   }));
 
   server.on("system.updateCheck", async (params) => pluginUpdate.check({ notify: params.notify === true }));
+
+  server.on("system.getUpdateChannel", async () => ({ channel: pluginUpdate.channel() }));
+
+  server.on("system.setUpdateChannel", async (params) => {
+    if (!UPDATE_CHANNELS.includes(params.channel)) {
+      throw new ValidationError(`Unknown update channel: ${String(params.channel)}`);
+    }
+    return pluginUpdate.setChannel(params.channel);
+  });
 
   server.on("system.updateStage", async () => updateStager.stage());
 

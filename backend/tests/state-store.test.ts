@@ -46,6 +46,25 @@ describe("StateStore with a state file from an older build", () => {
 });
 
 describe("StateStore normalizes stored settings (RF-07)", () => {
+  test("the update channel: missing or unknown is Stable, Beta is kept", () => {
+    const path = join(mkdtempSync(join(tmpdir(), "state-store-")), "state.json");
+    writeFileSync(path, JSON.stringify({ settings: {} }));
+    expect(new StateStore(path).load().settings.pluginUpdateChannel).toBe("stable");
+    writeFileSync(path, JSON.stringify({ settings: { pluginUpdateChannel: "beta" } }));
+    expect(new StateStore(path).load().settings.pluginUpdateChannel).toBe("beta");
+    writeFileSync(path, JSON.stringify({ settings: { pluginUpdateChannel: "nightly" } }));
+    expect(new StateStore(path).load().settings.pluginUpdateChannel).toBe("stable");
+  });
+
+  test("a stored answer keeps its channel; one from before channels has none", () => {
+    const path = join(mkdtempSync(join(tmpdir(), "state-store-")), "state.json");
+    const answer = { checkedAt: 123, latestVersion: "0.2.1-beta.3", releaseUrl: null, downloadUrl: null };
+    writeFileSync(path, JSON.stringify({ settings: { lastPluginUpdate: { ...answer, channel: "beta" } } }));
+    expect(new StateStore(path).load().settings.lastPluginUpdate).toEqual({ ...answer, channel: "beta" });
+    writeFileSync(path, JSON.stringify({ settings: { lastPluginUpdate: answer } }));
+    expect(new StateStore(path).load().settings.lastPluginUpdate).toEqual(answer);
+  });
+
   test("garbage values fall back to their defaults; good ones are kept", () => {
     const path = join(mkdtempSync(join(tmpdir(), "state-store-")), "state.json");
     writeFileSync(
