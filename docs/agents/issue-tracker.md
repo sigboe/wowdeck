@@ -41,6 +41,7 @@ Use the `gh` CLI; it infers the repo from `git remote -v`.
 - **Labels**: `gh issue edit <number> --add-label "..."` / `--remove-label "..."`
 - **Close**: `gh issue close <number> --comment "..."`. A PR that implements a ticket says `Closes #<n>` in its body; PRs target `next`.
 - **When a ticket closes**: as soon as `/implement` has committed it and the review pass is done, not at PR or merge time: commits say `Refs #<n>`, so nothing closes the ticket for you. Close it with a comment naming the commits and branch, what shipped (the tested seam included), and the `docs/regression-test-plan.md` row that covers it on device, adding that row in the same work when the change touches UI or device behaviour. When that was the parent spec's last open ticket, close the parent too, with a comment listing its tickets.
+- **The one exception**: a bug fixed outside a ticket's `/implement` run (`/diagnosing-bugs`, a one-session fix of a reported issue) commits with `Closes #<n>`, and GitHub closes the issue when the commit reaches `next`. That is the only case where a commit carries `Closes`; everywhere else the agent closes the ticket itself.
 
 **PRs as a request surface: no.** _(Set to `yes` if this repo treats external
 PRs as feature requests; `/triage` reads this flag.)_

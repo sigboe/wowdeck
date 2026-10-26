@@ -73,8 +73,10 @@ messages or PR descriptions — the owner asks for it per PR.
 ### Issue tracker
 
 GitHub Issues for finished work (`/to-spec`, `/to-tickets`, `/triage`);
-`.scratch/` (git-ignored) for drafts that outlive a session. See
-`docs/agents/issue-tracker.md`.
+`.scratch/` (git-ignored) for drafts that outlive a session. `/implement`
+closes its own ticket: commits say `Refs #<n>`, and once the commit and
+review are done the agent closes the issue by hand. See
+`docs/agents/issue-tracker.md` (closing comment, the one exception).
 
 ### Triage labels
 
