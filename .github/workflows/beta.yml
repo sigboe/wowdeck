@@ -1,0 +1,107 @@
+name: Beta
+
+# Every push to `next` that changes more than docs becomes a beta build on
+# the Beta update channel: CI's gates (ci.yml, called with the beta version
+# to stamp), then a GitHub pre-release tagged v<version> on the merged
+# commit, then pruning down to the newest three betas. The version is
+# `<last stable tag, patch+1>-beta.<run number>` and is stamped into the
+# build only, never committed to `next`. The decisions live in
+# tools/beta-release.ts (tested); this workflow only feeds it and `gh`.
+on:
+  push:
+    branches: [next]
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+
+permissions:
+  contents: read
+
+# One beta at a time, so publishing and pruning never interleave.
+concurrency:
+  group: beta
+  cancel-in-progress: false
+
+jobs:
+  version:
+    name: Beta version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.next.outputs.version }}
+    steps:
+      # Full history so every stable tag is present.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - id: next
+        run: |
+          set -euo pipefail
+          version="$(git tag -l 'v*' | bun tools/beta-release.ts next-version "$GITHUB_RUN_NUMBER")"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "beta version ${version}"
+
+  checks:
+    name: CI
+    needs: version
+    uses: ./.github/workflows/ci.yml
+    with:
+      version: ${{ needs.version.outputs.version }}
+    # CURSEFORGE_API_KEY, bundled exactly as in a CI or stable build.
+    secrets: inherit
+
+  publish:
+    name: Publish beta pre-release
+    needs: [version, checks]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - uses: actions/download-artifact@v4
+        with:
+          name: plugin-zip
+          path: build/
+
+      - name: Checksum the asset
+        run: sha256sum build/*.zip
+
+      # The asset keeps the zip's own name (WoWDeck.zip), the one the
+      # self-update and Decky's install-from-URL expect; see release.yml.
+      # Notes cover the PRs merged since the previous beta. A re-run keeps
+      # its run number and so its version: a release it already published
+      # is left as it is, so the run can still go on to prune.
+      - name: Publish the pre-release
+        run: |
+          set -euo pipefail
+          if gh release view "v${VERSION}" > /dev/null 2>&1; then
+            echo "v${VERSION} is already published"
+            exit 0
+          fi
+          previous="$(gh release list --limit 1000 --json tagName -q '.[].tagName' | bun tools/beta-release.ts previous-beta)"
+          gh release create "v${VERSION}" build/*.zip \
+            --target "$GITHUB_SHA" \
+            --prerelease \
+            --title "v${VERSION}" \
+            --generate-notes \
+            ${previous:+--notes-start-tag "$previous"}
+
+      # Only v*-beta.* tags can be selected, so stable releases and tags
+      # are never touched.
+      - name: Prune old betas
+        run: |
+          set -euo pipefail
+          gh release list --limit 1000 --json tagName -q '.[].tagName' \
+            | bun tools/beta-release.ts prune \
+            | while read -r tag; do
+                echo "pruning ${tag}"
+                gh release delete "$tag" --cleanup-tag --yes
+              done

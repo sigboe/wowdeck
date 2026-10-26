@@ -1,10 +1,20 @@
 name: CI
 
+# Pushes to `next` run these jobs through beta.yml, which calls this
+# workflow with the beta version to stamp and publishes only if every job
+# passes; listing `next` here as well would run each gate twice.
 on:
   push:
-    branches: [main, next]
+    branches: [main]
   pull_request:
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      version:
+        description: A beta version (X.Y.Z-beta.N) to stamp into the build; never committed.
+        type: string
+        required: false
+        default: ""
 
 jobs:
   frontend:
@@ -12,6 +22,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # A beta build carries its own version: the engine bundles
+      # backend/package.json's at build time and the zip ships package.json
+      # and plugin.json, so every job stamps before it builds.
+      - if: inputs.version != ''
+        run: python3 tools/version.py stamp "$VERSION"
+        env:
+          VERSION: ${{ inputs.version }}
       - uses: pnpm/action-setup@v4
         with:
           version: 9
@@ -35,6 +52,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - if: inputs.version != ''
+        run: python3 tools/version.py stamp "$VERSION"
+        env:
+          VERSION: ${{ inputs.version }}
       # tests/wowup-import-compat.test.ts runs upstream's import code; the
       # reference checkout is untracked, so fetch the pinned commit here.
       - name: Fetch the WowUp reference checkout
@@ -56,6 +77,8 @@ jobs:
         working-directory: backend
       - run: bun test
         working-directory: backend
+      # The beta workflow's version and prune decisions (tools/beta-release.ts).
+      - run: bun test ./tools
       - uses: actions/upload-artifact@v4
         with:
           name: backend-binary
@@ -68,6 +91,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - if: inputs.version != ''
+        run: python3 tools/version.py stamp "$VERSION"
+        env:
+          VERSION: ${{ inputs.version }}
       - uses: actions/download-artifact@v4
         with:
           name: frontend-dist

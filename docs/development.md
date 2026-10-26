@@ -64,6 +64,23 @@ the zip's plugin-name filename on purpose — Decky's install-from-URL derives
 the plugin name from the last URL segment (`tools/package.py` documents the
 update-hang that any other name causes).
 
+### Betas
+
+Every push to `next` that changes more than docs (`*.md`, `docs/`) is
+published by `.github/workflows/beta.yml` as a beta pre-release for the Beta
+update channel; nobody runs anything. It calls `ci.yml` with the beta
+version, so the same gates must pass before anything is published; then it
+tags the merged commit `v<version>`, attaches the same `WoWDeck.zip`, generates
+notes from the PRs merged since the previous beta, and deletes all but the
+newest three beta releases together with their tags.
+
+The version is `<last stable tag, patch+1>-beta.<run number>`
+(`0.3.1-beta.57` after `v0.3.0`). `tools/version.py stamp` writes it into
+the CI checkout only; it is never committed, so `next` keeps the last
+stable version and the release steps above are unchanged. The version and
+prune choices are `tools/beta-release.ts` (tests beside it); pruning only
+ever matches `v*-beta.*`, and `release.yml` ignores those tags.
+
 ## Testing on a real Steam Deck
 
 Decky plugins are best verified on real hardware. SSH is enabled by default
