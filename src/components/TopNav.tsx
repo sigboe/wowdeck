@@ -1,11 +1,15 @@
 import { useEffect, useRef, type ReactNode, type RefObject } from "react";
 import { Focusable, GamepadButton, type GamepadEvent } from "@decky/ui";
 import { SteamGlyph } from "../steamGlyph";
+import type { DotColor } from "../updateDot";
+import { UpdateDot } from "./UpdateDot";
 
 export interface NavTab {
   id: string;
   label: string;
   icon: ReactNode;
+  /** The update dot on this tab's pill; null or absent = none. */
+  dot?: DotColor | null;
 }
 
 interface Props {
@@ -95,6 +99,7 @@ export function TopNav({ tabs, activeId, onSelect, compact, selectedRef }: Props
             return (
               <div key={t.id} className="wowdeck-tab" onClick={() => onSelect(t.id)}>
                 {t.icon}
+                <UpdateDot color={t.dot} />
               </div>
             );
           }
@@ -112,6 +117,7 @@ export function TopNav({ tabs, activeId, onSelect, compact, selectedRef }: Props
             >
               {t.icon}
               <span>{t.label}</span>
+              <UpdateDot color={t.dot} />
             </Focusable>
           );
         })}

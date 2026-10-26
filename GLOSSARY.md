@@ -93,6 +93,13 @@ _Retired_ (2026-10-18): the plugin no longer renders one — Get Addons became
 the widened QAM tab (ADR-0001, `docs/adr/0001-get-addons-widened-qam.md`);
 the word stays for Steam-surface talk.
 
+**Update dot**:
+A 10 px dot pinned to the top-right corner of a tab pill or button, saying
+"news here" in a semantic colour (`UpdateDot`, `updateDot.ts`). Orange, Decky's
+own notification-badge colour, marks a WoWDeck update: on the Options tab and
+the panel's Update button. No counts.
+_Avoid_: badge (that is the Steam library tile's).
+
 **Status tag**:
 A small uppercase chip on an addon row stating its state at a glance
 (`wowdeck-status-tag`). My Addons rows show Ignored, Unmanaged, Library,

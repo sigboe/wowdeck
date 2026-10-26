@@ -40,6 +40,7 @@ Use the `gh` CLI; it infers the repo from `git remote -v`.
 - **Comment**: `gh issue comment <number> --body "..."`
 - **Labels**: `gh issue edit <number> --add-label "..."` / `--remove-label "..."`
 - **Close**: `gh issue close <number> --comment "..."`. A PR that implements a ticket says `Closes #<n>` in its body; PRs target `next`.
+- **When a ticket closes**: as soon as `/implement` has committed it and the review pass is done, not at PR or merge time: commits say `Refs #<n>`, so nothing closes the ticket for you. Close it with a comment naming the commits and branch, what shipped (the tested seam included), and the `docs/regression-test-plan.md` row that covers it on device, adding that row in the same work when the change touches UI or device behaviour. When that was the parent spec's last open ticket, close the parent too, with a comment listing its tickets.
 
 **PRs as a request surface: no.** _(Set to `yes` if this repo treats external
 PRs as feature requests; `/triage` reads this flag.)_

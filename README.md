@@ -38,9 +38,9 @@ places: Steam/Proton, Lutris, `~/Applications`, SD cards, or a custom path).
 ## Updating
 
 The plugin is not in the official Decky store, so updates come from
-GitHub Releases. WoWDeck tells you itself: once per session it checks and,
-when a newer release is out, shows a toast and a row in Options → Updates
-with the link.
+GitHub Releases. WoWDeck tells you itself: at most once a day — on plugin
+load or when the Deck wakes — it checks and, when a newer release is out,
+shows a toast and a row in Options → Updates with the link.
 
 - **Built in:** press **Update** on that row. WoWDeck downloads and checks
   the release, then hands it to Decky's own installer, which asks you to
@@ -106,7 +106,7 @@ with the link.
   (`api.tukui.org`), GitHub (`api.github.com`), WowInterface/MMOUI
   (`api.mmoui.com`), plus the providers' download CDNs when you install.
 - No telemetry, no crash reporting, no analytics. Searches, installs and
-  the once-per-session plugin version check are the only outbound traffic.
+  the once-a-day plugin version check are the only outbound traffic.
 - The bundled CurseForge key is treated as public (assume any bundled key
   is extracted eventually). Provide your own in Options if you want your
   own quota.

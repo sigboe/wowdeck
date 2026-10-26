@@ -1,30 +1,68 @@
 /**
  * WoWDeck's own update notice (the plugin, not addons): the text behind
- * the once-per-session toast and the Options → Updates row, plus the
- * adapter that hands an engine-staged update to Decky's own installer.
- * The engine's system.updateCheck owns the check; system.updateStage
- * owns the download and verification.
+ * the update toast, the Options update panel and its update dot, and the
+ * Options → Updates row, plus the adapter that hands an engine-staged
+ * update to Decky's own installer. The engine's system.updateCheck owns the check, its once-a-day cap, the failure
+ * backoff that spaces unreachable checks (1h/2h/4h, silent) and the
+ * once-per-release-version toast gate (toastPending);
+ * system.updateStage owns the download and verification.
  */
 
 import type { MethodMap } from "../backend/src/api/contracts";
+import type { DotColor } from "./updateDot";
 
 export type PluginUpdateInfo = MethodMap["system.updateCheck"]["result"];
 
 const RELEASES_PAGE = "https://github.com/sigboe/wowdeck/releases";
 
-/** The session toast: only when a newer release actually exists. */
+/**
+ * The update toast, gated engine-side: system.updateCheck's toastPending is
+ * true only for the first answer (fresh or cached) that offers a release
+ * whose toast has not fired yet — one toast per release version, surviving
+ * restarts and QAM churn. Informative only: it names the version and says
+ * where to go (the QAM toast has no action surface).
+ */
 export function pluginUpdateToast(info: PluginUpdateInfo): { title: string; body: string } | null {
-  if (info.status !== "available" || !info.latestVersion) {
+  if (!info.toastPending || info.status !== "available" || !info.latestVersion) {
     return null;
   }
   return {
     title: `WoWDeck ${info.latestVersion} available`,
-    body: "Link in Options → Updates",
+    body: "Update in Options",
   };
 }
 
 /**
- * The Options → Updates row: WoWDeck's own version state. "unknown"
+ * The Options update panel, attached under the nav bar: present only while
+ * a release is available with its WoWDeck.zip (never for "current" or
+ * "unknown"; without the zip Update could only fail, and the engine
+ * re-asks hourly until it is attached). It carries the plugin's only
+ * Update button. The Updates row still names such a release.
+ */
+export function pluginUpdatePanel(info: PluginUpdateInfo | null): { text: string } | null {
+  if (info?.status !== "available" || !info.latestVersion || !info.downloadUrl) {
+    return null;
+  }
+  return { text: `WoWDeck ${info.latestVersion} available` };
+}
+
+/**
+ * The update dot on the Options tab and the panel's Update button: orange
+ * while the update panel shows, off otherwise — so it clears once the
+ * update installs and the reloaded plugin reads itself up to date.
+ */
+export function pluginUpdateDot(info: PluginUpdateInfo | null): DotColor | null {
+  return pluginUpdatePanel(info) ? "update" : null;
+}
+
+/** The panel's Update button: disabled while the release is being staged. */
+export function pluginUpdateButton(staging: boolean): { label: string; disabled: boolean } {
+  return staging ? { label: "Preparing…", disabled: true } : { label: "Update", disabled: false };
+}
+
+/**
+ * The Options → Updates row, informational only (the panel holds the
+ * button): WoWDeck's own version state. "unknown"
  * (repo unreachable — private beyond the token's reach, offline, rate
  * limited) reads as "couldn't check", never as a failure.
  */

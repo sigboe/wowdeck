@@ -73,7 +73,7 @@ export function wowdeckSharedStyleCss(): string {
   return `${QAM_MOTION_CSS}
 .wowdeck-tab {
   display: flex; align-items: center; gap: 6px; height: 22px; padding: 6px 10px;
-  border-radius: 64px; white-space: nowrap; cursor: pointer;
+  position: relative; border-radius: 64px; white-space: nowrap; cursor: pointer;
   font-size: 12px; font-weight: bold; letter-spacing: .5px; text-transform: uppercase;
   color: #dcdedf; background: transparent;
   transition: background-color .1s ease, color .1s ease, box-shadow .1s ease;

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   ButtonItem,
   DropdownItem,
@@ -16,11 +16,13 @@ import * as api from "./services/backend";
 import { InstalledView } from "./components/InstalledView";
 import { GetAddonsTab as GetAddonsBrowseTab } from "./components/GetAddonsTab";
 import { SettingsView } from "./components/SettingsView";
-import { TopNav } from "./components/TopNav";
+import { TopNav, type NavTab } from "./components/TopNav";
+import { SelfUpdatePanel } from "./components/SelfUpdatePanel";
 import { wowdeckSharedStyleCss } from "./sharedStyles";
 import { leaveBrowseSession, subscribeWidening, widening } from "./browseSessionState";
 import { pluginToast } from "./toast";
-import { pluginUpdateToast } from "./pluginUpdate";
+import { selfUpdateStore } from "./selfUpdate";
+import { pluginUpdateDot } from "./pluginUpdate";
 import { plural } from "./text";
 import { formatList } from "./search";
 import { addonSession } from "./session";
@@ -163,10 +165,13 @@ function Content() {
     );
   }, []);
 
-  const tabs: { id: Tab; label: string; icon: ReactNode }[] = [
+  // Options carries the update dot while a WoWDeck release is available,
+  // like the panel's Update button it leads to (same shared state).
+  const selfUpdate = useSyncExternalStore(selfUpdateStore.subscribe, selfUpdateStore.get);
+  const tabs: NavTab[] = [
     { id: "installed", label: "My Addons", icon: <FaDiceD6 /> },
     { id: "browse", label: "Get Addons", icon: <FaSearch /> },
-    { id: "settings", label: "Options", icon: <FaCog /> },
+    { id: "settings", label: "Options", icon: <FaCog />, dot: pluginUpdateDot(selfUpdate.info) },
   ];
 
   if (engineOk === false) {
@@ -230,6 +235,7 @@ function Content() {
             </FocusRow>
           </div>
         )}
+        {tab === "settings" && <SelfUpdatePanel />}
       </div>
 
       {tab === "installed" && (
@@ -321,24 +327,6 @@ async function checkUpdateToast(): Promise<void> {
   }
 }
 
-/**
- * WoWDeck's own update notice (once per session; the engine memoizes its
- * single releases/latest call). Silent on "unknown" — until the public
- * flip the repo is private and the API answers 404, which must read as
- * "no information", never as a failure.
- */
-async function checkPluginUpdate(): Promise<void> {
-  try {
-    const toast = pluginUpdateToast(await api.rpc("system.updateCheck"));
-    if (toast) {
-      pluginToast(toast.title, toast.body);
-    }
-  } catch {
-    // Engine not ready yet — Options → Updates still shows the row once
-    // the engine answers there.
-  }
-}
-
 export default definePlugin(() => {
   console.log("wowdeck frontend initializing");
 
@@ -350,9 +338,9 @@ export default definePlugin(() => {
   // Once per plugin load (Decky startup, reload, update): Content() remounts
   // on every modal and tab switch (guide G4), so the toast is not tied to it.
   void checkUpdateToast();
-  // WoWDeck's own update check too — but never on wake-from-suspend: the
-  // engine memoizes its one GitHub call for the whole session.
-  void checkPluginUpdate();
+  // WoWDeck's own release check too — the engine's daily cap decides whether
+  // it costs a request, so waking the Deck is a useful trigger as well.
+  void selfUpdateStore.refresh({ toast: true, force: true });
 
   // WTF backup/restore jobs run in the engine and outlive any panel or modal, so their
   // progress/outcome events are subscribed once per plugin load into a module-scope
@@ -396,17 +384,20 @@ export default definePlugin(() => {
   const stopPluginExitWatch = startPluginExitWatch(PLUGIN_NAME);
   void settingsStore.load();
 
-  // The update toast also runs on wake. SteamClient.System (or this method)
-  // is missing on some Steam builds, and an unguarded call would throw in
-  // definePlugin's factory and nothing would render.
+  // Both notifications also run on wake: an engine session can last weeks on
+  // a Deck that sleeps, so the daily cap — not the session — decides whether
+  // a check actually happens. SteamClient.System (or this method) is missing
+  // on some Steam builds, and an unguarded call would throw in definePlugin's
+  // factory and nothing would render.
   let resumeRegistration: { unregister(): void } | null = null;
   if (typeof SteamClient?.System?.RegisterForOnResumeFromSuspend === "function") {
     resumeRegistration = SteamClient.System.RegisterForOnResumeFromSuspend(() => {
       void checkUpdateToast();
+      void selfUpdateStore.refresh({ toast: true, force: true });
     });
   } else {
     console.log(
-      "wowdeck: SteamClient.System.RegisterForOnResumeFromSuspend not available on this Steam Client build; update toast falls back to plugin-load only",
+      "wowdeck: SteamClient.System.RegisterForOnResumeFromSuspend not available on this Steam Client build; update notifications fall back to plugin-load only",
     );
   }
 

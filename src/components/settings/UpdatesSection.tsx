@@ -6,20 +6,25 @@ import { pluginToast, toastError } from "../../toast";
 import { lastAutoUpdateLine } from "../../text";
 import { formatBytes } from "../../wtfFormat";
 import { settingsStore } from "../../settings";
-import { pluginUpdateRow, requestPluginUpdate, type PluginUpdateInfo } from "../../pluginUpdate";
+import { pluginUpdateRow } from "../../pluginUpdate";
+import { selfUpdateStore } from "../../selfUpdate";
 import { SettingsRow } from "./common";
 
 /**
  * Automatic updates (WF-02) and rollback (BEYOND-02; owner: a way to turn it
- * off, the space it uses, clear). The last row is WoWDeck's own version
- * (system.updateCheck) — the plugin, never an addon.
+ * off, the space it uses, clear). The last row is WoWDeck's own version —
+ * the plugin, never an addon — read from the shared self-update store, so
+ * plugin load's answer shows here without a second fetch. Informational
+ * only: the Update button lives in the Options update panel.
  */
 export function UpdatesSection() {
   const { settings } = useSyncExternalStore(settingsStore.subscribe, settingsStore.get);
+  const { info: pluginUpdate } = useSyncExternalStore(
+    selfUpdateStore.subscribe,
+    selfUpdateStore.get,
+  );
   const [previousUsage, setPreviousUsage] = useState<{ bytes: number; count: number } | null>(null);
   const [clearingPrevious, setClearingPrevious] = useState(false);
-  const [pluginUpdate, setPluginUpdate] = useState<PluginUpdateInfo | null>(null);
-  const [staging, setStaging] = useState(false);
   const loadPreviousUsage = () =>
     api
       .rpc("rollback.status")
@@ -45,38 +50,11 @@ export function UpdatesSection() {
 
   useEffect(() => {
     void loadPreviousUsage();
-    // The engine memoizes its single releases/latest call per session, so
-    // every Options visit after the first is answered locally.
-    api
-      .rpc("system.updateCheck")
-      .then(setPluginUpdate)
-      .catch(() => setPluginUpdate(null));
+    // The shared self-update store: load or wake has usually answered
+    // already, and this re-asks only when the held answer is stale — no
+    // fetch on every Options visit.
+    void selfUpdateStore.refresh();
   }, []);
-
-  /**
-   * Stage the new release in the engine (download + verify), then hand it
-   * to Decky's own installer: the loader's native prompt installs from
-   * the local file and reloads the plugin. Declining the prompt changes
-   * nothing; the button stays usable.
-   */
-  const runUpdate = async () => {
-    setStaging(true);
-    try {
-      const staged = await api.rpc("system.updateStage");
-      if (!staged.result) {
-        pluginToast("Couldn't update WoWDeck", staged.error?.message ?? "Try again later");
-        return;
-      }
-      const requested = await requestPluginUpdate(staged.result);
-      if (!requested.success) {
-        pluginToast("Couldn't update WoWDeck", requested.error ?? "Try again later");
-      }
-    } catch (e) {
-      toastError("Couldn't update WoWDeck", e);
-    } finally {
-      setStaging(false);
-    }
-  };
 
   return (
     <PanelSection title="Updates">
@@ -135,17 +113,7 @@ export function UpdatesSection() {
             description={
               <span style={descriptionStyle}>{pluginUpdateRow(pluginUpdate).description}</span>
             }
-          >
-            {pluginUpdate.status === "available" && pluginUpdate.downloadUrl ? (
-              <DialogButton
-                style={{ minWidth: 0, width: "auto", padding: "8px 16px" }}
-                disabled={staging}
-                onClick={() => void runUpdate()}
-              >
-                {staging ? "Preparing…" : "Update"}
-              </DialogButton>
-            ) : null}
-          </Field>
+          />
         </SettingsRow>
       ) : null}
     </PanelSection>

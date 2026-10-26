@@ -636,6 +636,7 @@ picks its category with a `DropdownItem`, so no modal is involved.
 | `InstalledView` / `AddonRow` | My Addons rows with context menu | Pattern for any list of owned items (S14) |
 | `AddonResultRow` | One search/latest/popular/URL result, a Steam `Field` row | MUST reuse for any addon-result list |
 | `GetAddonsTab` / `browseTabs.tsx` | The widened QAM tab (ADR-0001): destination list, browse pane beside | Pattern for browsing UI |
+| `UpdateDot`, `updateDot.ts` | Decky's notification-badge dot on a positioned anchor, one semantic colour per kind of news | MUST use for any "news here" marker on a tab pill or button; add a colour to `DotColor`, never a second dot |
 | `steamTheme.ts` | Steam colour and type tokens | MUST use instead of literals (S20) |
 | `pluginToast` | Toast with the plugin icon | MUST use instead of `toaster.toast` (S17) |
 | `addonRow.ts`, `loadMore.ts`, `addonActions.ts` | Pure row text and actions, paging, every addon action with its toast | Extend these; keep them tested |

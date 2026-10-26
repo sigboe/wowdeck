@@ -129,8 +129,22 @@ const pluginUpdate = new PluginUpdateCheck(
   BACKEND_VERSION,
   RELEASES_URL,
   // The addon source's token, read live: a token saved later in the session
-  // is picked up by the next engine session's check.
+  // is picked up by the next daily check.
   () => store.settings.githubAccessToken ?? undefined,
+  // The once-a-day cap and the failure backoff live in settings, so a
+  // restart inside the interval answers from the stored answer instead of
+  // asking GitHub again, and a restarted engine still honours a backoff
+  // window opened before it. The same store holds the toast gate's
+  // shown-version mark (toastPending), so the once-per-release-version
+  // promise survives engine restarts too.
+  {
+    read: () => store.settings.lastPluginUpdate,
+    write: (snapshot) => store.updateSettings({ lastPluginUpdate: snapshot }),
+    readBackoff: () => store.settings.pluginUpdateBackoff,
+    writeBackoff: (backoff) => store.updateSettings({ pluginUpdateBackoff: backoff }),
+    readToastShown: () => store.settings.pluginUpdateToastShownFor,
+    writeToastShown: (version) => store.updateSettings({ pluginUpdateToastShownFor: version }),
+  },
 );
 
 const updateStager = new UpdateStager(network, pluginUpdate, () => store.settings.githubAccessToken ?? undefined);
