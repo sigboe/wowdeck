@@ -67,3 +67,25 @@ Merge PRs with a merge commit, not squash-merge. Before merging, squash
 the branch down to a few meaningful commits (interactive rebase; one
 commit is fine for a small PR). Never mention this policy in commit
 messages or PR descriptions — the owner asks for it per PR.
+
+## Agent skills
+
+### Issue tracker
+
+GitHub Issues for finished work (`/to-spec`, `/to-tickets`, `/triage`);
+`.scratch/` (git-ignored) for drafts that outlive a session. See
+`docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five default labels, on GitHub only. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: root `GLOSSARY.md` plus `docs/adr/`. See `docs/agents/domain.md`.
+
+### Workflow seams
+
+When a skill finishes, or the last item of a report, ticket set or
+checklist is done, end the reply with a seam line: what finished, and the
+next skill to run. The map is in `docs/agents/workflow.md`.
