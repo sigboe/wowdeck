@@ -136,6 +136,22 @@ describe("compareVersions", () => {
     expect(compareVersions("1.2.3.4", "0.1.1")).toBeNull();
     expect(compareVersions("", "0.1.1")).toBeNull();
   });
+
+  test("a beta sorts below its release, betas by N, above the previous release", () => {
+    const ordered = ["0.2.0", "0.3.0-beta.12", "0.3.0-beta.40", "0.3.0", "0.3.1-beta.1"];
+    for (let i = 0; i < ordered.length - 1; i++) {
+      expect(compareVersions(ordered[i]!, ordered[i + 1]!)).toBe(-1);
+      expect(compareVersions(ordered[i + 1]!, ordered[i]!)).toBe(1);
+    }
+    expect(compareVersions("v0.3.0-beta.12", "0.3.0-beta.12")).toBe(0);
+    expect(compareVersions("0.3.0-beta.9", "0.3.0-beta.10")).toBe(-1);
+  });
+
+  test("null for pre-releases other than -beta.N", () => {
+    expect(compareVersions("1.2.3-rc.1", "0.1.1")).toBeNull();
+    expect(compareVersions("1.2.3-beta", "0.1.1")).toBeNull();
+    expect(compareVersions("1.2.3-beta.x", "0.1.1")).toBeNull();
+  });
 });
 
 describe("PluginUpdateCheck", () => {
@@ -163,6 +179,25 @@ describe("PluginUpdateCheck", () => {
       checked: true,
       toastPending: true,
     });
+  });
+
+  test("the release body is stored with the answer as its release notes", async () => {
+    const { check, stamp, restart, calls } = makeCheck({
+      respond: () => ({ ...withZip("v0.2.0"), body: "## What's changed\n- Fixes" }),
+    });
+    await check.check();
+    expect(stamp()?.releaseNotes).toBe("## What's changed\n- Fixes");
+    // A cached answer (a restart inside the day) keeps them.
+    restart();
+    await check.check();
+    expect(calls()).toBe(1);
+    expect(stamp()?.releaseNotes).toBe("## What's changed\n- Fixes");
+  });
+
+  test("a release without a body stores no release notes", async () => {
+    const { check, stamp } = makeCheck({ respond: () => withZip("v0.2.0") });
+    await check.check();
+    expect(stamp()).not.toHaveProperty("releaseNotes");
   });
 
   test("an asset without an API url falls back to its browser_download_url", async () => {

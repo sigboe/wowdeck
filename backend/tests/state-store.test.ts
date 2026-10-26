@@ -122,6 +122,26 @@ describe("StateStore normalizes stored settings (RF-07)", () => {
     });
   });
 
+  test("a beta answer and its release notes survive a reload; notes that are not text are dropped", () => {
+    const path = join(mkdtempSync(join(tmpdir(), "state-store-")), "state.json");
+    const beta = {
+      checkedAt: 123,
+      latestVersion: "v0.3.1-beta.40",
+      releaseUrl: null,
+      downloadUrl: null,
+      releaseNotes: "## What's changed\n- Get Addons: faster search",
+    };
+    writeFileSync(path, JSON.stringify({ settings: { lastPluginUpdate: beta, pluginUpdateToastShownFor: "v0.3.1-beta.40" } }));
+    const { settings } = new StateStore(path).load();
+    expect(settings.lastPluginUpdate).toEqual({ ...beta, latestVersion: "0.3.1-beta.40" });
+    expect(settings.pluginUpdateToastShownFor).toBe("0.3.1-beta.40");
+
+    writeFileSync(path, JSON.stringify({ settings: { lastPluginUpdate: { ...beta, releaseNotes: 7 } } }));
+    expect(new StateStore(path).load().settings.lastPluginUpdate).not.toHaveProperty("releaseNotes");
+    writeFileSync(path, JSON.stringify({ settings: { lastPluginUpdate: { ...beta, latestVersion: "0.3.1-rc.1" } } }));
+    expect(new StateStore(path).load().settings.lastPluginUpdate).toBeNull();
+  });
+
   test("the toast gate's shown-version mark survives a reload; anything but a version costs one toast, not a wrong one", () => {
     const path = join(mkdtempSync(join(tmpdir(), "state-store-")), "state.json");
     writeFileSync(path, JSON.stringify({ settings: { pluginUpdateToastShownFor: "v0.2.0" } }));

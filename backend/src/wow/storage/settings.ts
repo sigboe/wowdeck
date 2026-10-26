@@ -12,6 +12,7 @@ import type {
   PluginUpdateBackoff,
   PluginUpdateSnapshot,
 } from "../../api/contracts";
+import { normalizeVersion } from "../plugin/PluginVersion";
 
 interface Rule<T> {
   default: () => T;
@@ -55,29 +56,29 @@ export function normalizeSteamGame(value: unknown): PluginSettings["steamGame"] 
 }
 
 /**
- * A stored release version (no leading v), or null — the shape every
- * persisted WoWDeck version must have (`pluginUpdateToastShownFor`, the
- * snapshot's `latestVersion`): a bad value only costs one repeated toast, a
- * guessed one could cost a missed one.
+ * A stored WoWDeck version (X.Y.Z or X.Y.Z-beta.N, no leading v), or
+ * null — the shape every persisted WoWDeck version must have
+ * (`pluginUpdateToastShownFor`, the snapshot's `latestVersion`): a bad value
+ * only costs one repeated toast, a guessed one could cost a missed one.
  */
 function normalizedVersion(value: unknown): string | null {
   if (typeof value !== "string") {
     return null;
   }
-  const trimmed = value.trim();
-  return /^v?\d+(?:\.\d+){0,2}$/.test(trimmed) ? trimmed.replace(/^v/, "") : null;
+  return normalizeVersion(value);
 }
 
 /**
- * The stored WoWDeck-release answer: a timestamp, a parseable dotted version
- * (no leading v) and two optional URLs. Anything else is dropped rather than
- * half-trusted — a bad stamp only costs one extra check.
+ * The stored WoWDeck-release answer: a timestamp, a parseable version (no
+ * leading v), two optional URLs and the optional release notes. Anything
+ * else is dropped rather than half-trusted — a bad stamp only costs one
+ * extra check.
  */
 export function normalizePluginUpdateSnapshot(value: unknown): PluginUpdateSnapshot | null {
   if (!value || typeof value !== "object") {
     return null;
   }
-  const { checkedAt, latestVersion, releaseUrl, downloadUrl } = value as Record<string, unknown>;
+  const { checkedAt, latestVersion, releaseUrl, downloadUrl, releaseNotes } = value as Record<string, unknown>;
   if (typeof checkedAt !== "number" || !Number.isFinite(checkedAt)) {
     return null;
   }
@@ -92,6 +93,7 @@ export function normalizePluginUpdateSnapshot(value: unknown): PluginUpdateSnaps
     latestVersion: latest,
     releaseUrl: url(releaseUrl),
     downloadUrl: url(downloadUrl),
+    ...(typeof releaseNotes === "string" && releaseNotes.trim() !== "" && { releaseNotes }),
   };
 }
 

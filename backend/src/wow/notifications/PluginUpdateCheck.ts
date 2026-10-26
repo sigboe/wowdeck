@@ -5,7 +5,7 @@
  * release page and the packaged zip; staging that zip for Decky's own
  * installer is system.updateStage's job (UpdateStager).
  *
- * Asks GitHub's `releases/latest` API **at most once a day**, following the
+ * Asks the channel's build source **at most once a day**, following the
  * same cadence rule as the addon check behind the SteamOS toast
  * (CheckCadence, own timestamp and interval): an engine session on a Deck
  * that sleeps can last weeks, so "once per session" would mean "possibly
@@ -25,13 +25,9 @@
  * re-arms the daily cadence. Failed checks stay completely silent: no
  * toast, no error, one structured stderr line (below).
  *
- * The optional GitHub token setting (owned by the addon source,
- * GitHubProvider) is reused opportunistically: when GitHub accepts it — the
- * owner's own token while the repo is still private, say — the check answers
- * through it; when it is unset or rejected, the same call goes out
- * unauthenticated, so a configured token can never make the answer worse than
- * none. `releases/latest` never returns drafts or prereleases, so its tag is
- * the newest stable release.
+ * The builds come from the update channel's build source (BuildSource):
+ * Stable, GitHub's `releases/latest`, is the only one so far. Of the
+ * candidates it returns, the newest is the answer.
  *
  * "unknown", never an error: the repo can be private beyond the token's
  * reach (the API answers 404), the Deck can be offline, GitHub can
@@ -41,12 +37,17 @@
 
 import type { PluginUpdateBackoff, PluginUpdateSnapshot } from "../../api/contracts";
 import type { NetworkClient } from "../net/network";
+import {
+  type BuildSource,
+  type CandidateBuild,
+  GithubLatestReleaseSource,
+  RELEASES_PAGE,
+  type UpdateChannel,
+} from "../plugin/BuildSource";
+import { compareVersions } from "../plugin/PluginVersion";
 import { backoffIntervalMs, DAY_MS, HOUR_MS, isDue, SingleFlight } from "./CheckCadence";
 
-const RELEASES_PAGE = "https://github.com/sigboe/wowdeck/releases";
-/** tools/package.py names the zip after plugin.json's name, never a version. */
-const ZIP_ASSET_NAME = "WoWDeck.zip";
-const GH_HEADERS = { Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" };
+export { compareVersions };
 
 export interface PluginUpdateStatus {
   status: "current" | "available" | "unknown";
@@ -106,47 +107,24 @@ function memoryStore(): PluginUpdateStore {
   };
 }
 
-/**
- * Compare dotted numeric versions ("1.2.3", "v0.1", "0.1.1"); null when
- * either side is not one ("banana", "1.2.3.4") — the caller treats
- * "can't tell" as unknown rather than guessing an order.
- */
-export function compareVersions(a: string, b: string): number | null {
-  const pa = parseDotted(a);
-  const pb = parseDotted(b);
-  if (!pa || !pb) return null;
-  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
-    const d = (pa[i] ?? 0) - (pb[i] ?? 0);
-    if (d !== 0) return Math.sign(d);
-  }
-  return 0;
-}
-
-function parseDotted(v: string): number[] | null {
-  const m = /^v?(\d+(?:\.\d+){0,2})$/.exec(v.trim());
-  return m ? m[1]!.split(".").map(Number) : null;
-}
-
-interface GithubLatestRelease {
-  tag_name?: string;
-  html_url?: string;
-  assets?: { name?: string; url?: string; browser_download_url?: string }[];
-}
-
 export class PluginUpdateCheck {
   #flight = new SingleFlight<Omit<PluginUpdateStatus, "toastPending">>();
+  readonly #sources: Record<UpdateChannel, BuildSource>;
+  readonly #channel: UpdateChannel = "stable";
 
   constructor(
-    private net: Pick<NetworkClient, "getJson">,
+    net: Pick<NetworkClient, "getJson">,
     private currentVersion: string,
     /** Overridable like HUB_URL, so the integration test points it at its mock. */
-    private releasesUrl = "https://api.github.com/repos/sigboe/wowdeck/releases/latest",
+    releasesUrl = "https://api.github.com/repos/sigboe/wowdeck/releases/latest",
     /** The addon source's optional GitHub token, reused when it can read this repo. */
-    private tokenProvider: () => string | undefined = () => undefined,
+    tokenProvider: () => string | undefined = () => undefined,
     /** The persisted answer and timestamp: this is the once-a-day cap. */
     private store: PluginUpdateStore = memoryStore(),
     private now: () => number = Date.now,
-  ) {}
+  ) {
+    this.#sources = { stable: new GithubLatestReleaseSource(net, releasesUrl, tokenProvider) };
+  }
 
   /**
    * The stored answer when the last check is inside the interval, otherwise
@@ -257,59 +235,28 @@ export class PluginUpdateCheck {
   }
 
   /**
-   * One GitHub call (plus one unauthenticated retry when a token was
-   * rejected): the newest release as a snapshot to store (checkedAt still
-   * unset), or null when the check could not run.
+   * One ask of the channel's build source: its newest candidate as a
+   * snapshot to store (checkedAt still unset), or null when the check could
+   * not run or found no build with a parseable version.
    */
   async #fetch(): Promise<PluginUpdateSnapshot | null> {
-    const token = this.tokenProvider()?.trim();
-    // With a token configured, one authenticated attempt and — only if it
-    // fails — one unauthenticated retry (the token may be expired, or have
-    // no read access to this repo). Without a token, a single attempt.
-    let release: GithubLatestRelease | null = null;
-    let failure: unknown;
-    for (const headers of token
-      ? [{ ...GH_HEADERS, Authorization: `Bearer ${token}` }, GH_HEADERS]
-      : [GH_HEADERS]) {
-      try {
-        release = await this.net.getJson<GithubLatestRelease>(this.releasesUrl, { headers });
-        break;
-      } catch (err) {
-        failure = err;
-      }
+    const builds = await this.#sources[this.#channel].candidates();
+    let newest: CandidateBuild | null = null;
+    for (const build of builds ?? []) {
+      // Sources only return parseable versions, so the comparison never
+      // answers "can't tell" here.
+      if (newest === null || (compareVersions(build.version, newest.version) ?? 0) > 0) newest = build;
     }
-    if (release === null) {
-      // Expected states, not failures (private repo 404, offline, rate
-      // limited, a rejected token). The message is the network layer's own,
-      // already redacted; the token itself is never logged.
-      console.error(
-        `[plugin-update] check unavailable: ${failure instanceof Error ? failure.message : String(failure)}`,
-      );
-      return null;
-    }
-    const tag = release.tag_name?.trim();
-    if (!tag) return null;
-    const latest = tag.replace(/^v/, "");
-    if (compareVersions(latest, this.currentVersion) === null) return null;
-
+    if (newest === null || compareVersions(newest.version, this.currentVersion) === null) return null;
     // The zip is stored whatever the running version: a same-day rollback
     // below this release then still finds it (#fromStamp exposes it only
     // while the release is newer).
     return {
       checkedAt: 0,
-      latestVersion: latest,
-      releaseUrl: release.html_url ?? RELEASES_PAGE,
-      downloadUrl: zipAssetUrl(release),
+      latestVersion: newest.version,
+      releaseUrl: newest.releaseUrl,
+      downloadUrl: newest.downloadUrl,
+      ...(newest.releaseNotes !== null && { releaseNotes: newest.releaseNotes }),
     };
   }
-}
-
-/**
- * The zip's API asset URL (fetched with Accept: application/octet-stream),
- * else its browser_download_url. Only the API URL serves a private repo's
- * asset to a token; github.com/…/releases/download answers 404 to one.
- */
-function zipAssetUrl(release: GithubLatestRelease): string | null {
-  const asset = release.assets?.find((a) => a.name === ZIP_ASSET_NAME);
-  return asset?.url ?? asset?.browser_download_url ?? null;
 }
