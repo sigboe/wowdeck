@@ -1,11 +1,16 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import {
   closeStalePanel,
+  pluginUpdateButton,
+  pluginUpdateDot,
+  pluginUpdatePanel,
   pluginUpdateRow,
   pluginUpdateToast,
   requestPluginUpdate,
   type PluginUpdateInfo,
 } from "./pluginUpdate";
+
+const ZIP = "https://api.github.com/repos/sigboe/wowdeck/releases/assets/7";
 
 const info = (over: Partial<PluginUpdateInfo>): PluginUpdateInfo => ({
   status: "current",
@@ -13,6 +18,8 @@ const info = (over: Partial<PluginUpdateInfo>): PluginUpdateInfo => ({
   latestVersion: null,
   releaseUrl: null,
   downloadUrl: null,
+  checked: true,
+  toastPending: false,
   ...over,
 });
 
@@ -25,12 +32,36 @@ describe("pluginUpdateToast", () => {
     expect(pluginUpdateToast(info({ status: "unknown" }))).toBeNull();
   });
 
-  test("the toast names the new version", () => {
+  test("no toast when the engine already showed this version's", () => {
+    // The engine's gate decides (system.updateCheck's toastPending): an
+    // available answer whose toast already fired — re-read on every wake,
+    // every panel, every restart — stays quiet.
+    expect(
+      pluginUpdateToast(info({ status: "available", latestVersion: "0.2.0", toastPending: false })),
+    ).toBeNull();
+  });
+
+  test("the toast names the new version and where to go", () => {
     expect(
       pluginUpdateToast(
-        info({ status: "available", latestVersion: "0.2.0", releaseUrl: "https://x" }),
+        info({
+          status: "available",
+          latestVersion: "0.2.0",
+          releaseUrl: "https://x",
+          toastPending: true,
+        }),
       ),
-    ).toEqual({ title: "WoWDeck 0.2.0 available", body: "Link in Options → Updates" });
+    ).toEqual({ title: "WoWDeck 0.2.0 available", body: "Update in Options" });
+  });
+
+  test("a cached answer the gate marks pending still toasts (it is the first for that version)", () => {
+    // e.g. the engine restarted holding yesterday's answer that no toast
+    // was ever shown for: cached (checked false), pending true, one toast.
+    expect(
+      pluginUpdateToast(
+        info({ status: "available", latestVersion: "0.2.0", checked: false, toastPending: true }),
+      ),
+    ).toEqual({ title: "WoWDeck 0.2.0 available", body: "Update in Options" });
   });
 });
 
@@ -67,6 +98,68 @@ describe("pluginUpdateRow", () => {
       label: "WoWDeck 0.1.1",
       description: "Couldn't check for a newer release",
     });
+  });
+});
+
+describe("pluginUpdatePanel", () => {
+  test("available: one line naming the target version", () => {
+    expect(
+      pluginUpdatePanel(info({ status: "available", latestVersion: "0.2.0", downloadUrl: ZIP })),
+    ).toEqual({
+      text: "WoWDeck 0.2.0 available",
+    });
+  });
+
+  test("absent while the release has no WoWDeck.zip: Update could only fail", () => {
+    expect(
+      pluginUpdatePanel(info({ status: "available", latestVersion: "0.2.0", downloadUrl: null })),
+    ).toBeNull();
+  });
+
+  test("absent while unanswered, current or unknown", () => {
+    expect(pluginUpdatePanel(null)).toBeNull();
+    expect(pluginUpdatePanel(info({ status: "current" }))).toBeNull();
+    expect(pluginUpdatePanel(info({ status: "unknown" }))).toBeNull();
+  });
+
+  test("absent when an available answer names no version", () => {
+    expect(pluginUpdatePanel(info({ status: "available", latestVersion: null }))).toBeNull();
+  });
+});
+
+describe("pluginUpdateDot", () => {
+  test("orange while a release is available", () => {
+    expect(
+      pluginUpdateDot(info({ status: "available", latestVersion: "0.2.0", downloadUrl: ZIP })),
+    ).toBe("update");
+  });
+
+  test("off while the release has no WoWDeck.zip", () => {
+    expect(
+      pluginUpdateDot(info({ status: "available", latestVersion: "0.2.0", downloadUrl: null })),
+    ).toBeNull();
+  });
+
+  test("off before the first answer", () => {
+    expect(pluginUpdateDot(null)).toBeNull();
+  });
+
+  test("off once up to date (cleared after the update installs)", () => {
+    expect(pluginUpdateDot(info({ status: "current", currentVersion: "0.2.0" }))).toBeNull();
+  });
+
+  test("off when the check couldn't run", () => {
+    expect(pluginUpdateDot(info({ status: "unknown" }))).toBeNull();
+  });
+});
+
+describe("pluginUpdateButton", () => {
+  test("idle: Update, usable", () => {
+    expect(pluginUpdateButton(false)).toEqual({ label: "Update", disabled: false });
+  });
+
+  test("staging: Preparing…, disabled", () => {
+    expect(pluginUpdateButton(true)).toEqual({ label: "Preparing…", disabled: true });
   });
 });
 
