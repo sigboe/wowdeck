@@ -975,12 +975,14 @@ export interface Diagnostics {
 export interface PluginUpdateSnapshot {
   /** Epoch ms of the check that produced this answer. */
   checkedAt: number;
-  /** The newest stable release's version, without a leading v. */
+  /** The offered build's version (X.Y.Z or X.Y.Z-beta.N), without a leading v. */
   latestVersion: string;
   /** The release page to point the user at. */
   releaseUrl: string | null;
   /** The release's WoWDeck.zip asset, when the release published one. */
   downloadUrl: string | null;
+  /** The release notes (the GitHub release body, Markdown); absent when it has none. */
+  releaseNotes?: string;
 }
 
 /**
