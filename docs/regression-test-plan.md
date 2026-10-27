@@ -147,7 +147,7 @@ the status tag and the glyph fallback; all fixed in the next build.
 | M-17 | P1 | | Delete one folder of a managed addon (e.g. a suite's library folder) over SSH, reopen My Addons | Row says "files missing"; Menu shows **Reinstall to repair** first, in blue |
 | M-18 | P0 | | Menu → Reinstall to repair | Toast "Reinstalled"; the folder is back; "files missing" gone |
 | M-19 | P2 | | Menu on an up-to-date managed addon | **Reinstall** after Details; it rewrites the files; toast "Reinstalled". Afterwards Details offers no "Roll back" to the version already installed, and an older version kept from an earlier update is still offered |
-| M-20 | P2 | | Ignore an addon | Row says "ignored" (the reason text for menu-ignored addons) |
+| M-20 | P2 | | Ignore an addon | With **Show ignored** on, the row carries the **IGNORED** tag and no "ignored" reason text (the tag says it; other reasons, e.g. "files missing", still show) |
 | M-22 | P1 | S | Scroll far down My Addons, then press Up repeatedly back to the top (and the same in Options, Get Addons, Manage backups) | **Every single press** that would bring the focused row near an edge scrolls the list a little, like Neovim's scrolloff: the row never slides under the title or the floating tab bar, and there is never a run of presses with no scrolling followed by a jump. In the QAM the row stays around the middle |
 | M-23 | P1 | S | Far down the list: open the **Installation** dropdown and back out; open Details (A) and close it; open the context menu (Menu) and back out | Each time focus returns to **the same row** and the list stays where it was |
 | M-24 | P1 | S | Options (Menu) on DBM, Plater or WeakAuras (installed from CurseForge; the item only shows when a pre-release is newer than stable, or the addon is already on Beta/Alpha) → **Release channel: Stable** → Beta | A second menu with Stable (marked), Beta, Alpha. Picking Alpha (DBM/Plater/WeakAuras have alphas) shows the row's spinner, then the toast "<name>: Alpha – Installed <alpha version>"; the row has an **ALPHA** tag and its version is the alpha. Picking the marked channel does nothing |
@@ -172,6 +172,16 @@ the status tag and the glyph fallback; all fixed in the next build.
 | M-42 | P1 | S | On an unmanaged addon known to CurseForge (Speedy AutoLoot, Details) the footer shows **X Find online source**: press X (or Options → **Find online source…**); then a sub-folder (OmniCC_Config) and a private one | A dialog lists sources whose release installs that folder as Get Addons rows (summary, downloads, date), the best one focused (B closes it); a sub-folder finds its main addon; none: "No online source found." A opens the source's Details (B returns to the same row); X, in the row or in Details ("Use this source"), closes both and installs: toast "<name> now updates from <source>", the row turns into a normal managed one on the latest version, and its menu offers "Roll back to <the hand-copied version>", which puts the hand-copied files back |
 | M-43 | P1 | | An addon with an update waiting; turn its source off in Options (e.g. WoWInterface), back to My Addons, **Update all** | The row says Source off with no new version; Update all (N), the Library band and the update toast leave it out; Update all finishes with no failure for it |
 | M-21 | P1 | S | Order of My Addons | Updates first, then "files missing" / "not on …", then A–Z, ignored last. After X updates the top row, it moves to its A–Z place: **note where focus lands** (wanted: on the next row with an update, not the top of the page) |
+| M-44 | P1 | S | On an addon with an update: X (Update); then Options → Ignore and back; then Remove. Repeat Update from a Get Addons result | After each action the row changes once, with no flicker or second spinner: Update → the new version and an UPDATED tag (Get Addons: "Installed, Updated"); Ignore → the row hides (with Show ignored: the IGNORED tag); Remove → the row is gone (Get Addons: Install again) (verified DEVICE 2026-10-27: the row goes from its spinner straight to the new state; the refresh button stays still) |
+
+One list refresh per addon action (#33) passed M-44, M-4 (row), M-8, M-11,
+M-27, M-33 and M-38b on device on 2026-10-27, driven with the pad and
+watched through an in-memory hook on every engine call and every state of
+the row. Each action read the list at most once. Update first failed M-44:
+its spinner ended before that read landed, so the row showed the old version
+again for up to 150 ms beside a spinning refresh button. The row now stays
+busy until the read lands, which does not spin the refresh button; checked
+again on device the same day in My Addons and Get Addons.
 
 ### 4.3 Get Addons (widened QAM tab)
 

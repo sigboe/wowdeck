@@ -1724,8 +1724,9 @@ in front of any action that deletes data from disk, and say in the text what is
 deleted and whether it can be undone. Source (adapted, not mandated): Xbox
 Accessibility Guideline 115, "Offer players a mechanism to review, confirm, and
 undo permanent or destructive actions". Because opening the modal remounts the
-panel (G4), the action must not depend on the opener's React state; the
-backend `addons.changed` event refreshes the remounted list. Accepted by the owner after
+panel (G4), the action must not depend on the opener's React state; it runs
+through the module-scope addon session, which reads the list again when it
+ends, so the remounted list is current. Accepted by the owner after
 on-device use (2026-10-13). Known limitation: the left stick did not move
 focus in this Steam-owned dialog, only the D-pad (not investigated; not our
 code).

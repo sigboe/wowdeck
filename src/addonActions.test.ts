@@ -61,9 +61,20 @@ function harness(answers: Record<string, unknown>, autoUpdate = false) {
     toast: (title, body = "") => log.push(body ? `toast ${title} | ${body}` : `toast ${title}`),
     toastError: (title, e) => log.push(`error ${title} | ${e instanceof Error ? e.message : e}`),
     autoUpdateOn: () => autoUpdate,
-    setBusy: (id, on) => log.push(`busy ${id} ${on}`),
     setUpdatingAll: (scope) => log.push(`updatingAll ${scope}`),
-    onChanged: () => log.push("reload"),
+    begin: (id) => {
+      if (id) {
+        log.push(`busy ${id} true`);
+      }
+    },
+    settled: (change, id) => {
+      if (id) {
+        log.push(`busy ${id} false`);
+      }
+      log.push(
+        change === null ? "nothing" : change === "reload" ? "reload" : `apply ${change.version}`,
+      );
+    },
   };
   return { actions: createAddonActions(deps), log, calls };
 }
@@ -142,10 +153,10 @@ describe("addon actions: reinstall, channel, pause, ignore, remove", () => {
     expect(h.log).toContain("toast Automatic updates resumed | Details");
   });
 
-  test("ignore says nothing", async () => {
-    const h = harness({ "addons.setIgnored": { addon } });
+  test("ignore says nothing and hands back the engine's addon", async () => {
+    const h = harness({ "addons.setIgnored": { addon: { ...addon, version: "1.0i" } } });
     await h.actions.setIgnored(addon, true);
-    expect(h.log).toEqual(["busy a1 true", "busy a1 false", "reload"]);
+    expect(h.log).toEqual(["busy a1 true", "busy a1 false", "apply 1.0i"]);
   });
 
   test("remove: managed by id, unmanaged by folder", async () => {
@@ -256,7 +267,7 @@ describe("addon actions: rollback", () => {
 });
 
 describe("addon actions: update all", () => {
-  test("counts updated and failed, scope sent, flag cleared, reload", async () => {
+  test("counts updated and failed, scope sent, reload, then the flag cleared", async () => {
     const h = harness({
       "addons.updateAll": {
         operations: [op("updated"), op("updated"), op("failed"), op("current")],
@@ -267,8 +278,8 @@ describe("addon actions: update all", () => {
     expect(h.log).toEqual([
       "updatingAll all",
       "toast Updated 2 addons | 1 addon couldn't be updated",
-      "updatingAll null",
       "reload",
+      "updatingAll null",
     ]);
   });
 
@@ -279,7 +290,7 @@ describe("addon actions: update all", () => {
     const bad = harness({ "addons.updateAll": new Error("offline") });
     await bad.actions.updateAll("installation");
     expect(bad.log).toContain("error Couldn't update addons | offline");
-    expect(bad.log.slice(-2)).toEqual(["updatingAll null", "reload"]);
+    expect(bad.log.slice(-2)).toEqual(["reload", "updatingAll null"]);
   });
 });
 
@@ -315,12 +326,76 @@ describe("addon actions: install", () => {
     );
   });
 
-  test("failed and rejected installs say so and still reload", async () => {
+  test("a failed install changes nothing; a rejected one reloads", async () => {
     const failed = harness({ "addons.install": { addon, operation: op("failed", "HTTP 404") } });
     await failed.actions.install(result);
-    expect(failed.log).toEqual(["error Couldn't install Details | HTTP 404", "reload"]);
+    expect(failed.log).toEqual(["error Couldn't install Details | HTTP 404", "nothing"]);
     const rejected = harness({ "addons.install": new Error("boom") });
     await rejected.actions.install(result);
     expect(rejected.log).toEqual(["error Couldn't install Details | boom", "reload"]);
+  });
+});
+
+describe("addon actions: what each one changed in the list", () => {
+  const after = { ...addon, version: "after" };
+  const last = (h: ReturnType<typeof harness>) => h.log[h.log.length - 1];
+
+  test("flags only: the engine's addon", async () => {
+    const pause = harness({ "addons.setAutoUpdatePaused": { addon: after } });
+    await pause.actions.setAutoUpdatePaused(addon, true);
+    expect(last(pause)).toBe("apply after");
+  });
+
+  test("update: up to date or failed is the engine's addon; updated reads the list", async () => {
+    for (const [status, change] of [
+      ["current", "apply after"],
+      ["failed", "apply after"],
+      ["updated", "reload"],
+    ] as const) {
+      const h = harness({ "addons.update": { addon: after, operation: op(status) } });
+      await h.actions.update(addon);
+      expect(last(h)).toBe(change);
+    }
+  });
+
+  test("reinstall, channel and rollback read the list unless they failed", async () => {
+    const ok = harness({
+      "addons.reinstall": { addon: after, operation: op("installed") },
+      "addons.setChannel": { addon: after, operation: op("installed") },
+      "addons.rollback": { addon: after, operation: op("installed") },
+    });
+    await ok.actions.reinstall(addon);
+    await ok.actions.setChannel(addon, "beta");
+    await ok.actions.rollback(addon);
+    expect(ok.log.filter((l) => l === "reload")).toHaveLength(3);
+    const bad = harness({
+      "addons.reinstall": { addon: after, operation: op("failed") },
+      "addons.setChannel": { addon: after, operation: op("failed") },
+      "addons.rollback": { addon: after, operation: op("failed") },
+    });
+    await bad.actions.reinstall(addon);
+    await bad.actions.setChannel(addon, "beta");
+    await bad.actions.rollback(addon);
+    expect(bad.log.filter((l) => l === "apply after")).toHaveLength(3);
+  });
+
+  test("remove reads the list; a failed source change keeps the engine's addon, a failed adopt changes nothing", async () => {
+    const remove = harness({ "addons.remove": {} });
+    await remove.actions.remove(addon);
+    expect(last(remove)).toBe("reload");
+    const source = harness({ "addons.adopt": { addon, operation: op("failed") } });
+    await source.actions.useSource({ ...addon, providerId: null }, {
+      providerId: "Curse",
+      externalId: "1",
+      name: "X",
+    } as SearchResult);
+    expect(last(source)).toBe("nothing");
+    const change = harness({ "addons.changeSource": { addon: after, operation: op("failed") } });
+    await change.actions.useSource(addon, {
+      providerId: "WowInterface",
+      externalId: "1",
+      name: "X",
+    } as SearchResult);
+    expect(last(change)).toBe("apply after");
   });
 });

@@ -24,6 +24,8 @@ What's new in each version of WoWDeck Addon Manager. The format follows
 ### Fixed
 
 - Update all no longer reports failures for addons from a source you turned off.
+- Updating, ignoring or removing an addon changes its row once, without the list
+  flickering or briefly showing the old version.
 
 ## [0.2.0] - 2026-10-25
 
