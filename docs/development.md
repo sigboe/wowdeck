@@ -51,7 +51,8 @@ version lives in `package.json`, `plugin.json` and `backend/package.json`,
 written and checked by `tools/version.py`:
 
 ```bash
-# on next — bump and commit, then PR next → main and merge:
+# on next — CHANGELOG.md: [Unreleased] becomes [1.0.0] - <date>, a fresh
+# empty [Unreleased] goes above it; then bump, commit, PR next → main, merge:
 make version-set VERSION=1.0.0
 # on main, after the merge:
 make release-tag                 # refuse dirty/mismatched tree, create v1.0.0
@@ -59,7 +60,10 @@ git push origin main v1.0.0      # .github/workflows/release.yml publishes
 ```
 
 The tag-triggered workflow reruns the CI checks, packages the zip (with the
-bundled CurseForge key) and attaches it to a GitHub Release. The asset keeps
+bundled CurseForge key) and attaches it to a GitHub Release whose notes are
+the version's `CHANGELOG.md` section (`tools/release-notes.ts`; no section,
+no release). Those notes are what players read in the update panel, so the
+changelog follows `AGENTS.md` "Changelog". The asset keeps
 the zip's plugin-name filename on purpose — Decky's install-from-URL derives
 the plugin name from the last URL segment (`tools/package.py` documents the
 update-hang that any other name causes).
@@ -70,8 +74,9 @@ Every push to `next` that changes more than docs (`*.md`, `docs/`) is
 published by `.github/workflows/beta.yml` as a beta pre-release for the Beta
 update channel; nobody runs anything. It calls `ci.yml` with the beta
 version, so the same gates must pass before anything is published; then it
-tags the merged commit `v<version>`, attaches the same `WoWDeck.zip`, generates
-notes from the PRs merged since the previous beta, and deletes all but the
+tags the merged commit `v<version>`, attaches the same `WoWDeck.zip`, uses
+`CHANGELOG.md`'s `[Unreleased]` section as the notes ("Small fixes and
+improvements." when it is empty), and deletes all but the
 newest three beta releases together with their tags.
 
 The version is `<last stable tag, patch+1>-beta.<run number>`

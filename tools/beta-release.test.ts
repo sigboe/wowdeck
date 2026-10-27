@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { betasToPrune, nextBetaVersion, previousBeta } from "./beta-release";
+import { betasToPrune, nextBetaVersion } from "./beta-release";
 
 describe("nextBetaVersion", () => {
   test("bumps the newest stable tag's patch and appends the run number", () => {
@@ -65,18 +65,6 @@ describe("betasToPrune", () => {
   });
 });
 
-describe("previousBeta", () => {
-  test("is the newest beta tag, ignoring stable tags", () => {
-    expect(previousBeta(["v0.3.1-beta.56", "v0.4.0", "v0.3.1-beta.57", "v0.3.0"])).toBe(
-      "v0.3.1-beta.57",
-    );
-  });
-
-  test("is null before the first beta", () => {
-    expect(previousBeta(["v0.3.0"])).toBeNull();
-  });
-});
-
 describe("command line", () => {
   async function run(args: string[], stdin: string): Promise<{ out: string; code: number }> {
     const proc = Bun.spawn(["bun", `${import.meta.dir}/beta-release.ts`, ...args], {
@@ -99,10 +87,6 @@ describe("command line", () => {
     const tags =
       "v0.3.0\nv0.3.1-beta.1\nv0.3.1-beta.2\nv0.3.1-beta.3\nv0.3.1-beta.4\nv0.3.1-beta.5\n";
     expect(await run(["prune"], tags)).toEqual({ out: "v0.3.1-beta.2\nv0.3.1-beta.1\n", code: 0 });
-  });
-
-  test("previous-beta prints nothing before the first beta", async () => {
-    expect(await run(["previous-beta"], "v0.3.0\n")).toEqual({ out: "", code: 0 });
   });
 
   test("rejects a run number that is not a positive integer", async () => {

@@ -3,7 +3,6 @@
  * functions over tag names; the workflow only feeds this script and `gh`.
  *
  *   git tag -l 'v*' | bun tools/beta-release.ts next-version <run number>
- *   gh release list ... | bun tools/beta-release.ts previous-beta
  *   gh release list ... | bun tools/beta-release.ts prune
  *
  * Tags arrive one per line on stdin; answers go to stdout, one per line.
@@ -52,11 +51,6 @@ export function nextBetaVersion(tags: string[], runNumber: number): string {
   return `${newest[0]}.${newest[1]}.${newest[2] + 1}-beta.${runNumber}`;
 }
 
-/** The newest beta tag, where the next beta's generated notes start; null before the first. */
-export function previousBeta(tags: string[]): string | null {
-  return betasNewestFirst(tags)[0] ?? null;
-}
-
 async function main(argv: string[]): Promise<number> {
   const [command, ...args] = argv;
   const tags = (await Bun.stdin.text())
@@ -68,14 +62,11 @@ async function main(argv: string[]): Promise<number> {
   };
   if (command === "next-version" && args.length === 1 && /^[1-9]\d*$/.test(args[0])) {
     print([nextBetaVersion(tags, Number(args[0]))]);
-  } else if (command === "previous-beta" && args.length === 0) {
-    const tag = previousBeta(tags);
-    print(tag === null ? [] : [tag]);
   } else if (command === "prune" && args.length === 0) {
     print(betasToPrune(tags));
   } else {
     console.error(
-      "usage: beta-release.ts next-version <run number> | previous-beta | prune  (tags on stdin)",
+      "usage: beta-release.ts next-version <run number> | prune  (tags on stdin)",
     );
     return 1;
   }

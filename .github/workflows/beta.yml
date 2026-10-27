@@ -76,9 +76,11 @@ jobs:
 
       # The asset keeps the zip's own name (WoWDeck.zip), the one the
       # self-update and Decky's install-from-URL expect; see release.yml.
-      # Notes cover the PRs merged since the previous beta. A re-run keeps
-      # its run number and so its version: a release it already published
-      # is left as it is, so the run can still go on to prune.
+      # Notes are CHANGELOG.md's Unreleased section: everything this beta
+      # has over the latest stable, written for players (tools/release-notes.ts).
+      # A re-run keeps its run number and so its version: a release it
+      # already published is left as it is, so the run can still go on to
+      # prune.
       - name: Publish the pre-release
         run: |
           set -euo pipefail
@@ -86,13 +88,12 @@ jobs:
             echo "v${VERSION} is already published"
             exit 0
           fi
-          previous="$(gh release list --limit 1000 --json tagName -q '.[].tagName' | bun tools/beta-release.ts previous-beta)"
+          bun tools/release-notes.ts Unreleased > "$RUNNER_TEMP/notes.md"
           gh release create "v${VERSION}" build/*.zip \
             --target "$GITHUB_SHA" \
             --prerelease \
             --title "v${VERSION}" \
-            --generate-notes \
-            ${previous:+--notes-start-tag "$previous"}
+            --notes-file "$RUNNER_TEMP/notes.md"
 
       # Only v*-beta.* tags can be selected, so stable releases and tags
       # are never touched.

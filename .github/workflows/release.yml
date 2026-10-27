@@ -75,6 +75,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      # The version's CHANGELOG.md section, written for players
+      # (tools/release-notes.ts); a missing section fails the release here.
+      - name: Release notes
+        run: bun tools/release-notes.ts "${GITHUB_REF_NAME#v}" > "$RUNNER_TEMP/notes.md"
       - uses: actions/download-artifact@v4
         with:
           name: frontend-dist
@@ -118,5 +125,5 @@ jobs:
         run: |
           gh release create "$GITHUB_REF_NAME" build/*.zip \
             --title "$GITHUB_REF_NAME" \
-            --generate-notes \
+            --notes-file "$RUNNER_TEMP/notes.md" \
             --verify-tag
