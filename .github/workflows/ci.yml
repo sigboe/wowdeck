@@ -52,10 +52,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - if: inputs.version != ''
-        run: python3 tools/version.py stamp "$VERSION"
-        env:
-          VERSION: ${{ inputs.version }}
       # tests/wowup-import-compat.test.ts runs upstream's import code; the
       # reference checkout is untracked, so fetch the pinned commit here.
       - name: Fetch the WowUp reference checkout
@@ -79,6 +75,17 @@ jobs:
         working-directory: backend
       # The beta workflow's version and prune decisions (tools/beta-release.ts).
       - run: bun test ./tools
+      # The tests run the engine at its committed version: they mock that
+      # version as the latest stable release, which a beta version can never
+      # be. A beta build then stamps its version and rebuilds the engine
+      # it ships, which differs from the tested one only in that string.
+      - if: inputs.version != ''
+        run: python3 tools/version.py stamp "$VERSION"
+        env:
+          VERSION: ${{ inputs.version }}
+      - if: inputs.version != ''
+        run: bun run build
+        working-directory: backend
       - uses: actions/upload-artifact@v4
         with:
           name: backend-binary
