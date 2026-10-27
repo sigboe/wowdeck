@@ -52,7 +52,8 @@ written and checked by `tools/version.py`:
 
 ```bash
 # on next — CHANGELOG.md: [Unreleased] becomes [1.0.0] - <date>, a fresh
-# empty [Unreleased] goes above it; then bump, commit, PR next → main, merge:
+# empty [Unreleased] goes above it, link refs updated; then bump, commit,
+# PR next → main, merge:
 make version-set VERSION=1.0.0
 # on main, after the merge:
 make release-tag                 # refuse dirty/mismatched tree, create v1.0.0
@@ -63,7 +64,7 @@ The tag-triggered workflow reruns the CI checks, packages the zip (with the
 bundled CurseForge key) and attaches it to a GitHub Release whose notes are
 the version's `CHANGELOG.md` section (`tools/release-notes.ts`; no section,
 no release). Those notes are what players read in the update panel, so the
-changelog follows `AGENTS.md` "Changelog". The asset keeps
+changelog follows `docs/changelog.md`. The asset keeps
 the zip's plugin-name filename on purpose — Decky's install-from-URL derives
 the plugin name from the last URL segment (`tools/package.py` documents the
 update-hang that any other name causes).
