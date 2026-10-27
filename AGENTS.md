@@ -54,8 +54,8 @@ Small, functional commits with imperative messages scoped by area
 
 The run is not done until all three happen:
 
-1. Commit the code **and** every doc it touched (`GLOSSARY.md`, `docs/adr/`,
-   `docs/regression-test-plan.md`). No tracked file stays modified.
+1. Commit the code **and** every doc it touched (`CHANGELOG.md`, `GLOSSARY.md`,
+   `docs/adr/`, `docs/regression-test-plan.md`). No tracked file stays modified.
 2. Close the ticket yourself with `gh issue close` (comment format:
    `docs/agents/issue-tracker.md`, "When a ticket closes"). Close the parent
    spec too when this was its last ticket.
@@ -67,6 +67,23 @@ Keeping a ticket open is allowed when closing would be wrong. You must say
 why and what closes it. Never leave a ticket open without saying so, and
 never suggest the next ticket while one is dangling.
 
+## Changelog
+
+`CHANGELOG.md` is the release notes: the release workflows publish its
+sections verbatim (`tools/release-notes.ts`), and the plugin's update panel
+shows them to players. Write it like a game's patch notes:
+
+- Only what a player can see or do. Docs, CI, tests, refactors, agent
+  config and branching never get a line.
+- One line per feature or fix, about 20 words at most: what you can now do,
+  or what works now. Not how: no file names, code names, timings, ticket
+  numbers or internal terms (engine, RPC, toast, backoff).
+- A feature built across several PRs is still one line; edit the line in
+  `[Unreleased]` instead of adding another.
+- Headings: `Added`, `Changed`, `Fixed`, `Removed`; skip empty ones.
+
+Add the line in the commit that makes the change visible.
+
 ## Branching and merging
 
 Work flows feature branch → `next` → `main`:
@@ -76,7 +93,9 @@ Work flows feature branch → `next` → `main`:
 - `next` (the repo's default branch until the 1.0 release) carries all
   in-progress work. Feature branches branch off it and PR back into it;
   until after 1.0 nothing merges or pushes straight to `main`.
-- Releasing: on `next`, `make version-set VERSION=X.Y.Z` and commit; PR
+- Releasing: on `next`, rename `CHANGELOG.md`'s `[Unreleased]` to
+  `[X.Y.Z] - <date>` (fresh empty `[Unreleased]` above it, link refs
+  updated), `make version-set VERSION=X.Y.Z` and commit; PR
   `next` → `main`; on `main`, `make release-tag` and push `main` and the
   tag.
 
