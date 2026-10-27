@@ -47,8 +47,7 @@ plugins' settings, system files and sudo stay untouched.
 
 ## Commits
 
-Small, functional commits with imperative messages scoped by area
-(e.g. "Get Addons: …", "docs: …").
+Small, functional commits scoped by area (e.g. "Get Addons: …", "docs: …").
 
 ## Finishing an `/implement` run
 
@@ -69,20 +68,9 @@ never suggest the next ticket while one is dangling.
 
 ## Changelog
 
-`CHANGELOG.md` is the release notes: the release workflows publish its
-sections verbatim (`tools/release-notes.ts`), and the plugin's update panel
-shows them to players. Write it like a game's patch notes:
-
-- Only what a player can see or do. Docs, CI, tests, refactors, agent
-  config and branching never get a line.
-- One line per feature or fix, about 20 words at most: what you can now do,
-  or what works now. Not how: no file names, code names, timings, ticket
-  numbers or internal terms (engine, RPC, toast, backoff).
-- A feature built across several PRs is still one line; edit the line in
-  `[Unreleased]` instead of adding another.
-- Headings: `Added`, `Changed`, `Fixed`, `Removed`; skip empty ones.
-
-Add the line in the commit that makes the change visible.
+`CHANGELOG.md` is the players' release notes. Before editing it, read
+`docs/changelog.md`. Add the line in the commit that makes the change
+visible.
 
 ## Branching and merging
 
@@ -93,15 +81,13 @@ Work flows feature branch → `next` → `main`:
 - `next` (the repo's default branch until the 1.0 release) carries all
   in-progress work. Feature branches branch off it and PR back into it;
   until after 1.0 nothing merges or pushes straight to `main`.
-- Releasing: on `next`, rename `CHANGELOG.md`'s `[Unreleased]` to
-  `[X.Y.Z] - <date>` (fresh empty `[Unreleased]` above it, link refs
-  updated), `make version-set VERSION=X.Y.Z` and commit; PR
-  `next` → `main`; on `main`, `make release-tag` and push `main` and the
-  tag.
+- A branch carries its own tickets' work. Anything else (docs, tooling,
+  the release flow) goes on its own branch off `next`.
+- Releasing: `docs/development.md` "Releases".
 
 Merge PRs with a merge commit, not squash-merge. Before merging, squash
-the branch down to a few meaningful commits (interactive rebase; one
-commit is fine for a small PR). Never mention this policy in commit
+the branch down to a few meaningful commits with imperative subjects
+(interactive rebase; one commit is fine for a small PR). Never mention this policy in commit
 messages or PR descriptions — the owner asks for it per PR.
 
 ## Agent skills

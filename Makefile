@@ -61,7 +61,9 @@ build-backend:
 	$(TOOL_RUN) 'set -euo pipefail; cd backend && bun run build'
 
 # Frontend (G-2) and beta-release script, engine (G-4) and packaging (G-5) suites.
-test:
+# The engine's integration tests run the compiled engine, so it is built first:
+# a binary left from another branch would test that branch instead.
+test: build-backend
 	$(TOOL_RUN) 'set -euo pipefail; pnpm test && (cd backend && bun test) && python3 tools/test_package.py && python3 tools/test_version.py && python3 tools/test_main_bridge.py'
 
 typecheck:
