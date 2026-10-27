@@ -11,6 +11,7 @@ const info = (over: Partial<PluginUpdateInfo>): PluginUpdateInfo => ({
   releaseUrl: null,
   downloadUrl: null,
   switchToStable: false,
+  releaseNotes: null,
   checked: true,
   toastPending: false,
   ...over,

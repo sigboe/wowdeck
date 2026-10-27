@@ -408,6 +408,12 @@ export interface MethodMap {
        */
       switchToStable: boolean;
       /**
+       * The offered build's release notes (its GitHub release body,
+       * Markdown, untrusted text: shown as plain text, never as HTML). On
+       * "available" only, and null when the release has no body.
+       */
+      releaseNotes: string | null;
+      /**
        * True when a network attempt just ran (a failed one still serves the
        * stored answer); false when the interval or a failure-backoff window
        * served it without one. No surface keys on it: it makes the cadence

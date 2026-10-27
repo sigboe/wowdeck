@@ -37,6 +37,7 @@ function statusOf(over: Partial<PluginUpdateStatus> = {}): PluginUpdateStatus {
     releaseUrl: "https://x",
     downloadUrl: "https://mock/WoWDeck.zip",
     switchToStable: false,
+    releaseNotes: null,
     checked: true,
     toastPending: false,
     ...over,

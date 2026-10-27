@@ -188,6 +188,7 @@ describe("PluginUpdateCheck", () => {
       releaseUrl: "https://github.com/sigboe/wowdeck/releases/tag/v0.2.0",
       downloadUrl: "https://api.github.com/repos/sigboe/wowdeck/releases/assets/7",
       switchToStable: false,
+      releaseNotes: null,
       checked: true,
       toastPending: true,
     });
@@ -210,6 +211,21 @@ describe("PluginUpdateCheck", () => {
     const { check, stamp } = makeCheck({ respond: () => withZip("v0.2.0") });
     await check.check();
     expect(stamp()).not.toHaveProperty("releaseNotes");
+  });
+
+  test("the offered build's release notes come with the answer, fresh and cached", async () => {
+    const { check, restart } = makeCheck({
+      respond: () => ({ ...withZip("v0.2.0"), body: "## What's changed\n- Fixes" }),
+    });
+    expect((await check.check()).releaseNotes).toBe("## What's changed\n- Fixes");
+    restart();
+    expect(await check.check()).toMatchObject({ checked: false, releaseNotes: "## What's changed\n- Fixes" });
+  });
+
+  test("no release notes without a body, or for a build that is not offered", async () => {
+    expect((await makeCheck({ respond: () => withZip("v0.2.0") }).check.check()).releaseNotes).toBeNull();
+    const current = makeCheck({ respond: () => ({ ...withZip("v0.1.1"), body: "Old news" }) });
+    expect(await current.check.check()).toMatchObject({ status: "current", releaseNotes: null });
   });
 
   test("an asset without an API url falls back to its browser_download_url", async () => {
@@ -531,6 +547,7 @@ describe("the once-a-day cap", () => {
       releaseUrl: "https://github.com/sigboe/wowdeck/releases/tag/v0.2.0",
       downloadUrl: "https://api.github.com/repos/sigboe/wowdeck/releases/assets/7",
       switchToStable: false,
+      releaseNotes: null,
       checked: false,
       toastPending: true,
     });
@@ -554,6 +571,7 @@ describe("the once-a-day cap", () => {
       releaseUrl: "https://github.com/sigboe/wowdeck/releases/tag/v0.2.0",
       downloadUrl: null,
       switchToStable: false,
+      releaseNotes: null,
       checked: false,
       toastPending: false,
     });

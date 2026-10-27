@@ -21,6 +21,7 @@ const info = (over: Partial<PluginUpdateInfo>): PluginUpdateInfo => ({
   releaseUrl: null,
   downloadUrl: null,
   switchToStable: false,
+  releaseNotes: null,
   checked: true,
   toastPending: false,
   ...over,
@@ -82,7 +83,10 @@ describe("switch to stable", () => {
       title: "Switch to stable 0.3.0",
       body: "Install it in Options",
     });
-    expect(pluginUpdatePanel(info(SWITCH))).toEqual({ text: "Switch to stable 0.3.0" });
+    expect(pluginUpdatePanel(info(SWITCH))).toEqual({
+      text: "Switch to stable 0.3.0",
+      notes: null,
+    });
     expect(pluginUpdateButton(false, info(SWITCH))).toEqual({
       label: "Switch to stable 0.3.0",
       disabled: false,
@@ -144,7 +148,75 @@ describe("pluginUpdatePanel", () => {
       pluginUpdatePanel(info({ status: "available", latestVersion: "0.2.0", downloadUrl: ZIP })),
     ).toEqual({
       text: "WoWDeck 0.2.0 available",
+      notes: null,
     });
+  });
+
+  test("carries the offered build's release notes as plain text", () => {
+    const releaseNotes = [
+      "## What's Changed",
+      "",
+      "* **Update channel**: pick _Stable_ or Beta by @sigboe in https://github.com/sigboe/wowdeck/pull/24",
+      "- See [the docs](https://example.com/docs) ![badge](https://x/b.svg)",
+      "<!-- generated -->",
+      "<script>alert(1)</script>Fixed `/reload` &amp; more",
+      "",
+      "",
+      "",
+      "**Full Changelog**: https://github.com/sigboe/wowdeck/compare/v0.2.0...v0.3.0",
+    ].join("\n");
+    expect(
+      pluginUpdatePanel(
+        info({ status: "available", latestVersion: "0.3.0", downloadUrl: ZIP, releaseNotes }),
+      )?.notes,
+    ).toBe(
+      [
+        "What's Changed",
+        "",
+        "• Update channel: pick Stable or Beta by @sigboe in https://github.com/sigboe/wowdeck/pull/24",
+        "• See the docs",
+        "alert(1)Fixed /reload & more",
+        "",
+        "Full Changelog: https://github.com/sigboe/wowdeck/compare/v0.2.0...v0.3.0",
+      ].join("\n"),
+    );
+  });
+
+  test("plain text that only looks like markup stays as written", () => {
+    const releaseNotes = [
+      "Faster when x < y and a > b; use Vec<T> here",
+      "See <https://example.com/docs> or https://x.com/_private_/y",
+      "2 * 3 * 4",
+      "```",
+      "code_line *x* # not a heading",
+      "```",
+      "Bad \u0001 byte",
+    ].join("\n");
+    expect(
+      pluginUpdatePanel(
+        info({ status: "available", latestVersion: "0.3.0", downloadUrl: ZIP, releaseNotes }),
+      )?.notes,
+    ).toBe(
+      [
+        "Faster when x < y and a > b; use Vec<T> here",
+        "See https://example.com/docs or https://x.com/_private_/y",
+        "2 * 3 * 4",
+        "code_line *x* # not a heading",
+        "Bad  byte",
+      ].join("\n"),
+    );
+  });
+
+  test("notes that are empty once stripped leave the panel as it was", () => {
+    const panel = pluginUpdatePanel(
+      info({
+        status: "available",
+        latestVersion: "0.2.0",
+        downloadUrl: ZIP,
+        releaseNotes: "<!-- -->\n  \n",
+      }),
+    );
+    expect(panel).toEqual({ text: "WoWDeck 0.2.0 available", notes: null });
   });
 
   test("absent while the release has no WoWDeck.zip: Update could only fail", () => {

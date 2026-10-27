@@ -59,6 +59,8 @@ export interface PluginUpdateStatus {
    * offered as a switch rather than an update.
    */
   switchToStable: boolean;
+  /** On "available" only: the offered build's release notes (Markdown), null without a body. */
+  releaseNotes: string | null;
   /**
    * True when a network attempt just ran for this answer (even a failed one
    * that fell back to the stored answer); false when the cadence served the
@@ -255,6 +257,7 @@ export class PluginUpdateCheck {
       releaseUrl: stamp.releaseUrl ?? RELEASES_PAGE,
       downloadUrl: offered ? stamp.downloadUrl : null,
       switchToStable,
+      releaseNotes: offered ? (stamp.releaseNotes ?? null) : null,
       checked: false,
     };
   }
@@ -267,6 +270,7 @@ export class PluginUpdateCheck {
       releaseUrl: null,
       downloadUrl: null,
       switchToStable: false,
+      releaseNotes: null,
       checked,
     };
   }
