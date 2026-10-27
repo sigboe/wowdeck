@@ -111,7 +111,7 @@ function fixture(dir: string, files: Record<string, Uint8Array>) {
 describe("the File provider (Manual Install, From a file)", () => {
   test("is not a source people turn on or off, nor part of the name search, and never checks for updates", () => {
     const f = fixture("infos", {});
-    expect(f.registry.get("File")!.checksForUpdates).toBe(false);
+    expect(f.registry.get("File")!.getAll).toBeUndefined();
     expect(f.registry.providerInfos()).toEqual([
       expect.objectContaining({
         id: "File",

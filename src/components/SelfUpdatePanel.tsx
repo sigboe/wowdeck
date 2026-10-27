@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { DialogButton, Field, GamepadButton, type GamepadEvent } from "@decky/ui";
 import { QAM_VIEW } from "../qamState";
-import { pluginUpdateButton, pluginUpdateDot, pluginUpdatePanel } from "../pluginUpdate";
+import { panelOffer, pluginUpdateDot } from "../pluginUpdate";
 import { canScroll } from "../scrollEdge";
 import { selfUpdateStore } from "../selfUpdate";
 import { descriptionStyle } from "../steamTheme";
@@ -15,35 +15,35 @@ const NOTES_MAX_HEIGHT_PX = 96;
 const ARM_AFTER_FOCUS_MS = 100;
 
 /**
- * Options' update panel, floating under the nav bar while a WoWDeck release
- * is available: one line plus the plugin's only Update button, then the
- * offered build's release notes when it has any. Same row context and focus
+ * Options' update panel, floating under the nav bar while the engine offers
+ * an installable WoWDeck release: the offer's headline plus the plugin's
+ * only Update button ("Preparing…" while staging), then the offer's release
+ * notes when it has any. Same row context and focus
  * memory as My Addons' installation switcher.
  */
 export function SelfUpdatePanel() {
   const { info, staging } = useSyncExternalStore(selfUpdateStore.subscribe, selfUpdateStore.get);
-  const panel = pluginUpdatePanel(info);
-  if (!panel) {
+  const offer = panelOffer(info);
+  if (!offer) {
     return null;
   }
-  const button = pluginUpdateButton(staging, info);
   return (
     <div style={{ padding: "0 16px 8px" }}>
       <FocusRow view={QAM_VIEW.settings} id="selfUpdate">
-        <Field label={panel.text} bottomSeparator="none">
+        <Field label={offer.headline} bottomSeparator="none">
           <DialogButton
             style={{ position: "relative", minWidth: 0, width: "auto", padding: "8px 16px" }}
-            disabled={button.disabled}
+            disabled={staging}
             onClick={() => void selfUpdateStore.runUpdate()}
           >
-            {button.label}
+            {staging ? "Preparing…" : offer.buttonLabel}
             <UpdateDot color={pluginUpdateDot(info)} />
           </DialogButton>
         </Field>
       </FocusRow>
-      {panel.notes && (
+      {offer.releaseNotes && (
         <FocusRow view={QAM_VIEW.settings} id="selfUpdateNotes">
-          <ReleaseNotes notes={panel.notes} />
+          <ReleaseNotes notes={offer.releaseNotes} />
         </FocusRow>
       )}
     </div>
@@ -56,7 +56,7 @@ export function SelfUpdatePanel() {
  * button: while it has focus, D-pad Up/Down scrolls it the way the Details
  * modal's pages scroll (valveScroll), and at its top or bottom edge the press
  * falls through to Steam, which moves focus on (Up back to the button).
- * Downloaded text: a React text node, never HTML.
+ * Plain text from the engine (ADR-0004): a React text node, never HTML.
  */
 function ReleaseNotes({ notes }: { notes: string }) {
   const boxRef = useRef<HTMLDivElement | null>(null);

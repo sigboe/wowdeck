@@ -13,8 +13,8 @@ import { installationLabel, searchHelperText } from "../search";
 import { browseFocusView, popupOpening } from "../browseSessionState";
 import { sourceOffNotice, zeroCapabilityScreen } from "../sourceAccess";
 import {
-  type Destination,
-  type ListView,
+  type ListDestinationId,
+  listDestination,
   loadMore,
   resolveUrl,
   runSearch,
@@ -155,7 +155,7 @@ export function SearchTab({
     return <ZeroCapabilityScreen screen={screen} onOpenSources={sources.openSources} />;
   }
 
-  const doSearch = () => runSearch((q) => api.rpc("addons.search", { query: q }));
+  const doSearch = () => runSearch(api.rpc);
   const helper = searchHelperText(sources.providers, installationLabel(installation));
 
   return (
@@ -202,17 +202,16 @@ export function SearchTab({
 
 /** A list that loads LOAD_MORE_PAGE_SIZE at a time (browseDestinations.ts). */
 export function ListTab({
-  list,
-  load,
+  destination,
   emptyText = "No addons found.",
   view,
 }: {
-  list: Destination<ListView>;
-  load: (offset: number, count: number) => Promise<{ results: SearchResult[]; totalCount: number }>;
+  destination: ListDestinationId;
   emptyText?: string;
   /** Focus-memory view (browseSessionState.browseFocusView) to keep the list's place. */
   view?: string;
 }) {
+  const list = listDestination(destination);
   const state = useSyncExternalStore(list.subscribe, list.get);
   const { loading, error } = state;
   const listRef = useRef<HTMLDivElement>(null);
@@ -235,7 +234,7 @@ export function ListTab({
     }
   }, [loading]);
 
-  const fetchMore = () => void loadMore(list, load);
+  const fetchMore = () => void loadMore(destination, api.rpc);
 
   const onLoadMore = () => {
     if (loading) {
@@ -307,7 +306,7 @@ export function ManualInstallTab({ sources }: { sources: SourceControls }) {
     urlDestination.subscribe,
     urlDestination.get,
   );
-  const resolve = () => resolveUrl((u) => api.rpc("addons.resolveUrlImport", { url: u }));
+  const resolve = () => resolveUrl(api.rpc);
   const view = browseFocusView("url");
 
   return (

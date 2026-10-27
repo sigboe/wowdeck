@@ -11,6 +11,7 @@ import { join } from "node:path";
 import { identifyUrlImportProvider } from "../src/wow/providers/url-import";
 import { ZipProvider, parseArchiveUrl } from "../src/wow/providers/zip/ZipProvider";
 import { AddonService } from "../src/wow/addons/AddonService";
+import { Catalogue } from "../src/wow/catalogue/Catalogue";
 import { ProviderRegistry } from "../src/wow/providers/provider-registry";
 import { DownloadService } from "../src/wow/downloads/DownloadService";
 import type { NetworkClient } from "../src/wow/net/network";
@@ -70,7 +71,8 @@ function fixture(dir: string, files: Record<string, Uint8Array>) {
     operationProgress: () => {},
     operationResult: () => {},
   });
-  return { service, store, registry, installation, downloads, addonsPath: join(location, "Interface", "AddOns") };
+  const catalogue = new Catalogue(registry);
+  return { service, catalogue, store, registry, installation, downloads, addonsPath: join(location, "Interface", "AddOns") };
 }
 
 const fooZip = zipSync({
@@ -101,7 +103,7 @@ describe("direct archive links (WF-09)", () => {
 
   test("Look up shows the file and the host it comes from, without downloading", async () => {
     const f = fixture("lookup", {});
-    const result = await f.service.resolveUrlImport(`  ${RAR_URL}  `, f.installation);
+    const result = await f.catalogue.resolveUrlImport(`  ${RAR_URL}  `, f.installation);
     expect(result).toMatchObject({
       providerId: "Zip",
       externalId: RAR_URL,

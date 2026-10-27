@@ -44,9 +44,10 @@ export function WowGameSection() {
     toast: pluginToast,
     toastError,
     autoUpdateOn: () => settingsStore.get().settings.autoUpdate,
-    setBusy: () => {},
     setUpdatingAll: (scope) => setUpdating(scope !== null),
-    onChanged: () => void afterUpdate(),
+    begin: () => {},
+    // "Updating…" stays until the new counts are in.
+    settled: () => afterUpdate(),
   });
   const updateAll = () => actions.updateAll("all");
 

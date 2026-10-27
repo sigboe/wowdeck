@@ -1,6 +1,7 @@
 /** What the RPC handler modules are built from; main.ts constructs it once. */
 
 import type { AddonService } from "../../wow/addons/AddonService";
+import type { Catalogue } from "../../wow/catalogue/Catalogue";
 import type { InstallationService } from "../../wow/installation/InstallationService";
 import type { CompanionSyncCoordinator } from "../../wow/notifications/CompanionSync";
 import type { UpdateCheck } from "../../wow/notifications/UpdateCheck";
@@ -21,6 +22,8 @@ export interface HandlerDeps {
   store: StateStore;
   registry: ProviderRegistry;
   service: AddonService;
+  /** Search, Latest/Popular, details and finding sources (read-only). */
+  catalogue: Catalogue;
   installationService: InstallationService;
   companionCoordinator: CompanionSyncCoordinator;
   updateCheck: UpdateCheck;

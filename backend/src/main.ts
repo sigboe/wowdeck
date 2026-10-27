@@ -22,6 +22,7 @@ import { ZipProvider } from "./wow/providers/zip/ZipProvider";
 import { FileProvider } from "./wow/providers/file/FileProvider";
 import { DownloadService } from "./wow/downloads/DownloadService";
 import { AddonService } from "./wow/addons/AddonService";
+import { Catalogue } from "./wow/catalogue/Catalogue";
 import { getGameTypeForClientType } from "./wow/utils/gametype";
 import { RecentErrorsBuffer } from "./diagnostics/RecentErrors";
 import { CompanionSyncCoordinator } from "./wow/notifications/CompanionSync";
@@ -59,7 +60,8 @@ const store = createStateStore(dataDir);
 const network = new NetworkClient();
 const registry = new ProviderRegistry();
 registry.register(new WowUpHubProvider(HUB_URL, HUB_URL, network));
-registry.register(new TukUiAddonProvider(network));
+// Unset: api.tukui.org's catalogue (integration tests point it at the mock hub).
+registry.register(new TukUiAddonProvider(network, process.env.WOWDECK_TUKUI_URL));
 
 /**
  * The bundled CurseForge key arrives only as this env var (main.py reads the
@@ -123,6 +125,7 @@ const service = new AddonService(
   undefined,
   join(dataDir, "inspect"),
 );
+const catalogue = new Catalogue(registry);
 const installationService = service.installations;
 const companionCoordinator = new CompanionSyncCoordinator(service);
 const updateCheck = new UpdateCheck(service, companionCoordinator);
@@ -186,6 +189,7 @@ const deps: HandlerDeps = {
   store,
   registry,
   service,
+  catalogue,
   installationService,
   companionCoordinator,
   updateCheck,

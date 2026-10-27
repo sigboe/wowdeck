@@ -43,7 +43,11 @@ export class TukUiAddonProvider extends AddonProvider {
 
   #catalog: { addons: TukUiAddon[]; fetchedAt: number } | null = null;
 
-  constructor(private network: NetworkClient) {
+  constructor(
+    private network: NetworkClient,
+    /** The catalogue's address; tests point it at a mock. */
+    private apiUrl: string = API_URL,
+  ) {
     super();
   }
 
@@ -145,7 +149,7 @@ export class TukUiAddonProvider extends AddonProvider {
     if (this.#catalog && Date.now() - this.#catalog.fetchedAt < CATALOG_TTL_MS) {
       return this.#catalog.addons;
     }
-    const addons = await this.network.getJson<TukUiAddon[]>(API_URL, { timeoutMs: 30_000 });
+    const addons = await this.network.getJson<TukUiAddon[]>(this.apiUrl, { timeoutMs: 30_000 });
     this.#catalog = { addons, fetchedAt: Date.now() };
     return addons;
   }

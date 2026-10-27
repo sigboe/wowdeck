@@ -1,6 +1,11 @@
 import type { Addon, Installation } from "./types";
 import { createStore, type Store } from "./store";
-import { createAddonActions, type AddonActionDeps, type AddonActions } from "./addonActions";
+import {
+  createAddonActions,
+  type AddonActionDeps,
+  type AddonActions,
+  type ListChange,
+} from "./addonActions";
 import { canQuickUpdate } from "./addonRow";
 import { resetBrowseSessionState } from "./browseSessionState";
 import { plural } from "./text";
@@ -37,8 +42,17 @@ export type AddonSessionDeps = Pick<
 >;
 
 export interface AddonSession extends Pick<Store<AddonSessionState>, "get" | "subscribe"> {
-  /** Every addon action; each one reloads the list when it ends. */
+  /**
+   * Every addon action. Each applies the addon the engine returns; the list
+   * is read again, once, when the last running action needs it.
+   */
   actions: AddonActions;
+  /**
+   * The engine's "addons changed" event. A change an action is making is left
+   * to that action (the engine announces it before it answers); any other
+   * change reads the list again, after the running actions end.
+   */
+  addonsChanged(addonIds: readonly string[]): void;
   setFilter(filter: string): void;
   setShowIgnored(showIgnored: boolean): void;
   /** Re-read the installations; the engine says which one is active. */
@@ -78,15 +92,46 @@ export function createAddonSession(deps: AddonSessionDeps): AddonSession {
     }
   };
 
-  const reloadAddons = async () => {
+  // Orders list reads against rows an action applied: a read that started
+  // before the apply answers with the row as it was, and must not bring it back.
+  let clock = 0;
+  const appliedAt = new Map<string, number>();
+
+  // Actions running per addon: a row is busy while any runs on it, and until
+  // the change the last one made is on screen.
+  const runningOn = new Map<string, number>();
+  const idle = (ids: readonly string[]) => {
+    const busy = { ...store.get().busy };
+    for (const id of ids) {
+      if (!runningOn.get(id)) {
+        delete busy[id];
+      }
+    }
+    return busy;
+  };
+
+  /**
+   * One list read. `release`: rows whose action waited for it, idle in the
+   * same render as their new state. Such a read shows on those rows, not on
+   * the list's refresh button.
+   */
+  const readAddons = async (release: readonly string[] = []) => {
     try {
-      const { addons } = await trackLoad(() => rpc("addons.list"));
-      store.patch({ addons });
+      const started = ++clock;
+      const list = () => rpc("addons.list");
+      const { addons: read } = await (release.length ? list() : trackLoad(list));
+      const shown = new Map(store.get().addons.map((a) => [a.id, a]));
+      const addons = read.map((a) =>
+        (appliedAt.get(a.id) ?? 0) > started ? (shown.get(a.id) ?? a) : a,
+      );
+      store.patch({ addons, busy: idle(release) });
     } catch (e) {
+      store.patch({ busy: idle(release) });
       // The last list stays on screen; the toast says it may be stale.
       toastError("Couldn't load addons", e);
     }
   };
+  const reloadAddons = () => readAddons();
 
   const reloadInstallations = async () => {
     try {
@@ -100,19 +145,70 @@ export function createAddonSession(deps: AddonSessionDeps): AddonSession {
     }
   };
 
+  // Actions running, whether the list must be read when the last ends, and
+  // the rows waiting for that read.
+  let running = 0;
+  let reloadWanted = false;
+  let awaitingRead: string[] = [];
+  // Resolves when that read has landed: an action ends with its change on screen.
+  let readLanded: { promise: Promise<void>; resolve: () => void } | null = null;
+  const landed = () => {
+    if (!readLanded) {
+      let resolve!: () => void;
+      const promise = new Promise<void>((r) => (resolve = r));
+      readLanded = { promise, resolve };
+    }
+    return readLanded.promise;
+  };
+
+  const begin = (addonId?: string) => {
+    running++;
+    if (addonId) {
+      runningOn.set(addonId, (runningOn.get(addonId) ?? 0) + 1);
+      store.patch({ busy: { ...store.get().busy, [addonId]: true } });
+    }
+  };
+
+  const settle = (change: ListChange, addonId?: string): Promise<void> | undefined => {
+    running--;
+    let onScreen: Promise<void> | undefined;
+    const ended = addonId ? [addonId] : [];
+    if (addonId) {
+      runningOn.set(addonId, runningOn.get(addonId)! - 1);
+    }
+    const { addons } = store.get();
+    if (change === null) {
+      if (ended.length) {
+        store.patch({ busy: idle(ended) });
+      }
+    } else if (change !== "reload" && addons.some((a) => a.id === change.id)) {
+      appliedAt.set(change.id, ++clock);
+      store.patch({
+        addons: addons.map((a) => (a.id === change.id ? keepListFields(a, change) : a)),
+        busy: idle(ended),
+      });
+    } else {
+      // Only a list read shows this change: the row stays busy until it lands.
+      reloadWanted = true;
+      awaitingRead.push(...ended);
+      onScreen = landed();
+    }
+    if (running === 0 && reloadWanted) {
+      reloadWanted = false;
+      const release = awaitingRead;
+      const done = readLanded;
+      awaitingRead = [];
+      readLanded = null;
+      void readAddons(release).then(() => done?.resolve());
+    }
+    return onScreen;
+  };
+
   const actions = createAddonActions({
     ...deps,
-    setBusy(id, on) {
-      const busy = { ...store.get().busy };
-      if (on) {
-        busy[id] = true;
-      } else {
-        delete busy[id];
-      }
-      store.patch({ busy });
-    },
     setUpdatingAll: (updatingAll) => store.patch({ updatingAll }),
-    onChanged: () => void reloadAddons(),
+    begin,
+    settled: settle,
   });
 
   return {
@@ -123,6 +219,18 @@ export function createAddonSession(deps: AddonSessionDeps): AddonSession {
     setShowIgnored: (showIgnored) => store.patch({ showIgnored }),
     reloadInstallations,
     reloadAddons,
+    addonsChanged(addonIds) {
+      const { busy } = store.get();
+      // No ids: the engine can't say which (an installation changed).
+      if (addonIds.length > 0 && addonIds.every((id) => busy[id])) {
+        return;
+      }
+      if (running > 0) {
+        reloadWanted = true;
+      } else {
+        void reloadAddons();
+      }
+    },
     // addons.list only re-reads persisted records and scans for unmanaged
     // folders; only addons.refresh asks the providers, so only it can find a
     // new update.
@@ -154,6 +262,23 @@ export function createAddonSession(deps: AddonSessionDeps): AddonSession {
         void reloadInstallations();
       }
     },
+  };
+}
+
+/**
+ * An addon the engine returned for one action, in place of its row. Only the
+ * list reads the TOC on disk and who needs whom; the single addon carries
+ * those empty, so the row keeps its own.
+ */
+function keepListFields(row: Addon, returned: Addon): Addon {
+  return {
+    ...returned,
+    interfaceVersion: row.interfaceVersion,
+    dependencies: row.dependencies,
+    optionalDependencies: row.optionalDependencies,
+    missingDependencies: row.missingDependencies,
+    neededBy: row.neededBy,
+    gameVersion: row.gameVersion,
   };
 }
 

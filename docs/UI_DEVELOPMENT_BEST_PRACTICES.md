@@ -524,10 +524,12 @@ The former `docs/ui-guidelines.md` (removed 2026-10-22) is superseded by
   remount looks like a tab switch to React**.
 - Therefore, state that must survive a modal round-trip lives in module scope:
   - `persistedTab` in `index.tsx`;
-  - `searchState`, `latestState`, `popularState` and `pageState` in
-    `browseSessionState.ts` for the Get Addons tab, reset by
-    `resetBrowseSessionState()` when the selected installation changes
-    (results depend on its game version).
+  - the Get Addons destinations in `browseDestinations.ts` and `pageState`
+    in `browseSessionState.ts`, reset by `resetBrowseSessionState()` when
+    the selected installation changes (results depend on its game version);
+  - `sourcesStore` in `sourcesStore.ts`: the addon sources and their
+    categories, shared by Get Addons and Options and kept across that reset
+    (reference data, not per installation).
 - `Content()` fetches status/installations/addons on every mount, so a modal
   round-trip triggers backend calls again (INFERRED from source, not measured;
   backlog U-6).
@@ -1724,8 +1726,9 @@ in front of any action that deletes data from disk, and say in the text what is
 deleted and whether it can be undone. Source (adapted, not mandated): Xbox
 Accessibility Guideline 115, "Offer players a mechanism to review, confirm, and
 undo permanent or destructive actions". Because opening the modal remounts the
-panel (G4), the action must not depend on the opener's React state; the
-backend `addons.changed` event refreshes the remounted list. Accepted by the owner after
+panel (G4), the action must not depend on the opener's React state; it runs
+through the module-scope addon session, which reads the list again when it
+ends, so the remounted list is current. Accepted by the owner after
 on-device use (2026-10-13). Known limitation: the left stick did not move
 focus in this Steam-owned dialog, only the D-pad (not investigated; not our
 code).

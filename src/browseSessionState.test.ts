@@ -20,9 +20,9 @@ import {
   latestDestination,
   popularDestination,
   searchDestination,
-  sourceCategories,
   urlDestination,
 } from "./browseDestinations";
+import { sourcesStore } from "./sourcesStore";
 import type { SearchResult } from "./types";
 
 const r = { providerId: "Curse", externalId: "1" } as SearchResult;
@@ -58,9 +58,9 @@ describe("resetBrowseSessionState", () => {
   });
 
   test("keeps the cached categories, by source", () => {
-    sourceCategories.bySource = { Curse: [{ id: "1019", name: "Combat" }] };
+    sourcesStore.patch({ categories: { Curse: [{ id: "1019", name: "Combat" }] } });
     resetBrowseSessionState();
-    expect(sourceCategories.bySource).toEqual({ Curse: [{ id: "1019", name: "Combat" }] });
+    expect(sourcesStore.get().categories).toEqual({ Curse: [{ id: "1019", name: "Combat" }] });
   });
 
   test("lands the focus zone back on the nav bar", () => {

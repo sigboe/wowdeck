@@ -534,21 +534,11 @@ describe("GitHubProvider rate limiting and errors", () => {
   });
 });
 
-describe("GitHubProvider.searchByQuery / isValidAddonId / getAll", () => {
-  test("searchByQuery returns [] for a plain-text query (leaves catalog search to other providers)", async () => {
+describe("GitHubProvider.resolveUrl / isValidAddonId / getAll", () => {
+  test("resolveUrl answers nothing for a plain-text query (leaves catalog search to other providers)", async () => {
     const { net } = fakeNet({});
     const provider = new GitHubProvider(net);
-    expect(await provider.searchByQuery("questie", retail)).toEqual([]);
-  });
-
-  test("searchByQuery resolves a pasted GitHub URL to a single result", async () => {
-    const asset = ghAsset({ id: 1, name: "Addon.zip" });
-    const release = ghRelease({ id: 1, assets: [asset] });
-    const { net } = fakeNet({ releases: [release] });
-    const provider = new GitHubProvider(net);
-    const results = await provider.searchByQuery("https://github.com/mockauthor/MockAddon", retail);
-    expect(results).toHaveLength(1);
-    expect(results[0]!.name).toBe("MockAddon");
+    expect(await provider.resolveUrl("questie", retail)).toBeUndefined();
   });
 
   test("isValidAddonId accepts owner/repo, rejects everything else", () => {

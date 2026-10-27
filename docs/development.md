@@ -105,7 +105,10 @@ Deck"); the test procedure is the `deck-test` skill
 2. Handle it with `server.on("area.method", …)` in the matching
    `backend/src/api/handlers/<area>.ts`; a new service goes into
    `HandlerDeps` (`handlers/deps.ts`) and is built in `main.ts`. The
-   integration test "every declared method has a handler" fails until it is.
+   handler only forwards: the engine module returns the contract type
+   itself, and a method that never throws for an expected failure answers
+   through `settle()` (`bridge/jsonl.ts`). The integration test "every
+   declared method has a handler" fails until it is.
 3. Call it from the UI with `rpc("area.method", params)`
    (`src/services/backend.ts`), typed from `MethodMap`. `main.py` forwards
    every method unchanged; it needs no edit.
@@ -128,5 +131,12 @@ Deck"); the test procedure is the `deck-test` skill
    provenance header and an entry in `docs/wowup-provenance.md`.
 2. Add its id to `AddonProviderType` (`wow/types.ts`) if new, and to
    `PROVIDER_ID` and the display names in `backend/src/api/providers.ts`.
-3. Register it in `backend/src/main.ts` (`registry.register(…)`) and add
-   `backend/tests/<name>-provider.test.ts` against fixtures.
+3. Register it in `backend/src/main.ts` (`registry.register(…)`).
+4. Give it a scenario in `backend/tests/providers/scenarios.ts`: its
+   capabilities, a search text or link, a known id and a missing one. Record
+   its cassette with `make record-provider-fixtures PROVIDERS=<name>`; the
+   contract suite (`backend/tests/provider-contract.test.ts`) then replays it.
+   CurseForge needs `CURSEFORGE_API_KEY` or `CURSEFORGE_API_KEY_FILE`, GitHub
+   takes an optional `GITHUB_TOKEN`; neither ever reaches a cassette.
+5. Test what only this provider does (fallbacks, odd responses) in
+   `backend/tests/<name>-provider.test.ts`.

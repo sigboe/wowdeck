@@ -1,4 +1,4 @@
-.PHONY: setup wowup build build-frontend build-backend test typecheck lint format clean package version-set version-check release-tag
+.PHONY: setup wowup build build-frontend build-backend test typecheck lint format clean package version-set version-check release-tag record-provider-fixtures
 
 # GNU Make uses this shell for recipes. This is independent of the interactive shell.
 SHELL := /usr/bin/env bash
@@ -68,6 +68,13 @@ test: build-backend
 
 typecheck:
 	$(TOOL_RUN) 'set -euo pipefail; pnpm run typecheck && (cd backend && bun run typecheck)'
+
+# Re-record the provider cassettes the contract suite replays. Needs the
+# network and, for CurseForge, CURSEFORGE_API_KEY or CURSEFORGE_API_KEY_FILE
+# (see backend/tests/providers/record.ts). PROVIDERS limits it, e.g. "github".
+PROVIDERS ?=
+record-provider-fixtures:
+	$(TOOL_RUN) 'set -euo pipefail; cd backend && bun tests/providers/record.ts $(PROVIDERS)'
 
 lint:
 	$(TOOL_RUN) 'set -euo pipefail; pnpm run lint && pnpm run format:check'

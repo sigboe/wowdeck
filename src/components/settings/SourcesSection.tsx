@@ -1,4 +1,4 @@
-import { useEffect, useSyncExternalStore, type Dispatch, type SetStateAction } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { ButtonItem, PanelSection, ToggleField } from "@decky/ui";
 import type { CurseForgeAuthStatus, ProviderInfo } from "../../types";
 import * as api from "../../services/backend";
@@ -9,22 +9,17 @@ import { PROVIDER_ID } from "../../../backend/src/api/providers";
 import { SettingsRow } from "./common";
 import { sourceOffDescription } from "../../sourceAccess";
 import { clearSourceJump, sourceJump, sourceRowKey, subscribeSourceJump } from "../../optionsJump";
+import { setSourceEnabled } from "../../sourcesStore";
 
 interface Props {
   /** Null when they could not be loaded (a Try again row). */
   providers: ProviderInfo[] | null;
-  setProviders: Dispatch<SetStateAction<ProviderInfo[] | null>>;
   reloadProviders: () => Promise<void>;
   curseForgeAuth: CurseForgeAuthStatus | null;
 }
 
 /** Each addon source on or off. */
-export function SourcesSection({
-  providers,
-  setProviders,
-  reloadProviders,
-  curseForgeAuth,
-}: Props) {
+export function SourcesSection({ providers, reloadProviders, curseForgeAuth }: Props) {
   // The Options jump (optionsJump.ts) marks the rows it navigated for; they
   // blink until the jump is used, focus moves on, or this section leaves.
   const jump = useSyncExternalStore(subscribeSourceJump, sourceJump);
@@ -79,20 +74,11 @@ export function SourcesSection({
                     if (marked) {
                       clearSourceJump();
                     }
-                    // optimistic toggle; revert to backend truth on failure
-                    setProviders(
-                      (prev) =>
-                        prev?.map((x) => (x.id === p.id ? { ...x, enabled: checked } : x)) ?? null,
-                    );
+                    // Shown at once; the store goes back to the engine's list on failure.
                     try {
-                      const { providers: next } = await api.rpc("providers.setEnabled", {
-                        providerId: p.id,
-                        enabled: checked,
-                      });
-                      setProviders(next);
+                      await setSourceEnabled(api.rpc, p.id, checked);
                     } catch (e) {
                       toastError(`Couldn't change ${providerLabel(p.id)}`, e);
-                      await reloadProviders();
                     }
                   }}
                 />

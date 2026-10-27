@@ -117,7 +117,7 @@ function Content() {
   useEffect(() => {
     return api.onBackendEvent((event) => {
       if (event.event === "addons.changed") {
-        void addonSession.reloadAddons();
+        addonSession.addonsChanged(event.params.addonIds);
       }
     });
   }, []);

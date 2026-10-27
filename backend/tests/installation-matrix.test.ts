@@ -13,6 +13,7 @@ import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { zipSync } from "fflate";
 import { AddonService } from "../src/wow/addons/AddonService";
+import { Catalogue } from "../src/wow/catalogue/Catalogue";
 import { needsUpdate } from "../src/wow/addons/addonStatus";
 import { AddonProvider } from "../src/wow/providers/addon-provider";
 import { ProviderRegistry } from "../src/wow/providers/provider-registry";
@@ -125,7 +126,7 @@ function makeStack(dataDir: string, provider: ScopedFakeProvider) {
     ),
     { addonsChanged: () => {}, operationProgress: () => {}, operationResult: () => {} },
   );
-  return { store, service };
+  return { store, service, catalogue: new Catalogue(registry) };
 }
 
 function writeExe(dir: string, exe: string): void {
@@ -182,8 +183,8 @@ afterAll(() => {
 
 describe("installation matrix", () => {
   test("detect registers exactly the valid installations", async () => {
-    const found = await stack.service.installations.detect(join(ROOT, "home"));
-    const labels = found.map((i) => i.label).sort();
+    await stack.service.installations.detect(join(ROOT, "home"));
+    const labels = stack.service.installations.list().map((i) => i.label).sort();
     expect(labels).toEqual(["_classic_beta_", "_classic_era_", "_retail_"]);
   });
 
@@ -198,7 +199,7 @@ describe("installation matrix", () => {
       expect(stack.service.installations.require().id).toBe(target.id);
       const addons = await stack.service.listAddons(target);
       expect(addons.every((a) => a.installationId === target.id)).toBe(true);
-      await stack.service.search("matrix", stack.service.installations.require());
+      await stack.catalogue.search("matrix", stack.service.installations.require());
     }
     // every search was scoped to the installation active at call time
     expect(provider.searchInstallations).toEqual([retail.id, era.id, beta.id]);
@@ -221,7 +222,7 @@ describe("installation matrix", () => {
 
     const { operation, addon: updated } = await stack.service.updateAddon(addon.id);
     expect(operation.status).toBe("updated");
-    expect(updated.installedVersion).toBe("1.1.0");
+    expect(updated.version).toBe("1.1.0");
   });
 
   test("manual installation joins the list and survives re-detection", async () => {

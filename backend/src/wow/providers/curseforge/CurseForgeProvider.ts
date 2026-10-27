@@ -173,7 +173,6 @@ export class CurseForgeProvider extends AddonProvider {
   override allowChannelChange = true;
   override allowEdit = true;
   override authRequired = true;
-  override discovers = true;
 
   /** Per-instance cache — see getCategories' doc comment for scope reasoning. */
   private categoriesCache: ProviderCategory[] | null = null;
@@ -411,7 +410,7 @@ export class CurseForgeProvider extends AddonProvider {
    * nowhere else in this plugin's UI, so there's no consistency
    * argument for keeping it.
    */
-  override async getCategories(_installation: WowInstallation): Promise<ProviderCategory[] | undefined> {
+  override async getCategories(_installation: WowInstallation): Promise<ProviderCategory[]> {
     if (this.categoriesCache) {
       return this.categoriesCache;
     }

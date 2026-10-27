@@ -4,9 +4,9 @@ import { removeConfirmation, removeInstallationConfirmation } from "../removeCon
 /**
  * Destructive-action confirmation for Remove (guide U-1). ConfirmModal
  * closes itself after OK/Cancel, and B cancels. Opening it unmounts the
- * panel (guide G4); the backend emits `addons.changed` when the removal
- * finishes and the remounted panel reloads on that event, so the list
- * does not stay stale.
+ * panel (guide G4); the removal runs through the module-scope addon
+ * session, which reads the list again when it ends, so the remounted
+ * panel does not show a stale list.
  */
 export function confirmRemoveAddon(
   name: string,

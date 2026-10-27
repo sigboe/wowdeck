@@ -26,6 +26,15 @@ export interface RpcError {
   error: { code: string; message: string };
 }
 
+/**
+ * The answer of a method that never throws for an expected failure: the
+ * result, or the error a thrown RPC would carry (code from errorCodeFor).
+ */
+export interface Settled<T> {
+  result: T | null;
+  error: { code: string; message: string } | null;
+}
+
 /** Engine-initiated event, relayed to the frontend by the bridge. */
 export interface RpcEvent {
   event: string;
@@ -51,6 +60,12 @@ export type GameType = "retail" | "classic" | "classic_era" | "classic_beta" | "
 
 /** How an installation entered the installation list. */
 export type InstallationSource = "detected" | "manual";
+
+/** An installation a folder holds, before it is added (installations.inspect). */
+export interface FoundInstallation {
+  gameType: GameType;
+  displayName: string;
+}
 
 /** A World of Warcraft installation (one per game flavor). */
 export interface Installation {
@@ -151,6 +166,12 @@ export interface Addon {
   thumbnailUrl: string | null;
 }
 
+/** An addon change's answer: the addon as it is now, and how the operation went. */
+export interface AddonOperation {
+  addon: Addon;
+  operation: OperationResult;
+}
+
 /** An addon release channel (WowUp's Stable / Beta / Alpha). */
 export type ReleaseChannel = "stable" | "beta" | "alpha";
 
@@ -199,6 +220,12 @@ export interface SearchResult {
   /** Details modal Gallery — already on the provider's own response. */
   screenshots: SearchResultScreenshot[];
 }
+
+/**
+ * The providers that failed in a lookup across several (a search, finding
+ * sources), so the UI can tell a failure from an empty result.
+ */
+export type ProviderErrors = Array<{ providerId: string; error: string }>;
 
 export interface ProviderInfo {
   id: string;
@@ -257,7 +284,10 @@ export interface ImportComparison {
   state: ImportState;
   /** Human-readable reason, set for every state except "new". */
   reason: string | null;
-  /** The list marks it a library (installed only as a dependency); imported as one (WF-21). */
+  /**
+   * The list marks it a library, installed only as another addon's required
+   * dependency (the export's own `dependency` key); imported as one (WF-21).
+   */
   dependency: boolean;
 }
 
@@ -382,9 +412,8 @@ export interface MethodMap {
      * too. "unknown" — never an RPC error, never a toast — when the check
      * cannot run (offline, rate limited, nothing reachable); background
      * failures are visible only in the engine's structured stderr log.
-     * "available" carries the release page and the packaged WoWDeck.zip
-     * asset URL (what system.updateStage downloads); null when the release
-     * has no such asset.
+     * "available" carries the `offer`; whether it is installable says
+     * whether the release has the WoWDeck.zip system.updateStage downloads.
      */
     params: {
       /**
@@ -397,22 +426,12 @@ export interface MethodMap {
     result: {
       status: "current" | "available" | "unknown";
       currentVersion: string;
-      latestVersion: string | null;
-      releaseUrl: string | null;
-      downloadUrl: string | null;
       /**
-       * True when the offered `latestVersion` is a stable release older than
-       * the running beta build: an owner who left the Beta channel is
-       * offered the latest stable ("Switch to stable X"). Only ever true on
-       * "available".
+       * The one release on offer, ready to render: the toast, the update
+       * panel, its dot and the Options → Updates row all read it, so they
+       * cannot disagree. Non-null exactly on "available".
        */
-      switchToStable: boolean;
-      /**
-       * The offered build's release notes (its GitHub release body,
-       * Markdown, untrusted text: shown as plain text, never as HTML). On
-       * "available" only, and null when the release has no body.
-       */
-      releaseNotes: string | null;
+      offer: PluginUpdateOffer | null;
       /**
        * True when a network attempt just ran (a failed one still serves the
        * stored answer); false when the interval or a failure-backoff window
@@ -422,9 +441,8 @@ export interface MethodMap {
       checked: boolean;
       /**
        * Whether the update toast should fire now: computed engine-side,
-       * true only for a `notify` call's first answer that finds
-       * `latestVersion` newer than the running version, with its
-       * WoWDeck.zip attached, *and* not already toast-shown. At-most-once
+       * true only for a `notify` call's first answer whose `offer` is
+       * installable *and* not already toast-shown. At-most-once
        * per release version: the engine marks the version shown
        * (PluginSettings.pluginUpdateToastShownFor) the moment it reports
        * pending, so re-checks, plugin reloads, QAM churn and engine
@@ -500,7 +518,7 @@ export interface MethodMap {
    */
   "installations.inspect": {
     params: { path: string };
-    result: { found: Array<{ gameType: GameType; displayName: string }> };
+    result: { found: FoundInstallation[] };
   };
   "installations.remove": {
     params: { installationId: string };
@@ -515,12 +533,9 @@ export interface MethodMap {
     result: { addons: Addon[]; updated: number; failed: number };
   };
   "addons.search": {
+    /** providerId: one source with `ProviderInfo.catalogSearch`; any other answers no results. */
     params: { query: string; providerId?: string };
-    result: {
-      results: SearchResult[];
-      /** Providers that failed, so the UI can distinguish errors from empty results. */
-      providerErrors: Array<{ providerId: string; error: string }>;
-    };
+    result: { results: SearchResult[]; providerErrors: ProviderErrors };
   };
   "addons.resolveUrlImport": {
     /**
@@ -538,7 +553,7 @@ export interface MethodMap {
      * (errorCodeFor); the UI maps known codes to a sentence and otherwise
      * shows `message`.
      */
-    result: { result: SearchResult | null; error: { code: string; message: string } | null };
+    result: Settled<SearchResult>;
   };
   /**
    * Install from file (Manual Install's From a file): inspect an archive
@@ -557,7 +572,7 @@ export interface MethodMap {
    */
   "addons.inspectArchive": {
     params: { path: string };
-    result: { result: ArchivePreview | null; error: { code: string; message: string } | null };
+    result: Settled<ArchivePreview>;
   };
   "discover.latest": {
     /** providerId: a source with `ProviderInfo.discovers` (the list's Source menu). */
@@ -588,7 +603,7 @@ export interface MethodMap {
   "addons.install": {
     /** `channel`: install from that release channel and follow it (providers with channels only). */
     params: { providerId: string; externalId: string; channel?: ReleaseChannel };
-    result: { addon: Addon; operation: OperationResult };
+    result: AddonOperation;
   };
   /**
    * Put the kept previous version back (BEYOND-02); the current one becomes
@@ -597,7 +612,7 @@ export interface MethodMap {
    */
   "addons.rollback": {
     params: { addonId: string };
-    result: { addon: Addon; operation: OperationResult };
+    result: AddonOperation;
   };
   /** Pause or resume automatic updates for one addon (WF-02). */
   "addons.setAutoUpdatePaused": {
@@ -630,7 +645,7 @@ export interface MethodMap {
    */
   "addons.setChannel": {
     params: { addonId: string; channel: ReleaseChannel };
-    result: { addon: Addon; operation: OperationResult };
+    result: AddonOperation;
   };
   /**
    * An addon's folders in the selected installation's AddOns (WF-20, the
@@ -670,10 +685,7 @@ export interface MethodMap {
    */
   "addons.findSources": {
     params: { folderName: string } | { addonId: string };
-    result: {
-      results: SearchResult[];
-      providerErrors: Array<{ providerId: string; error: string }>;
-    };
+    result: { results: SearchResult[]; providerErrors: ProviderErrors };
   };
   /**
    * Make an unmanaged folder managed (WF-23): installs the chosen source's
@@ -682,7 +694,7 @@ export interface MethodMap {
    */
   "addons.adopt": {
     params: { folderName: string; providerId: string; externalId: string };
-    result: { addon: Addon; operation: OperationResult };
+    result: AddonOperation;
   };
   /**
    * Switch a managed addon to another source (WF-12; upstream's "Provider"
@@ -694,7 +706,7 @@ export interface MethodMap {
    */
   "addons.changeSource": {
     params: { addonId: string; providerId: string; externalId: string };
-    result: { addon: Addon; operation: OperationResult };
+    result: AddonOperation;
   };
   "addons.setIgnored": {
     params: { addonId: string; ignored: boolean };
@@ -702,12 +714,12 @@ export interface MethodMap {
   };
   "addons.update": {
     params: { addonId: string };
-    result: { addon: Addon; operation: OperationResult };
+    result: AddonOperation;
   };
   /** Install the addon's current release again (repair). Status "installed" on success. */
   "addons.reinstall": {
     params: { addonId: string };
-    result: { addon: Addon; operation: OperationResult };
+    result: AddonOperation;
   };
   "addons.updateAll": {
     /**
@@ -1014,6 +1026,39 @@ export interface Diagnostics {
  */
 export const UPDATE_CHANNELS = ["stable", "beta"] as const;
 export type UpdateChannel = (typeof UPDATE_CHANNELS)[number];
+
+/**
+ * A WoWDeck release offered by system.updateCheck, with its text decided
+ * engine-side. "update" offers a newer build; "switchToStable" offers the
+ * latest stable, older than the running beta, to an owner who left Beta.
+ */
+export interface PluginUpdateOffer {
+  kind: "update" | "switchToStable";
+  /** X.Y.Z or X.Y.Z-beta.N, without a leading v. */
+  version: string;
+  /** The toast's and the update panel's line: "WoWDeck X available" or "Switch to stable X". */
+  headline: string;
+  /** The panel's button: "Update" or "Switch to stable X". */
+  buttonLabel: string;
+  /** The toast's second line, saying where to go: "Update in Options" or "Install it in Options". */
+  toastBody: string;
+  /** The Options → Updates row's label: "WoWDeck update available" or "Switch to stable X". */
+  rowLabel: string;
+  /**
+   * The release notes as plain text (ADR-0004: trusted CHANGELOG text, so
+   * the engine strips the Markdown); still shown as a text node, never
+   * HTML. Null when the release has none.
+   */
+  releaseNotes: string | null;
+  /** The release page; the releases page when GitHub named none. */
+  releaseUrl: string;
+  /**
+   * The release has its WoWDeck.zip, so Update can install it. Without it
+   * the Updates row still names the release, but there is no panel, dot or
+   * toast (the engine re-asks hourly until the zip is attached).
+   */
+  installable: boolean;
+}
 
 /** The last completed WoWDeck release check, as persisted (see PluginSettings.lastPluginUpdate). */
 export interface PluginUpdateSnapshot {

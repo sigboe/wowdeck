@@ -1,6 +1,6 @@
 /// <reference types="bun-types" />
 import { describe, expect, test } from "bun:test";
-import type { Addon, Installation } from "./types";
+import type { Addon, Installation, SearchResult } from "./types";
 import {
   createAddonSession,
   installedAddonFor,
@@ -127,22 +127,187 @@ describe("addon session: list reads", () => {
     expect(log).toContain("toast Couldn't check 2 addons for updates | Try again later");
   });
 
-  test("an action's busy flag shows while it runs, and the list reloads after", async () => {
+  test("an update shows busy while it runs, then the list's Updated row", async () => {
     let release!: () => void;
-    const { session, log } = harness({
+    let reads = 0;
+    const h = harness({
+      // Each read says which it was, so the list shows how often it was read.
+      "addons.list": () => {
+        reads++;
+        return { addons: [addon({ version: `read ${reads}`, newlyUpdated: reads > 1 })] };
+      },
       "addons.update": () =>
-        new Promise(
-          (r) => (release = () => r({ addon: addon(), operation: { status: "current" } })),
-        ),
-      "addons.list": { addons: [] },
+        new Promise((r) => {
+          h.session.addonsChanged(["a1"]);
+          release = () => r({ addon: addon(), operation: { status: "updated" } });
+        }),
+    });
+    const { session } = h;
+    await session.reloadAddons();
+    // Every state the row passes through: busy, or its version; the refresh button's spinner.
+    const seen: string[] = [];
+    session.subscribe(() => {
+      const { busy, addons, loads } = session.get();
+      const state = `${busy.a1 ? "busy" : addons[0]!.version}${loads ? " +refresh" : ""}`;
+      if (seen[seen.length - 1] !== state) {
+        seen.push(state);
+      }
     });
     const running = session.actions.update(addon());
     expect(session.get().busy).toEqual({ a1: true });
     release();
     await running;
-    await Promise.resolve();
+    // The row goes from busy straight to the new version: never back to the
+    // old one, and the list read doesn't spin the refresh button too.
+    expect(seen).toEqual(["busy", "read 2"]);
+    expect(resultTags(session.get().addons[0]!)).toEqual(["Installed", "Updated"]);
+  });
+
+  test("an install resolves once the list shows it; Update all's bar stays until then", async () => {
+    let reads = 0;
+    const h = harness({
+      "addons.list": () => {
+        reads++;
+        return { addons: reads > 0 ? [addon({ id: "new" })] : [] };
+      },
+      "addons.install": { addon: addon({ id: "new" }), operation: { status: "installed" } },
+      "addons.updateAll": { operations: [] },
+    });
+    const { session } = h;
+    await session.actions.install({
+      providerId: "Curse",
+      externalId: "1",
+      name: "New",
+    } as SearchResult);
+    expect(session.get().addons.map((a) => a.id)).toEqual(["new"]);
+    let barDuringRead: string | null = null;
+    session.subscribe(() => {
+      if (session.get().loads > 0) {
+        barDuringRead = session.get().updatingAll;
+      }
+    });
+    await session.actions.updateAll("installation");
+    expect(barDuringRead!).toBe("installation");
+    expect(session.get().updatingAll).toBeNull();
+    expect(reads).toBe(2);
+  });
+
+  test("a row stays busy while another action on it runs, past an earlier read", async () => {
+    const releases: (() => void)[] = [];
+    const h = harness({
+      "addons.list": { addons: [addon()] },
+      "addons.reinstall": () =>
+        new Promise((r) =>
+          releases.push(() => r({ addon: addon(), operation: { status: "installed" } })),
+        ),
+    });
+    const { session } = h;
+    await session.reloadAddons();
+    const first = session.actions.reinstall(addon());
+    const second = session.actions.reinstall(addon());
+    releases[0]!();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(session.get().busy).toEqual({ a1: true });
+    releases[1]!();
+    await Promise.all([first, second]);
     expect(session.get().busy).toEqual({});
-    expect(log).toContain("addons.list");
+  });
+
+  test("actions running together, and what the engine reports meanwhile, read the list once", async () => {
+    let reads = 0;
+    const releases: (() => void)[] = [];
+    const h = harness({
+      "addons.list": () => {
+        reads++;
+        return { addons: [addon({ version: `read ${reads}` })] };
+      },
+      "addons.install": () =>
+        new Promise((r) => {
+          // A new addon and its library: ids no row has yet.
+          h.session.addonsChanged(["new", "lib"]);
+          releases.push(() =>
+            r({ addon: addon({ id: "new" }), operation: { status: "installed" } }),
+          );
+        }),
+      "addons.remove": () =>
+        new Promise((r) => {
+          h.session.addonsChanged(["a1"]);
+          releases.push(() => r({}));
+        }),
+    });
+    const { session } = h;
+    const install = session.actions.install({
+      providerId: "Curse",
+      externalId: "1",
+      name: "New",
+    } as SearchResult);
+    const remove = session.actions.remove(addon());
+    // An automatic update finishes meanwhile.
+    session.addonsChanged(["a2"]);
+    releases.forEach((release) => release());
+    await Promise.all([install, remove]);
+    await Promise.resolve();
+    expect(session.get().addons.map((a) => a.version)).toEqual(["read 1"]);
+  });
+
+  test("a list read started before an Ignore doesn't bring the row back", async () => {
+    let land!: () => void;
+    let reads = 0;
+    const h = harness({
+      "addons.list": () => {
+        reads++;
+        if (reads === 1) {
+          return { addons: [addon()] };
+        }
+        // Read before the Ignore, answered after it.
+        return new Promise((r) => (land = () => r({ addons: [addon()] })));
+      },
+      "addons.setIgnored": { addon: addon({ ignored: true }) },
+    });
+    const { session } = h;
+    await session.reloadAddons();
+    const stale = session.reloadAddons();
+    await session.actions.setIgnored(addon(), true);
+    land();
+    await stale;
+    expect(session.get().addons.map((a) => a.ignored)).toEqual([true]);
+  });
+
+  test("an addon the engine returns that the list doesn't show yet reads the list", async () => {
+    const { session } = harness({
+      "addons.list": { addons: [addon({ id: "b1" })] },
+      "addons.setIgnored": { addon: addon({ id: "b1", ignored: true }) },
+    });
+    await session.actions.setIgnored(addon({ id: "b1" }), true);
+    await Promise.resolve();
+    expect(session.get().addons.map((a) => a.id)).toEqual(["b1"]);
+  });
+
+  test("a change the engine reports outside any action re-reads the list", async () => {
+    const { session } = harness({ "addons.list": { addons: [addon({ version: "2.0" })] } });
+    session.addonsChanged(["a1"]);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(session.get().addons.map((a) => a.version)).toEqual(["2.0"]);
+  });
+
+  test("the folder's dependencies stay on screen; the engine's addon carries none", async () => {
+    // The list stub would wipe the change, so a re-read would show.
+    const h = harness({
+      "addons.list": { addons: [addon({ neededBy: ["Plater"], dependencies: ["Lib"] })] },
+      "addons.setIgnored": () => {
+        // The engine announces the change before it answers.
+        h.session.addonsChanged(["a1"]);
+        return { addon: addon({ ignored: true, neededBy: [], dependencies: [] }) };
+      },
+    });
+    const { session } = h;
+    await session.reloadAddons();
+    await session.actions.setIgnored(session.get().addons[0]!, true);
+    await Promise.resolve();
+    expect(session.get().addons).toEqual([
+      addon({ ignored: true, neededBy: ["Plater"], dependencies: ["Lib"] }),
+    ]);
   });
 
   test("the filter is trimmed; Show ignored is kept", () => {
@@ -185,7 +350,7 @@ describe("Get Addons results against My Addons' list", () => {
   });
 
   test("an ignored addon's update is not offered (as in My Addons)", () => {
-    const ignored = addon({ updateAvailable: true, ignored: true, canReinstall: true });
+    const ignored = addon({ updateAvailable: false, ignored: true, canReinstall: true });
     expect(resultTags(ignored)).toEqual(["Installed"]);
     expect(resultInstallLabel(ignored)).toBe("Reinstall");
   });

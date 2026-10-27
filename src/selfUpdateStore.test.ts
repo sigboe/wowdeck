@@ -7,22 +7,26 @@ import type { UpdateChannel } from "./types";
 const info = (over: Partial<PluginUpdateInfo>): PluginUpdateInfo => ({
   status: "current",
   currentVersion: "0.1.1",
-  latestVersion: null,
-  releaseUrl: null,
-  downloadUrl: null,
-  switchToStable: false,
-  releaseNotes: null,
+  offer: null,
   checked: true,
   toastPending: false,
   ...over,
 });
 
-const available = info({
-  status: "available",
-  latestVersion: "0.2.0",
-  releaseUrl: "https://github.com/sigboe/wowdeck/releases/tag/v0.2.0",
-  downloadUrl: "https://api.github.com/repos/sigboe/wowdeck/releases/assets/1",
+/** An engine offer of `version`, installable. */
+const offerOf = (version: string): PluginUpdateInfo["offer"] => ({
+  kind: "update",
+  version,
+  headline: `WoWDeck ${version} available`,
+  buttonLabel: "Update",
+  toastBody: "Update in Options",
+  rowLabel: "WoWDeck update available",
+  releaseNotes: null,
+  releaseUrl: `https://github.com/sigboe/wowdeck/releases/tag/v${version}`,
+  installable: true,
 });
+
+const available = info({ status: "available", offer: offerOf("0.2.0") });
 
 /** The engine's once-per-version signal: the first answer for 0.2.0. */
 const availablePending = info({ ...available, toastPending: true });
@@ -135,7 +139,7 @@ describe("self-update store: refresh", () => {
     const h = harness();
     expect(h.store.get()).toEqual({ info: null, staging: false });
     const heard: number[] = [];
-    h.store.subscribe(() => heard.push(h.store.get().info?.latestVersion === "0.2.0" ? 1 : 0));
+    h.store.subscribe(() => heard.push(h.store.get().info?.offer?.version === "0.2.0" ? 1 : 0));
 
     const refreshing = h.store.refresh();
     expect(h.calls).toEqual(["system.updateCheck"]);
@@ -347,12 +351,7 @@ describe("self-update store: runUpdate", () => {
 });
 
 describe("self-update store: setChannel", () => {
-  const beta = info({
-    status: "available",
-    latestVersion: "0.3.0-beta.4",
-    releaseUrl: "https://github.com/sigboe/wowdeck/releases/tag/v0.3.0-beta.4",
-    downloadUrl: "https://api.github.com/repos/sigboe/wowdeck/releases/assets/4",
-  });
+  const beta = info({ status: "available", offer: offerOf("0.3.0-beta.4") });
 
   test("stores the channel in the engine and shows the check it answers with", async () => {
     const h = harness();

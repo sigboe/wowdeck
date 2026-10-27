@@ -1,15 +1,17 @@
 /**
- * WoWDeck's own update notice (the plugin, not addons): the text behind
- * the update toast, the Options update panel and its update dot, and the
- * Options → Updates row (each reading "Switch to stable X" when a beta
- * build on Stable is offered an older stable), plus the adapter that hands an engine-staged
- * update to Decky's own installer. The engine's system.updateCheck owns the check, its once-a-day cap, the failure
- * backoff that spaces unreachable checks (1h/2h/4h, silent) and the
- * once-per-release-version toast gate (toastPending);
- * system.updateStage owns the download and verification.
+ * WoWDeck's own update notice (the plugin, not addons): the update toast,
+ * the Options update panel and its update dot, and the Options → Updates
+ * row, all rendered from the engine's one ready offer (system.updateCheck's
+ * `offer`: version, headline, button label, plain-text notes, installable),
+ * plus the adapter that hands an engine-staged update to Decky's own
+ * installer. The engine's system.updateCheck owns the check, its
+ * once-a-day cap, the failure backoff that spaces unreachable checks
+ * (1h/2h/4h, silent), the offer's wording and the once-per-release-version
+ * toast gate (toastPending); system.updateStage owns the download and
+ * verification.
  */
 
-import type { MethodMap } from "../backend/src/api/contracts";
+import type { MethodMap, PluginUpdateOffer } from "../backend/src/api/contracts";
 import type { UpdateChannel } from "./types";
 import type { DotColor } from "./updateDot";
 
@@ -32,130 +34,28 @@ export const UPDATE_CHANNEL_ROWS: ReadonlyArray<{
   },
 ];
 
-const RELEASES_PAGE = "https://github.com/sigboe/wowdeck/releases";
-
-/** The wording for the stable release offered to a beta build whose owner left Beta. */
-const switchLabel = (version: string) => `Switch to stable ${version}`;
-
-/** The toast's and the panel's headline for an offered release. */
-const offerTitle = (info: PluginUpdateInfo, version: string) =>
-  info.switchToStable ? switchLabel(version) : `WoWDeck ${version} available`;
-
 /**
  * The update toast, gated engine-side: system.updateCheck's toastPending is
- * true only for the first answer (fresh or cached) that offers a release
- * whose toast has not fired yet — one toast per release version, surviving
- * restarts and QAM churn. Informative only: it names the version and says
- * where to go (the QAM toast has no action surface).
+ * true only for the first answer (fresh or cached) whose offer is
+ * installable and not yet toasted — one toast per release version,
+ * surviving restarts and QAM churn. Informative only: it names the version
+ * and says where to go (the QAM toast has no action surface).
  */
 export function pluginUpdateToast(info: PluginUpdateInfo): { title: string; body: string } | null {
-  if (!info.toastPending || info.status !== "available" || !info.latestVersion) {
+  if (!info.toastPending || !info.offer) {
     return null;
   }
-  return {
-    title: offerTitle(info, info.latestVersion),
-    body: info.switchToStable ? "Install it in Options" : "Update in Options",
-  };
+  return { title: info.offer.headline, body: info.offer.toastBody };
 }
 
 /**
- * The Options update panel, attached under the nav bar: present only while
- * a release is available with its WoWDeck.zip (never for "current" or
- * "unknown"; without the zip Update could only fail, and the engine
- * re-asks hourly until it is attached). It carries the plugin's only
- * Update button, and the offered build's release notes as plain text when
- * the release has any. The Updates row still names such a release.
+ * The offer the Options update panel shows, and with it the update dot:
+ * only an installable one (without the WoWDeck.zip Update could only fail;
+ * the engine re-asks hourly until it is attached). The Updates row still
+ * names any offer.
  */
-export function pluginUpdatePanel(
-  info: PluginUpdateInfo | null,
-): { text: string; notes: string | null } | null {
-  if (info?.status !== "available" || !info.latestVersion || !info.downloadUrl) {
-    return null;
-  }
-  return {
-    text: offerTitle(info, info.latestVersion),
-    notes: info.releaseNotes ? releaseNotesText(info.releaseNotes) : null,
-  };
-}
-
-/** Marks where markup was removed, so a line left holding only markup is dropped. */
-const REMOVED = "\u0001";
-
-const ENTITIES: Record<string, string> = {
-  "&amp;": "&",
-  "&lt;": "<",
-  "&gt;": ">",
-  "&quot;": '"',
-  "&#39;": "'",
-  "&nbsp;": " ",
-};
-
-/**
- * A GitHub release body (Markdown, downloaded: untrusted) as plain text for
- * a text node, never HTML: heading marks, emphasis, code ticks, images,
- * HTML tags and comments go; links keep their text, autolinks their URL;
- * bullets read "•"; code fences keep their lines verbatim; line breaks
- * stay, runs of blank lines collapse to one. Text that only looks like
- * markup (`x < y`, `Vec<T>`, `2 * 3`, a URL's underscores) stays as
- * written. Null when nothing readable is left.
- */
-function releaseNotesText(markdown: string): string | null {
-  const lines: string[] = [];
-  let fenced = false;
-  const source = markdown
-    .replace(/\r\n?/g, "\n")
-    .split(REMOVED)
-    .join("")
-    .replace(/<!--[\s\S]*?-->/g, REMOVED);
-  for (const line of source.split("\n")) {
-    if (/^\s*```/.test(line)) {
-      fenced = !fenced;
-      continue;
-    }
-    if (fenced) {
-      lines.push(line.trimEnd());
-      continue;
-    }
-    const text = plainLine(line);
-    const kept = text.split(REMOVED).join("").trimEnd();
-    if (kept !== "" || !text.includes(REMOVED)) {
-      lines.push(kept);
-    }
-  }
-  const text = lines
-    .join("\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .replace(/&amp;|&lt;|&gt;|&quot;|&#39;|&nbsp;/g, (m) => ENTITIES[m] ?? m)
-    .trim();
-  return text === "" ? null : text;
-}
-
-/**
- * One Markdown line outside a code fence as plain text. HTML tags count only
- * when tag-shaped: an opening tag not glued to a word (so `Vec<T>` stays),
- * a closing tag anywhere. Emphasis and code ticks are stripped outside URLs
- * only, and emphasis needs its marks against the text (so `2 * 3` stays).
- */
-function plainLine(line: string): string {
-  const text = line
-    .replace(/<(https?:\/\/[^>\s]+)>/g, "$1")
-    .replace(/!\[[^\]]*\]\([^)]*\)/g, REMOVED)
-    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
-    .replace(/(^|[^\w])<[A-Za-z][\w-]*(\s[^>]*)?\/?>/g, `$1${REMOVED}`)
-    .replace(/<\/[A-Za-z][\w-]*\s*>/g, REMOVED)
-    .replace(/^\s{0,3}#{1,6}\s+/, "")
-    .replace(/^(\s*)[*+-]\s+/, "$1• ");
-  return text
-    .split(/(https?:\/\/\S+)/)
-    .map((part, i) =>
-      i % 2 === 1
-        ? part
-        : part
-            .replace(/(\*\*|__)(?=\S)(.+?)(?<=\S)\1/g, "$2")
-            .replace(/(^|[^\w*])([*_])(?=\S)([^*_]*?\S)\2(?=[^\w*]|$)/g, "$1$3")
-            .replace(/`([^`]+)`/g, "$1"),
-    )
-    .join("");
+export function panelOffer(info: PluginUpdateInfo | null): PluginUpdateOffer | null {
+  return info?.offer?.installable ? info.offer : null;
 }
 
 /**
@@ -164,40 +64,21 @@ function plainLine(line: string): string {
  * update installs and the reloaded plugin reads itself up to date.
  */
 export function pluginUpdateDot(info: PluginUpdateInfo | null): DotColor | null {
-  return pluginUpdatePanel(info) ? "update" : null;
-}
-
-/**
- * The panel's Update button ("Switch to stable X" for a switch): disabled
- * while the release is being staged.
- */
-export function pluginUpdateButton(
-  staging: boolean,
-  info: PluginUpdateInfo | null,
-): { label: string; disabled: boolean } {
-  if (staging) {
-    return { label: "Preparing…", disabled: true };
-  }
-  const label =
-    info?.switchToStable && info.latestVersion ? switchLabel(info.latestVersion) : "Update";
-  return { label, disabled: false };
+  return panelOffer(info) ? "update" : null;
 }
 
 /**
  * The Options → Updates row, informational only (the panel holds the
- * button): WoWDeck's own version state. "unknown"
- * (repo unreachable — private beyond the token's reach, offline, rate
- * limited) reads as "couldn't check", never as a failure.
+ * button): WoWDeck's own version state. "unknown" (repo unreachable —
+ * private beyond the token's reach, offline, rate limited) reads as
+ * "couldn't check", never as a failure.
  */
 export function pluginUpdateRow(info: PluginUpdateInfo): { label: string; description: string } {
-  if (info.status === "available" && info.latestVersion) {
-    const target = `${info.currentVersion} → ${info.latestVersion} · ${info.releaseUrl ?? RELEASES_PAGE}`;
-    if (info.switchToStable) {
-      return { label: switchLabel(info.latestVersion), description: target };
-    }
+  const { offer } = info;
+  if (offer) {
     return {
-      label: "WoWDeck update available",
-      description: target,
+      label: offer.rowLabel,
+      description: `${info.currentVersion} → ${offer.version} · ${offer.releaseUrl}`,
     };
   }
   if (info.status === "current") {

@@ -93,10 +93,6 @@ export class WowInterfaceProvider extends AddonProvider {
   override allowChannelChange = false;
   override allowEdit = true;
   override authRequired = false;
-  // Matches upstream: no searchByQuery override exists at all — URL
-  // import, scan-matching, and update-checking are this provider's only
-  // entry points. See investigation §4.
-  override catalogSearch = false;
 
   constructor(private network: NetworkClient) {
     super();
@@ -106,13 +102,9 @@ export class WowInterfaceProvider extends AddonProvider {
     return ID_RE.test(addonId);
   }
 
-  override async searchByQuery(query: string, installation: WowInstallation): Promise<AddonSearchResult[]> {
-    const parsed = parseWowInterfaceQuery(query);
-    if (!parsed) {
-      return [];
-    }
-    const result = await this.getById(parsed.id, installation);
-    return result ? [result] : [];
+  override async resolveUrl(url: string, installation: WowInstallation): Promise<AddonSearchResult | undefined> {
+    const parsed = parseWowInterfaceQuery(url);
+    return parsed ? this.getById(parsed.id, installation) : undefined;
   }
 
   override async getById(addonId: string, _installation: WowInstallation): Promise<AddonSearchResult | undefined> {

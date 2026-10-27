@@ -177,6 +177,9 @@ beforeAll(async () => {
         releasesSeenAuth.push(req.headers.get("authorization"));
         return Response.json(releasesList);
       }
+      if (url.pathname === "/tukui/addons") {
+        return Response.json([]);
+      }
       if (url.pathname === "/wowdeck-asset") {
         return new Response(releasesAsset);
       }
@@ -257,6 +260,7 @@ beforeAll(async () => {
       WOWDECK_HUB_URL: `http://127.0.0.1:${port}`,
       WOWDECK_RELEASES_URL: `http://127.0.0.1:${port}/releases/latest`,
       WOWDECK_CF_URL: `http://127.0.0.1:${cfPort}/v1`,
+      WOWDECK_TUKUI_URL: `http://127.0.0.1:${port}/tukui/addons`,
     },
   });
 
@@ -651,6 +655,7 @@ describe("system.updateCheck (the plugin's own update notice)", () => {
         WOWDECK_HUB_URL: `http://127.0.0.1:${port}`,
         WOWDECK_RELEASES_URL: `http://127.0.0.1:${port}/releases/latest`,
         WOWDECK_CF_URL: `http://127.0.0.1:${cfPort}/v1`,
+        WOWDECK_TUKUI_URL: `http://127.0.0.1:${port}/tukui/addons`,
       },
     });
   }
@@ -731,11 +736,7 @@ describe("system.updateCheck (the plugin's own update notice)", () => {
       expect(res.result).toEqual({
         status: "current",
         currentVersion: version,
-        latestVersion: version,
-        releaseUrl,
-        downloadUrl: null,
-        switchToStable: false,
-        releaseNotes: null,
+        offer: null,
         checked: true,
         toastPending: false,
       });
@@ -762,11 +763,7 @@ describe("system.updateCheck (the plugin's own update notice)", () => {
       expect(res.result).toEqual({
         status: "unknown",
         currentVersion: version,
-        latestVersion: null,
-        releaseUrl: null,
-        downloadUrl: null,
-        switchToStable: false,
-        releaseNotes: null,
+        offer: null,
         checked: true,
         toastPending: false,
       });
@@ -855,9 +852,23 @@ describe("system.updateCheck (the plugin's own update notice)", () => {
     try {
       // Options asks first: it shows the panel, so it must not spend the toast.
       const quiet = await call1(1, "system.updateCheck");
-      expect(quiet.result.status).toBe("available");
-      expect(quiet.result.latestVersion).toBe(target);
-      expect(quiet.result.checked).toBe(true);
+      // The one ready offer; the zip's URL stays in the engine.
+      expect(quiet.result).toMatchObject({
+        status: "available",
+        offer: {
+          kind: "update",
+          version: target,
+          headline: `WoWDeck ${target} available`,
+          buttonLabel: "Update",
+          toastBody: "Update in Options",
+          rowLabel: "WoWDeck update available",
+          releaseNotes: null,
+          releaseUrl: `https://github.com/sigboe/wowdeck/releases/tag/v${target}`,
+          installable: true,
+        },
+        checked: true,
+      });
+      expect(quiet.result).not.toHaveProperty("downloadUrl");
       expect(quiet.result.toastPending).toBe(false);
       expect(releasesSeenAuth.length).toBe(baseline + 1);
 
@@ -907,7 +918,7 @@ describe("system.updateCheck (the plugin's own update notice)", () => {
     const { call: call3 } = link(third);
     try {
       const res = await call3(1, "system.updateCheck", { notify: true });
-      expect(res.result.latestVersion).toBe(newer);
+      expect(res.result.offer?.version).toBe(newer);
       expect(res.result.checked).toBe(true);
       expect(res.result.toastPending).toBe(true); // one more, for the new version
       const again = await call3(2, "system.updateCheck", { notify: true });
@@ -973,7 +984,7 @@ describe("system.updateCheck (the plugin's own update notice)", () => {
       // Inside the day's interval, yet the switch asks at once.
       const baseline = releasesSeenAuth.length;
       const switched = await call1(3, "system.setUpdateChannel", { channel: "beta" });
-      expect(switched.result).toMatchObject({ status: "available", latestVersion: beta, checked: true, toastPending: false });
+      expect(switched.result).toMatchObject({ status: "available", offer: { version: beta }, checked: true, toastPending: false });
       expect(releasesSeenAuth.length).toBe(baseline + 1);
 
       const bad = await call1(4, "system.setUpdateChannel", { channel: "nightly" });
@@ -990,7 +1001,7 @@ describe("system.updateCheck (the plugin's own update notice)", () => {
     try {
       expect((await call2(1, "system.getUpdateChannel")).result).toEqual({ channel: "beta" });
       const res = await call2(2, "system.updateCheck");
-      expect(res.result).toMatchObject({ status: "available", latestVersion: beta, checked: false });
+      expect(res.result).toMatchObject({ status: "available", offer: { version: beta }, checked: false });
     } finally {
       second.kill();
       releasesList = [];

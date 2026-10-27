@@ -12,7 +12,7 @@ import { dateLabel } from "../providers/changelog";
 import { getTocForGameType2 } from "../utils/toc";
 import { plainTextSummary } from "../utils/string";
 import { channelToWire, hasNewerPrerelease, latestFile } from "./releaseChannel";
-import { isAutoUpdatePaused, needsUpdate } from "./addonStatus";
+import { isAutoUpdatePaused } from "./addonStatus";
 
 export function toWireAddon(
   addon: AddonRecord,
@@ -20,18 +20,19 @@ export function toWireAddon(
     canReinstall = false,
     canChangeChannel = false,
     sourceOff = false,
+    canUpdate = false,
     newlyUpdatedMs = 0,
     now = Date.now(),
   }: {
     canReinstall?: boolean;
     canChangeChannel?: boolean;
     sourceOff?: boolean;
+    /** The update rule's answer (updateStatus.canUpdate). */
+    canUpdate?: boolean;
     newlyUpdatedMs?: number;
     now?: number;
   } = {},
 ): Addon {
-  // A source that is off can't update it: no stale "update available".
-  const update = !sourceOff && needsUpdate(addon);
   return {
     id: addon.id,
     installationId: addon.installationId,
@@ -54,8 +55,8 @@ export function toWireAddon(
     externalId: addon.externalId ?? null,
     externalUrl: addon.externalUrl ?? null,
     gameVersion: addon.gameVersion ?? null,
-    availableVersion: update ? (addon.latestVersion ?? null) : null,
-    updateAvailable: update,
+    availableVersion: canUpdate ? (addon.latestVersion ?? null) : null,
+    updateAvailable: canUpdate,
     ignored: addon.isIgnored,
     ignoreReason: addon.isIgnored ? "user" : null,
     broken: addon.warningType !== undefined,

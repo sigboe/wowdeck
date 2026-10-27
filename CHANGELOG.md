@@ -21,6 +21,13 @@ What's new in each version of WoWDeck Addon Manager. The format follows
 - WoWDeck checks for its own updates once a day, including after the Deck
   wakes from sleep.
 
+### Fixed
+
+- Update all no longer reports failures for addons from a source you turned off.
+- Updating, ignoring or removing an addon changes its row once, without the list
+  flickering or briefly showing the old version.
+- Pausing automatic updates or ignoring an addon while updates run now sticks.
+
 ## [0.2.0] - 2026-10-25
 
 ### Added

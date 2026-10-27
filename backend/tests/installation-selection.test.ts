@@ -85,8 +85,8 @@ afterAll(() => {
 
 describe("installation selection", () => {
   test("detect adds both flavors and persists first-installation fallback", async () => {
-    const found = await service.installations.detect(join(ROOT, "home"));
-    expect(found).toHaveLength(2);
+    expect(await service.installations.detect(join(ROOT, "home"))).toHaveLength(2);
+    const found = service.installations.list();
     retail = found.find((i) => i.label === "_retail_")!;
     era = found.find((i) => i.label === "_classic_era_")!;
 
@@ -116,8 +116,8 @@ describe("installation selection", () => {
   test("re-detection never drops installations and keeps the selection", async () => {
     // flavor dir temporarily unavailable (unmounted SD card etc.)
     rmSync(join(ROOT, "wow", "_classic_era_"), { recursive: true, force: true });
-    const after = await service.installations.detect(join(ROOT, "home"));
-    expect(after.map((i) => i.label).sort()).toEqual(["_classic_era_", "_retail_"]);
+    await service.installations.detect(join(ROOT, "home"));
+    expect(service.installations.list().map((i) => i.label).sort()).toEqual(["_classic_era_", "_retail_"]);
     expect(service.installations.selectedId()).toBe(era.id);
 
     // and it recovers once the directory is back
@@ -135,7 +135,8 @@ describe("installation selection", () => {
   });
 
   test("listInstallations refreshes a legacy auto-generated displayName, never a custom one", async () => {
-    const beta = (await service.installations.detect(join(ROOT, "home"))).find((i) => i.label === "_classic_beta_")!;
+    await service.installations.detect(join(ROOT, "home"));
+    const beta = service.installations.list().find((i) => i.label === "_classic_beta_")!;
 
     // Simulate installations persisted before the naming fix (the old
     // `World of Warcraft (${label})` composition, and the brief
