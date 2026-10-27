@@ -534,11 +534,11 @@ describe("GitHubProvider rate limiting and errors", () => {
   });
 });
 
-describe("GitHubProvider.searchByQuery / isValidAddonId / getAll", () => {
-  test("searchByQuery returns [] for a plain-text query (leaves catalog search to other providers)", async () => {
+describe("GitHubProvider.resolveUrl / isValidAddonId / getAll", () => {
+  test("resolveUrl answers nothing for a plain-text query (leaves catalog search to other providers)", async () => {
     const { net } = fakeNet({});
     const provider = new GitHubProvider(net);
-    expect(await provider.searchByQuery("questie", retail)).toEqual([]);
+    expect(await provider.resolveUrl("questie", retail)).toBeUndefined();
   });
 
   test("isValidAddonId accepts owner/repo, rejects everything else", () => {

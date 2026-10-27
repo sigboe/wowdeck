@@ -11,6 +11,7 @@ import { describe, expect, test } from "bun:test";
 import { AddonChannelType, type AddonProviderType } from "../src/wow/types";
 import type { AddonSearchResult, ProviderCategory } from "../src/wow/models";
 import type { DiscoverPage, GetAllResult } from "../src/wow/providers/addon-provider";
+import { ProviderRegistry } from "../src/wow/providers/provider-registry";
 import { type Cassette, loadCassette, ReplayNetwork } from "./providers/cassette";
 import {
   type Capability,
@@ -62,10 +63,8 @@ const check: Record<Capability, (answer: unknown, s: ProviderScenario, providerN
     results.forEach((r) => expectWellFormed(r, name));
   },
   urlImport: (answer, s, name) => {
-    const results = answer as AddonSearchResult[];
-    expect(results).toHaveLength(1);
-    expectWellFormed(results[0], name);
-    expect(results[0]!.externalId).toBe(s.addonId);
+    expectWellFormed(answer as AddonSearchResult, name);
+    expect((answer as AddonSearchResult).externalId).toBe(s.addonId);
   },
   getById: (answer, s, name) => {
     expectWellFormed(answer as AddonSearchResult, name);
@@ -114,6 +113,15 @@ for (const scenario of scenarios) {
 
     test(`${provider.name} declares exactly its scenario's capabilities`, () => {
       expect(declaredCapabilities(provider)).toEqual(scenario.capabilities);
+    });
+
+    // Get Addons builds its browse bar and Search helper from these flags (ADR-0002).
+    test(`${provider.name} advertises on the wire exactly what it implements`, () => {
+      const registry = new ProviderRegistry();
+      registry.register(provider);
+      const info = registry.providerInfos()[0]!;
+      expect(info.discovers).toBe(scenario.capabilities.includes("discover"));
+      expect(info.catalogSearch).toBe(scenario.capabilities.includes("search"));
     });
 
     for (const capability of scenario.capabilities) {

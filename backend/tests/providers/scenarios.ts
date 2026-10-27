@@ -118,30 +118,30 @@ export const scenarios: ProviderScenario[] = [
 export const DISCOVER_COUNT = 5;
 export const DISCOVER_LISTS: DiscoverList[] = ["latest", "popular"];
 
-/** The provider's own word on what it can do: its flags, and which optional methods it overrides. */
+/** The provider's own word on what it can do: the capability methods it implements, and which defaults it overrides. */
 export function declaredCapabilities(provider: AddonProvider): Capability[] {
   const overrides = (method: keyof AddonProvider) => provider[method] !== AddonProvider.prototype[method];
   const all: Array<[Capability, boolean]> = [
-    ["search", provider.catalogSearch && overrides("searchByQuery")],
-    ["urlImport", !provider.catalogSearch && overrides("searchByQuery")],
+    ["search", !!provider.searchByQuery],
+    ["urlImport", !!provider.resolveUrl],
     ["getById", overrides("getById")],
-    ["getAll", provider.checksForUpdates && overrides("getAll")],
-    ["discover", provider.discovers && overrides("getDiscoverPage")],
+    ["getAll", !!provider.getAll],
+    ["discover", !!provider.getDiscoverPage],
     ["description", overrides("getDescription")],
     ["changelog", overrides("getChangelog")],
-    ["categories", overrides("getCategories")],
+    ["categories", !!provider.getCategories],
   ];
   return all.filter(([, has]) => has).map(([capability]) => capability);
 }
 
 /** What each capability asks of the provider; the suite checks the answers. */
 export const exercise: Record<Capability, (provider: AddonProvider, scenario: ProviderScenario) => Promise<unknown>> = {
-  search: (p, s) => p.searchByQuery(s.query!, installation),
-  urlImport: (p, s) => p.searchByQuery(s.query!, installation),
+  search: (p, s) => p.searchByQuery!(s.query!, installation),
+  urlImport: (p, s) => p.resolveUrl!(s.query!, installation),
   getById: (p, s) => p.getById(s.addonId, installation),
-  getAll: (p, s) => p.getAll(installation, [s.addonId, ...(s.missingId ? [s.missingId] : [])]),
-  discover: (p) => Promise.all(DISCOVER_LISTS.map((list) => p.getDiscoverPage(list, installation, 0, DISCOVER_COUNT))),
+  getAll: (p, s) => p.getAll!(installation, [s.addonId, ...(s.missingId ? [s.missingId] : [])]),
+  discover: (p) => Promise.all(DISCOVER_LISTS.map((list) => p.getDiscoverPage!(list, installation, 0, DISCOVER_COUNT))),
   description: (p, s) => p.getDescription(s.addonId),
   changelog: (p, s) => p.getChangelog(s.addonId, installation),
-  categories: (p) => p.getCategories(installation),
+  categories: (p) => p.getCategories!(installation),
 };

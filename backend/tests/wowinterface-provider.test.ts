@@ -286,9 +286,9 @@ describe("WowInterfaceProvider capability flags", () => {
     expect(provider.allowEdit).toBe(true);
   });
 
-  test("searchByQuery returns [] for plain text", async () => {
+  test("resolveUrl answers nothing for plain text", async () => {
     const provider = new WowInterfaceProvider(fakeNet({}));
-    expect(await provider.searchByQuery("some addon name", retail)).toEqual([]);
+    expect(await provider.resolveUrl("some addon name", retail)).toBeUndefined();
   });
 
   test("isValidAddonId accepts only numeric strings", () => {

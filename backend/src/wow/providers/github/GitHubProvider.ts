@@ -222,9 +222,6 @@ export class GitHubProvider extends AddonProvider {
   // provider-toggle list. Enforced defensively in ProviderRegistry too,
   // not just hidden in the UI.
   override allowEdit = false;
-  // No meaningful searchByQuery for catalog text search — only URL
-  // resolution, used by the Install from URL dispatcher directly.
-  override catalogSearch = false;
   override authRequired = false;
 
   constructor(
@@ -280,13 +277,9 @@ export class GitHubProvider extends AddonProvider {
     }
   }
 
-  override async searchByQuery(query: string, installation: WowInstallation): Promise<AddonSearchResult[]> {
-    const parsed = parseGitHubRepoQuery(query);
-    if (!parsed) {
-      return [];
-    }
-    const result = await this.getById(`${parsed.owner}/${parsed.repo}`, installation);
-    return result ? [result] : [];
+  override async resolveUrl(url: string, installation: WowInstallation): Promise<AddonSearchResult | undefined> {
+    const parsed = parseGitHubRepoQuery(url);
+    return parsed ? this.getById(`${parsed.owner}/${parsed.repo}`, installation) : undefined;
   }
 
   override async getById(addonId: string, installation: WowInstallation): Promise<AddonSearchResult | undefined> {

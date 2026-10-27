@@ -59,8 +59,8 @@ function result(provider: AddonProviderType, e: Entry): AddonSearchResult {
   };
 }
 
-/** A provider answering from a fixed list: a search matches names containing the query. */
-class FakeProvider extends AddonProvider {
+/** A provider answering from a fixed list by id, with no catalog search, lists or categories. */
+class LookupProvider extends AddonProvider {
   failure: Error | null = null;
   override allowChannelChange = true;
   /** The TOC field naming this provider's id, if any. */
@@ -73,15 +73,6 @@ class FakeProvider extends AddonProvider {
     super();
     this.name = name;
     this.enabled = true;
-  }
-
-  override async searchByQuery(query: string): Promise<AddonSearchResult[]> {
-    if (this.failure || this.entries.some((e) => e.failOn === query)) {
-      throw this.failure ?? new Error(`${this.name} broke on ${query}`);
-    }
-    return this.entries
-      .filter((e) => e.name.toLowerCase().includes(query.toLowerCase()))
-      .map((e) => result(this.name, e));
   }
 
   override async getById(id: string): Promise<AddonSearchResult | undefined> {
@@ -100,11 +91,6 @@ class FakeProvider extends AddonProvider {
     return this.tocField ? (toc[this.tocField] as string | undefined) : undefined;
   }
 
-  override async getDiscoverPage(list: DiscoverList, _installation: WowInstallation, offset: number, count: number) {
-    const ordered = list === "popular" ? [...this.entries].sort((a, b) => (b.downloads ?? 0) - (a.downloads ?? 0)) : this.entries;
-    return { results: ordered.slice(offset, offset + count).map((e) => result(this.name, e)), totalCount: ordered.length };
-  }
-
   override async getDescription(id: string): Promise<string | undefined> {
     return this.entries.find((e) => e.id === id)?.description;
   }
@@ -112,19 +98,42 @@ class FakeProvider extends AddonProvider {
   override async getChangelog(id: string): Promise<string | undefined> {
     return this.entries.find((e) => e.id === id)?.changelog;
   }
-
-  override async getCategories(): Promise<ProviderCategory[] | undefined> {
-    return this.categories;
-  }
-
-  categories: ProviderCategory[] | undefined = undefined;
 }
 
-/** A provider that resolves pasted addresses (GitHub): any query names its one addon. */
-class UrlProvider extends FakeProvider {
-  override catalogSearch = false;
-  override async searchByQuery(): Promise<AddonSearchResult[]> {
-    return this.entries.map((e) => result(this.name, e));
+/** A provider with a catalog: a search matches names containing the query. */
+class FakeProvider extends LookupProvider {
+  override async searchByQuery(query: string): Promise<AddonSearchResult[]> {
+    if (this.failure || this.entries.some((e) => e.failOn === query)) {
+      throw this.failure ?? new Error(`${this.name} broke on ${query}`);
+    }
+    return this.entries
+      .filter((e) => e.name.toLowerCase().includes(query.toLowerCase()))
+      .map((e) => result(this.name, e));
+  }
+}
+
+/** A catalog with Latest and Popular lists (WowUp Hub): Popular by downloads, Latest in entry order. */
+class ListsProvider extends FakeProvider {
+  override async getDiscoverPage(list: DiscoverList, _installation: WowInstallation, offset: number, count: number) {
+    const ordered = list === "popular" ? [...this.entries].sort((a, b) => (b.downloads ?? 0) - (a.downloads ?? 0)) : this.entries;
+    return { results: ordered.slice(offset, offset + count).map((e) => result(this.name, e)), totalCount: ordered.length };
+  }
+}
+
+/** A catalog with categories (CurseForge). */
+class CategoriesProvider extends FakeProvider {
+  categories: ProviderCategory[] = [];
+
+  override async getCategories(): Promise<ProviderCategory[]> {
+    return this.categories;
+  }
+}
+
+/** A provider that resolves pasted addresses (GitHub): any address names its first addon. */
+class UrlProvider extends LookupProvider {
+  override async resolveUrl(): Promise<AddonSearchResult | undefined> {
+    const entry = this.entries[0];
+    return entry && result(this.name, entry);
   }
 }
 
@@ -260,9 +269,8 @@ describe("findSources", () => {
 
   test("a provider failing its TOC-id lookup is reported beside the others' results", async () => {
     const hub = new FakeProvider("WowUpHub", [{ id: "501", name: "Zeta", folders: ["Zeta"] }]);
-    const tukui = new FakeProvider("TukUI", []);
+    const tukui = new LookupProvider("TukUI", []);
     tukui.tocField = "tukUiProjectId";
-    tukui.catalogSearch = false;
     tukui.failure = new Error("TukUI down");
     const { results, providerErrors } = await catalogueOf(hub, tukui).findSources({
       installation,
@@ -277,12 +285,11 @@ describe("findSources", () => {
 
 describe("Latest and Popular", () => {
   test("a page of one source's list, in its order", async () => {
-    const hub = new FakeProvider("WowUpHub", [
+    const hub = new ListsProvider("WowUpHub", [
       { id: "1", name: "One", folders: ["One"], downloads: 5 },
       { id: "2", name: "Two", folders: ["Two"], downloads: 50 },
       { id: "3", name: "Three", folders: ["Three"], downloads: 500 },
     ]);
-    hub.discovers = true;
     const catalogue = catalogueOf(hub);
     const popular = await catalogue.discover("popular", "WowUpHub", installation, 0, 2);
     expect(popular.results.map((r) => r.name)).toEqual(["Three", "Two"]);
@@ -292,8 +299,7 @@ describe("Latest and Popular", () => {
 
   test("a source without the lists, turned off or unknown says to turn it on", async () => {
     const tukui = new FakeProvider("TukUI", []);
-    const hub = new FakeProvider("WowUpHub", []);
-    hub.discovers = true;
+    const hub = new ListsProvider("WowUpHub", []);
     hub.enabled = false;
     const catalogue = catalogueOf(tukui, hub);
     for (const providerId of ["TukUI", "WowUpHub", "Curse"]) {
@@ -304,7 +310,7 @@ describe("Latest and Popular", () => {
 
 describe("addon details", () => {
   test("description, changelog and categories pass through; unsupported is null; an unknown source throws", async () => {
-    const curse = new FakeProvider("Curse", [{ id: "7", name: "Seven", folders: ["Seven"], description: "<p>Hi</p>", changelog: "Fixed" }]);
+    const curse = new CategoriesProvider("Curse", [{ id: "7", name: "Seven", folders: ["Seven"], description: "<p>Hi</p>", changelog: "Fixed" }]);
     curse.categories = [{ id: "1019", name: "Combat" }];
     const hub = new FakeProvider("WowUpHub", [{ id: "8", name: "Eight", folders: ["Eight"] }]);
     const catalogue = catalogueOf(curse, hub);

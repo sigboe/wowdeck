@@ -614,7 +614,7 @@ export class AddonService {
     installation: WowInstallation,
   ): Promise<{ externalId: string; name: string; thumbnailUrl: string | null; installed: boolean }[]> {
     const provider = this.registry.usable(providerId);
-    if (!provider || externalIds.length === 0) {
+    if (!provider?.getAll || externalIds.length === 0) {
       return [];
     }
     const ids = externalIds.slice(0, LOOKUP_MAX_IDS).filter((id) => provider.isValidAddonId(id));
@@ -648,7 +648,7 @@ export class AddonService {
 
       for (const [providerName, addons] of byProvider) {
         const provider = this.registry.usable(providerName);
-        if (!provider?.checksForUpdates) {
+        if (!provider?.getAll) {
           continue;
         }
         try {

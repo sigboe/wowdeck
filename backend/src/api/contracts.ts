@@ -533,6 +533,7 @@ export interface MethodMap {
     result: { addons: Addon[]; updated: number; failed: number };
   };
   "addons.search": {
+    /** providerId: one source with `ProviderInfo.catalogSearch`; any other answers no results. */
     params: { query: string; providerId?: string };
     result: { results: SearchResult[]; providerErrors: ProviderErrors };
   };

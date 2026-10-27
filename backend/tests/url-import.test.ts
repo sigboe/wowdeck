@@ -216,7 +216,7 @@ describe("Catalogue.resolveUrlImport", () => {
 });
 
 describe("Normal catalog search never dispatches a URL import", () => {
-  test("search() does not call GitHub/WowInterface's searchByQuery at all (catalogSearch=false)", async () => {
+  test("search() never asks GitHub/WowInterface to resolve the text as a URL", async () => {
     let githubCalled = false;
     let wowiCalled = false;
     const net = {
@@ -225,13 +225,13 @@ describe("Normal catalog search never dispatches a URL import", () => {
       },
     } as unknown as NetworkClient;
     const { catalogue, github, wowi } = makeCatalogue(net, "svc9");
-    const originalGithub = github.searchByQuery.bind(github);
-    const originalWowi = wowi.searchByQuery.bind(wowi);
-    github.searchByQuery = async (...args) => {
+    const originalGithub = github.resolveUrl.bind(github);
+    const originalWowi = wowi.resolveUrl.bind(wowi);
+    github.resolveUrl = async (...args) => {
       githubCalled = true;
       return originalGithub(...args);
     };
-    wowi.searchByQuery = async (...args) => {
+    wowi.resolveUrl = async (...args) => {
       wowiCalled = true;
       return originalWowi(...args);
     };

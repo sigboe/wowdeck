@@ -25,6 +25,9 @@ function addonKey(r: Pick<AddonSearchResult, "providerName" | "externalId">): st
   return `${r.providerName}:${r.externalId}`;
 }
 
+/** A provider in the name search: one with a catalog to search. */
+type SearchableProvider = AddonProvider & Required<Pick<AddonProvider, "searchByQuery">>;
+
 /** Results kept from each provider for one search. */
 const SEARCH_RESULTS_PER_PROVIDER = 10;
 
@@ -48,10 +51,10 @@ export interface SourceRequest {
  * UI can tell a failure from an empty answer. What it answered before
  * failing is kept by `ask`.
  */
-async function fanOut(
-  providers: AddonProvider[],
+async function fanOut<P extends AddonProvider>(
+  providers: P[],
   what: string,
-  ask: (provider: AddonProvider) => Promise<void>,
+  ask: (provider: P) => Promise<void>,
 ): Promise<ProviderErrors> {
   const providerErrors: ProviderErrors = [];
   await Promise.all(
@@ -79,9 +82,7 @@ export class Catalogue {
     if (!query.trim()) {
       return { results: [], providerErrors: [] };
     }
-    const providers = providerId
-      ? [this.registry.usable(providerId)].filter((p): p is NonNullable<typeof p> => !!p)
-      : this.#searchableProviders();
+    const providers = this.#searchableProviders().filter((p) => !providerId || p.name === providerId);
     const { results, providerErrors } = await this.#searchProviders(
       providers,
       [query],
@@ -100,7 +101,7 @@ export class Catalogue {
    * Install from URL: resolves a pasted GitHub/WowInterface URL,
    * GitHub owner/repo shorthand, Nix-style github:owner/repo reference,
    * or a direct https link to an addon archive (WF-09), through the
-   * provider's own searchByQuery, outside the name search. Works while the
+   * provider's own resolveUrl, outside the name search. Works while the
    * provider is turned off in Options, as upstream's dispatcher does (owner,
    * 2026-10-21): the install goes through too (see AddonService.install),
    * and My Addons tags the addon "Source off".
@@ -114,8 +115,7 @@ export class Catalogue {
     if (!providerId) {
       throw new ValidationError("That isn't a GitHub or WoWInterface address, or an https link to a .zip, .rar or .7z file");
     }
-    const provider = this.#require(providerId);
-    const result = (await provider.searchByQuery(trimmed, installation))[0];
+    const result = await this.#require(providerId).resolveUrl?.(trimmed, installation);
     if (!result) {
       throw new NotFoundError("addon for url", trimmed);
     }
@@ -136,7 +136,7 @@ export class Catalogue {
     categoryId?: string,
   ): Promise<{ results: SearchResult[]; totalCount: number }> {
     const provider = this.registry.usable(providerId);
-    if (!provider?.discovers) {
+    if (!provider?.getDiscoverPage) {
       throw new ProviderError(
         providerId,
         `${providerDisplayName(providerId)} isn't available. Turn it on in Options › Addon sources`,
@@ -147,8 +147,9 @@ export class Catalogue {
     return { results: results.map((r) => this.#wire(r, installation)), totalCount };
   }
 
-  // Details and categories: every AddonProvider answers, undefined (on the
-  // base class) meaning "unsupported", which the wire carries as null.
+  // Details: every AddonProvider answers, undefined (on the base class)
+  // meaning "unsupported", which the wire carries as null; categories are
+  // null for a provider without getCategories.
 
   async getDescription(providerId: string, externalId: string): Promise<string | null> {
     return (await this.#require(providerId).getDescription(externalId)) || null;
@@ -159,7 +160,7 @@ export class Catalogue {
   }
 
   async getCategories(providerId: string, installation: WowInstallation): Promise<ProviderCategory[] | null> {
-    return (await this.#require(providerId).getCategories(installation)) ?? null;
+    return (await this.#require(providerId).getCategories?.(installation)) ?? null;
   }
 
   /** A registered provider, on or off: details of an installed addon stay readable with its source off. */
@@ -171,9 +172,9 @@ export class Catalogue {
     return provider;
   }
 
-  /** Providers in the name search (GitHub and WoWInterface only resolve URLs). */
-  #searchableProviders(): AddonProvider[] {
-    return this.registry.available().filter((p) => p.catalogSearch);
+  /** Providers in the name search: those with a catalog (GitHub, WoWInterface and direct links only resolve URLs). */
+  #searchableProviders(): SearchableProvider[] {
+    return this.registry.available().filter((p): p is SearchableProvider => !!p.searchByQuery);
   }
 
   /**
@@ -181,7 +182,7 @@ export class Catalogue {
    * `perProvider` results of each answer, each addon once.
    */
   async #searchProviders(
-    providers: AddonProvider[],
+    providers: SearchableProvider[],
     queries: string[],
     installation: WowInstallation,
     perProvider = Infinity,

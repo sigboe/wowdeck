@@ -6,7 +6,7 @@
  *   checked on the downloaded bytes by ArchiveExtractor, so no HEAD
  *   content-type request); no website (upstream: the link's origin);
  *   installed addons stay visible instead of
- *   forced-ignored, and are never asked about updates (checksForUpdates).
+ *   forced-ignored, and are never asked about updates (no getAll).
  * See docs/wowup-provenance.md.
  *
  * Install from URL for an addon archive at a direct link (WF-09): an
@@ -46,17 +46,15 @@ export class ZipProvider extends AddonProvider {
   override enabled = true;
   // Never a settings toggle, never in the name search: a link is its only way in.
   override allowEdit = false;
-  override catalogSearch = false;
-  override checksForUpdates = false;
 
   override isValidAddonId(addonId: string): boolean {
     return parseArchiveUrl(addonId)?.toString() === addonId;
   }
 
   /** The Install from URL card: the file name, and the host as author so people see where it comes from. */
-  override async searchByQuery(query: string): Promise<AddonSearchResult[]> {
-    const url = parseArchiveUrl(query);
-    return url ? [this.#result(url, fileName(url))] : [];
+  override async resolveUrl(url: string): Promise<AddonSearchResult | undefined> {
+    const parsed = parseArchiveUrl(url);
+    return parsed ? this.#result(parsed, fileName(parsed)) : undefined;
   }
 
   /**

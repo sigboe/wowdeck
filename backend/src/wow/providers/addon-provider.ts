@@ -5,13 +5,15 @@
  * Modified: yes — trimmed to the capability surface this plugin uses
  *   (removed batch fetch, protocol/url search, ads); changelogs and
  *   categories kept as optional overrides (getChangelog, getCategories);
- *   DownloadAuth retained for authenticated downloads.
+ *   DownloadAuth retained for authenticated downloads. Capabilities are
+ *   optional methods, their flags derived from them; URL import is its own
+ *   method (resolveUrl) instead of a mode of searchByQuery.
  * See docs/wowup-provenance.md.
  */
 
 import type { AddonFolder, AddonSearchResult, AddonSearchResultFile, ProviderCategory, WowInstallation } from "../models";
 import type { Toc } from "../toc/toc";
-import type { AddonChannelType, AddonProviderType } from "../types";
+import type { AddonProviderType } from "../types";
 import { getTocForGameType2 } from "../utils/toc";
 
 export interface GetAllResult {
@@ -88,62 +90,65 @@ export abstract class AddonProvider {
    */
   public allowEdit = true;
   public authRequired = false;
-  /**
-   * Whether this provider participates in the generic name-based
-   * Search box. Independent of scan participation (AddonService's
-   * SCAN_ORDER) and of `allowEdit` (settings-toggle visibility) — upstream's own WowInterface provider is toggleable and
-   * scan-participating but never catalog-searchable, confirming these
-   * are genuinely orthogonal capabilities, not one flag wearing three
-   * hats. Default true matches every provider that predates this flag
-   * (TukUI/WowUpHub/CurseForge all do real catalog search); GitHub and
-   * WowInterface override it to false since neither one ever has a
-   * meaningful `searchByQuery` — URL import is their only entry point.
-   */
-  public catalogSearch = true;
-  /**
-   * Whether update checks ask this provider about its addons. False for a
-   * direct link (ZipProvider), which has nothing to ask: refresh would
-   * otherwise flag every such addon as gone from its source. Upstream
-   * forced those addons to ignored instead (`forceIgnore`), which here
-   * would hide them from My Addons.
-   */
-  public checksForUpdates = true;
-  /**
-   * Whether this provider has Get Addons' Latest and Popular lists
-   * (getDiscoverPage); upstream's getFeaturedAddons. CurseForge and WowUp
-   * Hub; the other sources have no such list.
-   */
-  public discovers = false;
 
-  /** Fetch current metadata for a set of managed addons (update checks). */
-  public getAll(_installation: WowInstallation, _addonIds: string[]): Promise<GetAllResult> {
-    return Promise.resolve({ searchResults: [], errors: [] });
-  }
+  /*
+   * Capabilities: a provider has one when it implements the method behind
+   * it. The flags below are read from the methods, never set, so a
+   * provider cannot advertise a list or a search it does not have
+   * (ADR-0002: Get Addons builds its browse bar from them).
+   */
 
-  /** Search the provider catalog. */
-  public searchByQuery(
-    _query: string,
-    _installation: WowInstallation,
-    _channelType?: AddonChannelType,
-  ): Promise<AddonSearchResult[]> {
-    return Promise.resolve([]);
-  }
+  /**
+   * Fetch current metadata for a set of managed addons (update checks, scan
+   * by TOC id). A direct link or a local file has nothing to ask: update
+   * checks skip it rather than flag every such addon as gone from its
+   * source. Upstream forced those addons to ignored instead (`forceIgnore`),
+   * which here would hide them from My Addons.
+   */
+  public getAll?(installation: WowInstallation, addonIds: string[]): Promise<GetAllResult>;
+
+  /**
+   * Search the catalog by name (Get Addons' Search, finding sources).
+   * GitHub, WowInterface and direct links have no catalog to search: a URL
+   * is their only way in (resolveUrl). Upstream's WowInterface is likewise
+   * toggleable and scanned but never searched.
+   */
+  public searchByQuery?(query: string, installation: WowInstallation): Promise<AddonSearchResult[]>;
+
+  /** The addon a pasted URL names (Install from URL), or undefined when it names none of this provider's. */
+  public resolveUrl?(url: string, installation: WowInstallation): Promise<AddonSearchResult | undefined>;
 
   /**
    * `count` items of this provider's Latest or Popular list from `offset`,
-   * in its own order. Addons without a release for the installation's game
-   * version are left out, so a page can come back short. `categoryId` is a
-   * CurseForge category (addons.getCategories): a provider without that
-   * category has nothing in it.
+   * in its own order; upstream's getFeaturedAddons. Addons without a
+   * release for the installation's game version are left out, so a page
+   * can come back short. `categoryId` is a CurseForge category
+   * (addons.getCategories): a provider without that category has nothing
+   * in it.
    */
-  public getDiscoverPage(
-    _list: DiscoverList,
-    _installation: WowInstallation,
-    _offset: number,
-    _count: number,
-    _categoryId?: string,
-  ): Promise<DiscoverPage> {
-    return Promise.resolve({ results: [], totalCount: 0 });
+  public getDiscoverPage?(
+    list: DiscoverList,
+    installation: WowInstallation,
+    offset: number,
+    count: number,
+    categoryId?: string,
+  ): Promise<DiscoverPage>;
+
+  /**
+   * Addon categories this provider's catalog can be filtered by, never
+   * invented for a provider without a category system of its own. An empty
+   * list is a valid answer.
+   */
+  public getCategories?(installation: WowInstallation): Promise<ProviderCategory[]>;
+
+  /** In the generic name search (ProviderInfo.catalogSearch). */
+  public get catalogSearch(): boolean {
+    return !!this.searchByQuery;
+  }
+
+  /** Has Get Addons' Latest and Popular lists (ProviderInfo.discovers). */
+  public get discovers(): boolean {
+    return !!this.getDiscoverPage;
   }
 
   /** Fetch one addon by its provider id. */
@@ -192,7 +197,7 @@ export abstract class AddonProvider {
       return toc && id ? [{ folder, toc, id }] : [];
     });
     const matches = new Map<string, ScanMatch>();
-    if (!found.length) {
+    if (!found.length || !this.getAll) {
       return matches;
     }
     const { searchResults } = await this.getAll(installation, [...new Set(found.map((f) => f.id))]);
@@ -240,17 +245,6 @@ export abstract class AddonProvider {
    * `undefined`-means-unsupported convention as above.
    */
   public getChangelog(_addonId: string, _installation: WowInstallation): Promise<string | undefined> {
-    return Promise.resolve(undefined);
-  }
-
-  /**
-   * Addon categories this provider's catalog can be filtered by.
-   * `undefined` means "this provider doesn't support category
-   * retrieval" — never invented/hardcoded for
-   * a provider that doesn't expose its own category system. A genuinely
-   * empty list (`[]`) is a distinct, valid result from "unsupported".
-   */
-  public getCategories(_installation: WowInstallation): Promise<ProviderCategory[] | undefined> {
     return Promise.resolve(undefined);
   }
 }
