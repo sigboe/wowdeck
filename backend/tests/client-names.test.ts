@@ -26,6 +26,6 @@ describe("client display names", () => {
     for (const [client, name] of Object.entries(CLIENT_FULL_NAMES)) {
       expect(isLegacyAutoDisplayName(name, WowClientType[client as keyof typeof WowClientType])).toBe(true);
     }
-    expect(Object.keys(CLIENT_FULL_NAMES)).toHaveLength(10);
+    expect(Object.keys(CLIENT_FULL_NAMES)).toHaveLength(11);
   });
 });

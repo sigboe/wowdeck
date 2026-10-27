@@ -13,6 +13,7 @@ export const MANUAL_GAME_TYPES: readonly GameType[] = [
   "retail",
   "classic_era",
   "classic",
+  "forever",
   "classic_beta",
   "beta",
   "ptr",

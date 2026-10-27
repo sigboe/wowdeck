@@ -16,6 +16,7 @@ const WIRE: Array<[WowClientType, string]> = [
   [WowClientType.ClassicEraPtr, "classic_era"],
   [WowClientType.RetailXPtr, "ptr"],
   [WowClientType.Anniversary, "classic_era"],
+  [WowClientType.Forever, "forever"],
   [WowClientType.None, "retail"],
 ];
 
@@ -28,6 +29,7 @@ describe("wire game types", () => {
     expect(getClientTypeForGameType("retail")).toBe(WowClientType.Retail);
     expect(getClientTypeForGameType("classic")).toBe(WowClientType.Classic);
     expect(getClientTypeForGameType("classic_era")).toBe(WowClientType.ClassicEra);
+    expect(getClientTypeForGameType("forever")).toBe(WowClientType.Forever);
     expect(getClientTypeForGameType("classic_beta")).toBe(WowClientType.ClassicBeta);
     expect(getClientTypeForGameType("ptr")).toBe(WowClientType.RetailPtr);
     expect(getClientTypeForGameType("beta")).toBe(WowClientType.Beta);
@@ -42,6 +44,7 @@ describe("manual-add game types (api/gameTypes)", () => {
       ["retail", "Retail"],
       ["classic_era", "Classic Era"],
       ["classic", "Classic"],
+      ["forever", "Forever"],
       ["classic_beta", "Forever Beta"],
       ["beta", "Retail Beta"],
       ["ptr", "Retail PTR"],

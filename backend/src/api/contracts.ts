@@ -56,7 +56,7 @@ export function isRpcEvent(msg: RpcMessage): msg is RpcEvent {
 // subtree, only wire-visible shapes here)
 // ---------------------------------------------------------------------------
 
-export type GameType = "retail" | "classic" | "classic_era" | "classic_beta" | "ptr" | "beta";
+export type GameType = "retail" | "classic" | "classic_era" | "forever" | "classic_beta" | "ptr" | "beta";
 
 /** How an installation entered the installation list. */
 export type InstallationSource = "detected" | "manual";

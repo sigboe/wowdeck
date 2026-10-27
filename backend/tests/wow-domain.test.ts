@@ -24,6 +24,19 @@ describe("getTocForGameType", () => {
     expect(getTocForGameType(tocs, WowClientType.Anniversary)).toBe("Foo-BCC.toc");
   });
 
+  test("Forever and Forever Beta prefer -Forever or -Camelot", () => {
+    for (const client of [WowClientType.Forever, WowClientType.ClassicBeta]) {
+      expect(getTocForGameType([...tocs, "Foo-Forever.toc"], client)).toBe("Foo-Forever.toc");
+      expect(getTocForGameType(["Foo.toc", "Foo-Mists.toc", "Foo-Camelot.toc"], client)).toBe("Foo-Camelot.toc");
+      expect(getTocForGameType(["Foo-Mists.toc", "Foo.toc"], client)).toBe("Foo.toc");
+    }
+  });
+
+  test("a Forever toc is never another client's base toc", () => {
+    expect(getTocForGameType(["Foo-Forever.toc", "Foo.toc"], WowClientType.Retail)).toBe("Foo.toc");
+    expect(getTocForGameType(["Foo-Camelot.toc"], WowClientType.Retail)).toBe("");
+  });
+
   test("falls back to base toc when no flavor toc matches", () => {
     expect(getTocForGameType(["Foo.toc", "Foo-Vanilla.toc"], WowClientType.Retail)).toBe("Foo.toc");
   });

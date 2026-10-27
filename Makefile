@@ -37,7 +37,7 @@ setup: wowup
 # pinned commit on demand. Keep WOWUP_COMMIT in step with
 # docs/development.md's pinned-references table.
 WOWUP_REPO   ?= https://github.com/WowUp/WowUp.git
-WOWUP_COMMIT ?= 4fdae600d94ad7dd187a6bc93b517e657100b01a
+WOWUP_COMMIT ?= 89a0981ad00290d40368bf2a9f60209a40198502
 
 wowup:
 	@if [ -f wowup/wowup-lib/src/types.ts ]; then \

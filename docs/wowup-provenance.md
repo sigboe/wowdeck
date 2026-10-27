@@ -2,18 +2,21 @@
 
 Every module derived from WowUp carries a provenance header. This file is
 the authoritative register. Upstream reference: the `wowup/` checkout pinned
-at `4fdae600d94ad7dd187a6bc93b517e657100b01a` (`make wowup`; WowUp 2.23.1,
+at `89a0981ad00290d40368bf2a9f60209a40198502` (`make wowup`; WowUp 2.24.1,
 GPL-3.0; the `wowup-lib` package declares ISC in its package.json — we treat
 all extracted code as GPL-3.0 and license the project GPL-3.0 accordingly).
+Rows still at `4fdae600` (WowUp 2.23.1, the earlier pin) were not re-adapted
+since; the move to 2.24.1 re-adapted only the rows that carry the Forever
+client (upstream `41352f97`).
 
 | Project module | Upstream path | Upstream commit | Modified | Reason |
 | --- | --- | --- | --- | --- |
-| `backend/src/wow/types.ts` | `wowup-lib/src/types.ts` | 4fdae600 | yes | Trimmed provider set; moved helpers out |
-| `backend/src/wow/toc/toc.ts` | `wowup-lib/src/toc.ts`; `wowup-electron/src/common/constants.ts`; `wowup-electron/app/services/warcraft/warcraft-platform.service.ts` (`getClientTypeForFolderName`) | 4fdae600 | yes | Merged TOC tags + flavor folder mapping into one module |
+| `backend/src/wow/types.ts` | `wowup-lib/src/types.ts` | 89a0981a | yes | Trimmed provider set; moved helpers out; `Forever` client type as upstream |
+| `backend/src/wow/toc/toc.ts` | `wowup-lib/src/toc.ts`; `wowup-electron/src/common/constants.ts`; `wowup-electron/app/services/warcraft/warcraft-platform.service.ts` (`getClientTypeForFolderName`) | 89a0981a | yes | Merged TOC tags + flavor folder mapping into one module; `_forever_` maps to Forever |
 | `backend/src/wow/models.ts` | `wowup-lib/src/addons.ts`; `wowup-lib/src/models/warcraft.ts`; `wowup-lib/src/ipc.ts` | 4fdae600 | yes | Trimmed unused fields; renamed Addon→WowAddon; leaner FsStats |
-| `backend/src/wow/utils/toc.ts` | `wowup-lib/src/utils/toc.utils.ts` | 4fdae600 | no | Verbatim extraction (minor import changes) |
-| `backend/src/wow/providers/curseforge/CurseForgeProvider.ts` | `wowup-electron/src/app/addon-providers/curse-addon-provider.ts` + curseforge-v2 wire shapes | 4fdae600 | yes | User-supplied API key (upstream embeds at build); TOC-id scan instead of murmur2 fingerprints; files ordered stable-first for engine files[0]; GAME_TYPE_LISTS + file compatibility verbatim |
-| `backend/src/wow/utils/gametype.ts` | `wowup-lib/src/utils/wow-client.utils.ts` | 4fdae600 | yes | Dropped client groups; added display labels |
+| `backend/src/wow/utils/toc.ts` | `wowup-lib/src/utils/toc.utils.ts` | 89a0981a | no | Verbatim extraction of `getTocForGameType`/`getTocForGameType2` (minor import changes); the load-condition helpers are not ported |
+| `backend/src/wow/providers/curseforge/CurseForgeProvider.ts` | `wowup-electron/src/app/addon-providers/curse-addon-provider.ts` + curseforge-v2 wire shapes | 89a0981a | yes | User-supplied API key (upstream embeds at build); TOC-id scan instead of murmur2 fingerprints; files ordered stable-first for engine files[0]; GAME_TYPE_LISTS + file compatibility verbatim |
+| `backend/src/wow/utils/gametype.ts` | `wowup-lib/src/utils/wow-client.utils.ts` | 89a0981a | yes | Dropped client groups; added display labels and the wire `GameType` mapping; Forever and Forever Beta stay grouped under Mists (upstream: their own `Forever` game type) |
 | `backend/src/wow/providers/addon-provider.ts` | `wowup-lib/src/addon-provider.ts` | 4fdae600 | yes | Trimmed capability surface (no batch/protocol/ads); changelog and categories kept as optional overrides; capabilities are optional methods with their flags derived from them, URL import its own `resolveUrl`; scan() returns matches (ScanMatch) instead of setting `folder.matchingAddon`, records are built by AddonService (`scannedAddonRecord`), scan order is AddonService's SCAN_ORDER |
 | `backend/src/wow/toc/TocParser.ts` | `wowup-electron/src/app/services/toc/toc.service.ts` | 4fdae600 | yes | Pure functions on Bun.file; empty values normalized to undefined; dependency list trimmed |
 | `backend/src/wow/addons/AddonScanner.ts` | `wowup-electron/src/app/services/warcraft/warcraft.service.ts` (`listAddons`/`getAddonFolder`) | 4fdae600 | yes | safe-fs paths; read-only; git marking inlined; location semantics = flavor dir |
@@ -21,7 +24,7 @@ all extracted code as GPL-3.0 and license the project GPL-3.0 accordingly).
 | `backend/src/wow/net/network.ts` | replaces `wowup-lib/src/utils/network-interface.ts` + electron `net.request` download path | 4fdae600 | reimplemented | Fetch-based client with timeout, JSON POST, streaming download, URL redaction |
 | `backend/src/wow/utils/string.ts` | replaces `string-similarity` dep used by `tukui-addon-provider.ts` | 4fdae600 | reimplemented | Dice bigram coefficient (same semantics) |
 | `backend/src/wow/providers/tukui/tukui-model.ts` | `wowup-lib/src/models/tukui.ts` | 4fdae600 | no | Wire model only |
-| `backend/src/wow/providers/tukui/TukUiAddonProvider.ts` | `wowup-lib/src/addon-providers/tukui-addon-provider.ts` | 4fdae600 | yes | Native replacements; TTL catalog cache; flavor-aware search; scan returns matches, sub-folder claims tracked locally |
+| `backend/src/wow/providers/tukui/TukUiAddonProvider.ts` | `wowup-lib/src/addon-providers/tukui-addon-provider.ts` | 89a0981a | yes | Native replacements; TTL catalog cache; flavor-aware search; scan returns matches, sub-folder claims tracked locally |
 | `backend/src/wow/providers/wowup-hub/wowup-hub-models.ts` | `wowup-lib/src/models/wowup.ts` | 4fdae600 | yes | Trimmed surfaces; string dates |
 | `backend/src/wow/providers/wowup-hub/WowUpHubProvider.ts` | `wowup-lib/src/addon-providers/wowup-addon-provider.ts` | 4fdae600 | yes | Batch/protocol/category dropped; featured split into Get Addons Popular (its popular list) and Latest (its recent list); scan consumes scanResults.wowup and returns matches |
 | `backend/src/wow/addons/FingerprintScanner.ts` | `wowup-electron/app/wowup-folder-scanner.ts` + `file.utils.ts` (md5) | 4fdae600 | yes | lodash/rxjs/log removed; Bun.CryptoHasher; same file-selection algorithm |

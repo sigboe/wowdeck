@@ -15,7 +15,7 @@
 
 | Component             | Version / commit                                              |
 | --------------------- | ------------------------------------------------------------- |
-| WowUp reference       | `4fdae600d94ad7dd187a6bc93b517e657100b01a` (master, 2.23.1) — untracked, `make wowup` |
+| WowUp reference       | `89a0981ad00290d40368bf2a9f60209a40198502` (v2.24.1) — untracked, `make wowup` |
 | Decky plugin template | `90d0780e882a17f5714fc6de044c645f22608290` (2026-04-10)       |
 | `@decky/ui`           | ^4.11.0                                                       |
 | `@decky/api`          | ^1.1.3                                                        |

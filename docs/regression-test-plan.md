@@ -264,6 +264,7 @@ device-passed 2026-10-23 on the Deck screen, pane 506 CSS px):
 |---|---|---|---|---|
 | O-1 | P1 | S | D-pad from top to bottom of Options | Every row reachable; dropdowns, toggles and drill-in rows look like Steam's settings |
 | O-2 | P1 | | WoW installations: **Find WoW installations** | Finds the Steam/Lutris/Proton installs; toast with the count |
+| O-2b | P0 | | A WoW root with a `_forever_` folder (the Forever client): **Find WoW installations**, then Get Addons → search "Questie" | The installation is listed as "Forever" (Installation details: "World of Warcraft: Forever · _forever_"), not Retail; a `_retail_` beside it stays Retail; Get Addons finds Forever addons |
 | O-3 | P1 | | **Add installation manually**: Browse, then back out of the picker without choosing | Focus is back **on the Browse button** |
 | O-3b | P1 | | Browse, pick a folder | The path is filled in and focus is **on Display name (optional)** |
 | O-3c | P1 | | **Game version** dropdown: open it, back out; open it, pick another | Both times focus returns to **Game version**, the page does not jump |
