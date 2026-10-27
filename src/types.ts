@@ -26,6 +26,7 @@ export type {
   ReleaseChannel,
   SearchResult,
   SearchResultScreenshot,
+  UpdateChannel,
   WtfBackupInfo,
   WtfBackupKind,
   WtfJobKind,

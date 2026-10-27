@@ -6,6 +6,11 @@ What's new in each version of WoWDeck Addon Manager. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Beta updates: pick the Beta channel (Options → Updates → ⋯) to get new
+  features early, or switch back to Stable at any time.
+
 ### Changed
 
 - Updating WoWDeck moved to a panel at the top of the plugin, with an

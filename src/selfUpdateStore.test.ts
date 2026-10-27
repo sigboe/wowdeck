@@ -2,6 +2,7 @@
 import { describe, expect, test } from "bun:test";
 import type { PluginUpdateInfo, StagedUpdate, UpdateRequestResult } from "./pluginUpdate";
 import { createSelfUpdateStore, type SelfUpdateDeps } from "./selfUpdateStore";
+import type { UpdateChannel } from "./types";
 
 const info = (over: Partial<PluginUpdateInfo>): PluginUpdateInfo => ({
   status: "current",
@@ -56,9 +57,24 @@ function harness() {
   };
   let stageGate: { promise: Promise<unknown>; resolve: (v: unknown) => void } | null = null;
   let installResult: UpdateRequestResult = { success: true };
+  /** The params of each system.setUpdateChannel ask, in order. */
+  const channelParams: unknown[] = [];
+  let channelAnswer: PluginUpdateInfo | Error = available;
+  /** The engine's stored channel, as system.getUpdateChannel answers it. */
+  let storedChannel: UpdateChannel | Error = "stable";
   const deps: SelfUpdateDeps = {
-    rpc: (async (method: string, params?: { notify?: boolean }) => {
+    rpc: (async (method: string, params?: { notify?: boolean; channel?: UpdateChannel }) => {
       calls.push(method);
+      if (method === "system.getUpdateChannel") {
+        if (storedChannel instanceof Error) throw storedChannel;
+        return { channel: storedChannel };
+      }
+      if (method === "system.setUpdateChannel") {
+        channelParams.push(params);
+        if (channelAnswer instanceof Error) throw channelAnswer;
+        storedChannel = params!.channel!;
+        return channelAnswer;
+      }
       if (method === "system.updateCheck") {
         checkParams.push(params);
         if (checkGate) await checkGate.promise;
@@ -82,6 +98,7 @@ function harness() {
     store: createSelfUpdateStore(deps),
     calls,
     checkParams,
+    channelParams,
     toasts,
     advance: (ms: number) => {
       nowMs += ms;
@@ -102,6 +119,12 @@ function harness() {
     },
     install: (next: UpdateRequestResult) => {
       installResult = next;
+    },
+    switchAnswer: (next: PluginUpdateInfo | Error) => {
+      channelAnswer = next;
+    },
+    storedChannel: (next: UpdateChannel | Error) => {
+      storedChannel = next;
     },
   };
 }
@@ -319,5 +342,73 @@ describe("self-update store: runUpdate", () => {
     await h.store.runUpdate();
     expect(h.toasts).toEqual(["Couldn't update WoWDeck: disk full"]);
     expect(h.store.get().staging).toBe(false);
+  });
+});
+
+describe("self-update store: setChannel", () => {
+  const beta = info({
+    status: "available",
+    latestVersion: "0.3.0-beta.4",
+    releaseUrl: "https://github.com/sigboe/wowdeck/releases/tag/v0.3.0-beta.4",
+    downloadUrl: "https://api.github.com/repos/sigboe/wowdeck/releases/assets/4",
+  });
+
+  test("stores the channel in the engine and shows the check it answers with", async () => {
+    const h = harness();
+    await h.store.refresh();
+    h.switchAnswer(beta);
+
+    expect(await h.store.setChannel("beta")).toBe(true);
+    expect(h.channelParams).toEqual([{ channel: "beta" }]);
+    expect(h.store.get().info).toEqual(beta);
+    expect(h.toasts).toEqual([]);
+  });
+
+  test("the switch's answer is fresh: opening Options right after re-asks nothing", async () => {
+    const h = harness();
+    await h.store.setChannel("beta");
+    h.advance(60_000);
+    await h.store.refresh();
+    expect(h.calls).toEqual(["system.setUpdateChannel"]);
+  });
+
+  test("a check in flight when the channel switches cannot overwrite the new channel's answer", async () => {
+    const h = harness();
+    const release = h.holdCheck();
+    const checking = h.store.refresh();
+    h.switchAnswer(beta);
+
+    const switching = h.store.setChannel("beta");
+    release();
+    await Promise.all([checking, switching]);
+    expect(h.calls).toEqual(["system.updateCheck", "system.setUpdateChannel"]);
+    expect(h.store.get().info).toEqual(beta);
+  });
+
+  test("a failed switch says so and keeps what is shown", async () => {
+    const h = harness();
+    await h.store.refresh();
+    h.switchAnswer(new Error("engine went away"));
+
+    expect(await h.store.setChannel("beta")).toBe(false);
+    expect(h.store.get().info).toEqual(available);
+    expect(h.toasts).toEqual(["Couldn't switch the update channel: engine went away"]);
+  });
+});
+
+describe("self-update store: getChannel", () => {
+  test("reads the channel the engine stored, including one just switched to", async () => {
+    const h = harness();
+    expect(await h.store.getChannel()).toBe("stable");
+    await h.store.setChannel("beta");
+    expect(await h.store.getChannel()).toBe("beta");
+    expect(h.toasts).toEqual([]);
+  });
+
+  test("an unreadable channel says so and resolves null", async () => {
+    const h = harness();
+    h.storedChannel(new Error("engine went away"));
+    expect(await h.store.getChannel()).toBeNull();
+    expect(h.toasts).toEqual(["Couldn't read the update channel: engine went away"]);
   });
 });

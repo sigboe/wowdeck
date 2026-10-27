@@ -10,9 +10,27 @@
  */
 
 import type { MethodMap } from "../backend/src/api/contracts";
+import type { UpdateChannel } from "./types";
 import type { DotColor } from "./updateDot";
 
 export type PluginUpdateInfo = MethodMap["system.updateCheck"]["result"];
+
+/**
+ * The "WoWDeck Update Channel" modal's rows (GLOSSARY: Update channel),
+ * after Valve's Steam Client Update Channel: a name and one line each.
+ */
+export const UPDATE_CHANNEL_ROWS: ReadonlyArray<{
+  channel: UpdateChannel;
+  name: string;
+  description: string;
+}> = [
+  { channel: "stable", name: "Stable", description: "Recommended for most users." },
+  {
+    channel: "beta",
+    name: "Beta",
+    description: "Built from every merged change. Newer features, may have bugs.",
+  },
+];
 
 const RELEASES_PAGE = "https://github.com/sigboe/wowdeck/releases";
 

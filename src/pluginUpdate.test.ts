@@ -7,8 +7,10 @@ import {
   pluginUpdateRow,
   pluginUpdateToast,
   requestPluginUpdate,
+  UPDATE_CHANNEL_ROWS,
   type PluginUpdateInfo,
 } from "./pluginUpdate";
+import { UPDATE_CHANNELS } from "../backend/src/api/contracts";
 
 const ZIP = "https://api.github.com/repos/sigboe/wowdeck/releases/assets/7";
 
@@ -283,5 +285,22 @@ describe("requestPluginUpdate", () => {
     };
     expect(closeStalePanel()).toBe(false);
     expect(closed).toBe(1);
+  });
+});
+
+describe("update channel rows (the WoWDeck Update Channel modal)", () => {
+  test("one row per engine channel, in the engine's order", () => {
+    expect(UPDATE_CHANNEL_ROWS.map((r) => r.channel)).toEqual([...UPDATE_CHANNELS]);
+  });
+
+  test("Stable and Beta carry the GLOSSARY's names and descriptions", () => {
+    expect(UPDATE_CHANNEL_ROWS).toEqual([
+      { channel: "stable", name: "Stable", description: "Recommended for most users." },
+      {
+        channel: "beta",
+        name: "Beta",
+        description: "Built from every merged change. Newer features, may have bugs.",
+      },
+    ]);
   });
 });

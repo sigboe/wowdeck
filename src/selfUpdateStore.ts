@@ -10,6 +10,7 @@
 import type { Store } from "./store";
 import { createStore } from "./store";
 import type { rpcVia } from "./services/envelope";
+import type { UpdateChannel } from "./types";
 import {
   pluginUpdateToast,
   type PluginUpdateInfo,
@@ -54,6 +55,20 @@ export interface SelfUpdateStore extends Pick<Store<SelfUpdateState>, "get" | "s
    * nothing; the button stays usable.
    */
   runUpdate(): Promise<void>;
+  /**
+   * Switch the update channel (the "WoWDeck Update Channel" modal): the
+   * engine stores it and checks the new channel at once, and its answer
+   * replaces what the panel, the dot and the Updates row show. A check
+   * already in flight lands first, so it cannot overwrite the new
+   * channel's answer. A failure toasts and keeps what is shown. Resolves
+   * to whether the channel was stored.
+   */
+  setChannel(channel: UpdateChannel): Promise<boolean>;
+  /**
+   * The update channel the engine has stored, for the modal's checkmark. A
+   * failure toasts and resolves null.
+   */
+  getChannel(): Promise<UpdateChannel | null>;
 }
 
 /**
@@ -77,6 +92,12 @@ export function createSelfUpdateStore(deps: SelfUpdateDeps): SelfUpdateStore {
   /** Whether the in-flight ask carries notify (may report the toast). */
   let inFlightNotify = false;
 
+  /** Show an engine answer; only one that could check counts as fresh. */
+  const land = (answer: PluginUpdateInfo) => {
+    answeredAt = answer.status === "unknown" ? 0 : now();
+    store.patch({ info: answer });
+  };
+
   /** One engine ask; concurrent callers share it. Never rejects. */
   const check = (notify: boolean): Promise<void> => {
     if (inFlight) {
@@ -86,8 +107,7 @@ export function createSelfUpdateStore(deps: SelfUpdateDeps): SelfUpdateStore {
     inFlight = (async () => {
       try {
         const answer = await rpc("system.updateCheck", notify ? { notify: true } : {});
-        answeredAt = answer.status === "unknown" ? 0 : now();
-        store.patch({ info: answer });
+        land(answer);
         const t = notify ? pluginUpdateToast(answer) : null;
         if (t) {
           toast(t.title, t.body);
@@ -129,6 +149,25 @@ export function createSelfUpdateStore(deps: SelfUpdateDeps): SelfUpdateStore {
         toastError("Couldn't update WoWDeck", e);
       } finally {
         store.patch({ staging: false });
+      }
+    },
+    async setChannel(channel) {
+      await inFlight;
+      try {
+        const answer = await rpc("system.setUpdateChannel", { channel });
+        land(answer);
+        return true;
+      } catch (e) {
+        toastError("Couldn't switch the update channel", e);
+        return false;
+      }
+    },
+    async getChannel() {
+      try {
+        return (await rpc("system.getUpdateChannel")).channel;
+      } catch (e) {
+        toastError("Couldn't read the update channel", e);
+        return null;
       }
     },
   };
