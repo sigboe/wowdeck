@@ -41,7 +41,7 @@
 import type { NetworkClient } from "../net/network";
 import type { PluginUpdateBackoff, PluginUpdateSnapshot, UpdateChannel } from "../../api/contracts";
 import { type BuildSource, buildSources, type CandidateBuild, RELEASES_PAGE } from "../plugin/BuildSource";
-import { compareVersions } from "../plugin/PluginVersion";
+import { compareVersions, isBetaVersion } from "../plugin/PluginVersion";
 import { backoffIntervalMs, DAY_MS, HOUR_MS, isDue, SingleFlight } from "./CheckCadence";
 
 export { compareVersions };
@@ -53,6 +53,12 @@ export interface PluginUpdateStatus {
   releaseUrl: string | null;
   /** The release's WoWDeck.zip asset (what updateStage downloads), on "available" only. */
   downloadUrl: string | null;
+  /**
+   * On "available" only: the offer is a stable release older than the
+   * running beta build — the owner left Beta, so the latest stable is
+   * offered as a switch rather than an update.
+   */
+  switchToStable: boolean;
   /**
    * True when a network attempt just ran for this answer (even a failed one
    * that fell back to the stored answer); false when the cadence served the
@@ -164,8 +170,8 @@ export class PluginUpdateCheck {
   async #run({ force = false } = {}): Promise<Omit<PluginUpdateStatus, "toastPending">> {
     const channel = this.store.readChannel();
     const stored = this.store.read();
-    // Only this channel's answer serves; one from before channels was Stable's.
-    const stamp = stored !== null && (stored.channel ?? "stable") === channel ? stored : null;
+    // Only this channel's answer serves.
+    const stamp = stored !== null && stampChannel(stored) === channel ? stored : null;
     const now = this.now();
     if (!force && !isDue(stamp?.checkedAt ?? null, now, this.#interval(stamp))) {
       return this.#fromStamp(stamp!);
@@ -237,12 +243,18 @@ export class PluginUpdateCheck {
     if (cmp === null) {
       return this.#unknown(false);
     }
+    // Stable never offers an older build — except to a running beta, which
+    // is on the wrong channel: leaving Beta offers the latest stable.
+    const betaOnStable = stampChannel(stamp) === "stable" && isBetaVersion(this.currentVersion);
+    const switchToStable = cmp < 0 && betaOnStable;
+    const offered = cmp > 0 || switchToStable;
     return {
-      status: cmp > 0 ? "available" : "current",
+      status: offered ? "available" : "current",
       currentVersion: this.currentVersion,
       latestVersion: stamp.latestVersion,
       releaseUrl: stamp.releaseUrl ?? RELEASES_PAGE,
-      downloadUrl: cmp > 0 ? stamp.downloadUrl : null,
+      downloadUrl: offered ? stamp.downloadUrl : null,
+      switchToStable,
       checked: false,
     };
   }
@@ -254,6 +266,7 @@ export class PluginUpdateCheck {
       latestVersion: null,
       releaseUrl: null,
       downloadUrl: null,
+      switchToStable: false,
       checked,
     };
   }
@@ -274,7 +287,7 @@ export class PluginUpdateCheck {
     if (newest === null || compareVersions(newest.version, this.currentVersion) === null) return null;
     // The zip is stored whatever the running version: a same-day rollback
     // below this release then still finds it (#fromStamp exposes it only
-    // while the release is newer).
+    // while the release is newer, or a switch to stable).
     return {
       checkedAt: 0,
       channel,
@@ -284,4 +297,9 @@ export class PluginUpdateCheck {
       ...(newest.releaseNotes !== null && { releaseNotes: newest.releaseNotes }),
     };
   }
+}
+
+/** The channel a stored answer came from; one from before channels was Stable's. */
+function stampChannel(stamp: PluginUpdateSnapshot): UpdateChannel {
+  return stamp.channel ?? "stable";
 }

@@ -18,6 +18,7 @@ const info = (over: Partial<PluginUpdateInfo>): PluginUpdateInfo => ({
   latestVersion: null,
   releaseUrl: null,
   downloadUrl: null,
+  switchToStable: false,
   checked: true,
   toastPending: false,
   ...over,
@@ -62,6 +63,40 @@ describe("pluginUpdateToast", () => {
         info({ status: "available", latestVersion: "0.2.0", checked: false, toastPending: true }),
       ),
     ).toEqual({ title: "WoWDeck 0.2.0 available", body: "Update in Options" });
+  });
+});
+
+const SWITCH = {
+  status: "available",
+  currentVersion: "0.3.1-beta.57",
+  latestVersion: "0.3.0",
+  switchToStable: true,
+  downloadUrl: ZIP,
+} as const;
+
+describe("switch to stable", () => {
+  test("the toast, panel and button say Switch to stable X", () => {
+    expect(pluginUpdateToast(info({ ...SWITCH, toastPending: true }))).toEqual({
+      title: "Switch to stable 0.3.0",
+      body: "Install it in Options",
+    });
+    expect(pluginUpdatePanel(info(SWITCH))).toEqual({ text: "Switch to stable 0.3.0" });
+    expect(pluginUpdateButton(false, info(SWITCH))).toEqual({
+      label: "Switch to stable 0.3.0",
+      disabled: false,
+    });
+    expect(pluginUpdateButton(true, info(SWITCH))).toEqual({ label: "Preparing…", disabled: true });
+  });
+
+  test("the Updates row says Switch to stable X", () => {
+    expect(pluginUpdateRow(info({ ...SWITCH, releaseUrl: "https://x" }))).toEqual({
+      label: "Switch to stable 0.3.0",
+      description: "0.3.1-beta.57 → 0.3.0 · https://x",
+    });
+  });
+
+  test("the update dot behaves as for any offered update", () => {
+    expect(pluginUpdateDot(info(SWITCH))).toBe("update");
   });
 });
 
@@ -155,11 +190,11 @@ describe("pluginUpdateDot", () => {
 
 describe("pluginUpdateButton", () => {
   test("idle: Update, usable", () => {
-    expect(pluginUpdateButton(false)).toEqual({ label: "Update", disabled: false });
+    expect(pluginUpdateButton(false, info({}))).toEqual({ label: "Update", disabled: false });
   });
 
   test("staging: Preparing…, disabled", () => {
-    expect(pluginUpdateButton(true)).toEqual({ label: "Preparing…", disabled: true });
+    expect(pluginUpdateButton(true, info({}))).toEqual({ label: "Preparing…", disabled: true });
   });
 });
 

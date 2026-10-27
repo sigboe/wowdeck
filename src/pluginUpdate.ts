@@ -1,7 +1,8 @@
 /**
  * WoWDeck's own update notice (the plugin, not addons): the text behind
  * the update toast, the Options update panel and its update dot, and the
- * Options → Updates row, plus the adapter that hands an engine-staged
+ * Options → Updates row (each reading "Switch to stable X" when a beta
+ * build on Stable is offered an older stable), plus the adapter that hands an engine-staged
  * update to Decky's own installer. The engine's system.updateCheck owns the check, its once-a-day cap, the failure
  * backoff that spaces unreachable checks (1h/2h/4h, silent) and the
  * once-per-release-version toast gate (toastPending);
@@ -15,6 +16,13 @@ export type PluginUpdateInfo = MethodMap["system.updateCheck"]["result"];
 
 const RELEASES_PAGE = "https://github.com/sigboe/wowdeck/releases";
 
+/** The wording for the stable release offered to a beta build whose owner left Beta. */
+const switchLabel = (version: string) => `Switch to stable ${version}`;
+
+/** The toast's and the panel's headline for an offered release. */
+const offerTitle = (info: PluginUpdateInfo, version: string) =>
+  info.switchToStable ? switchLabel(version) : `WoWDeck ${version} available`;
+
 /**
  * The update toast, gated engine-side: system.updateCheck's toastPending is
  * true only for the first answer (fresh or cached) that offers a release
@@ -27,8 +35,8 @@ export function pluginUpdateToast(info: PluginUpdateInfo): { title: string; body
     return null;
   }
   return {
-    title: `WoWDeck ${info.latestVersion} available`,
-    body: "Update in Options",
+    title: offerTitle(info, info.latestVersion),
+    body: info.switchToStable ? "Install it in Options" : "Update in Options",
   };
 }
 
@@ -43,7 +51,7 @@ export function pluginUpdatePanel(info: PluginUpdateInfo | null): { text: string
   if (info?.status !== "available" || !info.latestVersion || !info.downloadUrl) {
     return null;
   }
-  return { text: `WoWDeck ${info.latestVersion} available` };
+  return { text: offerTitle(info, info.latestVersion) };
 }
 
 /**
@@ -55,9 +63,20 @@ export function pluginUpdateDot(info: PluginUpdateInfo | null): DotColor | null 
   return pluginUpdatePanel(info) ? "update" : null;
 }
 
-/** The panel's Update button: disabled while the release is being staged. */
-export function pluginUpdateButton(staging: boolean): { label: string; disabled: boolean } {
-  return staging ? { label: "Preparing…", disabled: true } : { label: "Update", disabled: false };
+/**
+ * The panel's Update button ("Switch to stable X" for a switch): disabled
+ * while the release is being staged.
+ */
+export function pluginUpdateButton(
+  staging: boolean,
+  info: PluginUpdateInfo | null,
+): { label: string; disabled: boolean } {
+  if (staging) {
+    return { label: "Preparing…", disabled: true };
+  }
+  const label =
+    info?.switchToStable && info.latestVersion ? switchLabel(info.latestVersion) : "Update";
+  return { label, disabled: false };
 }
 
 /**
@@ -68,9 +87,13 @@ export function pluginUpdateButton(staging: boolean): { label: string; disabled:
  */
 export function pluginUpdateRow(info: PluginUpdateInfo): { label: string; description: string } {
   if (info.status === "available" && info.latestVersion) {
+    const target = `${info.currentVersion} → ${info.latestVersion} · ${info.releaseUrl ?? RELEASES_PAGE}`;
+    if (info.switchToStable) {
+      return { label: switchLabel(info.latestVersion), description: target };
+    }
     return {
       label: "WoWDeck update available",
-      description: `${info.currentVersion} → ${info.latestVersion} · ${info.releaseUrl ?? RELEASES_PAGE}`,
+      description: target,
     };
   }
   if (info.status === "current") {

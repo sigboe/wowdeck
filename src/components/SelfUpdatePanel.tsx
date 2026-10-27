@@ -17,7 +17,7 @@ export function SelfUpdatePanel() {
   if (!panel) {
     return null;
   }
-  const button = pluginUpdateButton(staging);
+  const button = pluginUpdateButton(staging, info);
   return (
     <div style={{ padding: "0 16px 8px" }}>
       <FocusRow view={QAM_VIEW.settings} id="selfUpdate">

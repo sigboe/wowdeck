@@ -734,6 +734,7 @@ describe("system.updateCheck (the plugin's own update notice)", () => {
         latestVersion: version,
         releaseUrl,
         downloadUrl: null,
+        switchToStable: false,
         checked: true,
         toastPending: false,
       });
@@ -763,6 +764,7 @@ describe("system.updateCheck (the plugin's own update notice)", () => {
         latestVersion: null,
         releaseUrl: null,
         downloadUrl: null,
+        switchToStable: false,
         checked: true,
         toastPending: false,
       });

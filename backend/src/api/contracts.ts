@@ -401,6 +401,13 @@ export interface MethodMap {
       releaseUrl: string | null;
       downloadUrl: string | null;
       /**
+       * True when the offered `latestVersion` is a stable release older than
+       * the running beta build: an owner who left the Beta channel is
+       * offered the latest stable ("Switch to stable X"). Only ever true on
+       * "available".
+       */
+      switchToStable: boolean;
+      /**
        * True when a network attempt just ran (a failed one still serves the
        * stored answer); false when the interval or a failure-backoff window
        * served it without one. No surface keys on it: it makes the cadence

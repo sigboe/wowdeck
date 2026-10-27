@@ -187,6 +187,7 @@ describe("PluginUpdateCheck", () => {
       latestVersion: "0.2.0",
       releaseUrl: "https://github.com/sigboe/wowdeck/releases/tag/v0.2.0",
       downloadUrl: "https://api.github.com/repos/sigboe/wowdeck/releases/assets/7",
+      switchToStable: false,
       checked: true,
       toastPending: true,
     });
@@ -241,6 +242,31 @@ describe("PluginUpdateCheck", () => {
   test("same release: current", async () => {
     const { check } = makeCheck({ respond: () => ({ tag_name: "v0.1.1", html_url: "https://x" }) });
     expect((await check.check()).status).toBe("current");
+  });
+
+  test("Stable on a beta build: the older latest stable is offered as a switch", async () => {
+    const { check } = makeCheck({ respond: () => withZip("v0.3.0"), currentVersion: "0.3.1-beta.57" });
+    const result = await check.check();
+    expect(result).toMatchObject({ status: "available", latestVersion: "0.3.0", downloadUrl: ZIP, switchToStable: true });
+  });
+
+  test("Stable on a beta of an older release: a plain update, not a switch", async () => {
+    const { check } = makeCheck({ respond: () => withZip("v0.3.0"), currentVersion: "0.3.0-beta.5" });
+    expect(await check.check()).toMatchObject({ status: "available", switchToStable: false });
+  });
+
+  test("Stable on a stable build: an older stable is still not offered", async () => {
+    const { check } = makeCheck({ respond: () => withZip("v0.3.0"), currentVersion: "0.3.1" });
+    expect(await check.check()).toMatchObject({ status: "current", downloadUrl: null, switchToStable: false });
+  });
+
+  test("Beta on a beta build: an older stable is not offered", async () => {
+    const { check } = makeCheck({
+      channel: "beta",
+      currentVersion: "0.3.1-beta.57",
+      respond: () => [withZip("v0.3.0")],
+    });
+    expect(await check.check()).toMatchObject({ status: "current", switchToStable: false });
   });
 
   test("older tag: current, never a downgrade offer", async () => {
@@ -504,6 +530,7 @@ describe("the once-a-day cap", () => {
       latestVersion: "0.2.0",
       releaseUrl: "https://github.com/sigboe/wowdeck/releases/tag/v0.2.0",
       downloadUrl: "https://api.github.com/repos/sigboe/wowdeck/releases/assets/7",
+      switchToStable: false,
       checked: false,
       toastPending: true,
     });
@@ -526,6 +553,7 @@ describe("the once-a-day cap", () => {
       latestVersion: "0.2.0",
       releaseUrl: "https://github.com/sigboe/wowdeck/releases/tag/v0.2.0",
       downloadUrl: null,
+      switchToStable: false,
       checked: false,
       toastPending: false,
     });

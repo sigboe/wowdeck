@@ -36,6 +36,7 @@ function statusOf(over: Partial<PluginUpdateStatus> = {}): PluginUpdateStatus {
     latestVersion: "0.2.0",
     releaseUrl: "https://x",
     downloadUrl: "https://mock/WoWDeck.zip",
+    switchToStable: false,
     checked: true,
     toastPending: false,
     ...over,
@@ -95,6 +96,20 @@ describe("UpdateStager.stage", () => {
     expect(existsSync(staged)).toBe(true);
     expect(statSync(staged).mode & 0o777).toBe(0o600);
     rmSync(staged, { force: true });
+  });
+
+  test("stages an older stable offered as a switch from a beta build", async () => {
+    mkdirSync(ROOT, { recursive: true });
+    const zip = pluginZip("0.3.0");
+    const { stager } = makeStager(() => zip, {
+      currentVersion: "0.3.1-beta.57",
+      latestVersion: "0.3.0",
+      switchToStable: true,
+    });
+    const outcome = await stager.stage();
+    expect(outcome.error).toBeNull();
+    expect(outcome.result?.version).toBe("0.3.0");
+    rmSync(join(ROOT, "wowdeck-update-0.3.0.zip"), { force: true });
   });
 
   test("a rejected token falls back to one unauthenticated attempt", async () => {

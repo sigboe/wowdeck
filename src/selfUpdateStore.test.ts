@@ -9,6 +9,7 @@ const info = (over: Partial<PluginUpdateInfo>): PluginUpdateInfo => ({
   latestVersion: null,
   releaseUrl: null,
   downloadUrl: null,
+  switchToStable: false,
   checked: true,
   toastPending: false,
   ...over,

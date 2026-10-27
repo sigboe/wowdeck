@@ -313,8 +313,8 @@ real-data cases slot into the release sequence itself
 flip (PU-1b when a token that can read the repo is configured), PU-3 right
 after it, PU-4–PU-7 in the release window (tag pushed, Deck
 not yet updated), PU-8 after updating the Deck, PU-11–PU-15 (the **Update** button,
-`system.updateStage`) and PU-18–PU-19 (the panel and the update dot) in the
-same window as PU-4. The engine states and version
+`system.updateStage`) and PU-18–PU-20 (the panel, the update dot and the
+switch to stable) in the same window as PU-4. The engine states and version
 parsing are already covered by `backend/tests/plugin-update-check.test.ts`
 `backend/tests/update-stager.test.ts` and `src/pluginUpdate.test.ts`
 (gate G-2); these cases are the device tier.
@@ -363,6 +363,7 @@ passed engine-only runs on the Deck the same day, and PU-15 passed on device.
 | PU-15 | P2 | | No newer release (or the check couldn't run); then a release without `WoWDeck.zip` | No update panel, Options looks as before; the Updates row has no button and reads up to date / couldn't check. Without the zip: no toast, no panel, no dot — the Updates row names the release and its link; once the zip is attached the next check (an hour later at most) brings the panel, the dot and the version's one toast (verified DEVICE 2026-10-26, engine built as 0.1.9 with a stored no-zip answer: no toast, dot or panel, row 0.1.9 → 0.2.0; aged 61 min, the reload re-checked GitHub, found the zip and showed one toast, the dot and the panel; a further reload did not toast again) |
 | PU-18 | P1 | S | Release window: open Options, press Down from the tabs; scroll; switch tabs (L1/R1) and back | Panel "WoWDeck X.Y.Z available" + **Update** floats under the nav bar, no animation; Down lands on it first; the list scrolls under it without hiding rows; the panel row is remembered like My Addons' installation switcher. The Updates row shows current → latest and the release link, no button (verified DEVICE 2026-10-26, engine built as 0.1.9 against the real v0.2.0 release: panel under the nav bar, focus lands on **Update**; row 0.1.9 → 0.2.0 · link, no button) |
 | PU-19 | P1 | S | Release window: look at the nav bar on My Addons, then move focus onto the Options tab (white pill) and open it; focus the panel's **Update** button; then update (PU-11) | An orange dot (Decky's badge colour, 10 px, thin dark ring) sits on the top-right corner of the Options tab pill on every tab, readable on the white focused pill, and on the **Update** button; no other tab carries one and no green, red or blue dot appears. After the update installs and the plugin reloads, both dots are gone (verified DEVICE 2026-10-26, engine built as 0.1.9 against the real v0.2.0 release: dot on the Options tab on My Addons and on the focused white pill, and on **Update**; back on a real 0.2.0 build both dots and the panel are gone, row "Up to date" — the install step itself is PU-11's) |
+| PU-20 | P1 | S | Run a beta build (e.g. `0.3.1-beta.N`) on Beta, then Options › Updates › WoWDeck → **Stable** while the latest stable is older than the build | The panel reads "Switch to stable X" with a **Switch to stable X** button, the Updates row reads "Switch to stable X" with `beta → X`, the Options tab carries the orange dot; on the next plugin load one toast "Switch to stable X" / "Install it in Options", unless X already toasted (the gate is per version, so a stable X toasted before the move to Beta stays quiet). The button stages and installs the older stable through Decky's prompt; afterwards the panel, dot and row are gone. On Beta, running a beta, no older stable is offered |
 
 ### 4.6 WTF backup (folds in WF-01 `deck_verification`)
 
