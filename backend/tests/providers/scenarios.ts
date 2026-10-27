@@ -44,6 +44,8 @@ export interface ProviderScenario {
   addonId: string;
   /** An id the source does not have, for getAll's error. */
   missingId?: string;
+  /** The installation every request is made for; Retail when absent. */
+  installation?: WowInstallation;
 }
 
 export const installation: WowInstallation = {
@@ -55,6 +57,16 @@ export const installation: WowInstallation = {
   selected: false,
   defaultAddonChannelType: 0,
   source: "detected",
+};
+
+/** The hub has lists of its own for Forever (and Forever Beta). */
+export const foreverInstallation: WowInstallation = {
+  ...installation,
+  id: "forever",
+  clientType: WowClientType.Forever,
+  location: "/wow/_forever_",
+  label: "_forever_",
+  displayName: "Forever",
 };
 
 const HUB_URL = "https://hub.wowup.io";
@@ -103,6 +115,15 @@ export const scenarios: ProviderScenario[] = [
     missingId: "999999999",
   },
   {
+    fixture: "wowup-hub-forever",
+    make: (network) => new WowUpHubProvider(HUB_URL, HUB_URL, network),
+    capabilities: ["search", "getById", "getAll", "discover"],
+    query: "questie",
+    addonId: "47671", // Questie
+    missingId: "999999999",
+    installation: foreverInstallation,
+  },
+  {
     make: () => new ZipProvider(),
     capabilities: ["urlImport", "getById"],
     query: "https://example.org/files/SomeAddon-1.2.zip",
@@ -136,12 +157,16 @@ export function declaredCapabilities(provider: AddonProvider): Capability[] {
 
 /** What each capability asks of the provider; the suite checks the answers. */
 export const exercise: Record<Capability, (provider: AddonProvider, scenario: ProviderScenario) => Promise<unknown>> = {
-  search: (p, s) => p.searchByQuery!(s.query!, installation),
-  urlImport: (p, s) => p.resolveUrl!(s.query!, installation),
-  getById: (p, s) => p.getById(s.addonId, installation),
-  getAll: (p, s) => p.getAll!(installation, [s.addonId, ...(s.missingId ? [s.missingId] : [])]),
-  discover: (p) => Promise.all(DISCOVER_LISTS.map((list) => p.getDiscoverPage!(list, installation, 0, DISCOVER_COUNT))),
+  search: (p, s) => p.searchByQuery!(s.query!, on(s)),
+  urlImport: (p, s) => p.resolveUrl!(s.query!, on(s)),
+  getById: (p, s) => p.getById(s.addonId, on(s)),
+  getAll: (p, s) => p.getAll!(on(s), [s.addonId, ...(s.missingId ? [s.missingId] : [])]),
+  discover: (p, s) => Promise.all(DISCOVER_LISTS.map((list) => p.getDiscoverPage!(list, on(s), 0, DISCOVER_COUNT))),
   description: (p, s) => p.getDescription(s.addonId),
-  changelog: (p, s) => p.getChangelog(s.addonId, installation),
-  categories: (p) => p.getCategories!(installation),
+  changelog: (p, s) => p.getChangelog(s.addonId, on(s)),
+  categories: (p, s) => p.getCategories!(on(s)),
 };
+
+function on(scenario: ProviderScenario): WowInstallation {
+  return scenario.installation ?? installation;
+}

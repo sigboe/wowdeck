@@ -18,6 +18,7 @@ export enum WowGameType {
   WOTLK = "wotlk",
   Cata = "cata",
   Mists = "mists",
+  Forever = "forever",
 }
 
 export function getWowGameType(clientType: WowClientType): WowGameType {
@@ -27,9 +28,10 @@ export function getWowGameType(clientType: WowClientType): WowGameType {
       return WowGameType.Classic;
     case WowClientType.Classic:
     case WowClientType.ClassicPtr:
+      return WowGameType.Mists;
     case WowClientType.Forever:
     case WowClientType.ClassicBeta:
-      return WowGameType.Mists;
+      return WowGameType.Forever;
     case WowClientType.Anniversary:
       return WowGameType.BurningCrusade;
     case WowClientType.Retail:
@@ -47,15 +49,11 @@ export function getWowGameType(clientType: WowClientType): WowGameType {
  * client gets renamed again). `ClassicBeta` -> "Forever Beta" matches
  * WowUp's own rename in v2.24.1.
  *
- * Deliberately NOT changed alongside this: `getWowGameType()` below
- * still groups `ClassicBeta` (and `Forever` with it) under `Mists`, even
- * though current WowUp now has a distinct `Forever` WowGameType/
- * WowClientGroup for them upstream. That upstream regrouping feeds
- * WowUp's own addon-provider compatibility queries — our
- * `getWowGameType()` feeds the exact same kind of query in
- * WowUpHubProvider.ts. Changing it would be a provider compatibility
- * change, out of scope for a display-name rename — the display name and
- * the compatibility grouping are intentionally allowed to diverge here.
+ * `getWowGameType()` above groups Forever and Forever Beta under their
+ * own `Forever` game type, as upstream v2.24.1 does. Until then both sat
+ * under `Mists`, because the WowUp Hub had no Forever lists; it has them
+ * now, and the game type is what WowUpHubProvider.ts asks the hub for
+ * and what addon-list imports compare.
  */
 export function getClientTypeLabel(clientType: WowClientType): string {
   return clientEntry(CLIENT_DISPLAY_NAMES, clientType) || "Unknown";
