@@ -48,12 +48,12 @@ describe("installation draft store", () => {
 
 describe("applyInspection (owner, 2026-10-17)", () => {
   const draft = { path: "/x", name: "", clientType: "auto", autoName: "" };
-  const forever = [{ gameType: "classic_beta", displayName: "Forever" }];
+  const forever = [{ gameType: "classic_beta", displayName: "Forever Beta" }];
   const known = ["retail", "classic_beta"];
   test("fills the name and switches Auto to the detected version", () => {
     expect(applyInspection(draft, forever, known)).toEqual({
-      name: "Forever",
-      autoName: "Forever",
+      name: "Forever Beta",
+      autoName: "Forever Beta",
       clientType: "classic_beta",
     });
   });
@@ -63,7 +63,7 @@ describe("applyInspection (owner, 2026-10-17)", () => {
     ).toEqual({});
     expect(
       applyInspection({ ...draft, name: "Retail", autoName: "Retail" }, forever, known).name,
-    ).toBe("Forever");
+    ).toBe("Forever Beta");
   });
   test("nothing for zero or several installations, or an unknown version", () => {
     expect(applyInspection(draft, [], known)).toEqual({});

@@ -134,6 +134,10 @@ describe("CurseForge provider", () => {
     expect(gameVersionTypeIdFor(WowClientType.ClassicBeta)).not.toBe(gameVersionTypeIdFor(WowClientType.Classic));
   });
 
+  test("Forever shares Forever Beta's 'WoW Forever' category", () => {
+    expect(gameVersionTypeIdFor(WowClientType.Forever)).toBe(88568);
+  });
+
   test("search is scoped by gameVersionTypeId and filters files", async () => {
     const questie = cfAddon({
       id: 3194,

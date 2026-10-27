@@ -56,7 +56,7 @@ export function isRpcEvent(msg: RpcMessage): msg is RpcEvent {
 // subtree, only wire-visible shapes here)
 // ---------------------------------------------------------------------------
 
-export type GameType = "retail" | "classic" | "classic_era" | "classic_beta" | "ptr" | "beta";
+export type GameType = "retail" | "classic" | "classic_era" | "forever" | "classic_beta" | "ptr" | "beta";
 
 /** How an installation entered the installation list. */
 export type InstallationSource = "detected" | "manual";
@@ -76,9 +76,9 @@ export interface Installation {
   /** Absolute path of the Interface/AddOns directory. */
   addonsPath: string;
   displayName: string;
-  /** Short client name, e.g. "Forever" (CLIENT_DISPLAY_NAMES). */
+  /** Short client name, e.g. "Forever Beta" (CLIENT_DISPLAY_NAMES). */
   clientName: string;
-  /** WowUp's full client name, e.g. "World of Warcraft: Forever". */
+  /** WowUp's full client name, e.g. "World of Warcraft: Forever Beta". */
   clientFullName: string;
   /** "manual" when the user added/confirmed this installation, "detected" otherwise. */
   source: InstallationSource;

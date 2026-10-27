@@ -4,7 +4,8 @@ import type { NetworkClient } from "../src/wow/net/network";
 import type { WowInstallation } from "../src/wow/models";
 import { WowClientType } from "../src/wow/types";
 import type { WowUpSearchAddonsResponse } from "../src/wow/providers/wowup-hub/wowup-hub-models";
-import { loadCassette, recorded } from "./providers/cassette";
+import { loadCassette, recorded, ReplayNetwork } from "./providers/cassette";
+import { foreverInstallation } from "./providers/scenarios";
 
 const searchResponse = recorded<WowUpSearchAddonsResponse>(
   await loadCassette("wowup-hub"),
@@ -137,4 +138,19 @@ describe("WowUpHubProvider", () => {
     expect(match?.latestFile.externalId).toBe(String(release.id));
   });
 
+  for (const install of [foreverInstallation, { ...foreverInstallation, clientType: WowClientType.ClassicBeta }]) {
+    test(`${WowClientType[install.clientType]} asks the hub for its Forever lists`, async () => {
+      const network = new ReplayNetwork(await loadCassette("wowup-hub-forever"));
+      const hub = new WowUpHubProvider("https://hub.wowup.io", WEB, network);
+
+      const popular = await hub.getDiscoverPage("popular", install, 0, 3);
+      const found = await hub.searchByQuery("questie", install);
+      const { searchResults } = await hub.getAll(install, ["47671", "999999999"]);
+
+      expect(network.misses).toEqual([]);
+      expect(popular.results[0]?.externalId).toBe("47671"); // Questie
+      expect(found[0]?.externalId).toBe("47671");
+      expect(searchResults.map((r) => r.externalId)).toEqual(["47671"]);
+    });
+  }
 });

@@ -70,6 +70,7 @@ const CLASSIC_FLAVOR_SUFFIXES: Array<{ flavor: string; re: RegExp }> = [
   { flavor: "wrath", re: /[-_](wrath|wotlkc)\.zip$/i },
   { flavor: "cata", re: /[-_]cata\.zip$/i },
   { flavor: "mists", re: /[-_]mists\.zip$/i },
+  { flavor: "forever", re: /[-_](forever|camelot)\.zip$/i },
 ];
 
 /** Which known classic-flavor suffix (if any) a filename carries. `null` = no classic suffix matched (mainline candidate). */
@@ -83,14 +84,11 @@ function flavorForFilename(filename: string): string | null {
 }
 
 /**
- * release.json / filename flavor strings this client type accepts.
- *
- * Deliberately diverges from upstream's own mapping (which puts
- * ClassicBeta under "mists") — reuses this project's own already-
- * corrected CurseForgeProvider.GAME_TYPE_LISTS mapping instead: the
- * ClassicBeta slot is a rotating "whatever's currently testing" slot with
- * no stable release.json flavor of its own, and "wrath"/"cata" currently
- * match no installable client type at all. See investigation finding #5.
+ * release.json / filename flavor strings this client type accepts — the
+ * same mapping as upstream v2.24.1's: Forever and Forever Beta take the
+ * `forever` flavor (BigWigs' packager names the beta that too). "wrath"
+ * and "cata" currently match no installable client type at all. See
+ * investigation finding #5.
  */
 function flavorsForClientType(clientType: WowClientType): string[] {
   switch (clientType) {
@@ -102,6 +100,9 @@ function flavorsForClientType(clientType: WowClientType): string[] {
     case WowClientType.Classic:
     case WowClientType.ClassicPtr:
       return ["mists"];
+    case WowClientType.Forever:
+    case WowClientType.ClassicBeta:
+      return ["forever"];
     case WowClientType.Retail:
     case WowClientType.RetailPtr:
     case WowClientType.Beta:

@@ -104,7 +104,7 @@ test("every registered provider has a scenario", async () => {
   const registered = [...main.matchAll(/registry\.register\(new (\w+)\(/g)].map((m) => m[1]);
   registered.push(...[...main.matchAll(/const \w+ = new (\w+Provider)\(/g)].map((m) => m[1]));
   const covered = await Promise.all(scenarios.map(async (s) => (await setUp(s)).provider.constructor.name));
-  expect(covered.sort()).toEqual(registered.sort() as string[]);
+  expect([...new Set(covered)].sort()).toEqual(registered.sort() as string[]);
 });
 
 for (const scenario of scenarios) {
