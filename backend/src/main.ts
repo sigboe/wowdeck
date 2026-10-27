@@ -22,6 +22,7 @@ import { ZipProvider } from "./wow/providers/zip/ZipProvider";
 import { FileProvider } from "./wow/providers/file/FileProvider";
 import { DownloadService } from "./wow/downloads/DownloadService";
 import { AddonService } from "./wow/addons/AddonService";
+import { Catalogue } from "./wow/catalogue/Catalogue";
 import { getGameTypeForClientType } from "./wow/utils/gametype";
 import { RecentErrorsBuffer } from "./diagnostics/RecentErrors";
 import { CompanionSyncCoordinator } from "./wow/notifications/CompanionSync";
@@ -123,6 +124,7 @@ const service = new AddonService(
   undefined,
   join(dataDir, "inspect"),
 );
+const catalogue = new Catalogue(registry);
 const installationService = service.installations;
 const companionCoordinator = new CompanionSyncCoordinator(service);
 const updateCheck = new UpdateCheck(service, companionCoordinator);
@@ -186,6 +188,7 @@ const deps: HandlerDeps = {
   store,
   registry,
   service,
+  catalogue,
   installationService,
   companionCoordinator,
   updateCheck,

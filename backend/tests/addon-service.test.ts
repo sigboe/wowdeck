@@ -315,13 +315,6 @@ describe("AddonService lifecycle", () => {
     expect((await service.listAddons(installation)).find((a) => a.id === a1.addon.id)!.version).toBe("2.0.0");
   });
 
-  test("search merges provider results sorted by downloads", async () => {
-    const { results, providerErrors } = await service.search("addon", installation);
-    expect(results.length).toBeGreaterThan(0);
-    expect(results[0]!.providerId).toBe("WowUpHub");
-    expect(providerErrors).toEqual([]);
-  });
-
   test("install rejects unknown provider and invalid id", async () => {
     await expect(service.install({ intent: "install", providerId: "Nope", externalId: "1", installation: installation })).rejects.toThrow(/isn't available|isn't in your list|weren't found|wasn't found/i);
     await expect(service.install({ intent: "install", providerId: "WowUpHub", externalId: "abc", installation: installation })).rejects.toThrow(/isn't valid/i);
@@ -1046,24 +1039,12 @@ describe("release channels (WF-03)", () => {
     expect(f.service.wire(f.store.addons.require(addon.id)).updateAvailable).toBe(false);
   });
 
-  test("search results show the channel's versions; channel change is refused without provider support", async () => {
+  test("channel change is refused without provider support", async () => {
     const f = localFixture("channel-search", catalog());
-    const { results } = await f.service.search("chan", f.installation);
-    expect(results[0]).toMatchObject({
-      latestVersion: "1.0.0",
-      channel: "stable",
-      channelReleases: [
-        { channel: "stable", version: "1.0.0", fileChannel: "stable" },
-        { channel: "beta", version: "1.1.0-beta", fileChannel: "beta" },
-        { channel: "alpha", version: "1.1.0-beta", fileChannel: "beta" },
-      ],
-    });
-
     const { addon } = await f.service.install({ intent: "install", providerId: "WowUpHub", externalId: "750", installation: f.installation });
     f.provider.allowChannelChange = false;
     expect(f.service.wire(addon).canChangeChannel).toBe(false);
     await expect(f.service.setChannel(addon.id, AddonChannelType.Beta)).rejects.toThrow("no release channels");
-    expect((await f.service.search("chan", f.installation)).results[0]!.channelReleases).toBeNull();
   });
 
   test("no choice offered when no pre-release is newer than stable", async () => {
@@ -1071,7 +1052,6 @@ describe("release channels (WF-03)", () => {
     olderBeta[0]!.prereleases![0]!.releaseDate = "2026-01-01T00:00:00.000Z";
     for (const entries of [olderBeta, catalog().map((c) => ({ ...c, prereleases: [] }))]) {
       const f = localFixture(`channel-none-${entries[0]!.prereleases!.length}`, entries);
-      expect((await f.service.search("chan", f.installation)).results[0]!.channelReleases).toBeNull();
       const { addon } = await f.service.install({ intent: "install", providerId: "WowUpHub", externalId: "750", installation: f.installation });
       expect(f.service.wire(addon).canChangeChannel).toBe(false);
     }
@@ -1596,25 +1576,24 @@ describe("adopting an unmanaged folder (WF-23)", () => {
     return { localService, localInstallation, addonsPath, store };
   }
 
-  test("finds sources whose release installs the folder: exact name first, then downloads", async () => {
+  test("sources for a folder are searched by its TOC title and folder name", async () => {
     const { localService, localInstallation } = setup("adopt-find");
-    const { results, providerErrors } = await localService.findSources(localInstallation, "Zeta");
-    expect(providerErrors).toEqual([]);
-    // 502 installs another folder; 504's name matches neither the title nor the folder.
-    expect(results.map((r) => r.externalId)).toEqual(["503", "501", "504"]);
+    const request = await localService.sourceRequestForFolder(localInstallation, "Zeta");
+    expect(request).toMatchObject({ folderName: "Zeta", queries: ["Zeta Frames", "Zeta"] });
+    expect(request.toc?.version).toBe("0.9-local");
   });
 
-  test("a sub-folder is found through the addon its TOC requires", async () => {
+  test("a sub-folder is also searched by the addons its TOC requires, Blizzard's left out", async () => {
     const { localService, localInstallation } = setup("adopt-sub");
-    const { results } = await localService.findSources(localInstallation, "Zeta_Options");
-    expect(results.map((r) => r.externalId)).toEqual(["503"]);
+    const request = await localService.sourceRequestForFolder(localInstallation, "Zeta_Options");
+    expect(request.queries).toEqual(["Zeta Settings", "Zeta_Options", "Zeta"]);
   });
 
   test("refuses a folder that is missing or managed", async () => {
     const { localService, localInstallation } = setup("adopt-refuse");
-    await expect(localService.findSources(localInstallation, "Nope")).rejects.toThrow(/isn't an unmanaged/);
+    await expect(localService.sourceRequestForFolder(localInstallation, "Nope")).rejects.toThrow(/isn't an unmanaged/);
     await localService.adopt(localInstallation, "Zeta", "WowUpHub", "501");
-    await expect(localService.findSources(localInstallation, "Zeta")).rejects.toThrow(/managed addon folder/);
+    await expect(localService.sourceRequestForFolder(localInstallation, "Zeta")).rejects.toThrow(/managed addon folder/);
   });
 
   test("adopting installs the release over the folder; Roll back returns the hand-copied files", async () => {
@@ -1694,20 +1673,13 @@ describe("changing an addon's source (WF-12)", () => {
     return { localService, localInstallation, addonsPath, store, install };
   }
 
-  test("finds the main folder's copies on other providers: TOC-named first, its own provider left out", async () => {
+  test("other sources are looked for by the main folder's TOC and the addon's name; its own provider left out", async () => {
     const { localService, addonsPath, install } = setup("source-find");
     const zeta = await install("501");
-    writeFileSync(join(addonsPath, "Zeta", "Zeta.toc"), "## Title: Zeta\n## Interface: 110005\n## X-Tukui-ProjectID: 602\n");
-    const { results, providerErrors } = await localService.findOtherSources(zeta.id);
-    expect(providerErrors).toEqual([]);
-    // 603 installs another folder; 501 and 503 are on the addon's own provider;
-    // 605 and 606 list no folders, so they may install it.
-    expect(results.map((r) => `${r.providerId}:${r.externalId}`)).toEqual([
-      "TukUI:602",
-      "TukUI:601",
-      "TukUI:605",
-      "TukUI:606",
-    ]);
+    writeFileSync(join(addonsPath, "Zeta", "Zeta.toc"), "## Title: Zeta Frames\n## Interface: 110005\n## X-Tukui-ProjectID: 602\n");
+    const request = await localService.sourceRequestForAddon(zeta.id);
+    expect(request).toMatchObject({ folderName: "Zeta", queries: ["Zeta Frames", "Zeta", "Zeta"], ownProvider: "WowUpHub" });
+    expect(request.toc?.tukUiProjectId).toBe("602");
   });
 
   test("a release that lists no folders is checked on its archive", async () => {

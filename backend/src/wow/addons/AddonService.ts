@@ -8,18 +8,19 @@
  * See docs/wowup-provenance.md.
  */
 
-import type { Addon, AutoUpdateResult, OperationResult, SearchResult } from "../../api/contracts";
+import type { Addon, AutoUpdateResult, OperationResult } from "../../api/contracts";
 import type { ArchivePreview } from "../../api/contracts";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { detectGameRunning } from "../wtf/GameProcessGuard";
 import type { GameRunning } from "../wtf/GameProcessGuard";
-import type { AddonFolder, AddonSearchResult, AddonSearchResultFile, ProviderCategory, WowAddon, WowInstallation } from "../models";
+import type { AddonFolder, AddonSearchResult, AddonSearchResultFile, WowAddon, WowInstallation } from "../models";
 import { newAddonRecord } from "../models";
 import { AddonChannelType, AddonDependencyType, type AddonProviderType } from "../types";
 import type { Toc } from "../toc/toc";
-import type { AddonProvider, DiscoverList, ScanMatch } from "../providers/addon-provider";
-import { NotFoundError, ProviderError, ValidationError } from "../errors";
+import type { ScanMatch } from "../providers/addon-provider";
+import type { SourceRequest } from "../catalogue/Catalogue";
+import { NotFoundError, ValidationError } from "../errors";
 import type { ProviderRegistry } from "../providers/provider-registry";
 import type { StateStore } from "../storage/StateStore";
 import { recordFolders, type AddonPatch, type AddonRecord } from "./AddonRecords";
@@ -29,19 +30,18 @@ import { InstallationService } from "../installation/InstallationService";
 import { scanAddons } from "./AddonScanner";
 import { computeWowUpFingerprints } from "./FingerprintScanner";
 import { AddonInstaller, AddonRemover } from "./AddonInstaller";
-import { hasNewerPrerelease, latestFile, updateCandidate } from "./releaseChannel";
+import { hasNewerPrerelease, installsFolder, latestFile, updateCandidate } from "./releaseChannel";
 import { cacheUsage, clearAll, dropPrevious, swapWithPrevious } from "./RollbackCache";
 import { AddonListPortability } from "./AddonPortability";
 import { dependantsIndex, libraryFlagsAfterImport, orphanedLibraries } from "./libraries";
 import type { DownloadService } from "../downloads/DownloadService";
-import { identifyUrlImportProvider } from "../providers/url-import";
 import { canonicalLocalArchive } from "../archives/localArchive";
 import { inspectAddonArchive } from "../archives/ArchiveInspector";
 import { getTocForGameType2 } from "../utils/toc";
 import { getClientTypeLabel } from "../utils/gametype";
 import { gameVersionForInstallation } from "../utils/gameversion";
 import { WOWUP_DATA_ADDON_FOLDER_NAME } from "../notifications/constants";
-import { PROVIDER_ID, providerDisplayName } from "../../api/providers";
+import { PROVIDER_ID } from "../../api/providers";
 import { needsUpdate, updateStatus } from "./addonStatus";
 import {
   WARNING_FOLDERS_MISSING,
@@ -50,7 +50,6 @@ import {
   missingDependencies,
   listedIgnoreReason,
   toWireAddon,
-  toWireSearchResult,
   toWireUnmanaged,
 } from "./wire";
 
@@ -75,8 +74,6 @@ class Gate {
 }
 
 
-/** Results kept from each provider for one search. */
-const SEARCH_RESULTS_PER_PROVIDER = 10;
 /** Ids looked up in one addons.lookup call (a dependency list, the Relationships page). */
 const LOOKUP_MAX_IDS = 50;
 
@@ -138,15 +135,6 @@ const INSTALL_INTENTS: Record<
   adopt: { status: "installed", dependencyFlag: "clear", stampUpdate: false, broadcast: true, withDependencies: true, keepPrevious: "always" },
   source: { status: "installed", dependencyFlag: "keep", stampUpdate: false, broadcast: true, withDependencies: true, keepPrevious: "existing" },
 };
-
-/**
- * Whether a release installs the folder, as far as its listing tells: a
- * release that lists no folders (WoWInterface's) may, and the installer
- * checks its archive (InstallOptions.requiredFolder).
- */
-function installsFolder(file: AddonSearchResultFile | undefined, folder: string): boolean {
-  return !!file && (file.folders.length === 0 || file.folders.includes(folder));
-}
 
 /** A failed operation's result (not broadcast; see AddonService#fail). */
 function failedOperation(operationId: string, addonId: string | null, err: unknown): OperationResult {
@@ -457,100 +445,6 @@ export class AddonService {
     return this.addonsFor(installation.id).filter((addon) => updateStatus(addon, this.registry).canUpdate);
   }
 
-  // ---- search ----
-
-  async search(
-    query: string,
-    installation: WowInstallation,
-    providerId?: string,
-  ): Promise<{ results: SearchResult[]; providerErrors: Array<{ providerId: string; error: string }> }> {
-    if (!query.trim()) {
-      return { results: [], providerErrors: [] };
-    }
-    const providers = providerId
-      ? [this.registry.usable(providerId)].filter((p): p is NonNullable<typeof p> => !!p)
-      : this.#catalogProviders();
-    const { results, providerErrors } = await this.#searchProviders(
-      providers,
-      [query],
-      installation,
-      SEARCH_RESULTS_PER_PROVIDER,
-    );
-    return {
-      results: results
-        .map((r) => this.wireResult(r, installation))
-        .sort((a, b) => (b.downloadCount ?? 0) - (a.downloadCount ?? 0)),
-      providerErrors,
-    };
-  }
-
-  /** Providers in the name search (GitHub and WoWInterface only resolve URLs). */
-  #catalogProviders(): AddonProvider[] {
-    return this.registry.available().filter((p) => p.catalogSearch);
-  }
-
-  /**
-   * Every provider searched for every query, in parallel, keeping the first
-   * `perProvider` results of each answer, each addon once. A provider that
-   * fails never stops the others; it is reported in providerErrors so the UI
-   * can tell a failure from an empty result.
-   */
-  async #searchProviders(
-    providers: AddonProvider[],
-    queries: string[],
-    installation: WowInstallation,
-    perProvider = Infinity,
-  ): Promise<{ results: AddonSearchResult[]; providerErrors: Array<{ providerId: string; error: string }> }> {
-    const found = new Map<string, AddonSearchResult>();
-    const providerErrors: Array<{ providerId: string; error: string }> = [];
-    await Promise.all(
-      providers.map(async (provider) => {
-        try {
-          for (const query of queries) {
-            for (const r of (await provider.searchByQuery(query, installation)).slice(0, perProvider)) {
-              found.set(`${r.providerName}:${r.externalId}`, r);
-            }
-          }
-        } catch (err) {
-          console.error(`[service] search failed for ${provider.name}: ${String(err)}`);
-          providerErrors.push({ providerId: provider.name, error: err instanceof Error ? err.message : String(err) });
-        }
-      }),
-    );
-    return { results: [...found.values()], providerErrors };
-  }
-
-  /**
-   * Install from URL: resolves a pasted GitHub/WowInterface URL,
-   * GitHub owner/repo shorthand, Nix-style github:owner/repo reference,
-   * or a direct https link to an addon archive (WF-09), directly,
-   * independent of the normal catalog search dispatch above, through
-   * the provider's own
-   * searchByQuery. Works while the provider is turned off in Options, as
-   * upstream's dispatcher does (owner, 2026-10-21): the install goes
-   * through too (see install), and My Addons tags the addon "Source off".
-   */
-  async resolveUrlImport(url: string, installation: WowInstallation): Promise<SearchResult> {
-    const trimmed = url.trim();
-    if (!trimmed) {
-      throw new ValidationError("Enter a URL or owner/repository first");
-    }
-    const providerId = identifyUrlImportProvider(trimmed);
-    if (!providerId) {
-      throw new ValidationError("That isn't a GitHub or WoWInterface address, or an https link to a .zip, .rar or .7z file");
-    }
-    const provider = this.registry.get(providerId);
-    if (!provider) {
-      throw new NotFoundError("provider", providerId);
-    }
-    const results = await provider.searchByQuery(trimmed, installation);
-    const result = results[0];
-    if (!result) {
-      throw new NotFoundError("addon for url", trimmed);
-    }
-    return this.wireResult(result, installation);
-  }
-
   // ---- install from a local file (Manual Install, From a file) ----
 
   /**
@@ -585,31 +479,25 @@ export class AddonService {
   // ---- unmanaged folders: find an online source (WF-23) ----
 
   /**
-   * Online sources for an unmanaged folder: the catalog providers searched
-   * by its TOC title, its folder name and the addons its TOC requires (a
-   * sub-folder such as OmniCC_Config names its main addon only there; DEVICE
-   * 2026-10-21), keeping only addons whose
-   * release (on the installation's default channel) installs that folder,
-   * so adopting one replaces it. An exact name first, then by downloads.
+   * What finding online sources for an unmanaged folder searches with
+   * (Catalogue.findSources): its TOC title, its folder name and the addons
+   * its TOC requires (a sub-folder such as OmniCC_Config names its main
+   * addon only there; DEVICE 2026-10-21).
    */
-  async findSources(
-    installation: WowInstallation,
-    folderName: string,
-  ): Promise<{ results: SearchResult[]; providerErrors: Array<{ providerId: string; error: string }> }> {
+  async sourceRequestForFolder(installation: WowInstallation, folderName: string): Promise<SourceRequest> {
     const folder = await this.#requireUnmanagedFolder(installation, folderName);
     const toc = getTocForGameType2(folder, installation.clientType);
     const required = (toc?.dependencyList ?? []).filter((d) => !/^blizzard_/i.test(d));
-    return this.#sources(installation, folderName, toc, [toc?.title, folderName, ...required]);
+    return { installation, folderName, toc, queries: [toc?.title, folderName, ...required] };
   }
 
   /**
-   * The other providers' copies of a managed addon (WF-12): as findSources,
-   * for its main folder, searched by its TOC title, its name and the folder
-   * name; its own provider left out. A missing folder leaves only the names.
+   * What finding a managed addon's copies on other providers searches with
+   * (WF-12): its main folder, searched by its TOC title, its name and the
+   * folder name; its own provider left out. A missing folder leaves only
+   * the names.
    */
-  async findOtherSources(
-    addonId: string,
-  ): Promise<{ results: SearchResult[]; providerErrors: Array<{ providerId: string; error: string }> }> {
+  async sourceRequestForAddon(addonId: string): Promise<SourceRequest> {
     const addon = this.store.addons.require(addonId);
     const installation = this.installations.require(addon.installationId);
     const folderName = recordFolders(addon)[0];
@@ -618,82 +506,7 @@ export class AddonService {
     }
     const folder = (await scanAddons(installation)).find((f) => f.name === folderName);
     const toc = folder && getTocForGameType2(folder, installation.clientType);
-    return this.#sources(installation, folderName, toc, [toc?.title, addon.name, folderName], addon);
-  }
-
-  /**
-   * Sources whose release (on the installation's default channel) installs
-   * `folderName`, so using one replaces it: the addons the TOC's project ids
-   * name (tocSources) and the catalog search for `queries`. TOC-named
-   * first, then exactly named, then by downloads. `own`: the addon whose provider
-   * is left out.
-   */
-  async #sources(
-    installation: WowInstallation,
-    folderName: string,
-    toc: Toc | undefined,
-    queries: (string | undefined)[],
-    own?: AddonRecord,
-  ): Promise<{ results: SearchResult[]; providerErrors: Array<{ providerId: string; error: string }> }> {
-    const terms = [...new Set(queries.filter((q): q is string => !!q?.trim()))];
-    const [searched, named] = await Promise.all([
-      this.#searchProviders(this.#catalogProviders(), terms, installation),
-      this.#tocSources(installation, toc),
-    ]);
-    const key = (r: { providerName?: string; externalId?: string }) => `${r.providerName}:${r.externalId}`;
-    const byKey = new Map(
-      [...searched.results, ...named.results]
-        // A switch is to another provider's copy: on its own one, other
-        // entries are forks or other editions (DEVICE 2026-10-22: Details!'s
-        // were its Burning Crusade and Shadowlands beta projects).
-        .filter((r) => r.providerName !== own?.providerName)
-        .map((r) => [key(r), r]),
-    );
-    const names = new Set(terms.map((q) => q.toLowerCase()));
-    const tocNamed = new Set(named.results.map(key));
-    // The TOC's id is the author's own word on which addon it is; a name can be shared.
-    const first = (r: AddonSearchResult) => 2 * Number(tocNamed.has(key(r))) + Number(names.has(r.name.toLowerCase()));
-    const results = [...byKey.values()]
-      .filter((r) => installsFolder(latestFile(r.files, installation.defaultAddonChannelType), folderName))
-      .sort(
-        (a, b) =>
-          first(b) - first(a) || (b.downloadCount ?? 0) - (a.downloadCount ?? 0) || a.name.localeCompare(b.name),
-      );
-    return {
-      results: results.map((r) => this.wireResult(r, installation)),
-      providerErrors: [...searched.providerErrors, ...named.providerErrors],
-    };
-  }
-
-  /**
-   * The addons a TOC names by project id (AddonProvider.tocId), one per
-   * provider that is on, each asked by id. A provider that fails is
-   * reported, like a failed search.
-   */
-  async #tocSources(
-    installation: WowInstallation,
-    toc: Toc | undefined,
-  ): Promise<{ results: AddonSearchResult[]; providerErrors: Array<{ providerId: string; error: string }> }> {
-    const results: AddonSearchResult[] = [];
-    const providerErrors: Array<{ providerId: string; error: string }> = [];
-    await Promise.all(
-      this.registry.available().map(async (provider) => {
-        const id = toc && provider.tocId(toc);
-        if (!id || !provider.isValidAddonId(id)) {
-          return;
-        }
-        try {
-          const result = await provider.getById(id, installation);
-          if (result) {
-            results.push(result);
-          }
-        } catch (err) {
-          console.error(`[service] lookup by TOC id failed for ${provider.name}: ${String(err)}`);
-          providerErrors.push({ providerId: provider.name, error: err instanceof Error ? err.message : String(err) });
-        }
-      }),
-    );
-    return { results, providerErrors };
+    return { installation, folderName, toc, queries: [toc?.title, addon.name, folderName], ownProvider: addon.providerName };
   }
 
   /**
@@ -766,32 +579,7 @@ export class AddonService {
     return folder;
   }
 
-  // ---- Discover/Browse ----
-
-  /**
-   * One page of a source's Latest or Popular list (Get Addons). One source
-   * at a time, picked in the list's Source menu: upstream joins every
-   * source into one list and shows an addon two sources host twice.
-   */
-  async discover(
-    list: DiscoverList,
-    providerId: string,
-    installation: WowInstallation,
-    index: number,
-    pageSize: number,
-    categoryId?: string,
-  ): Promise<{ results: SearchResult[]; totalCount: number }> {
-    const provider = this.registry.usable(providerId);
-    if (!provider?.discovers) {
-      throw new ProviderError(
-        providerId,
-        `${providerDisplayName(providerId)} isn't available. Turn it on in Options › Addon sources`,
-        "provider_unavailable",
-      );
-    }
-    const { results, totalCount } = await provider.getDiscoverPage(list, installation, index, pageSize, categoryId);
-    return { results: results.map((r) => this.wireResult(r, installation)), totalCount };
-  }
+  // ---- Details Relationships page ----
 
   /** Names for provider ids (Details Relationships page), and whether each is installed here. */
   async lookup(
@@ -816,48 +604,6 @@ export class AddonService {
       thumbnailUrl: r.thumbnailUrl || null,
       installed: installed.has(r.externalId),
     }));
-  }
-
-  // ---- Addon Details modal ----
-  // Generic across providers (unlike Discover/Browse): every AddonProvider
-  // has a getDescription/getChangelog, defaulting to "unsupported"
-  // (undefined) on the base class, so this doesn't need a Curse-specific
-  // guard the way discoverLatest/Popular do.
-
-  async getAddonDescription(providerId: string, externalId: string): Promise<string | null> {
-    const provider = this.registry.get(providerId);
-    if (!provider) {
-      throw new NotFoundError("provider", providerId);
-    }
-    const description = await provider.getDescription(externalId);
-    return description || null;
-  }
-
-  async getAddonChangelog(
-    providerId: string,
-    externalId: string,
-    installation: WowInstallation,
-  ): Promise<string | null> {
-    const provider = this.registry.get(providerId);
-    if (!provider) {
-      throw new NotFoundError("provider", providerId);
-    }
-    const changelog = await provider.getChangelog(externalId, installation);
-    return changelog || null;
-  }
-
-  // ---- Category filtering ----
-  // Generic across providers, same reasoning as Description/Changelog
-  // above: every AddonProvider has getCategories, defaulting to
-  // "unsupported" (undefined) on the base class.
-
-  async getCategories(providerId: string, installation: WowInstallation): Promise<ProviderCategory[] | null> {
-    const provider = this.registry.get(providerId);
-    if (!provider) {
-      throw new NotFoundError("provider", providerId);
-    }
-    const categories = await provider.getCategories(installation);
-    return categories ?? null;
   }
 
   // ---- provider metadata sync (update checks) ----
@@ -1131,12 +877,6 @@ export class AddonService {
       canUpdate: updateStatus(addon, this.registry).canUpdate,
       newlyUpdatedMs: this.store.settings.newlyUpdatedHours * 3_600_000,
     });
-  }
-
-  /** A provider result in wire form, its versions picked for the installation's default channel. */
-  wireResult(result: AddonSearchResult, installation: WowInstallation): SearchResult {
-    const provider = this.registry.get(result.providerName);
-    return toWireSearchResult(result, installation.defaultAddonChannelType, !!provider?.allowChannelChange);
   }
 
   /**

@@ -214,7 +214,7 @@ export class GitHubProvider extends AddonProvider {
   // dispatched from the generic name-search box, and never a
   // settings toggle (see allowEdit below), and never a scan participant
   // (AddonService's SCAN_ORDER). URL import calls this provider directly
-  // (see AddonService.resolveUrlImport).
+  // (see Catalogue.resolveUrlImport).
   override allowReinstall = true;
   override allowChannelChange = false;
   // Matches upstream exactly (github-addon-provider.ts: allowEdit = false)

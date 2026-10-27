@@ -5,7 +5,7 @@ import { friendlyUrlImportError } from "./urlImportErrors";
 import { errorText } from "./errors";
 import { resetFileImport } from "./fileImportState";
 import { defaultDiscoverSource, validDiscoverSources } from "./sourceAccess";
-import type { ProviderCategory, ProviderInfo, SearchResult } from "./types";
+import type { ProviderCategory, ProviderErrors, ProviderInfo, SearchResult } from "./types";
 import { providerDisplayName } from "../backend/src/api/providers";
 
 /**
@@ -90,7 +90,7 @@ export const searchDestination = createDestination<SearchView>(() => ({
 export function runSearch(
   search: (query: string) => Promise<{
     results: SearchResult[];
-    providerErrors: Array<{ providerId: string; error: string }>;
+    providerErrors: ProviderErrors;
   }>,
 ): Promise<void> {
   const { query, searching } = searchDestination.get();

@@ -34,6 +34,15 @@ _Avoid_: tab row, pill row, browse nav bar
 One of the four Get Addons lists: Search, Latest, Popular, Manual Install.
 _Avoid_: browse tab, sub-tab, category
 
+**Catalogue**:
+What the addon sources offer, as opposed to what is installed: search, the
+Latest and Popular lists, an addon's details and categories, resolving a
+pasted link, and finding a source for a folder. Read-only: asking the
+catalogue never changes an installed addon. When several sources are asked
+at once, one failing never stops the others; its failure is reported beside
+their results.
+_Avoid_: browse service, store
+
 **Manual Install**:
 The fourth destination: installing by hand instead of searching a catalogue.
 Its pane holds two labeled paths — From a link (a pasted URL) and From a

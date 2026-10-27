@@ -16,8 +16,8 @@ main.py                      thin lifecycle + JSONL bridge
  ↓ stdin/stdout JSONL
 wowdeck engine (backend/) standalone Bun-compiled binary
  ↓
-AddonService (backend/src/wow)
- ↓
+AddonService, Catalogue      changes to installed addons; read-only
+ ↓                            questions to the sources (backend/src/wow)
 Provider / filesystem / archive abstractions
 ```
 
@@ -72,6 +72,7 @@ backend/src/
     ├── installation/    detection, manual adds, the active installation
     ├── addons/          AddonService, addon records, scanner, installer,
     │                    rollback cache, portability (import/export), wire mappers
+    ├── catalogue/       Catalogue: search, Latest/Popular, details, finding sources
     ├── toc/             TOC parser
     ├── providers/       provider abstraction, registry + implementations
     ├── downloads/       download service

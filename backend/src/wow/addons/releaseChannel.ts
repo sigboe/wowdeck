@@ -79,3 +79,12 @@ export function updateCandidate(
   }
   return candidate;
 }
+
+/**
+ * Whether a release installs the folder, as far as its listing tells: a
+ * release that lists no folders (WoWInterface's) may, and the installer
+ * checks its archive (InstallOptions.requiredFolder).
+ */
+export function installsFolder(file: AddonSearchResultFile | undefined, folder: string): boolean {
+  return !!file && (file.folders.length === 0 || file.folders.includes(folder));
+}

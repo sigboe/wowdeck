@@ -8,9 +8,8 @@ import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
 import { rmSync } from "node:fs";
 import { identifyUrlImportProvider } from "../src/wow/providers/url-import";
-import { AddonService } from "../src/wow/addons/AddonService";
+import { Catalogue } from "../src/wow/catalogue/Catalogue";
 import { ProviderRegistry } from "../src/wow/providers/provider-registry";
-import { DownloadService } from "../src/wow/downloads/DownloadService";
 import { NetworkClient } from "../src/wow/net/network";
 import { createStateStore } from "../src/wow/storage/StateStore";
 import { GitHubProvider } from "../src/wow/providers/github/GitHubProvider";
@@ -33,7 +32,7 @@ const retail: WowInstallation = {
   source: "detected",
 };
 
-function makeService(net: NetworkClient, dir: string) {
+function makeCatalogue(net: NetworkClient, dir: string) {
   rmSync(join(ROOT, dir), { recursive: true, force: true });
   const store = createStateStore(join(ROOT, dir));
   const registry = new ProviderRegistry();
@@ -42,12 +41,7 @@ function makeService(net: NetworkClient, dir: string) {
   registry.register(github);
   registry.register(wowi);
   registry.attachStore(store);
-  const service = new AddonService(store, registry, new DownloadService(net, join(ROOT, dir, "dl")), {
-    addonsChanged: () => {},
-    operationProgress: () => {},
-    operationResult: () => {},
-  });
-  return { service, github, wowi };
+  return { catalogue: new Catalogue(registry), github, wowi };
 }
 
 function ghRepo(): GhRepo {
@@ -160,44 +154,44 @@ describe("identifyUrlImportProvider", () => {
   });
 });
 
-describe("AddonService.resolveUrlImport", () => {
+describe("Catalogue.resolveUrlImport", () => {
   test("resolves a GitHub URL end to end", async () => {
-    const { service } = makeService(fakeGithubAndWowiNet(), "svc1");
-    const result = await service.resolveUrlImport("https://github.com/mockauthor/MockAddon", retail);
+    const { catalogue } = makeCatalogue(fakeGithubAndWowiNet(), "svc1");
+    const result = await catalogue.resolveUrlImport("https://github.com/mockauthor/MockAddon", retail);
     expect(result.providerId).toBe("GitHub");
     expect(result.externalId).toBe("mockauthor/MockAddon");
   });
 
   test("resolves GitHub owner/repo shorthand end to end", async () => {
-    const { service } = makeService(fakeGithubAndWowiNet(), "svc2");
-    const result = await service.resolveUrlImport("mockauthor/MockAddon", retail);
+    const { catalogue } = makeCatalogue(fakeGithubAndWowiNet(), "svc2");
+    const result = await catalogue.resolveUrlImport("mockauthor/MockAddon", retail);
     expect(result.providerId).toBe("GitHub");
   });
 
   test("resolves the Nix-style github:owner/repo shorthand end to end", async () => {
-    const { service } = makeService(fakeGithubAndWowiNet(), "svc-nix");
-    const result = await service.resolveUrlImport("github:mockauthor/MockAddon", retail);
+    const { catalogue } = makeCatalogue(fakeGithubAndWowiNet(), "svc-nix");
+    const result = await catalogue.resolveUrlImport("github:mockauthor/MockAddon", retail);
     expect(result.providerId).toBe("GitHub");
     expect(result.externalId).toBe("mockauthor/MockAddon");
   });
 
   test("resolves a WowInterface URL end to end", async () => {
-    const { service } = makeService(fakeGithubAndWowiNet(), "svc3");
-    const result = await service.resolveUrlImport("https://www.wowinterface.com/downloads/info24449.html", retail);
+    const { catalogue } = makeCatalogue(fakeGithubAndWowiNet(), "svc3");
+    const result = await catalogue.resolveUrlImport("https://www.wowinterface.com/downloads/info24449.html", retail);
     expect(result.providerId).toBe("WowInterface");
     expect(result.name).toBe("MockWowiAddon");
   });
 
   test("throws a clear error for an unrecognized URL", async () => {
-    const { service } = makeService(fakeGithubAndWowiNet(), "svc4");
-    await expect(service.resolveUrlImport("https://www.curseforge.com/wow/addons/altoholic", retail)).rejects.toThrow(
+    const { catalogue } = makeCatalogue(fakeGithubAndWowiNet(), "svc4");
+    await expect(catalogue.resolveUrlImport("https://www.curseforge.com/wow/addons/altoholic", retail)).rejects.toThrow(
       /isn't a GitHub or WoWInterface/i,
     );
   });
 
   test("throws a clear error for an empty input", async () => {
-    const { service } = makeService(fakeGithubAndWowiNet(), "svc5");
-    await expect(service.resolveUrlImport("   ", retail)).rejects.toThrow(/enter a url/i);
+    const { catalogue } = makeCatalogue(fakeGithubAndWowiNet(), "svc5");
+    await expect(catalogue.resolveUrlImport("   ", retail)).rejects.toThrow(/enter a url/i);
   });
 
   test("throws NotFoundError when the recognized provider finds nothing", async () => {
@@ -206,17 +200,17 @@ describe("AddonService.resolveUrlImport", () => {
         throw new (await import("../src/wow/net/network")).NetworkError("404", 404, "x");
       },
     } as unknown as NetworkClient;
-    const { service } = makeService(net, "svc6");
-    await expect(service.resolveUrlImport("https://github.com/owner/doesnotexist", retail)).rejects.toThrow();
+    const { catalogue } = makeCatalogue(net, "svc6");
+    await expect(catalogue.resolveUrlImport("https://github.com/owner/doesnotexist", retail)).rejects.toThrow();
   });
 
   // Upstream's URL dispatcher never checks provider.enabled (investigation
   // §2, B.3/B.4); the install goes through too, and My Addons tags the
   // addon "Source off" (owner, 2026-10-21).
   test("resolves a WowInterface URL even while WowInterface is turned off", async () => {
-    const { service, wowi } = makeService(fakeGithubAndWowiNet(), "svc7");
+    const { catalogue, wowi } = makeCatalogue(fakeGithubAndWowiNet(), "svc7");
     wowi.enabled = false;
-    const result = await service.resolveUrlImport("https://www.wowinterface.com/downloads/info24449.html", retail);
+    const result = await catalogue.resolveUrlImport("https://www.wowinterface.com/downloads/info24449.html", retail);
     expect(result.providerId).toBe("WowInterface");
   });
 });
@@ -230,7 +224,7 @@ describe("Normal catalog search never dispatches a URL import", () => {
         throw new Error("no network calls expected");
       },
     } as unknown as NetworkClient;
-    const { service, github, wowi } = makeService(net, "svc9");
+    const { catalogue, github, wowi } = makeCatalogue(net, "svc9");
     const originalGithub = github.searchByQuery.bind(github);
     const originalWowi = wowi.searchByQuery.bind(wowi);
     github.searchByQuery = async (...args) => {
@@ -241,7 +235,7 @@ describe("Normal catalog search never dispatches a URL import", () => {
       wowiCalled = true;
       return originalWowi(...args);
     };
-    const { results } = await service.search("https://github.com/mockauthor/MockAddon", retail);
+    const { results } = await catalogue.search("https://github.com/mockauthor/MockAddon", retail);
     expect(results).toEqual([]);
     expect(githubCalled).toBe(false);
     expect(wowiCalled).toBe(false);

@@ -7,7 +7,7 @@ import { channelFromWire } from "../../wow/addons/releaseChannel";
 import { NotFoundError } from "../../wow/errors";
 import { runningFileManager, showItems } from "../../desktop/FileManager";
 
-export function register(server: JsonlServer, { service, installationService, updateCheck, companionCoordinator }: HandlerDeps): void {
+export function register(server: JsonlServer, { service, catalogue, installationService, updateCheck, companionCoordinator }: HandlerDeps): void {
   server.on("addons.list", async () => {
     const installation = installationService.require();
     return { addons: await service.listAddons(installation) };
@@ -46,8 +46,7 @@ export function register(server: JsonlServer, { service, installationService, up
 
   server.on("addons.search", async (params) => {
     const installation = installationService.require();
-    const { results, providerErrors } = await service.search(params.query, installation, params.providerId);
-    return { results, providerErrors };
+    return catalogue.search(params.query, installation, params.providerId);
   });
 
   server.on("addons.resolveUrlImport", async (params) => {
@@ -55,7 +54,7 @@ export function register(server: JsonlServer, { service, installationService, up
     // { error } (contracts.ts), so require() is inside the try.
     try {
       const installation = installationService.require();
-      const result = await service.resolveUrlImport(params.url, installation);
+      const result = await catalogue.resolveUrlImport(params.url, installation);
       return { result, error: null };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -79,12 +78,12 @@ export function register(server: JsonlServer, { service, installationService, up
 
   server.on("discover.latest", async (params) => {
     const installation = installationService.require();
-    return service.discover("latest", params.providerId, installation, params.index, params.pageSize);
+    return catalogue.discover("latest", params.providerId, installation, params.index, params.pageSize);
   });
 
   server.on("discover.popular", async (params) => {
     const installation = installationService.require();
-    return service.discover(
+    return catalogue.discover(
       "popular",
       params.providerId,
       installation,
@@ -95,13 +94,13 @@ export function register(server: JsonlServer, { service, installationService, up
   });
 
   server.on("addons.getDescription", async (params) => {
-    const description = await service.getAddonDescription(params.providerId, params.externalId);
+    const description = await catalogue.getDescription(params.providerId, params.externalId);
     return { description };
   });
 
   server.on("addons.getChangelog", async (params) => {
     const installation = installationService.require();
-    const changelog = await service.getAddonChangelog(params.providerId, params.externalId, installation);
+    const changelog = await catalogue.getChangelog(params.providerId, params.externalId, installation);
     return { changelog };
   });
 
@@ -132,7 +131,7 @@ export function register(server: JsonlServer, { service, installationService, up
 
   server.on("addons.getCategories", async (params) => {
     const installation = installationService.require();
-    const categories = await service.getCategories(params.providerId, installation);
+    const categories = await catalogue.getCategories(params.providerId, installation);
     return { categories };
   });
 
@@ -170,11 +169,11 @@ export function register(server: JsonlServer, { service, installationService, up
   });
 
   server.on("addons.findSources", async (params) => {
-    if ("addonId" in params) {
-      return service.findOtherSources(params.addonId);
-    }
-    const installation = installationService.require();
-    return service.findSources(installation, params.folderName);
+    const request =
+      "addonId" in params
+        ? await service.sourceRequestForAddon(params.addonId)
+        : await service.sourceRequestForFolder(installationService.require(), params.folderName);
+    return catalogue.findSources(request);
   });
 
   server.on("addons.changeSource", async (params) => {

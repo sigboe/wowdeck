@@ -200,6 +200,12 @@ export interface SearchResult {
   screenshots: SearchResultScreenshot[];
 }
 
+/**
+ * The providers that failed in a lookup across several (a search, finding
+ * sources), so the UI can tell a failure from an empty result.
+ */
+export type ProviderErrors = Array<{ providerId: string; error: string }>;
+
 export interface ProviderInfo {
   id: string;
   name: string;
@@ -516,11 +522,7 @@ export interface MethodMap {
   };
   "addons.search": {
     params: { query: string; providerId?: string };
-    result: {
-      results: SearchResult[];
-      /** Providers that failed, so the UI can distinguish errors from empty results. */
-      providerErrors: Array<{ providerId: string; error: string }>;
-    };
+    result: { results: SearchResult[]; providerErrors: ProviderErrors };
   };
   "addons.resolveUrlImport": {
     /**
@@ -670,10 +672,7 @@ export interface MethodMap {
    */
   "addons.findSources": {
     params: { folderName: string } | { addonId: string };
-    result: {
-      results: SearchResult[];
-      providerErrors: Array<{ providerId: string; error: string }>;
-    };
+    result: { results: SearchResult[]; providerErrors: ProviderErrors };
   };
   /**
    * Make an unmanaged folder managed (WF-23): installs the chosen source's

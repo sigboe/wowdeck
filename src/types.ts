@@ -22,6 +22,7 @@ export type {
   OperationResult,
   PluginSettings,
   ProviderCategory,
+  ProviderErrors,
   ProviderInfo,
   ReleaseChannel,
   SearchResult,

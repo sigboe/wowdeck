@@ -31,7 +31,7 @@ export interface ScanMatch {
   installedFile?: AddonSearchResultFile;
 }
 
-/** Get Addons' browse lists (AddonService.discover). */
+/** Get Addons' browse lists (Catalogue.discover). */
 export type DiscoverList = "latest" | "popular";
 
 export interface DiscoverPage {
