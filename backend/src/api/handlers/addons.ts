@@ -2,28 +2,18 @@
 
 import type { JsonlServer } from "../../bridge/jsonl";
 import type { HandlerDeps } from "./deps";
-import { errorCodeFor } from "../../bridge/jsonl";
+import { settle } from "../../bridge/jsonl";
 import { channelFromWire } from "../../wow/addons/releaseChannel";
 import { NotFoundError } from "../../wow/errors";
 import { runningFileManager, showItems } from "../../desktop/FileManager";
 
-export function register(server: JsonlServer, { service, catalogue, installationService, updateCheck, companionCoordinator }: HandlerDeps): void {
+export function register(server: JsonlServer, { service, catalogue, installationService, updateCheck }: HandlerDeps): void {
   server.on("addons.list", async () => {
     const installation = installationService.require();
     return { addons: await service.listAddons(installation) };
   });
 
-  server.on("addons.refresh", async (params) => {
-    const installation = installationService.require(params.installationId);
-    await service.scanInstallation(installation);
-    const sync = await service.refresh(installation);
-    const addons = await service.listAddons(installation);
-    // This installation's metadata is already current from the refresh
-    // just above — regen only, no second network pass, and scoped to
-    // this one installation.
-    void companionCoordinator.regenerate([installation.id]);
-    return { addons, updated: sync.updated, failed: sync.failed };
-  });
+  server.on("addons.refresh", async (params) => updateCheck.refresh(installationService.require(params.installationId)));
 
   server.on("addons.folders", async (params) => {
     const installation = installationService.require();
@@ -49,32 +39,15 @@ export function register(server: JsonlServer, { service, catalogue, installation
     return catalogue.search(params.query, installation, params.providerId);
   });
 
-  server.on("addons.resolveUrlImport", async (params) => {
-    // Every failure, "no installation selected" included, is a structured
-    // { error } (contracts.ts), so require() is inside the try.
-    try {
-      const installation = installationService.require();
-      const result = await catalogue.resolveUrlImport(params.url, installation);
-      return { result, error: null };
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      return { result: null, error: { code: errorCodeFor(err), message } };
-    }
-  });
+  // Never-throws (contracts.ts Settled): every failure, "no installation
+  // selected" included, is part of the answer, so require() runs inside.
+  server.on("addons.resolveUrlImport", async (params) =>
+    settle(() => catalogue.resolveUrlImport(params.url, installationService.require())),
+  );
 
-  server.on("addons.inspectArchive", async (params) => {
-    // The never-throws envelope again: a missing, corrupt or empty
-    // archive is an expected outcome of a picked file, not an RPC
-    // failure (see addons.resolveUrlImport above).
-    try {
-      const installation = installationService.require();
-      const result = await service.inspectArchive(params.path, installation);
-      return { result, error: null };
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      return { result: null, error: { code: errorCodeFor(err), message } };
-    }
-  });
+  server.on("addons.inspectArchive", async (params) =>
+    settle(() => service.inspectArchive(params.path, installationService.require())),
+  );
 
   server.on("discover.latest", async (params) => {
     const installation = installationService.require();
@@ -104,20 +77,12 @@ export function register(server: JsonlServer, { service, catalogue, installation
     return { changelog };
   });
 
-  server.on("addons.updateSummary", async (params) => {
-    if (params.refresh) {
-      await updateCheck.checkAll();
-    }
-    return { installations: service.updateSummary() };
-  });
+  server.on("addons.updateSummary", async (params) => ({ installations: await updateCheck.updateSummary(params.refresh === true) }));
 
-  server.on("addons.rollback", async (params) => {
-    const { addon, operation } = await service.rollback(params.addonId);
-    return { addon: service.wire(addon), operation };
-  });
+  server.on("addons.rollback", async (params) => service.rollback(params.addonId));
 
   server.on("addons.setAutoUpdatePaused", async (params) => ({
-    addon: service.wire(await service.setAutoUpdatePaused(params.addonId, params.paused === true)),
+    addon: await service.setAutoUpdatePaused(params.addonId, params.paused === true),
   }));
 
   server.on("rollback.status", async () => service.rollbackStatus());
@@ -135,27 +100,19 @@ export function register(server: JsonlServer, { service, catalogue, installation
     return { categories };
   });
 
-  server.on("addons.install", async (params) => {
-    const installation = installationService.require();
-    const { addon, operation } = await service.install({
+  server.on("addons.install", async (params) =>
+    service.install({
       intent: "install",
       providerId: params.providerId,
       externalId: params.externalId,
-      installation,
+      installation: installationService.require(),
       channel: params.channel === undefined ? undefined : channelFromWire(params.channel),
-    });
-    return { addon: service.wire(addon), operation };
-  });
+    }),
+  );
 
-  server.on("addons.setChannel", async (params) => {
-    const { addon, operation } = await service.setChannel(params.addonId, channelFromWire(params.channel));
-    return { addon: service.wire(addon), operation };
-  });
+  server.on("addons.setChannel", async (params) => service.setChannel(params.addonId, channelFromWire(params.channel)));
 
-  server.on("addons.reinstall", async (params) => {
-    const { addon, operation } = await service.reinstall(params.addonId);
-    return { addon: service.wire(addon), operation };
-  });
+  server.on("addons.reinstall", async (params) => service.reinstall(params.addonId));
 
   server.on("addons.remove", async (params) => {
     const operation = await service.removeAddon(params.addonId);
@@ -176,37 +133,23 @@ export function register(server: JsonlServer, { service, catalogue, installation
     return catalogue.findSources(request);
   });
 
-  server.on("addons.changeSource", async (params) => {
-    const { addon, operation } = await service.changeSource(params.addonId, params.providerId, params.externalId);
-    return { addon: service.wire(addon), operation };
-  });
+  server.on("addons.changeSource", async (params) =>
+    service.changeSource(params.addonId, params.providerId, params.externalId),
+  );
 
-  server.on("addons.adopt", async (params) => {
-    const installation = installationService.require();
-    const { addon, operation } = await service.adopt(installation, params.folderName, params.providerId, params.externalId);
-    return { addon: service.wire(addon), operation };
-  });
+  server.on("addons.adopt", async (params) =>
+    service.adopt(installationService.require(), params.folderName, params.providerId, params.externalId),
+  );
 
-  server.on("addons.setIgnored", async (params) => {
-    const addon = await service.setIgnored(params.addonId, params.ignored);
-    return { addon: service.wire(addon) };
-  });
+  server.on("addons.setIgnored", async (params) => ({ addon: await service.setIgnored(params.addonId, params.ignored) }));
 
-  server.on("addons.update", async (params) => {
-    const { addon, operation } = await service.updateAddon(params.addonId);
-    return { addon: service.wire(addon), operation };
-  });
+  server.on("addons.update", async (params) => service.updateAddon(params.addonId));
 
-  server.on("addons.updateAll", async (params) => {
-    if (params.allInstallations) {
-      // No automatic update in the check: everything is updated right after.
-      await updateCheck.checkAll({ autoUpdate: false });
-      return { operations: await service.updateAllInstallations() };
-    }
-    const installation = installationService.require();
-    const operations = await service.updateAll(installation);
-    return { operations };
-  });
+  server.on("addons.updateAll", async (params) => ({
+    operations: params.allInstallations
+      ? await updateCheck.updateAllInstallations()
+      : await service.updateAll(installationService.require()),
+  }));
 
   server.on("addons.export", async (params) => {
     const installation = installationService.require(params.installationId);

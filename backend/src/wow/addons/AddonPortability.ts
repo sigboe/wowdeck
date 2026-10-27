@@ -19,6 +19,7 @@
  * See docs/wowup-provenance.md.
  */
 
+import type { ImportComparison, ImportSummary } from "../../api/contracts";
 import type { WowInstallation } from "../models";
 import type { AddonRecord } from "./AddonRecords";
 import { WowClientType } from "../types";
@@ -44,28 +45,6 @@ export interface ExportAddonJson {
    * (docs/addon-list-format.md), and its own exports never have it.
    */
   dependency?: boolean;
-}
-
-export type ImportState = "new" | "no_change" | "conflict" | "unresolved";
-
-export interface ImportComparison {
-  name: string;
-  providerId: string;
-  externalId: string;
-  versionId: string | null;
-  state: ImportState;
-  /** Human-readable reason, set for every state except "new". */
-  reason: string | null;
-  /** The export marked it installed only as a dependency (ExportAddonJson.dependency). */
-  dependency: boolean;
-}
-
-export interface ImportSummary {
-  addedCt: number;
-  noChangeCt: number;
-  conflictCt: number;
-  unresolvedCt: number;
-  comparisons: ImportComparison[];
 }
 
 export interface ImportSummaryError {

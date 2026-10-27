@@ -26,6 +26,15 @@ export interface RpcError {
   error: { code: string; message: string };
 }
 
+/**
+ * The answer of a method that never throws for an expected failure: the
+ * result, or the error a thrown RPC would carry (code from errorCodeFor).
+ */
+export interface Settled<T> {
+  result: T | null;
+  error: { code: string; message: string } | null;
+}
+
 /** Engine-initiated event, relayed to the frontend by the bridge. */
 export interface RpcEvent {
   event: string;
@@ -51,6 +60,12 @@ export type GameType = "retail" | "classic" | "classic_era" | "classic_beta" | "
 
 /** How an installation entered the installation list. */
 export type InstallationSource = "detected" | "manual";
+
+/** An installation a folder holds, before it is added (installations.inspect). */
+export interface FoundInstallation {
+  gameType: GameType;
+  displayName: string;
+}
 
 /** A World of Warcraft installation (one per game flavor). */
 export interface Installation {
@@ -149,6 +164,12 @@ export interface Addon {
   canChangeChannel: boolean;
   /** For the My Addons Details action's result header — the backend's own WowAddon model already carries this. */
   thumbnailUrl: string | null;
+}
+
+/** An addon change's answer: the addon as it is now, and how the operation went. */
+export interface AddonOperation {
+  addon: Addon;
+  operation: OperationResult;
 }
 
 /** An addon release channel (WowUp's Stable / Beta / Alpha). */
@@ -263,7 +284,10 @@ export interface ImportComparison {
   state: ImportState;
   /** Human-readable reason, set for every state except "new". */
   reason: string | null;
-  /** The list marks it a library (installed only as a dependency); imported as one (WF-21). */
+  /**
+   * The list marks it a library, installed only as another addon's required
+   * dependency (the export's own `dependency` key); imported as one (WF-21).
+   */
   dependency: boolean;
 }
 
@@ -494,7 +518,7 @@ export interface MethodMap {
    */
   "installations.inspect": {
     params: { path: string };
-    result: { found: Array<{ gameType: GameType; displayName: string }> };
+    result: { found: FoundInstallation[] };
   };
   "installations.remove": {
     params: { installationId: string };
@@ -528,7 +552,7 @@ export interface MethodMap {
      * (errorCodeFor); the UI maps known codes to a sentence and otherwise
      * shows `message`.
      */
-    result: { result: SearchResult | null; error: { code: string; message: string } | null };
+    result: Settled<SearchResult>;
   };
   /**
    * Install from file (Manual Install's From a file): inspect an archive
@@ -547,7 +571,7 @@ export interface MethodMap {
    */
   "addons.inspectArchive": {
     params: { path: string };
-    result: { result: ArchivePreview | null; error: { code: string; message: string } | null };
+    result: Settled<ArchivePreview>;
   };
   "discover.latest": {
     /** providerId: a source with `ProviderInfo.discovers` (the list's Source menu). */
@@ -578,7 +602,7 @@ export interface MethodMap {
   "addons.install": {
     /** `channel`: install from that release channel and follow it (providers with channels only). */
     params: { providerId: string; externalId: string; channel?: ReleaseChannel };
-    result: { addon: Addon; operation: OperationResult };
+    result: AddonOperation;
   };
   /**
    * Put the kept previous version back (BEYOND-02); the current one becomes
@@ -587,7 +611,7 @@ export interface MethodMap {
    */
   "addons.rollback": {
     params: { addonId: string };
-    result: { addon: Addon; operation: OperationResult };
+    result: AddonOperation;
   };
   /** Pause or resume automatic updates for one addon (WF-02). */
   "addons.setAutoUpdatePaused": {
@@ -620,7 +644,7 @@ export interface MethodMap {
    */
   "addons.setChannel": {
     params: { addonId: string; channel: ReleaseChannel };
-    result: { addon: Addon; operation: OperationResult };
+    result: AddonOperation;
   };
   /**
    * An addon's folders in the selected installation's AddOns (WF-20, the
@@ -669,7 +693,7 @@ export interface MethodMap {
    */
   "addons.adopt": {
     params: { folderName: string; providerId: string; externalId: string };
-    result: { addon: Addon; operation: OperationResult };
+    result: AddonOperation;
   };
   /**
    * Switch a managed addon to another source (WF-12; upstream's "Provider"
@@ -681,7 +705,7 @@ export interface MethodMap {
    */
   "addons.changeSource": {
     params: { addonId: string; providerId: string; externalId: string };
-    result: { addon: Addon; operation: OperationResult };
+    result: AddonOperation;
   };
   "addons.setIgnored": {
     params: { addonId: string; ignored: boolean };
@@ -689,12 +713,12 @@ export interface MethodMap {
   };
   "addons.update": {
     params: { addonId: string };
-    result: { addon: Addon; operation: OperationResult };
+    result: AddonOperation;
   };
   /** Install the addon's current release again (repair). Status "installed" on success. */
   "addons.reinstall": {
     params: { addonId: string };
-    result: { addon: Addon; operation: OperationResult };
+    result: AddonOperation;
   };
   "addons.updateAll": {
     /**

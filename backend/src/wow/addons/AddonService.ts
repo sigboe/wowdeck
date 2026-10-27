@@ -8,7 +8,7 @@
  * See docs/wowup-provenance.md.
  */
 
-import type { Addon, AutoUpdateResult, OperationResult } from "../../api/contracts";
+import type { Addon, AddonOperation, AutoUpdateResult, OperationResult } from "../../api/contracts";
 import type { ArchivePreview } from "../../api/contracts";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -427,7 +427,7 @@ export class AddonService {
     // WF-22: who requires whom, from the dependencies recorded at install.
     const dependants = dependantsIndex(listed);
     const managed = listed.map((record) => {
-      const wire = this.wire(record);
+      const wire = this.#wire(record);
       wire.neededBy = dependants(record).map((r) => r.name);
       // The record does not keep the TOC; read the main folder's, as for
       // unmanaged rows (WF-11). Dependencies on the addon's own folders
@@ -546,8 +546,8 @@ export class AddonService {
     folderName: string,
     providerId: string,
     externalId: string,
-  ): Promise<{ addon: AddonRecord; operation: OperationResult }> {
-    return this.#gate.run(async (records) => {
+  ): Promise<AddonOperation> {
+    return this.#wired(this.#gate.run(async (records) => {
       const folder = await this.#requireUnmanagedFolder(installation, folderName);
       const version = getTocForGameType2(folder, installation.clientType)?.version;
       return this.#installUnlocked(records, {
@@ -557,7 +557,7 @@ export class AddonService {
         installation,
         adopt: { folder: folderName, version },
       });
-    });
+    }));
   }
 
   /**
@@ -571,8 +571,8 @@ export class AddonService {
     addonId: string,
     providerId: string,
     externalId: string,
-  ): Promise<{ addon: AddonRecord; operation: OperationResult }> {
-    return this.#gate.run(async (records) => {
+  ): Promise<AddonOperation> {
+    return this.#wired(this.#gate.run(async (records) => {
       const addon = records.require(addonId);
       const installation = this.installations.require(addon.installationId);
       const other = records.find(installation.id, providerId, externalId);
@@ -582,7 +582,7 @@ export class AddonService {
         );
       }
       return this.#installUnlocked(records, { intent: "source", providerId, externalId, installation, replaces: addon });
-    });
+    }));
   }
 
   /**
@@ -700,8 +700,8 @@ export class AddonService {
    * INSTALL_INTENTS). One install at a time (the gate); a required
    * dependency is installed inside the same turn.
    */
-  async install(request: InstallRequest): Promise<{ addon: AddonRecord; operation: OperationResult }> {
-    return this.#gate.run((records) => this.#installUnlocked(records, request));
+  async install(request: InstallRequest): Promise<AddonOperation> {
+    return this.#wired(this.#gate.run((records) => this.#installUnlocked(records, request)));
   }
 
   /** The install itself; callers hold the gate (`Gate.run` is not reentrant). */
@@ -849,8 +849,8 @@ export class AddonService {
    * Update one addon to its latest release. The provider read and the
    * install are one gate turn, so nothing changes the record between them.
    */
-  async updateAddon(addonId: string): Promise<{ addon: AddonRecord; operation: OperationResult }> {
-    return this.#gate.run((records) => this.#updateUnlocked(records, addonId));
+  async updateAddon(addonId: string): Promise<AddonOperation> {
+    return this.#wired(this.#gate.run((records) => this.#updateUnlocked(records, addonId)));
   }
 
   /**
@@ -919,8 +919,14 @@ export class AddonService {
     });
   }
 
+  /** A change's answer in wire form, read once the change's turn is over. */
+  async #wired(change: Promise<{ addon: AddonRecord; operation: OperationResult }>): Promise<AddonOperation> {
+    const { addon, operation } = await change;
+    return { addon: this.#wire(addon), operation };
+  }
+
   /** The wire form of a record, with what only the service knows (provider capabilities). */
-  wire(addon: AddonRecord): Addon {
+  #wire(addon: AddonRecord): Addon {
     return toWireAddon(addon, {
       canReinstall: this.canReinstall(addon),
       canChangeChannel: this.canChangeChannel(addon),
@@ -953,8 +959,8 @@ export class AddonService {
    * addon stays on its old channel (a failed install writes nothing), so the
    * record never claims a channel whose files are not on disk.
    */
-  async setChannel(addonId: string, channel: AddonChannelType): Promise<{ addon: AddonRecord; operation: OperationResult }> {
-    return this.#gate.run((records) => {
+  async setChannel(addonId: string, channel: AddonChannelType): Promise<AddonOperation> {
+    return this.#wired(this.#gate.run((records) => {
       const addon = records.require(addonId);
       if (!this.canChangeChannel(addon)) {
         throw new ValidationError(`${addon.name} has no release channels`);
@@ -967,7 +973,7 @@ export class AddonService {
         installation,
         channel,
       });
-    });
+    }));
   }
 
   /** Managed by a usable provider that allows reinstalling (upstream's canReInstall). */
@@ -984,8 +990,8 @@ export class AddonService {
    * when folders are missing: that is the main repair case. Keeps the
    * dependency flag, so autoremove still treats a dependency as one.
    */
-  async reinstall(addonId: string): Promise<{ addon: AddonRecord; operation: OperationResult }> {
-    return this.#gate.run((records) => {
+  async reinstall(addonId: string): Promise<AddonOperation> {
+    return this.#wired(this.#gate.run((records) => {
       const addon = records.require(addonId);
       if (!this.canReinstall(addon)) {
         throw new ValidationError(`${addon.name} can't be reinstalled`);
@@ -997,7 +1003,7 @@ export class AddonService {
         externalId: addon.externalId!,
         installation,
       });
-    });
+    }));
   }
 
   async updateAll(installation: WowInstallation): Promise<OperationResult[]> {
@@ -1053,8 +1059,8 @@ export class AddonService {
    * follows the files; going back to an older version pauses automatic
    * updates for the addon, going forward to the latest resumes them.
    */
-  async rollback(addonId: string): Promise<{ addon: AddonRecord; operation: OperationResult }> {
-    return this.#gate.run(async (records) => {
+  async rollback(addonId: string): Promise<AddonOperation> {
+    return this.#wired(this.#gate.run(async (records) => {
       const addon = records.require(addonId);
       const installation = this.installations.require(addon.installationId);
       const operationId = this.nextOperationId();
@@ -1087,7 +1093,7 @@ export class AddonService {
       } catch (err) {
         return { addon, operation: this.#fail(operationId, addonId, err) };
       }
-    });
+    }));
   }
 
   async rollbackStatus(): Promise<{ bytes: number; count: number }> {
@@ -1098,12 +1104,13 @@ export class AddonService {
    * Pause or resume automatic updates for one addon (WF-02). Waits for a
    * running install: one that cleared the pause after it would lose it.
    */
-  setAutoUpdatePaused(addonId: string, paused: boolean): Promise<AddonRecord> {
-    return this.#gate.run((records) => {
+  async setAutoUpdatePaused(addonId: string, paused: boolean): Promise<Addon> {
+    const addon = await this.#gate.run((records) => {
       const addon = records.patch(addonId, { autoUpdatePaused: paused || undefined, skipReleaseId: undefined });
       this.events.addonsChanged([addonId]);
       return addon;
     });
+    return this.#wire(addon);
   }
 
   /** Delete every kept previous version (Options). */
@@ -1306,12 +1313,13 @@ export class AddonService {
   }
 
   /** Ignore or stop ignoring one addon (WF-04); waits for a running install, like every record change. */
-  setIgnored(addonId: string, ignored: boolean): Promise<AddonRecord> {
-    return this.#gate.run((records) => {
+  async setIgnored(addonId: string, ignored: boolean): Promise<Addon> {
+    const addon = await this.#gate.run((records) => {
       const addon = records.patch(addonId, { isIgnored: ignored });
       this.events.addonsChanged([addonId]);
       return addon;
     });
+    return this.#wire(addon);
   }
 
   private nextOperationId(): string {

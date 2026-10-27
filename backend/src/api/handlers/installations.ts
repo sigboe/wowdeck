@@ -2,18 +2,10 @@
 
 import type { JsonlServer } from "../../bridge/jsonl";
 import type { HandlerDeps } from "./deps";
-import type { WowInstallation } from "../../wow/models";
-import {
-  getClientFullName,
-  getClientTypeForGameType,
-  getClientTypeLabel,
-  getGameTypeForClientType,
-} from "../../wow/utils/gametype";
+import { getClientTypeForGameType } from "../../wow/utils/gametype";
 
-export function register(server: JsonlServer, { service, installationService, updateCheck, homeDir }: HandlerDeps): void {
-  server.on("installations.list", async () => ({
-    installations: installationService.list().map(wireInstallation),
-  }));
+export function register(server: JsonlServer, { installationService, updateCheck, homeDir }: HandlerDeps): void {
+  server.on("installations.list", async () => ({ installations: installationService.listed() }));
 
   server.on("installations.detect", async () => {
     const installations = await installationService.detect(homeDir);
@@ -21,13 +13,10 @@ export function register(server: JsonlServer, { service, installationService, up
     // every installation, fire-and-forget so the RPC isn't held up by every
     // installation's provider calls.
     void updateCheck.checkAll();
-    return { installations: installations.map(wireInstallation) };
+    return { installations };
   });
 
-  server.on("installations.select", async (params) => {
-    const installation = installationService.select(params.installationId);
-    return { installation: installation ? wireInstallation(installation) : null };
-  });
+  server.on("installations.select", async (params) => ({ installation: installationService.select(params.installationId) }));
 
   server.on("installations.add", async (params) => {
     const installations = await installationService.addManual(params.path, {
@@ -36,34 +25,13 @@ export function register(server: JsonlServer, { service, installationService, up
     });
     // Same reasoning as installations.detect above.
     void updateCheck.checkAll();
-    return { installations: installations.map(wireInstallation) };
+    return { installations };
   });
 
-  server.on("installations.inspect", async (params) => ({
-    found: (await installationService.inspect(params.path)).map((i) => ({
-      gameType: getGameTypeForClientType(i.clientType),
-      displayName: i.displayName,
-    })),
-  }));
+  server.on("installations.inspect", async (params) => ({ found: await installationService.inspect(params.path) }));
 
   server.on("installations.remove", async (params) => {
     await installationService.remove(params.installationId);
     return { installationId: params.installationId };
   });
-
-  function wireInstallation(i: WowInstallation) {
-    const selectedId = installationService.selectedId();
-    return {
-      id: i.id,
-      gameType: getGameTypeForClientType(i.clientType),
-      path: i.location,
-      addonsPath: service.addonsPathFor(i),
-      displayName: i.displayName,
-      clientName: getClientTypeLabel(i.clientType),
-      clientFullName: getClientFullName(i.clientType),
-      source: i.source ?? "detected",
-      selected: i.id === selectedId,
-      version: i.version ?? null,
-    };
-  }
 }

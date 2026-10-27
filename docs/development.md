@@ -105,7 +105,10 @@ Deck"); the test procedure is the `deck-test` skill
 2. Handle it with `server.on("area.method", …)` in the matching
    `backend/src/api/handlers/<area>.ts`; a new service goes into
    `HandlerDeps` (`handlers/deps.ts`) and is built in `main.ts`. The
-   integration test "every declared method has a handler" fails until it is.
+   handler only forwards: the engine module returns the contract type
+   itself, and a method that never throws for an expected failure answers
+   through `settle()` (`bridge/jsonl.ts`). The integration test "every
+   declared method has a handler" fails until it is.
 3. Call it from the UI with `rpc("area.method", params)`
    (`src/services/backend.ts`), typed from `MethodMap`. `main.py` forwards
    every method unchanged; it needs no edit.

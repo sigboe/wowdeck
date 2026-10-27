@@ -13,7 +13,6 @@ import { createStateStore } from "../src/wow/storage/StateStore";
 import { DownloadService } from "../src/wow/downloads/DownloadService";
 import { NetworkClient } from "../src/wow/net/network";
 import { WowClientType } from "../src/wow/types";
-import { getClientTypeLabel } from "../src/wow/utils/gametype";
 
 const ROOT = "/tmp/opencode/wowdeck-tests/manual";
 
@@ -49,7 +48,7 @@ describe("manual installation", () => {
     const added = await service.installations.addManual(retail);
     expect(added).toHaveLength(1);
     expect(added[0]!.source).toBe("manual");
-    expect(added[0]!.clientType).toBe(WowClientType.Retail);
+    expect(added[0]!.gameType).toBe("retail");
     expect(service.installations.list()).toHaveLength(1);
   });
 
@@ -58,7 +57,7 @@ describe("manual installation", () => {
     const ptr = join(ROOT, "inspect/World of Warcraft/_ptr_");
     mkdirSync(join(ptr, "Interface", "AddOns"), { recursive: true });
     const found = await service.installations.inspect(ptr);
-    expect(found.map((i) => [i.clientType, i.displayName])).toEqual([[WowClientType.RetailPtr, "Retail PTR"]]);
+    expect(found).toEqual([{ gameType: "ptr", displayName: "Retail PTR" }]);
     expect(await service.installations.inspect(join(ROOT, "inspect"))).toHaveLength(1);
     expect(await service.installations.inspect("relative")).toEqual([]);
     expect(await service.installations.inspect("/nonexistent/x")).toEqual([]);
@@ -76,7 +75,7 @@ describe("manual installation", () => {
       displayName: "My Era Copy",
     });
     expect(added).toHaveLength(2);
-    expect(added.every((i) => i.displayName === getClientTypeLabel(i.clientType))).toBe(true);
+    expect(added.every((i) => i.displayName === i.clientName)).toBe(true);
 
     // adding the flavor dir directly takes the custom name
     const single = await service.installations.addManual(era, { displayName: "My Era Copy" });
@@ -123,8 +122,8 @@ describe("manual installation", () => {
       clientType: WowClientType.ClassicEra,
     });
     expect(added).toHaveLength(1);
-    expect(added[0]!.clientType).toBe(WowClientType.ClassicEra);
-    expect(added[0]!.location).toBe(custom);
+    expect(added[0]!.gameType).toBe("classic_era");
+    expect(added[0]!.path).toBe(custom);
   });
 
   test("removal never deletes WoW files and drops records", async () => {

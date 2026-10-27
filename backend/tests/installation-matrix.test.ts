@@ -183,8 +183,8 @@ afterAll(() => {
 
 describe("installation matrix", () => {
   test("detect registers exactly the valid installations", async () => {
-    const found = await stack.service.installations.detect(join(ROOT, "home"));
-    const labels = found.map((i) => i.label).sort();
+    await stack.service.installations.detect(join(ROOT, "home"));
+    const labels = stack.service.installations.list().map((i) => i.label).sort();
     expect(labels).toEqual(["_classic_beta_", "_classic_era_", "_retail_"]);
   });
 
@@ -222,7 +222,7 @@ describe("installation matrix", () => {
 
     const { operation, addon: updated } = await stack.service.updateAddon(addon.id);
     expect(operation.status).toBe("updated");
-    expect(updated.installedVersion).toBe("1.1.0");
+    expect(updated.version).toBe("1.1.0");
   });
 
   test("manual installation joins the list and survives re-detection", async () => {

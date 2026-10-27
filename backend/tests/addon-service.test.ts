@@ -247,8 +247,8 @@ describe("AddonService lifecycle", () => {
     const { addon } = await service.install({ intent: "install", providerId: "WowUpHub", externalId: "111", installation: installation });
     const addonsPath = join(installation.location, "Interface", "AddOns");
     expect(existsSync(join(addonsPath, "AlphaAddon", "AlphaAddon.toc"))).toBe(true);
-    expect(addon.installedVersion).toBe("1.0.0");
-    expect(addon.installedExternalReleaseId).toBe("r1");
+    expect(addon.version).toBe("1.0.0");
+    expect(stored({ service, installation }, addon.id).installedExternalReleaseId).toBe("r1");
 
     // listed as managed with no update
     let addons = await service.listAddons(installation);
@@ -272,11 +272,11 @@ describe("AddonService lifecycle", () => {
     // update it
     const { operation, addon: updated } = await service.updateAddon(addon.id);
     expect(operation.status).toBe("updated");
-    expect(updated.installedVersion).toBe("1.1.0");
-    expect(updated.installedExternalReleaseId).toBe("r2");
+    expect(updated.version).toBe("1.1.0");
+    expect(stored({ service, installation }, addon.id).installedExternalReleaseId).toBe("r2");
     expect(readFileSync(join(addonsPath, "AlphaAddon", "AlphaAddon.toc"), "utf-8")).toContain("1.1.0");
-    expect(updated.lastUpdatedAt).toBeNumber();
-    expect(service.wire(updated).newlyUpdated).toBe(true);
+    expect(stored({ service, installation }, addon.id).lastUpdatedAt).toBeNumber();
+    expect(updated.newlyUpdated).toBe(true);
 
     // no further update
     const { operation: again } = await service.updateAddon(addon.id);
@@ -288,7 +288,7 @@ describe("AddonService lifecycle", () => {
     const addonsPath = join(installation.location, "Interface", "AddOns");
     expect(existsSync(join(addonsPath, "BetaSuite", "BetaSuite.toc"))).toBe(true);
     expect(existsSync(join(addonsPath, "BetaLib", "BetaLib.toc"))).toBe(true);
-    expect(addon.installedFolderList).toEqual(["BetaSuite", "BetaLib"]);
+    expect(stored({ service, installation }, addon.id).installedFolderList).toEqual(["BetaSuite", "BetaLib"]);
   });
 
   test("remove deletes folders and record", async () => {
@@ -345,7 +345,7 @@ describe("AddonService lifecycle", () => {
     test("a managed addon's recorded folders, with paths and which are on disk", async () => {
       const { addon } = await service.install({ intent: "install", providerId: "WowUpHub", externalId: "111", installation: installation });
       const addonsPath = join(installation.location, "Interface", "AddOns");
-      const names = recordFolders(addon);
+      const names = recordFolders(stored({ service, installation }, addon.id));
       const result = await service.addonFolders(installation, addon.id);
       expect(result.addonsPath).toBe(addonsPath);
       expect(result.folders).toEqual(names.map((name) => ({ name, path: join(addonsPath, name), present: true })));
@@ -367,7 +367,7 @@ describe("AddonService lifecycle", () => {
       ]);
 
       const { addon } = await service.install({ intent: "install", providerId: "WowUpHub", externalId: "111", installation: installation });
-      for (const id of ["unmanaged:NotThere", "unmanaged:../..", `unmanaged:${recordFolders(addon)[0]}`, "no-such-id"]) {
+      for (const id of ["unmanaged:NotThere", "unmanaged:../..", `unmanaged:${addon.folderName}`, "no-such-id"]) {
         await expect(service.addonFolders(installation, id)).rejects.toThrow(/isn't in your list/);
       }
     });
@@ -404,7 +404,7 @@ describe("AddonService lifecycle", () => {
     test("refuses a folder that belongs to a managed addon", async () => {
       const { addon } = await service.install({ intent: "install", providerId: "WowUpHub", externalId: "111", installation: installation });
       await expect(
-        service.removeUnmanagedFolder(installation, addon.installedFolderList![0]!),
+        service.removeUnmanagedFolder(installation, addon.folderName),
       ).rejects.toThrow(/managed/i);
       // the managed addon must be untouched
       const addons = await service.listAddons(installation);
@@ -636,7 +636,7 @@ describe("required-dependency auto-install and autoremove (apt/pacman-style)", (
     const core = store.addons.all().find((a) => a.externalId === "700");
     expect(core).toBeTruthy();
     expect(core!.isDependency).toBe(true);
-    expect(suite.isDependency).toBeFalsy();
+    expect(suite.installedAsDependency).toBe(false);
 
     await localService.removeAddon(suite.id);
     expect(store.addons.all().find((a) => a.externalId === "701")).toBeUndefined();
@@ -698,6 +698,16 @@ describe("required-dependency auto-install and autoremove (apt/pacman-style)", (
     expect(store.addons.all().find((a) => a.externalId === "710")).toBeTruthy(); // SuiteB still needs it
   });
 });
+
+/** An addon as My Addons lists it now. */
+async function listed(f: { service: AddonService; installation: WowInstallation }, id: string) {
+  return (await f.service.listAddons(f.installation)).find((a) => a.id === id)!;
+}
+
+/** The stored record behind an addon, for what the wire form does not show. */
+function stored(f: { service: AddonService; installation: WowInstallation }, id: string) {
+  return f.service.addonsFor(f.installation.id).find((a) => a.id === id)!;
+}
 
 /** A service with its own provider, store and AddOns folder, for tests that must not share state. */
 function localFixture(name: string, catalog: CatalogEntry[]) {
@@ -912,7 +922,7 @@ describe("reinstall (WF-05)", () => {
   test("puts deleted files and folders back, clears folders missing, reports installed", async () => {
     const f = localFixture("reinstall-repair", catalog());
     const { addon } = await f.service.install({ intent: "install", providerId: "WowUpHub", externalId: "740", installation: f.installation });
-    expect(f.service.wire(addon).canReinstall).toBe(true);
+    expect(addon.canReinstall).toBe(true);
     rmSync(join(f.addonsPath, "Fixme", "Fixme.toc"));
     rmSync(join(f.addonsPath, "FixmeLib"), { recursive: true });
     expect((await f.service.listAddons(f.installation)).find((a) => a.id === addon.id)!.problem).toBe("folders_missing");
@@ -942,7 +952,7 @@ describe("reinstall (WF-05)", () => {
     const f = localFixture("reinstall-refused", catalog());
     const { addon } = await f.service.install({ intent: "install", providerId: "WowUpHub", externalId: "740", installation: f.installation });
     f.provider.allowReinstall = false;
-    expect(f.service.wire(addon).canReinstall).toBe(false);
+    expect((await listed(f, addon.id)).canReinstall).toBe(false);
     await expect(f.service.reinstall(addon.id)).rejects.toThrow(/can't be reinstalled/);
     await expect(f.service.reinstall("nope")).rejects.toThrow(/isn't available|isn't in your list|weren't found|wasn't found/i);
   });
@@ -1006,12 +1016,10 @@ describe("release channels (WF-03)", () => {
   test("installs the stable release by default, the beta when asked, and follows that channel", async () => {
     const f = localFixture("channel-install", catalog());
     const { addon } = await f.service.install({ intent: "install", providerId: "WowUpHub", externalId: "750", installation: f.installation });
-    expect(addon.installedVersion).toBe("1.0.0");
-    expect(f.service.wire(addon).channel).toBe("stable");
+    expect(addon).toMatchObject({ version: "1.0.0", channel: "stable" });
 
     const { addon: beta } = await f.service.install({ intent: "install", providerId: "WowUpHub", externalId: "750", installation: f.installation, channel: AddonChannelType.Beta });
-    expect(beta.installedVersion).toBe("1.1.0-beta");
-    expect(f.service.wire(beta)).toMatchObject({ channel: "beta", canChangeChannel: true, updateAvailable: false });
+    expect(beta).toMatchObject({ version: "1.1.0-beta", channel: "beta", canChangeChannel: true, updateAvailable: false });
   });
 
   test("switching channel installs that channel's release, back to Stable included", async () => {
@@ -1019,15 +1027,14 @@ describe("release channels (WF-03)", () => {
     const { addon } = await f.service.install({ intent: "install", providerId: "WowUpHub", externalId: "750", installation: f.installation });
     const toBeta = await f.service.setChannel(addon.id, AddonChannelType.Beta);
     expect(toBeta.operation.status).toBe("installed");
-    expect(toBeta.addon.installedVersion).toBe("1.1.0-beta");
+    expect(toBeta.addon.version).toBe("1.1.0-beta");
     expect(readFileSync(join(f.addonsPath, "Chan", "Chan.toc"), "utf-8")).toContain("1.1.0-beta");
-    expect(f.service.wire(toBeta.addon)).toMatchObject({ channel: "beta", updateAvailable: false });
+    expect(toBeta.addon).toMatchObject({ channel: "beta", updateAvailable: false });
 
     const toStable = await f.service.setChannel(addon.id, AddonChannelType.Stable);
-    expect(toStable.addon.installedVersion).toBe("1.0.0");
-    expect(f.service.wire(toStable.addon)).toMatchObject({ channel: "stable", updateAvailable: false });
+    expect(toStable.addon).toMatchObject({ version: "1.0.0", channel: "stable", updateAvailable: false });
     await f.service.refresh(f.installation);
-    expect(f.service.wire(toStable.addon).updateAvailable).toBe(false);
+    expect((await listed(f, addon.id)).updateAvailable).toBe(false);
     expect(f.store.addons.all().filter((a) => a.externalId === "750")).toHaveLength(1);
   });
 
@@ -1036,7 +1043,7 @@ describe("release channels (WF-03)", () => {
     const { addon } = await f.service.install({ intent: "install", providerId: "WowUpHub", externalId: "750", installation: f.installation });
     f.provider.failGetById = true;
     await expect(f.service.setChannel(addon.id, AddonChannelType.Beta)).rejects.toThrow();
-    expect(f.service.wire(addon).channel).toBe("stable");
+    expect((await listed(f, addon.id)).channel).toBe("stable");
   });
 
   test("moving to an older channel without reinstalling never offers a downgrade as an update", async () => {
@@ -1046,14 +1053,14 @@ describe("release channels (WF-03)", () => {
     const { addon } = await f.service.install({ intent: "install", providerId: "WowUpHub", externalId: "750", installation: f.installation, channel: AddonChannelType.Beta });
     f.store.addons.patch(addon.id, { channelType: AddonChannelType.Stable });
     await f.service.refresh(f.installation);
-    expect(f.service.wire(f.store.addons.require(addon.id)).updateAvailable).toBe(false);
+    expect((await listed(f, addon.id)).updateAvailable).toBe(false);
   });
 
   test("channel change is refused without provider support", async () => {
     const f = localFixture("channel-search", catalog());
     const { addon } = await f.service.install({ intent: "install", providerId: "WowUpHub", externalId: "750", installation: f.installation });
     f.provider.allowChannelChange = false;
-    expect(f.service.wire(addon).canChangeChannel).toBe(false);
+    expect((await listed(f, addon.id)).canChangeChannel).toBe(false);
     await expect(f.service.setChannel(addon.id, AddonChannelType.Beta)).rejects.toThrow("no release channels");
   });
 
@@ -1063,7 +1070,7 @@ describe("release channels (WF-03)", () => {
     for (const entries of [olderBeta, catalog().map((c) => ({ ...c, prereleases: [] }))]) {
       const f = localFixture(`channel-none-${entries[0]!.prereleases!.length}`, entries);
       const { addon } = await f.service.install({ intent: "install", providerId: "WowUpHub", externalId: "750", installation: f.installation });
-      expect(f.service.wire(addon).canChangeChannel).toBe(false);
+      expect(addon.canChangeChannel).toBe(false);
     }
   });
 
@@ -1072,10 +1079,9 @@ describe("release channels (WF-03)", () => {
     const { addon } = await f.service.install({ intent: "install", providerId: "WowUpHub", externalId: "750", installation: f.installation, channel: AddonChannelType.Beta });
     f.provider.catalog[0]!.prereleases = [];
     await f.service.refresh(f.installation);
-    expect(f.service.wire(addon)).toMatchObject({ channel: "beta", canChangeChannel: true });
+    expect(await listed(f, addon.id)).toMatchObject({ channel: "beta", canChangeChannel: true });
     const { addon: stable } = await f.service.setChannel(addon.id, AddonChannelType.Stable);
-    expect(stable.installedVersion).toBe("1.0.0");
-    expect(f.service.wire(stable).canChangeChannel).toBe(false);
+    expect(stable).toMatchObject({ version: "1.0.0", canChangeChannel: false });
   });
 });
 
@@ -1148,24 +1154,24 @@ describe("previous version and rollback (BEYOND-02)", () => {
   test("an update keeps the previous version; rollback swaps back and can be undone", async () => {
     const f = localFixture("rollback", [{ id: "800", name: "Roll", version: "1.0.0", releaseId: "r1", folders: ["Roll"] }]);
     const { addon } = await f.service.install({ intent: "install", providerId: "WowUpHub", externalId: "800", installation: f.installation });
-    expect(f.service.wire(addon).previousVersion).toBeNull(); // a fresh install has nothing before it
+    expect(addon.previousVersion).toBeNull(); // a fresh install has nothing before it
 
     bump(f, "1.1.0", "r2");
     await f.service.refresh(f.installation);
     const { addon: updated } = await f.service.updateAddon(addon.id);
-    expect(f.service.wire(updated).previousVersion).toBe("1.0.0");
+    expect(updated.previousVersion).toBe("1.0.0");
     expect((await f.service.rollbackStatus()).count).toBe(1);
 
     const back = await f.service.rollback(addon.id);
     expect(back.operation.status).toBe("installed");
     expect(toc(f)).toContain("1.0.0");
-    expect(f.service.wire(back.addon)).toMatchObject({ version: "1.0.0", previousVersion: "1.1.0", updateAvailable: true });
-    expect(f.service.wire(back.addon).autoUpdatePaused).toBe(true); // back to an older version: paused
+    expect(back.addon).toMatchObject({ version: "1.0.0", previousVersion: "1.1.0", updateAvailable: true });
+    expect(back.addon.autoUpdatePaused).toBe(true); // back to an older version: paused
 
     const forward = await f.service.rollback(addon.id); // undo
     expect(toc(f)).toContain("1.1.0");
-    expect(f.service.wire(forward.addon).autoUpdatePaused).toBe(false); // forward to the latest: resumed
-    expect(f.service.wire(forward.addon)).toMatchObject({ version: "1.1.0", previousVersion: "1.0.0" });
+    expect(forward.addon.autoUpdatePaused).toBe(false); // forward to the latest: resumed
+    expect(forward.addon).toMatchObject({ version: "1.1.0", previousVersion: "1.0.0" });
   });
 
   test("a reinstall of the same release keeps the older version for rollback (WF-05)", async () => {
@@ -1174,11 +1180,11 @@ describe("previous version and rollback (BEYOND-02)", () => {
     bump(f, "1.1.0", "r2");
     await f.service.refresh(f.installation);
     await f.service.updateAddon(addon.id);
-    expect(f.service.wire(f.store.addons.all().find((a) => a.id === addon.id)!).previousVersion).toBe("1.0.0");
+    expect((await listed(f, addon.id)).previousVersion).toBe("1.0.0");
 
     const { operation } = await f.service.reinstall(addon.id);
     expect(operation.status).toBe("installed");
-    expect(f.service.wire(f.store.addons.all().find((a) => a.id === addon.id)!).previousVersion).toBe("1.0.0");
+    expect((await listed(f, addon.id)).previousVersion).toBe("1.0.0");
     expect((await f.service.rollbackStatus()).count).toBe(1);
 
     const back = await f.service.rollback(addon.id);
@@ -1188,7 +1194,7 @@ describe("previous version and rollback (BEYOND-02)", () => {
     // Rolled back to r1, Reinstall installs the channel's latest (r2): that is an update, so r1 is kept.
     await f.service.reinstall(addon.id);
     expect(toc(f)).toContain("1.1.0");
-    expect(f.service.wire(f.store.addons.all().find((a) => a.id === addon.id)!).previousVersion).toBe("1.0.0");
+    expect((await listed(f, addon.id)).previousVersion).toBe("1.0.0");
   });
 
   test("space is counted and cleared; removing an addon drops its kept version; off keeps nothing", async () => {
@@ -1200,7 +1206,7 @@ describe("previous version and rollback (BEYOND-02)", () => {
     expect((await f.service.rollbackStatus()).bytes).toBeGreaterThan(0);
 
     expect(await f.service.clearRollback()).toEqual({ bytes: 0, count: 0 });
-    expect(f.service.wire(f.store.addons.all().find((a) => a.id === addon.id)!).previousVersion).toBeNull();
+    expect((await listed(f, addon.id)).previousVersion).toBeNull();
     await expect(f.service.rollback(addon.id).then((r) => r.operation.status)).resolves.toBe("failed");
 
     bump(f, "1.2.0", "r3");
@@ -1273,9 +1279,9 @@ describe("automatic updates (WF-02)", () => {
 
     // Paused by hand; an update by hand resumes.
     await f.service.setAutoUpdatePaused(a.id, true);
-    expect(f.service.wire(f.store.addons.all().find((x) => x.id === a.id)!).autoUpdatePaused).toBe(true);
+    expect((await listed(f, a.id)).autoUpdatePaused).toBe(true);
     await f.service.reinstall(a.id);
-    expect(f.service.wire(f.store.addons.all().find((x) => x.id === a.id)!).autoUpdatePaused).toBe(false);
+    expect((await listed(f, a.id)).autoUpdatePaused).toBe(false);
   });
 
   test("a record with the old skip mark counts as paused", async () => {
@@ -1285,7 +1291,7 @@ describe("automatic updates (WF-02)", () => {
     await f.service.refresh(f.installation);
     f.store.addons.patch(addon.id, { skipReleaseId: "anything" });
     f.store.updateSettings({ autoUpdate: true });
-    expect(f.service.wire(f.store.addons.all().find((x) => x.id === addon.id)!).autoUpdatePaused).toBe(true);
+    expect((await listed(f, addon.id)).autoUpdatePaused).toBe(true);
     expect(await f.service.autoUpdate(notRunning)).toBeNull();
   });
 
@@ -1621,7 +1627,7 @@ describe("records are written only through AddonRecords", () => {
     const ignore = f.service.setIgnored(addon.id, true);
     release();
     expect((await update).operation.status).toBe("current");
-    expect((await ignore).isIgnored).toBe(true);
+    expect((await ignore).ignored).toBe(true);
     expect(onDisk(f, addon.id)).toMatchObject({ isIgnored: true });
   });
 });

@@ -4,16 +4,23 @@
  * to drop those of a removed installation.
  */
 
+import type { FoundInstallation, Installation } from "../../api/contracts";
 import type { WowInstallation } from "../models";
 import type { StateStore } from "../storage/StateStore";
 import { NotFoundError, ValidationError } from "../errors";
 import { isDirectory } from "../fs/safe-fs";
-import { getClientTypeLabel, isLegacyAutoDisplayName } from "../utils/gametype";
+import {
+  getClientFullName,
+  getClientTypeLabel,
+  getGameTypeForClientType,
+  isLegacyAutoDisplayName,
+} from "../utils/gametype";
 import {
   InstallationDetector,
   classifyFlavorDir,
   createInstallationForFlavorDir,
   findFlavorDirs,
+  getAddonsPath,
   installationIdFor,
 } from "./InstallationDetector";
 
@@ -63,11 +70,31 @@ export class InstallationService {
     private onRemoved: () => void = () => {},
   ) {}
 
-  async detect(homeDir: string): Promise<WowInstallation[]> {
+  /** Detect installations into the list; the whole list after. */
+  async detect(homeDir: string): Promise<Installation[]> {
     const detector = new InstallationDetector({ homeDir, customPaths: this.store.settings.customWowPaths });
-    const merged = mergeInstallations(this.store.installations, await detector.detect());
-    this.store.setInstallations(merged);
-    return merged;
+    this.store.setInstallations(mergeInstallations(this.store.installations, await detector.detect()));
+    return this.listed();
+  }
+
+  /** The list in wire form (installations.list). */
+  listed(): Installation[] {
+    return this.list().map((i) => this.#wire(i));
+  }
+
+  #wire(i: WowInstallation): Installation {
+    return {
+      id: i.id,
+      gameType: getGameTypeForClientType(i.clientType),
+      path: i.location,
+      addonsPath: getAddonsPath(i),
+      displayName: i.displayName,
+      clientName: getClientTypeLabel(i.clientType),
+      clientFullName: getClientFullName(i.clientType),
+      source: i.source ?? "detected",
+      selected: i.id === this.selectedId(),
+      version: i.version ?? null,
+    };
   }
 
   /**
@@ -93,16 +120,16 @@ export class InstallationService {
   }
 
   /** The installations a folder would add (addManual's detection), registering nothing. */
-  async inspect(path: string): Promise<WowInstallation[]> {
+  async inspect(path: string): Promise<FoundInstallation[]> {
     const normalized = normalizePath(path);
     if (!normalized.startsWith("/")) {
       return [];
     }
-    const found: WowInstallation[] = [];
+    const found: FoundInstallation[] = [];
     for (const dir of await findFlavorDirs(normalized).catch(() => [] as string[])) {
       const installation = await createInstallationForFlavorDir(dir).catch(() => undefined);
       if (installation) {
-        found.push(installation);
+        found.push({ gameType: getGameTypeForClientType(installation.clientType), displayName: installation.displayName });
       }
     }
     return found;
@@ -118,7 +145,7 @@ export class InstallationService {
    * directories are rejected with a useful error. A clientType override is
    * allowed for non-flavor directory layouts.
    */
-  async addManual(path: string, opts: { displayName?: string; clientType?: number } = {}): Promise<WowInstallation[]> {
+  async addManual(path: string, opts: { displayName?: string; clientType?: number } = {}): Promise<Installation[]> {
     const normalized = normalizePath(path);
     if (!normalized.startsWith("/")) {
       throw new ValidationError("Enter the full folder path");
@@ -181,7 +208,7 @@ export class InstallationService {
         }
       }),
     );
-    return created.map((c) => this.store.installations.find((e) => e.id === c.id)!);
+    return created.map((c) => this.#wire(this.store.installations.find((e) => e.id === c.id)!));
   }
 
   /**
@@ -227,13 +254,13 @@ export class InstallationService {
     return this.ensureSelection()?.id ?? null;
   }
 
-  select(id: string): WowInstallation {
+  select(id: string): Installation {
     const installation = this.store.installations.find((i) => i.id === id);
     if (!installation) {
       throw new NotFoundError("installation", id);
     }
     this.store.updateSettings({ selectedInstallationId: id });
-    return installation;
+    return this.#wire(installation);
   }
 
   /** The installation with this id, or the active one when no id is given. */

@@ -231,10 +231,10 @@ describe("allowEdit enforcement", () => {
         latestVersion: "2",
       },
     ]);
-    const record = store.addons.require("a1");
-    expect(service.wire(record)).toMatchObject({ sourceOff: true, updateAvailable: false, availableVersion: null });
+    const listed = async () => (await service.listAddons(installation)).find((a) => a.id === "a1");
+    expect(await listed()).toMatchObject({ sourceOff: true, updateAvailable: false, availableVersion: null });
     tukui.enabled = true;
-    expect(service.wire(record)).toMatchObject({ sourceOff: false, updateAvailable: true, availableVersion: "2" });
+    expect(await listed()).toMatchObject({ sourceOff: false, updateAvailable: true, availableVersion: "2" });
   });
 
   test("Update all leaves out an addon whose source is off, and counts what the summary and toast count", async () => {

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { EngineError, JsonlServer } from "../src/bridge/jsonl";
+import { EngineError, JsonlServer, settle } from "../src/bridge/jsonl";
+import { ProviderError, ValidationError } from "../src/wow/errors";
 
 function makeServer() {
   const lines: string[] = [];
@@ -111,5 +112,33 @@ describe("JsonlServer", () => {
     }
     await server.run(input());
     expect(lines.map((l) => JSON.parse(l).id)).toEqual([7, 8]);
+  });
+});
+
+// The never-throws methods (addons.resolveUrlImport, addons.inspectArchive):
+// an expected failure is part of the answer, not an RPC error.
+describe("settle", () => {
+  test("a result comes back with no error", async () => {
+    expect(await settle(async () => 42)).toEqual({ result: 42, error: null });
+  });
+
+  test("a provider failure comes back as its own code and message", async () => {
+    const failing = async () => {
+      throw new ProviderError("GitHub", "No release for this game version", "github_no_compatible_release");
+    };
+    expect(await settle(failing)).toEqual({
+      result: null,
+      error: { code: "github_no_compatible_release", message: "No release for this game version" },
+    });
+  });
+
+  test("a failure before the work starts is settled too", async () => {
+    const failing = () => {
+      throw new ValidationError("No installation selected");
+    };
+    expect(await settle(failing)).toEqual({
+      result: null,
+      error: { code: "invalid_request", message: "No installation selected" },
+    });
   });
 });
