@@ -117,7 +117,7 @@ export function register(server: JsonlServer, { service, catalogue, installation
   });
 
   server.on("addons.setAutoUpdatePaused", async (params) => ({
-    addon: service.wire(service.setAutoUpdatePaused(params.addonId, params.paused === true)),
+    addon: service.wire(await service.setAutoUpdatePaused(params.addonId, params.paused === true)),
   }));
 
   server.on("rollback.status", async () => service.rollbackStatus());
@@ -188,7 +188,7 @@ export function register(server: JsonlServer, { service, catalogue, installation
   });
 
   server.on("addons.setIgnored", async (params) => {
-    const addon = service.setIgnored(params.addonId, params.ignored);
+    const addon = await service.setIgnored(params.addonId, params.ignored);
     return { addon: service.wire(addon) };
   });
 

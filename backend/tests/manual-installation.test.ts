@@ -133,7 +133,7 @@ describe("manual installation", () => {
       .find((i) => i.clientType === WowClientType.ClassicEra)!;
     const eraPath = era.location;
 
-    service.installations.remove(era.id);
+    await service.installations.remove(era.id);
     expect(service.installations.list().find((i) => i.id === era.id)).toBeUndefined();
     // files untouched
     expect(existsSync(join(eraPath, "WowClassic.exe"))).toBe(true);
@@ -145,7 +145,7 @@ describe("manual installation", () => {
     expect(remaining.length).toBeGreaterThan(0);
     const target = remaining[0]!;
     service.installations.select(target.id);
-    service.installations.remove(target.id);
+    await service.installations.remove(target.id);
 
     const next = service.installations.ensureSelection();
     expect(next).not.toBeNull();
@@ -158,7 +158,7 @@ describe("manual installation", () => {
     const [target, other] = service.installations.list();
     expect(other).toBeDefined();
     service.installations.select(target!.id);
-    service.installations.remove(target!.id);
+    await service.installations.remove(target!.id);
     // Read the store straight away: nothing else may have written it.
     const stored = store.settings.selectedInstallationId;
     expect(stored).not.toBeNull();
@@ -166,7 +166,7 @@ describe("manual installation", () => {
     expect(service.installations.list().some((i) => i.id === stored)).toBe(true);
   });
 
-  test("removing an unknown id fails loudly", () => {
-    expect(() => service.installations.remove("nope")).toThrow(/isn't available|isn't in your list|weren't found|wasn't found/i);
+  test("removing an unknown id fails loudly", async () => {
+    await expect(service.installations.remove("nope")).rejects.toThrow(/isn't available|isn't in your list|weren't found|wasn't found/i);
   });
 });

@@ -55,7 +55,10 @@ function mergeInstallations(
 
 export class InstallationService {
   constructor(
-    private store: StateStore,
+    /** Settings and installations; addon records change only in AddonService's gate. */
+    private store: Omit<StateStore, "addons">,
+    /** Drops an installation's addon records (a gate turn, after any running install). */
+    private dropRecords: (installationId: string) => Promise<void>,
     /** Called after an installation (and its addon records) was removed. */
     private onRemoved: () => void = () => {},
   ) {}
@@ -186,13 +189,13 @@ export class InstallationService {
    * belonging to it are dropped; if it was selected the selection falls
    * back to the first remaining installation.
    */
-  remove(id: string): void {
+  async remove(id: string): Promise<void> {
     const installations = this.store.installations;
     if (!installations.some((i) => i.id === id)) {
       throw new NotFoundError("installation", id);
     }
     this.store.setInstallations(installations.filter((i) => i.id !== id));
-    this.store.addons.removeForInstallation(id);
+    await this.dropRecords(id);
     if (this.store.settings.selectedInstallationId === id) {
       this.store.updateSettings({ selectedInstallationId: null });
       this.ensureSelection();

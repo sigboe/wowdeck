@@ -92,6 +92,13 @@ fields. The installer returns its changes instead of writing them, and
 `AddonService` writes them only when the install succeeded: a failed
 install, update or channel switch leaves the record as it was.
 
+Every record change runs in `AddonService`'s gate, one at a time: the gate
+holds the writable `AddonRecords`, and the service and `InstallationService`
+only see the lookups and the settings. Ignore, Pause, an import's library
+flags and removing an installation wait for a running install instead of
+racing it, and Update all and automatic updates check each addon again when
+its turn comes.
+
 The frontend's Steam DOM reach (QAM widening, QAM visibility, the home
 badge, the Details modal chrome) lives in `src/steamDom/`, one file per hack,
 each stating what it depends on, how it fails and its kill switch.

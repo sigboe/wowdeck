@@ -23,7 +23,7 @@ import type { SourceRequest } from "../catalogue/Catalogue";
 import { NotFoundError, ValidationError } from "../errors";
 import type { ProviderRegistry } from "../providers/provider-registry";
 import type { StateStore } from "../storage/StateStore";
-import { recordFolders, type AddonPatch, type AddonRecord } from "./AddonRecords";
+import { recordFolders, type AddonPatch, type AddonRecord, type AddonRecordReader, type AddonRecords } from "./AddonRecords";
 import { isDirectory, joinWithin } from "../fs/safe-fs";
 import { getAddonsPath } from "../installation/InstallationDetector";
 import { InstallationService } from "../installation/InstallationService";
@@ -62,12 +62,19 @@ export interface ServiceEvents {
 }
 
 
-/** Serialized mutation queue (replaces WowUp's rxjs install queue). */
+/**
+ * Serialized mutation queue (replaces WowUp's rxjs install queue), and the
+ * only holder of the writable records: a change gets them by running a
+ * turn, so no record changes outside one.
+ */
 class Gate {
   #chain: Promise<unknown> = Promise.resolve();
 
-  run<T>(fn: () => Promise<T>): Promise<T> {
-    const next = this.#chain.then(fn, fn);
+  constructor(private records: AddonRecords) {}
+
+  run<T>(fn: (records: AddonRecords) => T | Promise<T>): Promise<T> {
+    const turn = () => fn(this.records);
+    const next = this.#chain.then(turn, turn);
     this.#chain = next.catch(() => {});
     return next;
   }
@@ -221,7 +228,12 @@ export function unmanagedFolders(folders: AddonFolder[], records: AddonRecord[])
 export class AddonService {
   #installer: AddonInstaller;
   #remover = new AddonRemover();
-  #gate = new Gate();
+  /** Record changes run here, one at a time (Gate). */
+  readonly #gate: Gate;
+  /** Record lookups; writes go through the gate. */
+  readonly #records: AddonRecordReader;
+  /** Settings and installations; the records are not reachable from here. */
+  private store: Omit<StateStore, "addons">;
   #opCounter = 0;
   /**
    * Scratch root for archive previews (addons.inspectArchive): on the
@@ -236,16 +248,25 @@ export class AddonService {
   readonly portability: AddonListPortability;
 
   constructor(
-    private store: StateStore,
+    store: StateStore,
     private registry: ProviderRegistry,
     downloads: DownloadService,
     private events: ServiceEvents,
     installations?: InstallationService,
     inspectRoot: string = join(tmpdir(), "wowdeck-inspect"),
   ) {
+    this.store = store;
+    this.#records = store.addons;
+    this.#gate = new Gate(store.addons);
     this.#installer = new AddonInstaller(downloads);
     this.#inspectRoot = inspectRoot;
-    this.installations = installations ?? new InstallationService(store, () => events.addonsChanged([]));
+    this.installations =
+      installations ??
+      new InstallationService(
+        store,
+        (installationId) => this.#gate.run((records) => records.removeForInstallation(installationId)),
+        () => events.addonsChanged([]),
+      );
     this.portability = new AddonListPortability((installationId) => this.addonsFor(installationId), registry);
   }
 
@@ -253,7 +274,7 @@ export class AddonService {
 
   /** Full scan: folders, fingerprints, provider matching; reconciles records. */
   async scanInstallation(installation: WowInstallation): Promise<AddonRecord[]> {
-    return this.#gate.run(async () => {
+    return this.#gate.run(async (records) => {
       const folders = await scanAddons(installation);
       await computeWowUpFingerprints(folders);
 
@@ -274,14 +295,19 @@ export class AddonService {
         }
       }
 
-      this.reconcileRecords(installation, folders, matches);
+      this.reconcileRecords(records, installation, folders, matches);
       return this.addonsFor(installation.id);
     });
   }
 
   /** Merge provider matches into persisted records. */
-  private reconcileRecords(installation: WowInstallation, folders: AddonFolder[], matches: Map<string, ScanMatch>): void {
-    const records = this.store.addons.forInstallation(installation.id);
+  private reconcileRecords(
+    records: AddonRecords,
+    installation: WowInstallation,
+    folders: AddonFolder[],
+    matches: Map<string, ScanMatch>,
+  ): void {
+    const installed = records.forInstallation(installation.id);
     // Two groups can land on the same record (folder overlap): each sees the
     // other's changes, and all of them are written once at the end.
     const pending = new Map<string, AddonPatch>();
@@ -316,7 +342,7 @@ export class AddonService {
       const release = group.match.installedFile ?? group.match.latestFile;
       for (const name of release.folders) {
         const folder = folderByName.get(name);
-        const ownedByOther = records.some(
+        const ownedByOther = installed.some(
           (r) => `${r.providerName}:${r.externalId}` !== key && r.installedFolderList?.includes(name),
         );
         if (folder && !claimed.has(name) && !ownedByOther && folder.ignoreReason === undefined) {
@@ -329,8 +355,8 @@ export class AddonService {
     for (const [key, { folders: groupFolders, match }] of groups) {
       const folderNames = groupFolders.map((f) => f.name);
       const found =
-        records.find((r) => `${r.providerName}:${r.externalId}` === key) ??
-        records.find((r) => current(r).installedFolderList?.some((f) => folderNames.includes(f)));
+        installed.find((r) => `${r.providerName}:${r.externalId}` === key) ??
+        installed.find((r) => current(r).installedFolderList?.some((f) => folderNames.includes(f)));
 
       const toc = this.pickToc(installation, groupFolders);
 
@@ -353,14 +379,14 @@ export class AddonService {
     }
 
     const present = new Set(folders.map((f) => f.name));
-    for (const record of records) {
+    for (const record of installed) {
       const patch = folderStatePatch(current(record), present);
       if (patch) {
         change(record.id, patch);
       }
     }
-    this.store.addons.patchMany([...pending].map(([id, patch]) => ({ id, patch })));
-    this.store.addons.createMany(created);
+    records.patchMany([...pending].map(([id, patch]) => ({ id, patch })));
+    records.createMany(created);
   }
 
   private pickToc(installation: WowInstallation, folders: AddonFolder[]) {
@@ -382,25 +408,25 @@ export class AddonService {
    * are handled concurrently, see JsonlServer.run).
    */
   listAddons(installation: WowInstallation): Promise<Addon[]> {
-    return this.#gate.run(() => this.#listAddons(installation));
+    return this.#gate.run((records) => this.#listAddons(records, installation));
   }
 
-  async #listAddons(installation: WowInstallation): Promise<Addon[]> {
+  async #listAddons(records: AddonRecords, installation: WowInstallation): Promise<Addon[]> {
     const folders = await scanAddons(installation);
     const present = new Set(folders.map((f) => f.name));
-    this.store.addons.patchMany(
-      this.addonsFor(installation.id).flatMap((record) => {
+    records.patchMany(
+      records.forInstallation(installation.id).flatMap((record) => {
         const patch = folderStatePatch(record, present);
         return patch ? [{ id: record.id, patch }] : [];
       }),
     );
-    const records = this.addonsFor(installation.id);
-    const unmanaged = unmanagedFolders(folders, records).map((f) => toWireUnmanaged(f, installation, present));
+    const listed = records.forInstallation(installation.id);
+    const unmanaged = unmanagedFolders(folders, listed).map((f) => toWireUnmanaged(f, installation, present));
 
     const folderByName = new Map(folders.map((f) => [f.name, f]));
     // WF-22: who requires whom, from the dependencies recorded at install.
-    const dependants = dependantsIndex(records);
-    const managed = records.map((record) => {
+    const dependants = dependantsIndex(listed);
+    const managed = listed.map((record) => {
       const wire = this.wire(record);
       wire.neededBy = dependants(record).map((r) => r.name);
       // The record does not keep the TOC; read the main folder's, as for
@@ -433,7 +459,7 @@ export class AddonService {
   }
 
   addonsFor(installationId: string): AddonRecord[] {
-    return this.store.addons.forInstallation(installationId);
+    return this.#records.forInstallation(installationId);
   }
 
   /**
@@ -498,7 +524,7 @@ export class AddonService {
    * the names.
    */
   async sourceRequestForAddon(addonId: string): Promise<SourceRequest> {
-    const addon = this.store.addons.require(addonId);
+    const addon = this.#records.require(addonId);
     const installation = this.installations.require(addon.installationId);
     const folderName = recordFolders(addon)[0];
     if (!folderName) {
@@ -521,10 +547,10 @@ export class AddonService {
     providerId: string,
     externalId: string,
   ): Promise<{ addon: AddonRecord; operation: OperationResult }> {
-    return this.#gate.run(async () => {
+    return this.#gate.run(async (records) => {
       const folder = await this.#requireUnmanagedFolder(installation, folderName);
       const version = getTocForGameType2(folder, installation.clientType)?.version;
-      return this.#installUnlocked({
+      return this.#installUnlocked(records, {
         intent: "adopt",
         providerId,
         externalId,
@@ -546,16 +572,16 @@ export class AddonService {
     providerId: string,
     externalId: string,
   ): Promise<{ addon: AddonRecord; operation: OperationResult }> {
-    return this.#gate.run(async () => {
-      const addon = this.store.addons.require(addonId);
+    return this.#gate.run(async (records) => {
+      const addon = records.require(addonId);
       const installation = this.installations.require(addon.installationId);
-      const other = this.store.addons.find(installation.id, providerId, externalId);
+      const other = records.find(installation.id, providerId, externalId);
       if (other) {
         throw new ValidationError(
           other.id === addon.id ? `${addon.name} already updates from there` : `${other.name} from there is already installed`,
         );
       }
-      return this.#installUnlocked({ intent: "source", providerId, externalId, installation, replaces: addon });
+      return this.#installUnlocked(records, { intent: "source", providerId, externalId, installation, replaces: addon });
     });
   }
 
@@ -609,8 +635,8 @@ export class AddonService {
   // ---- provider metadata sync (update checks) ----
 
   async refresh(installation: WowInstallation): Promise<{ updated: number; failed: number }> {
-    return this.#gate.run(async () => {
-      const managed = this.addonsFor(installation.id).filter((a) => !!a.providerName && !a.isIgnored);
+    return this.#gate.run(async (records) => {
+      const managed = records.forInstallation(installation.id).filter((a) => !!a.providerName && !a.isIgnored);
       let failed = 0;
 
       const byProvider = new Map<string, AddonRecord[]>();
@@ -656,7 +682,7 @@ export class AddonService {
               },
             });
           }
-          this.store.addons.patchMany(patches);
+          records.patchMany(patches);
         } catch (err) {
           failed += addons.length;
           console.error(`[service] refresh failed for ${providerName}: ${String(err)}`);
@@ -675,11 +701,14 @@ export class AddonService {
    * dependency is installed inside the same turn.
    */
   async install(request: InstallRequest): Promise<{ addon: AddonRecord; operation: OperationResult }> {
-    return this.#gate.run(() => this.#installUnlocked(request));
+    return this.#gate.run((records) => this.#installUnlocked(records, request));
   }
 
   /** The install itself; callers hold the gate (`Gate.run` is not reentrant). */
-  async #installUnlocked(request: InstallRequest): Promise<{ addon: AddonRecord; operation: OperationResult }> {
+  async #installUnlocked(
+    records: AddonRecords,
+    request: InstallRequest,
+  ): Promise<{ addon: AddonRecord; operation: OperationResult }> {
     const { providerId, externalId, installation } = request;
     const intent = INSTALL_INTENTS[request.intent];
     // Configured is enough here: a source turned off still installs what the
@@ -698,7 +727,7 @@ export class AddonService {
       throw new NotFoundError("addon on provider", externalId);
     }
 
-    const existing = request.replaces ?? this.store.addons.find(installation.id, providerId, externalId);
+    const existing = request.replaces ?? records.find(installation.id, providerId, externalId);
     if (request.channel !== undefined && !provider.allowChannelChange) {
       throw new ValidationError(`${provider.name} has no release channels`);
     }
@@ -777,8 +806,8 @@ export class AddonService {
       ...(intent.stampUpdate ? { lastUpdatedAt: Date.now() } : {}),
     };
     const installed = existing
-      ? this.store.addons.patch(existing.id, changes)
-      : this.store.addons.create({ ...addon, ...changes });
+      ? records.patch(existing.id, changes)
+      : records.create({ ...addon, ...changes });
 
     // Required dependencies install with it (apt/pacman-style: marked as
     // automatically installed, see removeAddon()'s autoremove), one level
@@ -786,10 +815,10 @@ export class AddonService {
     const missingRequiredDependencies: string[] = [];
     if (intent.withDependencies) {
       for (const dep of addon.dependencies ?? []) {
-        if (this.store.addons.find(installation.id, providerId, dep.externalAddonId)) {
+        if (records.find(installation.id, providerId, dep.externalAddonId)) {
           continue;
         }
-        const installed = await this.#installUnlocked({
+        const installed = await this.#installUnlocked(records, {
           intent: "dependency",
           providerId,
           externalId: dep.externalAddonId,
@@ -816,8 +845,31 @@ export class AddonService {
     return { addon: installed, operation };
   }
 
+  /**
+   * Update one addon to its latest release. The provider read and the
+   * install are one gate turn, so nothing changes the record between them.
+   */
   async updateAddon(addonId: string): Promise<{ addon: AddonRecord; operation: OperationResult }> {
-    const addon = this.store.addons.require(addonId);
+    return this.#gate.run((records) => this.#updateUnlocked(records, addonId));
+  }
+
+  /**
+   * Update one addon of a list picked before its turn (Update all,
+   * automatic updates), if it still qualifies when the turn comes: one
+   * ignored or paused meanwhile is left alone (null).
+   */
+  #updateIfStill(
+    addonId: string,
+    qualifies: (addon: AddonRecord) => boolean,
+  ): Promise<{ addon: AddonRecord; operation: OperationResult } | null> {
+    return this.#gate.run((records) => {
+      const addon = records.get(addonId);
+      return addon && qualifies(addon) ? this.#updateUnlocked(records, addonId) : null;
+    });
+  }
+
+  async #updateUnlocked(records: AddonRecords, addonId: string): Promise<{ addon: AddonRecord; operation: OperationResult }> {
+    const addon = records.require(addonId);
     const installation = this.installations.require(addon.installationId);
     const provider = this.registry.usable(addon.providerName);
     if (!provider) {
@@ -837,7 +889,7 @@ export class AddonService {
       const flagged =
         addon.warningType === WARNING_FOLDERS_MISSING
           ? addon
-          : this.store.addons.patch(addonId, { warningType: WARNING_NOT_ON_PROVIDER });
+          : records.patch(addonId, { warningType: WARNING_NOT_ON_PROVIDER });
       const operation = this.#fail(this.nextOperationId(), addonId, `addon no longer available on ${provider.name}`);
       return { addon: flagged, operation };
     }
@@ -848,7 +900,7 @@ export class AddonService {
       // Nothing to install, but what the provider said is kept, as a
       // refresh keeps it. An update writes it with the install, or not at
       // all when the install fails.
-      const current = this.store.addons.patch(addonId, metadata);
+      const current = records.patch(addonId, metadata);
       const operation: OperationResult = {
         operationId: this.nextOperationId(),
         addonId,
@@ -859,13 +911,12 @@ export class AddonService {
       return { addon: current, operation };
     }
 
-    const { addon: updated, operation } = await this.install({
+    return this.#installUnlocked(records, {
       intent: "update",
       providerId: provider.name,
       externalId: addon.externalId!,
       installation,
     });
-    return { addon: updated, operation };
   }
 
   /** The wire form of a record, with what only the service knows (provider capabilities). */
@@ -903,17 +954,19 @@ export class AddonService {
    * record never claims a channel whose files are not on disk.
    */
   async setChannel(addonId: string, channel: AddonChannelType): Promise<{ addon: AddonRecord; operation: OperationResult }> {
-    const addon = this.store.addons.require(addonId);
-    if (!this.canChangeChannel(addon)) {
-      throw new ValidationError(`${addon.name} has no release channels`);
-    }
-    const installation = this.installations.require(addon.installationId);
-    return this.install({
-      intent: "channel",
-      providerId: addon.providerName!,
-      externalId: addon.externalId!,
-      installation,
-      channel,
+    return this.#gate.run((records) => {
+      const addon = records.require(addonId);
+      if (!this.canChangeChannel(addon)) {
+        throw new ValidationError(`${addon.name} has no release channels`);
+      }
+      const installation = this.installations.require(addon.installationId);
+      return this.#installUnlocked(records, {
+        intent: "channel",
+        providerId: addon.providerName!,
+        externalId: addon.externalId!,
+        installation,
+        channel,
+      });
     });
   }
 
@@ -932,12 +985,19 @@ export class AddonService {
    * dependency flag, so autoremove still treats a dependency as one.
    */
   async reinstall(addonId: string): Promise<{ addon: AddonRecord; operation: OperationResult }> {
-    const addon = this.store.addons.require(addonId);
-    if (!this.canReinstall(addon)) {
-      throw new ValidationError(`${addon.name} can't be reinstalled`);
-    }
-    const installation = this.installations.require(addon.installationId);
-    return this.install({ intent: "reinstall", providerId: addon.providerName!, externalId: addon.externalId!, installation });
+    return this.#gate.run((records) => {
+      const addon = records.require(addonId);
+      if (!this.canReinstall(addon)) {
+        throw new ValidationError(`${addon.name} can't be reinstalled`);
+      }
+      const installation = this.installations.require(addon.installationId);
+      return this.#installUnlocked(records, {
+        intent: "reinstall",
+        providerId: addon.providerName!,
+        externalId: addon.externalId!,
+        installation,
+      });
+    });
   }
 
   async updateAll(installation: WowInstallation): Promise<OperationResult[]> {
@@ -945,8 +1005,10 @@ export class AddonService {
     const operations: OperationResult[] = [];
     for (const candidate of candidates) {
       try {
-        const { operation } = await this.updateAddon(candidate.id);
-        operations.push(operation);
+        const updated = await this.#updateIfStill(candidate.id, (a) => updateStatus(a, this.registry).canUpdate);
+        if (updated) {
+          operations.push(updated.operation);
+        }
       } catch (err) {
         operations.push(failedOperation(this.nextOperationId(), candidate.id, err));
       }
@@ -992,8 +1054,8 @@ export class AddonService {
    * updates for the addon, going forward to the latest resumes them.
    */
   async rollback(addonId: string): Promise<{ addon: AddonRecord; operation: OperationResult }> {
-    return this.#gate.run(async () => {
-      const addon = this.store.addons.require(addonId);
+    return this.#gate.run(async (records) => {
+      const addon = records.require(addonId);
       const installation = this.installations.require(addon.installationId);
       const operationId = this.nextOperationId();
       try {
@@ -1004,7 +1066,7 @@ export class AddonService {
           folders: [...(addon.installedFolderList ?? [])],
         });
         const installedExternalReleaseId = previous.releaseId ?? undefined;
-        const rolled = this.store.addons.patch(addonId, {
+        const rolled = records.patch(addonId, {
           rollbackVersion: addon.installedVersion ?? "previous version",
           installedVersion: previous.version ?? addon.installedVersion,
           installedExternalReleaseId,
@@ -1032,22 +1094,27 @@ export class AddonService {
     return cacheUsage(this.installations.list());
   }
 
-  /** Pause or resume automatic updates for one addon (WF-02). */
-  setAutoUpdatePaused(addonId: string, paused: boolean): AddonRecord {
-    const addon = this.store.addons.patch(addonId, { autoUpdatePaused: paused || undefined, skipReleaseId: undefined });
-    this.events.addonsChanged([addonId]);
-    return addon;
+  /**
+   * Pause or resume automatic updates for one addon (WF-02). Waits for a
+   * running install: one that cleared the pause after it would lose it.
+   */
+  setAutoUpdatePaused(addonId: string, paused: boolean): Promise<AddonRecord> {
+    return this.#gate.run((records) => {
+      const addon = records.patch(addonId, { autoUpdatePaused: paused || undefined, skipReleaseId: undefined });
+      this.events.addonsChanged([addonId]);
+      return addon;
+    });
   }
 
   /** Delete every kept previous version (Options). */
   async clearRollback(): Promise<{ bytes: number; count: number }> {
-    return this.#gate.run(async () => {
+    return this.#gate.run(async (records) => {
       await clearAll(this.installations.list());
-      const changed = this.store.addons
+      const changed = records
         .all()
         .filter((a) => a.rollbackVersion)
         .map((a) => a.id);
-      this.store.addons.patchMany(changed.map((id) => ({ id, patch: { rollbackVersion: undefined } })));
+      records.patchMany(changed.map((id) => ({ id, patch: { rollbackVersion: undefined } })));
       if (changed.length) {
         this.events.addonsChanged(changed);
       }
@@ -1089,10 +1156,11 @@ export class AddonService {
     } else {
       for (const addon of candidates) {
         try {
-          const { operation } = await this.updateAddon(addon.id);
-          if (operation.status === "updated") {
+          const updated = await this.#updateIfStill(addon.id, (a) => updateStatus(a, this.registry).canAutoUpdate);
+          const operation = updated?.operation;
+          if (operation?.status === "updated") {
             result.updated.push(addon.name);
-          } else if (operation.status === "failed") {
+          } else if (operation?.status === "failed") {
             result.failed.push(addon.name);
           }
         } catch {
@@ -1124,7 +1192,7 @@ export class AddonService {
     for (const c of preview.summary!.comparisons.filter((c) => c.state === "new")) {
       // An earlier entry's install may already have pulled this one in as its
       // dependency (the preview said "new"): it is installed, no second download.
-      const pulledIn = this.store.addons.find(installation.id, c.providerId, c.externalId);
+      const pulledIn = this.#records.find(installation.id, c.providerId, c.externalId);
       const operation: OperationResult = pulledIn
         ? { operationId: this.nextOperationId(), addonId: pulledIn.id, status: "installed", error: null }
         : await this.install({ intent: "import", providerId: c.providerId, externalId: c.externalId, installation }).then(
@@ -1136,21 +1204,23 @@ export class AddonService {
       }
       operations.push({ ...operation, addonName: c.name });
     }
-    const changes = libraryFlagsAfterImport(this.addonsFor(installation.id), imported);
-    this.store.addons.patchMany(changes.map(({ id, isDependency }) => ({ id, patch: { isDependency } })));
-    if (changes.length) {
-      this.events.addonsChanged(changes.map((c) => c.id));
-    }
+    await this.#gate.run((records) => {
+      const changes = libraryFlagsAfterImport(records.forInstallation(installation.id), imported);
+      records.patchMany(changes.map(({ id, isDependency }) => ({ id, patch: { isDependency } })));
+      if (changes.length) {
+        this.events.addonsChanged(changes.map((c) => c.id));
+      }
+    });
     return { operations, error: null };
   }
 
   async removeAddon(addonId: string): Promise<OperationResult> {
-    return this.#gate.run(async () => {
-      const addon = this.store.addons.require(addonId);
+    return this.#gate.run(async (records) => {
+      const addon = records.require(addonId);
       const installation = this.installations.require(addon.installationId);
       const operationId = this.nextOperationId();
       await this.#remover.remove(installation, addon, operationId);
-      this.store.addons.remove(addonId);
+      records.remove(addonId);
       await dropPrevious(installation, addonId);
       const removedIds = [addonId];
 
@@ -1161,7 +1231,7 @@ export class AddonService {
       for (let orphans = orphanedLibraries(this.addonsFor(installation.id)); orphans.length; ) {
         for (const orphan of orphans) {
           await this.#remover.remove(installation, orphan, this.nextOperationId());
-          this.store.addons.remove(orphan.id);
+          records.remove(orphan.id);
           await dropPrevious(installation, orphan.id);
           removedIds.push(orphan.id);
         }
@@ -1178,7 +1248,7 @@ export class AddonService {
   /**
    * Remove an unmanaged addon folder directly from disk. Unmanaged
    * folders have no WowAddon record to look up, so
-   * this is a pure filesystem operation — it never touches store.addons
+   * this is a pure filesystem operation — it never touches the records
    * and never converts the folder into a managed addon. Two safety
    * checks beyond AddonRemover's own atomic trash-then-delete and
    * joinWithin path confinement: the name must be a bare folder name
@@ -1212,7 +1282,7 @@ export class AddonService {
     addonId: string,
   ): Promise<{ addonsPath: string; folders: Array<{ name: string; path: string; present: boolean }> }> {
     const addonsPath = getAddonsPath(installation);
-    const record = this.store.addons.get(addonId);
+    const record = this.#records.get(addonId);
     let names: string[];
     if (record && record.installationId === installation.id) {
       names = recordFolders(record);
@@ -1235,10 +1305,13 @@ export class AddonService {
     return { addonsPath, folders };
   }
 
-  setIgnored(addonId: string, ignored: boolean): AddonRecord {
-    const addon = this.store.addons.patch(addonId, { isIgnored: ignored });
-    this.events.addonsChanged([addonId]);
-    return addon;
+  /** Ignore or stop ignoring one addon (WF-04); waits for a running install, like every record change. */
+  setIgnored(addonId: string, ignored: boolean): Promise<AddonRecord> {
+    return this.#gate.run((records) => {
+      const addon = records.patch(addonId, { isIgnored: ignored });
+      this.events.addonsChanged([addonId]);
+      return addon;
+    });
   }
 
   private nextOperationId(): string {

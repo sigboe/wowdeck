@@ -47,7 +47,7 @@ export function register(server: JsonlServer, { service, installationService, up
   }));
 
   server.on("installations.remove", async (params) => {
-    installationService.remove(params.installationId);
+    await installationService.remove(params.installationId);
     return { installationId: params.installationId };
   });
 
