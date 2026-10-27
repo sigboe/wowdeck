@@ -184,11 +184,17 @@ describe("PluginUpdateCheck", () => {
     expect(await check.check(NOTIFY)).toEqual({
       status: "available",
       currentVersion: "0.1.1",
-      latestVersion: "0.2.0",
-      releaseUrl: "https://github.com/sigboe/wowdeck/releases/tag/v0.2.0",
-      downloadUrl: "https://api.github.com/repos/sigboe/wowdeck/releases/assets/7",
-      switchToStable: false,
-      releaseNotes: null,
+      offer: {
+        kind: "update",
+        version: "0.2.0",
+        headline: "WoWDeck 0.2.0 available",
+        buttonLabel: "Update",
+        toastBody: "Update in Options",
+        rowLabel: "WoWDeck update available",
+        releaseNotes: null,
+        releaseUrl: "https://github.com/sigboe/wowdeck/releases/tag/v0.2.0",
+        installable: true,
+      },
       checked: true,
       toastPending: true,
     });
@@ -217,15 +223,15 @@ describe("PluginUpdateCheck", () => {
     const { check, restart } = makeCheck({
       respond: () => ({ ...withZip("v0.2.0"), body: "## What's changed\n- Fixes" }),
     });
-    expect((await check.check()).releaseNotes).toBe("## What's changed\n- Fixes");
+    expect((await check.check()).offer?.releaseNotes).toBe("What's changed\n• Fixes");
     restart();
-    expect(await check.check()).toMatchObject({ checked: false, releaseNotes: "## What's changed\n- Fixes" });
+    expect(await check.check()).toMatchObject({ checked: false, offer: { releaseNotes: "What's changed\n• Fixes" } });
   });
 
   test("no release notes without a body, or for a build that is not offered", async () => {
-    expect((await makeCheck({ respond: () => withZip("v0.2.0") }).check.check()).releaseNotes).toBeNull();
+    expect((await makeCheck({ respond: () => withZip("v0.2.0") }).check.check()).offer?.releaseNotes).toBeNull();
     const current = makeCheck({ respond: () => ({ ...withZip("v0.1.1"), body: "Old news" }) });
-    expect(await current.check.check()).toMatchObject({ status: "current", releaseNotes: null });
+    expect(await current.check.check()).toMatchObject({ status: "current", offer: null });
   });
 
   test("an asset without an API url falls back to its browser_download_url", async () => {
@@ -235,14 +241,17 @@ describe("PluginUpdateCheck", () => {
         assets: [{ name: "WoWDeck.zip", browser_download_url: "https://x/WoWDeck.zip" }],
       }),
     });
-    expect((await check.check()).downloadUrl).toBe("https://x/WoWDeck.zip");
+    expect(await check.forStaging()).toMatchObject({ offer: { installable: true }, downloadUrl: "https://x/WoWDeck.zip" });
   });
 
-  test("available without the packaged zip: link only, downloadUrl null", async () => {
+  test("available without the packaged zip: offered, not installable, never toasted", async () => {
     const { check } = makeCheck({ respond: () => ({ tag_name: "v0.2.0", html_url: "https://x" }) });
-    const result = await check.check();
-    expect(result.status).toBe("available");
-    expect(result.downloadUrl).toBeNull();
+    expect(await check.check(NOTIFY)).toMatchObject({
+      status: "available",
+      offer: { version: "0.2.0", releaseUrl: "https://x", installable: false },
+      toastPending: false,
+    });
+    expect((await check.forStaging()).downloadUrl).toBeNull();
   });
 
   test("not newer: available-ness never carries a download", async () => {
@@ -252,7 +261,8 @@ describe("PluginUpdateCheck", () => {
         assets: [{ name: "WoWDeck.zip", browser_download_url: "https://x/WoWDeck.zip" }],
       }),
     });
-    expect((await check.check()).downloadUrl).toBeNull();
+    expect(await check.check()).toMatchObject({ status: "current", offer: null });
+    expect((await check.forStaging()).downloadUrl).toBeNull();
   });
 
   test("same release: current", async () => {
@@ -262,18 +272,33 @@ describe("PluginUpdateCheck", () => {
 
   test("Stable on a beta build: the older latest stable is offered as a switch", async () => {
     const { check } = makeCheck({ respond: () => withZip("v0.3.0"), currentVersion: "0.3.1-beta.57" });
-    const result = await check.check();
-    expect(result).toMatchObject({ status: "available", latestVersion: "0.3.0", downloadUrl: ZIP, switchToStable: true });
+    expect(await check.check(NOTIFY)).toMatchObject({
+      status: "available",
+      offer: {
+        kind: "switchToStable",
+        version: "0.3.0",
+        headline: "Switch to stable 0.3.0",
+        buttonLabel: "Switch to stable 0.3.0",
+        toastBody: "Install it in Options",
+        rowLabel: "Switch to stable 0.3.0",
+        installable: true,
+      },
+      toastPending: true,
+    });
+    expect((await check.forStaging()).downloadUrl).toBe(ZIP);
   });
 
   test("Stable on a beta of an older release: a plain update, not a switch", async () => {
     const { check } = makeCheck({ respond: () => withZip("v0.3.0"), currentVersion: "0.3.0-beta.5" });
-    expect(await check.check()).toMatchObject({ status: "available", switchToStable: false });
+    expect(await check.check()).toMatchObject({
+      status: "available",
+      offer: { kind: "update", headline: "WoWDeck 0.3.0 available", buttonLabel: "Update" },
+    });
   });
 
   test("Stable on a stable build: an older stable is still not offered", async () => {
     const { check } = makeCheck({ respond: () => withZip("v0.3.0"), currentVersion: "0.3.1" });
-    expect(await check.check()).toMatchObject({ status: "current", downloadUrl: null, switchToStable: false });
+    expect(await check.check()).toMatchObject({ status: "current", offer: null });
   });
 
   test("Beta on a beta build: an older stable is not offered", async () => {
@@ -282,7 +307,7 @@ describe("PluginUpdateCheck", () => {
       currentVersion: "0.3.1-beta.57",
       respond: () => [withZip("v0.3.0")],
     });
-    expect(await check.check()).toMatchObject({ status: "current", switchToStable: false });
+    expect(await check.check()).toMatchObject({ status: "current", offer: null });
   });
 
   test("older tag: current, never a downgrade offer", async () => {
@@ -293,8 +318,7 @@ describe("PluginUpdateCheck", () => {
   test("private repo (HTTP 404): unknown, not an error", async () => {
     const { check } = makeCheck({ respond: () => new NetworkError("GET … failed: HTTP 404", 404) });
     const result = await check.check();
-    expect(result.status).toBe("unknown");
-    expect(result.latestVersion).toBeNull();
+    expect(result).toMatchObject({ status: "unknown", offer: null });
   });
 
   test("offline / rate limited: unknown, not an error", async () => {
@@ -309,7 +333,7 @@ describe("PluginUpdateCheck", () => {
 
   test("missing html_url falls back to the releases page", async () => {
     const { check } = makeCheck({ respond: () => ({ tag_name: "v0.2.0" }) });
-    expect((await check.check()).releaseUrl).toBe(RELEASES);
+    expect((await check.check()).offer?.releaseUrl).toBe(RELEASES);
   });
 
   test("concurrent and later callers share one request", async () => {
@@ -527,7 +551,7 @@ describe("the once-per-version toast gate", () => {
     zip = true;
     h.restart({ now: NOW + HOUR_MS });
     const later = await h.check.check(NOTIFY);
-    expect(later.downloadUrl).toBe(ZIP);
+    expect(later.offer?.installable).toBe(true);
     expect(later.toastPending).toBe(true);
   });
 });
@@ -543,11 +567,17 @@ describe("the once-a-day cap", () => {
     expect(await check.check(NOTIFY)).toEqual({
       status: "available",
       currentVersion: "0.1.1",
-      latestVersion: "0.2.0",
-      releaseUrl: "https://github.com/sigboe/wowdeck/releases/tag/v0.2.0",
-      downloadUrl: "https://api.github.com/repos/sigboe/wowdeck/releases/assets/7",
-      switchToStable: false,
-      releaseNotes: null,
+      offer: {
+        kind: "update",
+        version: "0.2.0",
+        headline: "WoWDeck 0.2.0 available",
+        buttonLabel: "Update",
+        toastBody: "Update in Options",
+        rowLabel: "WoWDeck update available",
+        releaseNotes: null,
+        releaseUrl: "https://github.com/sigboe/wowdeck/releases/tag/v0.2.0",
+        installable: true,
+      },
       checked: false,
       toastPending: true,
     });
@@ -567,25 +597,21 @@ describe("the once-a-day cap", () => {
     expect(await check.check()).toEqual({
       status: "current",
       currentVersion: "0.2.0",
-      latestVersion: "0.2.0",
-      releaseUrl: "https://github.com/sigboe/wowdeck/releases/tag/v0.2.0",
-      downloadUrl: null,
-      switchToStable: false,
-      releaseNotes: null,
+      offer: null,
       checked: false,
       toastPending: false,
     });
     expect(calls()).toBe(0);
   });
 
-  test("an available stamp without a published zip keeps downloadUrl null", async () => {
+  test("an available stamp without a published zip stays not installable", async () => {
     const { check } = makeCheck({
       respond: () => {
         throw new Error("must not be asked");
       },
       stored: stampOf({ downloadUrl: null }),
     });
-    expect((await check.check()).downloadUrl).toBeNull();
+    expect((await check.check()).offer?.installable).toBe(false);
   });
 
   test("an available stamp without the zip is re-asked after an hour, not a day", async () => {
@@ -595,18 +621,18 @@ describe("the once-a-day cap", () => {
     h.restart({ now: NOW + HOUR_MS });
     const again = await h.check.check();
     expect(again.checked).toBe(true);
-    expect(again.downloadUrl).toBe(ZIP);
+    expect(again.offer?.installable).toBe(true);
   });
 
   test("the stored zip survives a same-day rollback below the newest release", async () => {
     // Checked while running 0.2.0 ("current"), then rolled back to 0.1.1
     // inside the day: the stored answer offers 0.2.0 with its zip.
     const h = makeCheck({ respond: () => withZip("v0.2.0"), currentVersion: "0.2.0" });
-    expect((await h.check.check()).downloadUrl).toBeNull();
+    expect((await h.check.check()).offer).toBeNull();
     h.restart({ currentVersion: "0.1.1", now: NOW + 60 * 1000 });
     const rolledBack = await h.check.check();
-    expect(rolledBack.status).toBe("available");
-    expect(rolledBack.downloadUrl).toBe(ZIP);
+    expect(rolledBack.offer).toMatchObject({ version: "0.2.0", installable: true });
+    expect((await h.check.forStaging()).downloadUrl).toBe(ZIP);
     expect(h.calls()).toBe(1);
   });
 
@@ -647,7 +673,7 @@ describe("the once-a-day cap", () => {
     // does not vanish only to come back on the next trigger.
     const failed = await h.check.check();
     expect(failed.status).toBe("available");
-    expect(failed.latestVersion).toBe("0.2.0");
+    expect(failed.offer?.version).toBe("0.2.0");
     expect(failed.checked).toBe(true);
     expect(h.stamp()).toEqual(old); // the success stamp is untouched
 
@@ -702,13 +728,13 @@ describe("the failure backoff", () => {
     // does not vanish only to come back on the next trigger.
     const failed = await h.check.check();
     expect(failed.status).toBe("available");
-    expect(failed.latestVersion).toBe("0.2.0");
+    expect(failed.offer?.version).toBe("0.2.0");
     expect(failed.checked).toBe(true);
 
     h.restart({ now: NOW + 30 * 60 * 1000 });
     const cached = await h.check.check();
     expect(cached.status).toBe("available");
-    expect(cached.latestVersion).toBe("0.2.0");
+    expect(cached.offer?.version).toBe("0.2.0");
     expect(cached.checked).toBe(false);
     expect(h.calls()).toBe(1); // no second request
   });
@@ -810,7 +836,7 @@ describe("the update channel", () => {
     });
     expect(h.check.channel()).toBe("stable");
     const res = await h.check.check();
-    expect(res.latestVersion).toBe("0.2.0");
+    expect(res.offer?.version).toBe("0.2.0");
     expect(h.askedUrl()).toBe(LATEST);
     expect(h.stamp()?.channel).toBe("stable");
   });
@@ -830,9 +856,12 @@ describe("the update channel", () => {
     const res = await h.check.check();
     expect(res).toMatchObject({
       status: "available",
-      latestVersion: "0.2.1-beta.12",
-      releaseUrl: "https://github.com/sigboe/wowdeck/releases/tag/v0.2.1-beta.12",
-      downloadUrl: ZIP,
+      offer: {
+        kind: "update",
+        version: "0.2.1-beta.12",
+        releaseUrl: "https://github.com/sigboe/wowdeck/releases/tag/v0.2.1-beta.12",
+        installable: true,
+      },
     });
     expect(h.askedUrl()).toStartWith("https://api.github.com/repos/sigboe/wowdeck/releases?");
     expect(h.stamp()?.channel).toBe("beta");
@@ -843,7 +872,7 @@ describe("the update channel", () => {
       channel: "beta",
       respond: github(null, [release("v0.3.0"), release("v0.3.0-beta.40"), release("v0.2.1-beta.9")]),
     });
-    expect((await h.check.check()).latestVersion).toBe("0.3.0");
+    expect((await h.check.check()).offer?.version).toBe("0.3.0");
   });
 
   test("Beta: drafts are ignored", async () => {
@@ -851,7 +880,7 @@ describe("the update channel", () => {
       channel: "beta",
       respond: github(null, [release("v0.4.0-beta.2", { draft: true }), release("v0.3.0-beta.40")]),
     });
-    expect((await h.check.check()).latestVersion).toBe("0.3.0-beta.40");
+    expect((await h.check.check()).offer?.version).toBe("0.3.0-beta.40");
   });
 
   test("Beta: an unreachable releases list is unknown, never an error", async () => {
@@ -878,7 +907,7 @@ describe("the update channel", () => {
       },
       stored: stampOf(),
     });
-    expect((await h.check.check()).latestVersion).toBe("0.2.0");
+    expect((await h.check.check()).offer?.version).toBe("0.2.0");
     expect(h.calls()).toBe(0);
   });
 
@@ -893,10 +922,10 @@ describe("the update channel", () => {
     expect(h.channel()).toBe("beta");
     expect(h.check.channel()).toBe("beta");
     expect(h.calls()).toBe(2);
-    expect(res).toMatchObject({ status: "available", latestVersion: "0.2.1-beta.3", checked: true, toastPending: false });
+    expect(res).toMatchObject({ status: "available", offer: { version: "0.2.1-beta.3" }, checked: true, toastPending: false });
 
     // Switching back ignores the interval too.
-    expect((await h.check.setChannel("stable")).latestVersion).toBe("0.2.0");
+    expect((await h.check.setChannel("stable")).offer?.version).toBe("0.2.0");
     expect(h.calls()).toBe(3);
   });
 
@@ -910,7 +939,7 @@ describe("the update channel", () => {
 
     h.restart({ now: NOW + 60 * 1000 });
     const res = await h.check.setChannel("beta");
-    expect(res.latestVersion).toBe("0.2.1-beta.3");
+    expect(res.offer?.version).toBe("0.2.1-beta.3");
     expect(res.checked).toBe(true);
     expect(h.calls()).toBe(2);
     expect(h.backoff()).toBeNull();
@@ -927,8 +956,8 @@ describe("the update channel", () => {
     const first = h.check.check();
     const switched = h.check.setChannel("beta");
     unblock();
-    expect((await first).latestVersion).toBe("0.2.0");
-    expect((await switched).latestVersion).toBe("0.2.1-beta.3");
+    expect((await first).offer?.version).toBe("0.2.0");
+    expect((await switched).offer?.version).toBe("0.2.1-beta.3");
   });
 
   test("the channel survives an engine restart", async () => {
@@ -937,7 +966,7 @@ describe("the update channel", () => {
     h.restart({ now: NOW + 60 * 1000 });
     expect(h.check.channel()).toBe("beta");
     const res = await h.check.check();
-    expect(res.latestVersion).toBe("0.2.1-beta.3");
+    expect(res.offer?.version).toBe("0.2.1-beta.3");
     expect(res.checked).toBe(false); // the switch's answer serves the day
   });
 
@@ -954,7 +983,7 @@ describe("the update channel", () => {
     list = [release("v0.2.1-beta.4")];
     h.restart({ now: NOW + 2 * DAY_MS });
     const next = await h.check.check(NOTIFY);
-    expect(next.latestVersion).toBe("0.2.1-beta.4");
+    expect(next.offer?.version).toBe("0.2.1-beta.4");
     expect(next.toastPending).toBe(true);
   });
 });

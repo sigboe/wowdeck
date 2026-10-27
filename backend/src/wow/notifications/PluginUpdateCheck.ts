@@ -1,9 +1,11 @@
 /**
  * Whether a newer WoWDeck release exists on GitHub — for the plugin
  * itself, not addons: the plugin is not in the official Decky store, so
- * nothing else tells the user an update exists. The check surfaces the
- * release page and the packaged zip; staging that zip for Decky's own
- * installer is system.updateStage's job (UpdateStager).
+ * nothing else tells the user an update exists. The check answers with one
+ * ready offer (version, every surface's wording, plain-text notes, whether
+ * it is installable); the packaged zip's URL stays in the engine, for
+ * system.updateStage (UpdateStager, through forStaging) to stage for
+ * Decky's own installer.
  *
  * Asks the channel's build source **at most once a day**, following the
  * same cadence rule as the addon check behind the SteamOS toast
@@ -39,44 +41,30 @@
  */
 
 import type { NetworkClient } from "../net/network";
-import type { PluginUpdateBackoff, PluginUpdateSnapshot, UpdateChannel } from "../../api/contracts";
+import type {
+  MethodMap,
+  PluginUpdateBackoff,
+  PluginUpdateSnapshot,
+  UpdateChannel,
+} from "../../api/contracts";
 import { type BuildSource, buildSources, type CandidateBuild, RELEASES_PAGE } from "../plugin/BuildSource";
 import { compareVersions, isBetaVersion } from "../plugin/PluginVersion";
+import { releaseNotesText } from "../plugin/ReleaseNotesText";
 import { backoffIntervalMs, DAY_MS, HOUR_MS, isDue, SingleFlight } from "./CheckCadence";
 
 export { compareVersions };
 
-export interface PluginUpdateStatus {
-  status: "current" | "available" | "unknown";
-  currentVersion: string;
-  latestVersion: string | null;
-  releaseUrl: string | null;
-  /** The release's WoWDeck.zip asset (what updateStage downloads), on "available" only. */
-  downloadUrl: string | null;
-  /**
-   * On "available" only: the offer is a stable release older than the
-   * running beta build — the owner left Beta, so the latest stable is
-   * offered as a switch rather than an update.
-   */
-  switchToStable: boolean;
-  /** On "available" only: the offered build's release notes (Markdown), null without a body. */
-  releaseNotes: string | null;
-  /**
-   * True when a network attempt just ran for this answer (even a failed one
-   * that fell back to the stored answer); false when the cadence served the
-   * stored answer without one. No surface keys on it: it is how the cadence
-   * is observable over the RPC (the integration tests), and toastPending
-   * decides the toast.
-   */
-  checked: boolean;
-  /**
-   * Whether the update toast should fire now: true only for a toast
-   * caller's first answer (fresh or cached) that offers a newer release
-   * with its WoWDeck.zip, not yet toast-shown. At-most-once per version —
-   * see PluginSettings' pluginUpdateToastShownFor.
-   */
-  toastPending: boolean;
-}
+/** system.updateCheck's answer: the check's status and the one release on offer. */
+export type PluginUpdateStatus = MethodMap["system.updateCheck"]["result"];
+
+/** An answer before the per-caller toast gate. */
+type GatelessStatus = Omit<PluginUpdateStatus, "toastPending">;
+
+/** One run's answer: the wire answer plus the offered WoWDeck.zip's URL, which stays in the engine. */
+type Answer = GatelessStatus & { downloadUrl: string | null };
+
+/** What system.updateStage stages from. */
+export type StagingAnswer = Pick<Answer, "status" | "offer" | "downloadUrl">;
 
 /** Where the last answer is persisted: the engine's settings, an object in tests. */
 export interface PluginUpdateStore {
@@ -121,7 +109,7 @@ function memoryStore(): PluginUpdateStore {
 }
 
 export class PluginUpdateCheck {
-  #flight = new SingleFlight<Omit<PluginUpdateStatus, "toastPending">>();
+  #flight = new SingleFlight<Answer>();
   readonly #sources: Record<UpdateChannel, BuildSource>;
 
   constructor(
@@ -152,7 +140,7 @@ export class PluginUpdateCheck {
     // A check in flight asked the old channel; the switch waits it out
     // instead of joining it.
     const answer = await this.#flight.runAfterPending(() => this.#run({ force: true }));
-    return { ...answer, toastPending: false };
+    return { ...toWire(answer), toastPending: false };
   }
 
   /**
@@ -165,11 +153,20 @@ export class PluginUpdateCheck {
    * after the shared run, so a toast caller joining a quiet one still gets it.
    */
   async check(opts: { notify?: boolean } = {}): Promise<PluginUpdateStatus> {
-    const answer = await this.#flight.run(() => this.#run());
+    const answer = toWire(await this.#flight.run(() => this.#run()));
     return opts.notify ? this.#toastGate(answer) : { ...answer, toastPending: false };
   }
 
-  async #run({ force = false } = {}): Promise<Omit<PluginUpdateStatus, "toastPending">> {
+  /**
+   * check()'s answer for system.updateStage, with the offered WoWDeck.zip's
+   * URL. Never spends the toast: staging shows the panel already.
+   */
+  async forStaging(): Promise<StagingAnswer> {
+    const { status, offer, downloadUrl } = await this.#flight.run(() => this.#run());
+    return { status, offer, downloadUrl };
+  }
+
+  async #run({ force = false } = {}): Promise<Answer> {
     const channel = this.store.readChannel();
     const stored = this.store.read();
     // Only this channel's answer serves.
@@ -210,7 +207,7 @@ export class PluginUpdateCheck {
   #interval(stamp: PluginUpdateSnapshot | null): number {
     if (stamp === null) return DAY_MS;
     const answer = this.#fromStamp(stamp);
-    return answer.status === "available" && answer.downloadUrl === null ? HOUR_MS : DAY_MS;
+    return answer.offer !== null && answer.downloadUrl === null ? HOUR_MS : DAY_MS;
   }
 
   /**
@@ -227,8 +224,8 @@ export class PluginUpdateCheck {
    * a caller that drops the answer spends the toast — one lost toast beats
    * a nagging one.
    */
-  #toastGate(result: Omit<PluginUpdateStatus, "toastPending">): PluginUpdateStatus {
-    const candidate = result.status === "available" && result.downloadUrl !== null ? result.latestVersion : null;
+  #toastGate(result: GatelessStatus): PluginUpdateStatus {
+    const candidate = result.offer?.installable ? result.offer.version : null;
     if (candidate === null) {
       return { ...result, toastPending: false };
     }
@@ -240,7 +237,7 @@ export class PluginUpdateCheck {
   }
 
   /** The stored answer, compared against the version running right now. */
-  #fromStamp(stamp: PluginUpdateSnapshot): Omit<PluginUpdateStatus, "toastPending"> {
+  #fromStamp(stamp: PluginUpdateSnapshot): Answer {
     const cmp = compareVersions(stamp.latestVersion, this.currentVersion);
     if (cmp === null) {
       return this.#unknown(false);
@@ -249,30 +246,32 @@ export class PluginUpdateCheck {
     // is on the wrong channel: leaving Beta offers the latest stable.
     const betaOnStable = stampChannel(stamp) === "stable" && isBetaVersion(this.currentVersion);
     const switchToStable = cmp < 0 && betaOnStable;
-    const offered = cmp > 0 || switchToStable;
+    if (cmp <= 0 && !switchToStable) {
+      return { status: "current", currentVersion: this.currentVersion, offer: null, downloadUrl: null, checked: false };
+    }
+    const version = stamp.latestVersion;
+    const switchLabel = `Switch to stable ${version}`;
     return {
-      status: offered ? "available" : "current",
+      status: "available",
       currentVersion: this.currentVersion,
-      latestVersion: stamp.latestVersion,
-      releaseUrl: stamp.releaseUrl ?? RELEASES_PAGE,
-      downloadUrl: offered ? stamp.downloadUrl : null,
-      switchToStable,
-      releaseNotes: offered ? (stamp.releaseNotes ?? null) : null,
+      offer: {
+        kind: switchToStable ? "switchToStable" : "update",
+        version,
+        headline: switchToStable ? switchLabel : `WoWDeck ${version} available`,
+        buttonLabel: switchToStable ? switchLabel : "Update",
+        toastBody: switchToStable ? "Install it in Options" : "Update in Options",
+        rowLabel: switchToStable ? switchLabel : "WoWDeck update available",
+        releaseNotes: stamp.releaseNotes ? releaseNotesText(stamp.releaseNotes) : null,
+        releaseUrl: stamp.releaseUrl ?? RELEASES_PAGE,
+        installable: stamp.downloadUrl !== null,
+      },
+      downloadUrl: stamp.downloadUrl,
       checked: false,
     };
   }
 
-  #unknown(checked: boolean): Omit<PluginUpdateStatus, "toastPending"> {
-    return {
-      status: "unknown",
-      currentVersion: this.currentVersion,
-      latestVersion: null,
-      releaseUrl: null,
-      downloadUrl: null,
-      switchToStable: false,
-      releaseNotes: null,
-      checked,
-    };
+  #unknown(checked: boolean): Answer {
+    return { status: "unknown", currentVersion: this.currentVersion, offer: null, downloadUrl: null, checked };
   }
 
   /**
@@ -301,6 +300,11 @@ export class PluginUpdateCheck {
       ...(newest.releaseNotes !== null && { releaseNotes: newest.releaseNotes }),
     };
   }
+}
+
+/** An answer as system.updateCheck sends it: the zip's URL stays in the engine. */
+function toWire({ downloadUrl: _, ...answer }: Answer): GatelessStatus {
+  return answer;
 }
 
 /** The channel a stored answer came from; one from before channels was Stable's. */

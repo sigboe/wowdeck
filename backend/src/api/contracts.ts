@@ -388,9 +388,8 @@ export interface MethodMap {
      * too. "unknown" — never an RPC error, never a toast — when the check
      * cannot run (offline, rate limited, nothing reachable); background
      * failures are visible only in the engine's structured stderr log.
-     * "available" carries the release page and the packaged WoWDeck.zip
-     * asset URL (what system.updateStage downloads); null when the release
-     * has no such asset.
+     * "available" carries the `offer`; whether it is installable says
+     * whether the release has the WoWDeck.zip system.updateStage downloads.
      */
     params: {
       /**
@@ -403,22 +402,12 @@ export interface MethodMap {
     result: {
       status: "current" | "available" | "unknown";
       currentVersion: string;
-      latestVersion: string | null;
-      releaseUrl: string | null;
-      downloadUrl: string | null;
       /**
-       * True when the offered `latestVersion` is a stable release older than
-       * the running beta build: an owner who left the Beta channel is
-       * offered the latest stable ("Switch to stable X"). Only ever true on
-       * "available".
+       * The one release on offer, ready to render: the toast, the update
+       * panel, its dot and the Options → Updates row all read it, so they
+       * cannot disagree. Non-null exactly on "available".
        */
-      switchToStable: boolean;
-      /**
-       * The offered build's release notes (its GitHub release body,
-       * Markdown, untrusted text: shown as plain text, never as HTML). On
-       * "available" only, and null when the release has no body.
-       */
-      releaseNotes: string | null;
+      offer: PluginUpdateOffer | null;
       /**
        * True when a network attempt just ran (a failed one still serves the
        * stored answer); false when the interval or a failure-backoff window
@@ -428,9 +417,8 @@ export interface MethodMap {
       checked: boolean;
       /**
        * Whether the update toast should fire now: computed engine-side,
-       * true only for a `notify` call's first answer that finds
-       * `latestVersion` newer than the running version, with its
-       * WoWDeck.zip attached, *and* not already toast-shown. At-most-once
+       * true only for a `notify` call's first answer whose `offer` is
+       * installable *and* not already toast-shown. At-most-once
        * per release version: the engine marks the version shown
        * (PluginSettings.pluginUpdateToastShownFor) the moment it reports
        * pending, so re-checks, plugin reloads, QAM churn and engine
@@ -1013,6 +1001,39 @@ export interface Diagnostics {
  */
 export const UPDATE_CHANNELS = ["stable", "beta"] as const;
 export type UpdateChannel = (typeof UPDATE_CHANNELS)[number];
+
+/**
+ * A WoWDeck release offered by system.updateCheck, with its text decided
+ * engine-side. "update" offers a newer build; "switchToStable" offers the
+ * latest stable, older than the running beta, to an owner who left Beta.
+ */
+export interface PluginUpdateOffer {
+  kind: "update" | "switchToStable";
+  /** X.Y.Z or X.Y.Z-beta.N, without a leading v. */
+  version: string;
+  /** The toast's and the update panel's line: "WoWDeck X available" or "Switch to stable X". */
+  headline: string;
+  /** The panel's button: "Update" or "Switch to stable X". */
+  buttonLabel: string;
+  /** The toast's second line, saying where to go: "Update in Options" or "Install it in Options". */
+  toastBody: string;
+  /** The Options → Updates row's label: "WoWDeck update available" or "Switch to stable X". */
+  rowLabel: string;
+  /**
+   * The release notes as plain text (ADR-0004: trusted CHANGELOG text, so
+   * the engine strips the Markdown); still shown as a text node, never
+   * HTML. Null when the release has none.
+   */
+  releaseNotes: string | null;
+  /** The release page; the releases page when GitHub named none. */
+  releaseUrl: string;
+  /**
+   * The release has its WoWDeck.zip, so Update can install it. Without it
+   * the Updates row still names the release, but there is no panel, dot or
+   * toast (the engine re-asks hourly until the zip is attached).
+   */
+  installable: boolean;
+}
 
 /** The last completed WoWDeck release check, as persisted (see PluginSettings.lastPluginUpdate). */
 export interface PluginUpdateSnapshot {

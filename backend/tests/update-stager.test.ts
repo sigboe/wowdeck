@@ -11,7 +11,8 @@ import { join } from "node:path";
 import { zipSync } from "fflate";
 import { NetworkError } from "../src/wow/net/network";
 import { UpdateStager } from "../src/wow/plugin/UpdateStager";
-import type { PluginUpdateStatus } from "../src/wow/notifications/PluginUpdateCheck";
+import type { PluginUpdateOffer } from "../src/api/contracts";
+import type { StagingAnswer } from "../src/wow/notifications/PluginUpdateCheck";
 
 const ROOT = "/tmp/opencode/wowdeck-tests/update-stager";
 
@@ -29,24 +30,32 @@ function pluginZip(version: string, omit?: string): Uint8Array {
   return zipSync(entries);
 }
 
-function statusOf(over: Partial<PluginUpdateStatus> = {}): PluginUpdateStatus {
+/** An offered 0.2.0 with its zip; `version` and `kind` reshape the offer, `offer: null` drops it. */
+function answerOf(
+  over: Partial<StagingAnswer> & { version?: string; kind?: PluginUpdateOffer["kind"] } = {},
+): StagingAnswer {
+  const { version = "0.2.0", kind = "update", ...rest } = over;
   return {
     status: "available",
-    currentVersion: "0.1.1",
-    latestVersion: "0.2.0",
-    releaseUrl: "https://x",
+    offer: {
+      kind,
+      version,
+      headline: `WoWDeck ${version} available`,
+      buttonLabel: "Update",
+      toastBody: "Update in Options",
+      rowLabel: "WoWDeck update available",
+      releaseNotes: null,
+      releaseUrl: "https://x",
+      installable: true,
+    },
     downloadUrl: "https://mock/WoWDeck.zip",
-    switchToStable: false,
-    releaseNotes: null,
-    checked: true,
-    toastPending: false,
-    ...over,
+    ...rest,
   };
 }
 
 function makeStager(
   respond: () => Uint8Array | Error,
-  status: Partial<PluginUpdateStatus> = {},
+  answer: Parameters<typeof answerOf>[0] = {},
   token?: string,
 ): { stager: UpdateStager; auths: () => (string | undefined)[] } {
   const auths: (string | undefined)[] = [];
@@ -69,7 +78,7 @@ function makeStager(
     },
   };
   return {
-    stager: new UpdateStager(net, { check: async () => statusOf(status) }, token ? () => token : undefined, ROOT),
+    stager: new UpdateStager(net, { forStaging: async () => answerOf(answer) }, token ? () => token : undefined, ROOT),
     auths: () => auths,
   };
 }
@@ -102,11 +111,7 @@ describe("UpdateStager.stage", () => {
   test("stages an older stable offered as a switch from a beta build", async () => {
     mkdirSync(ROOT, { recursive: true });
     const zip = pluginZip("0.3.0");
-    const { stager } = makeStager(() => zip, {
-      currentVersion: "0.3.1-beta.57",
-      latestVersion: "0.3.0",
-      switchToStable: true,
-    });
+    const { stager } = makeStager(() => zip, { version: "0.3.0", kind: "switchToStable" });
     const outcome = await stager.stage();
     expect(outcome.error).toBeNull();
     expect(outcome.result?.version).toBe("0.3.0");
@@ -129,12 +134,12 @@ describe("UpdateStager.stage", () => {
   });
 
   test("already current / couldn't check / no zip asset: nothing downloaded", async () => {
-    const current = makeStager(() => pluginZip("0.2.0"), { status: "current", downloadUrl: null });
+    const current = makeStager(() => pluginZip("0.2.0"), { status: "current", offer: null, downloadUrl: null });
     expect((await current.stager.stage()).error).toEqual({
       code: "up_to_date",
       message: "WoWDeck is already up to date",
     });
-    const unknown = makeStager(() => pluginZip("0.2.0"), { status: "unknown", downloadUrl: null });
+    const unknown = makeStager(() => pluginZip("0.2.0"), { status: "unknown", offer: null, downloadUrl: null });
     expect((await unknown.stager.stage()).error?.code).toBe("check_unavailable");
     const noAsset = makeStager(() => pluginZip("0.2.0"), { downloadUrl: null });
     expect((await noAsset.stager.stage()).error?.code).toBe("no_download");

@@ -21,7 +21,8 @@ resolved.
 ├── docs/adr/
 │   ├── 0001-get-addons-widened-qam.md
 │   ├── 0002-get-addons-browse-bar.md
-│   └── 0003-release-notes-from-changelog.md
+│   ├── 0003-release-notes-from-changelog.md
+│   └── 0004-release-notes-are-plain-text-from-the-engine.md
 ├── backend/src/
 └── src/
 ```
