@@ -235,4 +235,44 @@ describe("allowEdit enforcement", () => {
     tukui.enabled = true;
     expect(service.wire(record)).toMatchObject({ sourceOff: false, updateAvailable: true, availableVersion: "2" });
   });
+
+  test("Update all leaves out an addon whose source is off, and counts what the summary and toast count", async () => {
+    const dataDir = join(ROOT, "d11");
+    rmSync(dataDir, { recursive: true, force: true });
+    const { store, registry, service } = makeStack(dataDir);
+    registry.setEnabled("TukUI", false);
+    store.setInstallations([installation]);
+    store.addons.createMany([
+      {
+        id: "off",
+        name: "From a source that is off",
+        installationId: installation.id,
+        providerName: "TukUI",
+        externalId: "1",
+        channelType: 0,
+        isIgnored: false,
+        isLoadOnDemand: false,
+        installedVersion: "1",
+        latestVersion: "2",
+      },
+      {
+        id: "on",
+        name: "From a source that is on",
+        installationId: installation.id,
+        providerName: "WowUpHub",
+        externalId: "2",
+        channelType: 0,
+        isIgnored: false,
+        isLoadOnDemand: false,
+        installedVersion: "1",
+        latestVersion: "2",
+      },
+    ]);
+
+    const operations = await service.updateAll(installation);
+
+    expect(operations.map((o) => o.addonId)).toEqual(["on"]);
+    expect(service.eligibleUpdatesFor(installation).map((a) => a.id)).toEqual(["on"]);
+    expect(service.updateSummary()[0]?.updates).toBe(1);
+  });
 });

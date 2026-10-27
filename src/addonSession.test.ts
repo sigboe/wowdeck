@@ -185,7 +185,7 @@ describe("Get Addons results against My Addons' list", () => {
   });
 
   test("an ignored addon's update is not offered (as in My Addons)", () => {
-    const ignored = addon({ updateAvailable: true, ignored: true, canReinstall: true });
+    const ignored = addon({ updateAvailable: false, ignored: true, canReinstall: true });
     expect(resultTags(ignored)).toEqual(["Installed"]);
     expect(resultInstallLabel(ignored)).toBe("Reinstall");
   });

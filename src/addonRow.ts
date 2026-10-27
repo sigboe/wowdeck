@@ -89,10 +89,7 @@ export function addonRowDescription(addon: Addon): {
               .filter(Boolean)
               .join(" · ")
           : providerLabel(null);
-  const newVersion =
-    addon.providerId && addon.updateAvailable && !addon.ignored
-      ? (addon.availableVersion ?? "new version")
-      : null;
+  const newVersion = addon.updateAvailable ? (addon.availableVersion ?? "new version") : null;
   // "Ignored" is not repeated here: the row shows it as a status tag (guide S23).
   const flags = addonProblemText(addon) ?? "";
   return { base, newVersion, flags };
@@ -151,7 +148,6 @@ export function addonActions(addon: Addon, busy: boolean, autoUpdate = false): A
     ];
   }
   const actions: AddonAction[] = [];
-  const updateOffered = addon.updateAvailable && !addon.ignored;
   // Missing files: reinstalling is the fix, so it leads (WF-05).
   const repair = !!addon.canReinstall && addon.problem === "folders_missing";
   if (repair) {
@@ -162,7 +158,7 @@ export function addonActions(addon: Addon, busy: boolean, autoUpdate = false): A
       disabled: busy,
     });
   }
-  if (updateOffered) {
+  if (addon.updateAvailable) {
     actions.push({
       id: "update",
       label: `Update to ${addon.availableVersion ?? "the new version"}`,
@@ -172,7 +168,7 @@ export function addonActions(addon: Addon, busy: boolean, autoUpdate = false): A
   }
   actions.push({ id: "details", label: "Details" });
   // Otherwise offered only when no update is: Update already installs fresh files.
-  if (addon.canReinstall && !repair && !updateOffered) {
+  if (addon.canReinstall && !repair && !addon.updateAvailable) {
     actions.push({ id: "reinstall", label: "Reinstall", disabled: busy });
   }
   if (addon.canChangeChannel) {
@@ -216,9 +212,9 @@ export function addonActions(addon: Addon, busy: boolean, autoUpdate = false): A
 /** Where the addon's files are (WF-20): read-only, so never disabled while busy. */
 const FOLDERS_ACTION: AddonAction = { id: "folders", label: "Folders…" };
 
-/** Whether X (Update) does anything on this row. */
+/** Whether X (Update) does anything on this row: the engine's update rule decides (`updateAvailable`). */
 export function canQuickUpdate(addon: Addon): boolean {
-  return !!addon.providerId && addon.updateAvailable && !addon.ignored;
+  return addon.updateAvailable;
 }
 
 /**

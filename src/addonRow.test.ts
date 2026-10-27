@@ -73,8 +73,6 @@ describe("addonRowDescription", () => {
     const d = addonRowDescription({
       ...base,
       ignored: true,
-      updateAvailable: true,
-      availableVersion: "2",
     });
     expect(d.newVersion).toBeNull();
     expect(d.flags).toBe("");
@@ -121,10 +119,11 @@ describe("addonActions", () => {
 });
 
 describe("canQuickUpdate", () => {
-  test("only managed, not ignored, with an update", () => {
+  // Ignored, source off and unmanaged addons arrive with updateAvailable false (engine updateStatus).
+  test("the engine's updateAvailable decides", () => {
     expect(canQuickUpdate({ ...base, updateAvailable: true })).toBe(true);
-    expect(canQuickUpdate({ ...base, updateAvailable: true, ignored: true })).toBe(false);
-    expect(canQuickUpdate({ ...base, updateAvailable: true, providerId: null })).toBe(false);
+    expect(canQuickUpdate({ ...base, ignored: true })).toBe(false);
+    expect(canQuickUpdate({ ...base, sourceOff: true })).toBe(false);
     expect(canQuickUpdate(base)).toBe(false);
   });
 });

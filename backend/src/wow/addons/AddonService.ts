@@ -42,7 +42,7 @@ import { getClientTypeLabel } from "../utils/gametype";
 import { gameVersionForInstallation } from "../utils/gameversion";
 import { WOWUP_DATA_ADDON_FOLDER_NAME } from "../notifications/constants";
 import { PROVIDER_ID, providerDisplayName } from "../../api/providers";
-import { autoUpdateCandidate, needsUpdate } from "./addonStatus";
+import { needsUpdate, updateStatus } from "./addonStatus";
 import {
   WARNING_FOLDERS_MISSING,
   WARNING_NOT_ON_PROVIDER,
@@ -449,24 +449,12 @@ export class AddonService {
   }
 
   /**
-   * The same "is there a real update" definition used everywhere else
-   * (`needsUpdate`, which already excludes ignored addons), narrowed by
-   * one rule the in-game notification bridge and the update toast need:
-   * an addon whose provider has since been disabled in Options must not
-   * keep presenting whatever `latestVersion` was fetched before it was
-   * disabled. Both are presentations of this eligible-update set, never
-   * a separate definition of what counts as an update.
+   * The updates on offer in an installation (updateStatus): what Update
+   * all updates and what the toast, the update summary and the in-game
+   * bridge count.
    */
   eligibleUpdatesFor(installation: WowInstallation): AddonRecord[] {
-    return this.addonsFor(installation.id).filter((addon) => {
-      if (!needsUpdate(addon)) {
-        return false;
-      }
-      if (addon.providerName && !this.registry.usable(addon.providerName)) {
-        return false;
-      }
-      return true;
-    });
+    return this.addonsFor(installation.id).filter((addon) => updateStatus(addon, this.registry).canUpdate);
   }
 
   // ---- search ----
@@ -1140,6 +1128,7 @@ export class AddonService {
       canReinstall: this.canReinstall(addon),
       canChangeChannel: this.canChangeChannel(addon),
       sourceOff: !!addon.providerName && !this.registry.usable(addon.providerName),
+      canUpdate: updateStatus(addon, this.registry).canUpdate,
       newlyUpdatedMs: this.store.settings.newlyUpdatedHours * 3_600_000,
     });
   }
@@ -1212,7 +1201,7 @@ export class AddonService {
   }
 
   async updateAll(installation: WowInstallation): Promise<OperationResult[]> {
-    const candidates = this.addonsFor(installation.id).filter((a) => needsUpdate(a));
+    const candidates = this.eligibleUpdatesFor(installation);
     const operations: OperationResult[] = [];
     for (const candidate of candidates) {
       try {
@@ -1328,7 +1317,7 @@ export class AddonService {
 
   /**
    * Automatic update (WF-02): with the option on, update every candidate
-   * (autoUpdateCandidate) in every installation, one failure never stopping
+   * (updateStatus.canAutoUpdate) in every installation, one failure never stopping
    * the rest. Runs after a check, never on its own timer. Not while WoW is
    * running (same /proc check as the WTF restore): the files would change
    * under a running client. Records the outcome for Options and emits it
@@ -1349,9 +1338,7 @@ export class AddonService {
 
   async #runAutoUpdate(detect: () => Promise<GameRunning>): Promise<AutoUpdateResult | null> {
     const candidates = this.installations.list().flatMap((installation) =>
-      this.addonsFor(installation.id).filter((a) =>
-        autoUpdateCandidate(a, !!this.registry.usable(a.providerName)),
-      ),
+      this.addonsFor(installation.id).filter((a) => updateStatus(a, this.registry).canAutoUpdate),
     );
     if (candidates.length === 0) {
       return null;
