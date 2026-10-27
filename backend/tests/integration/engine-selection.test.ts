@@ -33,6 +33,7 @@ function spawnEngine(): Bun.Subprocess<"pipe"> {
       HOME: join(ROOT, "home"),
       WOWDECK_DATA_DIR: join(ROOT, "data"),
       WOWDECK_HUB_URL: "http://127.0.0.1:1", // must never be contacted here
+      WOWDECK_TUKUI_URL: "http://127.0.0.1:1/tukui/addons",
     },
   });
   (async () => {

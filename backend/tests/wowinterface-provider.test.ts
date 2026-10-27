@@ -286,12 +286,9 @@ describe("WowInterfaceProvider capability flags", () => {
     expect(provider.allowEdit).toBe(true);
   });
 
-  test("searchByQuery returns [] for plain text, resolves a recognized URL", async () => {
-    const net = fakeNet({ "filedetails/24449.json": [v4({ id: 24449 })] });
-    const provider = new WowInterfaceProvider(net);
+  test("searchByQuery returns [] for plain text", async () => {
+    const provider = new WowInterfaceProvider(fakeNet({}));
     expect(await provider.searchByQuery("some addon name", retail)).toEqual([]);
-    const results = await provider.searchByQuery("https://www.wowinterface.com/downloads/info24449.html", retail);
-    expect(results).toHaveLength(1);
   });
 
   test("isValidAddonId accepts only numeric strings", () => {

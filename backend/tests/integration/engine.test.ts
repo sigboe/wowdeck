@@ -177,6 +177,9 @@ beforeAll(async () => {
         releasesSeenAuth.push(req.headers.get("authorization"));
         return Response.json(releasesList);
       }
+      if (url.pathname === "/tukui/addons") {
+        return Response.json([]);
+      }
       if (url.pathname === "/wowdeck-asset") {
         return new Response(releasesAsset);
       }
@@ -257,6 +260,7 @@ beforeAll(async () => {
       WOWDECK_HUB_URL: `http://127.0.0.1:${port}`,
       WOWDECK_RELEASES_URL: `http://127.0.0.1:${port}/releases/latest`,
       WOWDECK_CF_URL: `http://127.0.0.1:${cfPort}/v1`,
+      WOWDECK_TUKUI_URL: `http://127.0.0.1:${port}/tukui/addons`,
     },
   });
 
@@ -651,6 +655,7 @@ describe("system.updateCheck (the plugin's own update notice)", () => {
         WOWDECK_HUB_URL: `http://127.0.0.1:${port}`,
         WOWDECK_RELEASES_URL: `http://127.0.0.1:${port}/releases/latest`,
         WOWDECK_CF_URL: `http://127.0.0.1:${cfPort}/v1`,
+        WOWDECK_TUKUI_URL: `http://127.0.0.1:${port}/tukui/addons`,
       },
     });
   }

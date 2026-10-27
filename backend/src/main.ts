@@ -60,7 +60,8 @@ const store = createStateStore(dataDir);
 const network = new NetworkClient();
 const registry = new ProviderRegistry();
 registry.register(new WowUpHubProvider(HUB_URL, HUB_URL, network));
-registry.register(new TukUiAddonProvider(network));
+// Unset: api.tukui.org's catalogue (integration tests point it at the mock hub).
+registry.register(new TukUiAddonProvider(network, process.env.WOWDECK_TUKUI_URL));
 
 /**
  * The bundled CurseForge key arrives only as this env var (main.py reads the

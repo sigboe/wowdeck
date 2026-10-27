@@ -4,10 +4,13 @@ import type { NetworkClient } from "../src/wow/net/network";
 import type { WowInstallation } from "../src/wow/models";
 import { WowClientType } from "../src/wow/types";
 import type { WowUpSearchAddonsResponse } from "../src/wow/providers/wowup-hub/wowup-hub-models";
+import { loadCassette, recorded } from "./providers/cassette";
 
-const searchResponse: WowUpSearchAddonsResponse = await Bun.file(
-  import.meta.dir + "/fixtures/providers/wowup-hub/search-elvui.json",
-).json();
+const searchResponse = recorded<WowUpSearchAddonsResponse>(
+  await loadCassette("wowup-hub"),
+  "GET",
+  "https://hub.wowup.io/addons/search/retail",
+);
 
 const BASE = "https://hub.example";
 const WEB = "https://hub.example";
@@ -134,14 +137,4 @@ describe("WowUpHubProvider", () => {
     expect(match?.latestFile.externalId).toBe(String(release.id));
   });
 
-  test("getAll posts batch and reports missing ids", async () => {
-    const rep = searchResponse.addons[0]!;
-    const batchClient = fakeNetwork({
-      [`${BASE}/addons/batch/retail`]: { addons: [rep] },
-    });
-    const batchProvider = new WowUpHubProvider(BASE, WEB, batchClient);
-    const { searchResults, errors } = await batchProvider.getAll(retailInstall, [String(rep.id), "42"]);
-    expect(searchResults.map((r) => r.externalId)).toContain(String(rep.id));
-    expect(errors.some((e) => e.message.includes("42"))).toBe(true);
-  });
 });

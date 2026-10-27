@@ -128,5 +128,12 @@ Deck"); the test procedure is the `deck-test` skill
    provenance header and an entry in `docs/wowup-provenance.md`.
 2. Add its id to `AddonProviderType` (`wow/types.ts`) if new, and to
    `PROVIDER_ID` and the display names in `backend/src/api/providers.ts`.
-3. Register it in `backend/src/main.ts` (`registry.register(…)`) and add
-   `backend/tests/<name>-provider.test.ts` against fixtures.
+3. Register it in `backend/src/main.ts` (`registry.register(…)`).
+4. Give it a scenario in `backend/tests/providers/scenarios.ts`: its
+   capabilities, a search text or link, a known id and a missing one. Record
+   its cassette with `make record-provider-fixtures PROVIDERS=<name>`; the
+   contract suite (`backend/tests/provider-contract.test.ts`) then replays it.
+   CurseForge needs `CURSEFORGE_API_KEY` or `CURSEFORGE_API_KEY_FILE`, GitHub
+   takes an optional `GITHUB_TOKEN`; neither ever reaches a cassette.
+5. Test what only this provider does (fallbacks, odd responses) in
+   `backend/tests/<name>-provider.test.ts`.

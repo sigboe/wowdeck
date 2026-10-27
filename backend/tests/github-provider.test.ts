@@ -541,16 +541,6 @@ describe("GitHubProvider.searchByQuery / isValidAddonId / getAll", () => {
     expect(await provider.searchByQuery("questie", retail)).toEqual([]);
   });
 
-  test("searchByQuery resolves a pasted GitHub URL to a single result", async () => {
-    const asset = ghAsset({ id: 1, name: "Addon.zip" });
-    const release = ghRelease({ id: 1, assets: [asset] });
-    const { net } = fakeNet({ releases: [release] });
-    const provider = new GitHubProvider(net);
-    const results = await provider.searchByQuery("https://github.com/mockauthor/MockAddon", retail);
-    expect(results).toHaveLength(1);
-    expect(results[0]!.name).toBe("MockAddon");
-  });
-
   test("isValidAddonId accepts owner/repo, rejects everything else", () => {
     const provider = new GitHubProvider(fakeNet({}).net);
     expect(provider.isValidAddonId("owner/repo")).toBe(true);
