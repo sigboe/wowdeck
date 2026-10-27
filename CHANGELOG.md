@@ -20,6 +20,7 @@ What's new in each version of WoWDeck Addon Manager. The format follows
   the plugin loads.
 - WoWDeck checks for its own updates once a day, including after the Deck
   wakes from sleep.
+- The Forever beta client is now called Forever Beta.
 
 ### Fixed
 

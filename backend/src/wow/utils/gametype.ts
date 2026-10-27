@@ -9,7 +9,7 @@
 
 import type { GameType } from "../../api/contracts";
 import { WowClientType } from "../types";
-import { CLIENT_DISPLAY_NAMES, CLIENT_FULL_NAMES } from "./client-display-names";
+import { CLIENT_DISPLAY_NAMES, CLIENT_FULL_NAMES, FORMER_CLIENT_NAMES } from "./client-display-names";
 
 export enum WowGameType {
   Retail = "retail",
@@ -43,9 +43,8 @@ export function getWowGameType(clientType: WowClientType): WowGameType {
 /**
  * Short, CurseForge-style player-facing names — the actual table lives
  * in client-display-names.ts (edit that file, not this function, when a
- * client gets renamed again). `ClassicBeta` -> "Forever" matches WowUp's
- * own rename as of v2.24.0 ("WoW Forever support", 2026-10-10) and
- * CurseForge's existing name for the same client.
+ * client gets renamed again). `ClassicBeta` -> "Forever Beta" matches
+ * WowUp's own rename in v2.24.1.
  *
  * Deliberately NOT changed alongside this: `getWowGameType()` below
  * still groups `ClassicBeta` under `Mists`, even though current WowUp
@@ -58,17 +57,18 @@ export function getWowGameType(clientType: WowClientType): WowGameType {
  * allowed to diverge here.
  */
 export function getClientTypeLabel(clientType: WowClientType): string {
-  const key = WowClientType[clientType];
-  return (key && CLIENT_DISPLAY_NAMES[key]) || "Unknown";
+  return clientEntry(CLIENT_DISPLAY_NAMES, clientType) || "Unknown";
 }
 
 /** WowUp's full player-facing names (see CLIENT_FULL_NAMES). */
 export function getClientFullName(clientType: WowClientType): string {
+  return clientEntry(CLIENT_FULL_NAMES, clientType) ?? getClientTypeLabel(clientType);
+}
+
+/** A client's entry in one of the client-display-names.ts tables, keyed by its enum name. */
+function clientEntry<T>(table: Record<string, T>, clientType: WowClientType): T | undefined {
   const key = WowClientType[clientType];
-  if (key && Object.prototype.hasOwnProperty.call(CLIENT_FULL_NAMES, key)) {
-    return CLIENT_FULL_NAMES[key]!;
-  }
-  return getClientTypeLabel(clientType);
+  return key && Object.prototype.hasOwnProperty.call(table, key) ? table[key] : undefined;
 }
 
 /**
@@ -79,9 +79,11 @@ export function getClientFullName(clientType: WowClientType): string {
  * `opts.displayName`). Two earlier auto-generated schemes exist in the
  * wild: the original `World of Warcraft (${shortLabel})` composition,
  * and a brief intermediate version that used WowUp's full names bare
- * (e.g. "World of Warcraft: Forever") before they were shortened again
- * here. A name matching neither set is either already the current
- * short name or a genuine custom name — leave it alone either way.
+ * (e.g. "Mists of Pandaria Classic") before they were shortened again here.
+ * Beyond those, a renamed client's former names (FORMER_CLIENT_NAMES)
+ * count for that client only. A name matching none of these is either
+ * already the current short name or a genuine custom name — leave it
+ * alone either way.
  */
 const LEGACY_SHORT_LABELS = [
   "Retail",
@@ -98,8 +100,9 @@ const LEGACY_SHORT_LABELS = [
 const LEGACY_WRAPPED_NAMES = new Set(LEGACY_SHORT_LABELS.map((l) => `World of Warcraft (${l})`));
 const LEGACY_FULL_WOWUP_NAMES = new Set(Object.values(CLIENT_FULL_NAMES));
 
-export function isLegacyAutoDisplayName(name: string): boolean {
-  return LEGACY_WRAPPED_NAMES.has(name) || LEGACY_FULL_WOWUP_NAMES.has(name);
+export function isLegacyAutoDisplayName(name: string, clientType: WowClientType): boolean {
+  const former = clientEntry(FORMER_CLIENT_NAMES, clientType) ?? [];
+  return LEGACY_WRAPPED_NAMES.has(name) || LEGACY_FULL_WOWUP_NAMES.has(name) || former.includes(name);
 }
 
 /** Map a wire GameType back to a client type (for manual installs). */

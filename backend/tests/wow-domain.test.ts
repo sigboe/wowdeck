@@ -68,7 +68,7 @@ describe("flavor folder mapping", () => {
     expect(getClientTypeLabel(WowClientType.Beta)).toBe("Retail Beta");
     expect(getClientTypeLabel(WowClientType.Classic)).toBe("Classic");
     expect(getClientTypeLabel(WowClientType.ClassicPtr)).toBe("Classic PTR");
-    expect(getClientTypeLabel(WowClientType.ClassicBeta)).toBe("Forever");
+    expect(getClientTypeLabel(WowClientType.ClassicBeta)).toBe("Forever Beta");
     expect(getClientTypeLabel(WowClientType.ClassicEra)).toBe("Classic Era");
     expect(getClientTypeLabel(WowClientType.ClassicEraPtr)).toBe("Classic Era PTR");
     expect(getClientTypeLabel(WowClientType.Anniversary)).toBe("Anniversary");

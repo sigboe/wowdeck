@@ -76,9 +76,9 @@ export interface Installation {
   /** Absolute path of the Interface/AddOns directory. */
   addonsPath: string;
   displayName: string;
-  /** Short client name, e.g. "Forever" (CLIENT_DISPLAY_NAMES). */
+  /** Short client name, e.g. "Forever Beta" (CLIENT_DISPLAY_NAMES). */
   clientName: string;
-  /** WowUp's full client name, e.g. "World of Warcraft: Forever". */
+  /** WowUp's full client name, e.g. "World of Warcraft: Forever Beta". */
   clientFullName: string;
   /** "manual" when the user added/confirmed this installation, "detected" otherwise. */
   source: InstallationSource;

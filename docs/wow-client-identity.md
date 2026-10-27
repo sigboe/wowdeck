@@ -36,7 +36,7 @@ compares display strings.
 | `Beta` | `_beta_` | "Retail Beta" | `beta` |
 | `Classic` | `_classic_` | "Classic" | `classic` |
 | `ClassicPtr` | `_classic_ptr_` | "Classic PTR" | *(not exposed)* |
-| `ClassicBeta` | `_classic_beta_` | "Classic Beta" | `classic_beta` |
+| `ClassicBeta` | `_classic_beta_` | "Forever Beta" | `classic_beta` |
 | `ClassicEra` | `_classic_era_` | "Classic Era" | `classic_era` |
 | `ClassicEraPtr` | `_classic_era_ptr_` | "Classic Era PTR" | *(not exposed)* |
 | `Anniversary` | `_anniversary_` | "Anniversary" | *(not exposed)* |

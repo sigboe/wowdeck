@@ -154,10 +154,10 @@ describe("installationLabel", () => {
 
   // The engine's client name, not the shared wire game type (RF-05: these
   // read "Classic Beta" and "Classic Era" before).
-  test("a Forever installation", () => {
+  test("a Forever Beta installation", () => {
     expect(
-      installationLabel(installation({ gameType: "classic_beta", clientName: "Forever" })),
-    ).toBe("Forever");
+      installationLabel(installation({ gameType: "classic_beta", clientName: "Forever Beta" })),
+    ).toBe("Forever Beta");
   });
 
   test("an Anniversary installation", () => {

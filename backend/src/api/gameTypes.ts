@@ -18,7 +18,7 @@ export const MANUAL_GAME_TYPES: readonly GameType[] = [
   "ptr",
 ];
 
-/** The short client name for a game type, e.g. "Forever" for `classic_beta`. */
+/** The short client name for a game type, e.g. "Forever Beta" for `classic_beta`. */
 export function gameTypeLabel(gameType: GameType): string {
   return getClientTypeLabel(getClientTypeForGameType(gameType));
 }

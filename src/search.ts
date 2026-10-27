@@ -4,7 +4,7 @@ import { providerLabel } from "./addonRow";
 
 /**
  * What the UI calls an installation's game (the search helper, the export
- * file name): the engine's short client name, e.g. "Forever", the same name
+ * file name): the engine's short client name, e.g. "Forever Beta", the same name
  * My Addons and Installation details show.
  */
 export function installationLabel(installation: Installation | null | undefined): string | null {

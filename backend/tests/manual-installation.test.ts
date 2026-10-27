@@ -83,6 +83,44 @@ describe("manual installation", () => {
     expect(single[0]!.displayName).toBe("My Era Copy");
   });
 
+  /** Add a fresh installation of one flavor, then store `name` as an earlier version would have. */
+  async function storedAs(dir: string, flavor: string, name: string) {
+    const path = join(ROOT, dir, "World of Warcraft", flavor);
+    mkdirSync(join(path, "Interface", "AddOns"), { recursive: true });
+    const [added] = await service.installations.addManual(path);
+    store.setInstallations(store.installations.map((i) => (i.id === added!.id ? { ...i, displayName: name } : i)));
+    return { path, id: added!.id };
+  }
+
+  test("a beta installation auto-named Forever is renamed Forever Beta", async () => {
+    const short = await storedAs("beta-short", "_classic_beta_", "Forever");
+    const full = await storedAs("beta-full", "_classic_beta_", "World of Warcraft: Forever");
+    await service.installations.addManual(short.path);
+    await service.installations.addManual(full.path);
+
+    const listed = service.installations.listed();
+    for (const { id } of [short, full]) {
+      const installation = listed.find((i) => i.id === id)!;
+      expect(installation.displayName).toBe("Forever Beta");
+      expect(installation.clientFullName).toBe("World of Warcraft: Forever Beta");
+      await service.installations.remove(id);
+    }
+  });
+
+  test("a name the player typed survives re-detection", async () => {
+    const typed = await storedAs("beta-typed", "_classic_beta_", "My Beta");
+    // "Forever" was only ever an auto name for the beta, so on Retail it was typed
+    const retail = await storedAs("retail-forever", "_retail_", "Forever");
+    await service.installations.addManual(typed.path);
+    await service.installations.addManual(retail.path);
+
+    const listed = service.installations.listed();
+    expect(listed.find((i) => i.id === typed.id)!.displayName).toBe("My Beta");
+    expect(listed.find((i) => i.id === retail.id)!.displayName).toBe("Forever");
+    await service.installations.remove(typed.id);
+    await service.installations.remove(retail.id);
+  });
+
   test("manual installation persists and survives detection", async () => {
     store.updateSettings({ customWowPaths: [] });
     // detection finds nothing under the empty home; manual entries must stay

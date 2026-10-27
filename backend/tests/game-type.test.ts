@@ -42,7 +42,7 @@ describe("manual-add game types (api/gameTypes)", () => {
       ["retail", "Retail"],
       ["classic_era", "Classic Era"],
       ["classic", "Classic"],
-      ["classic_beta", "Forever"],
+      ["classic_beta", "Forever Beta"],
       ["beta", "Retail Beta"],
       ["ptr", "Retail PTR"],
     ]);

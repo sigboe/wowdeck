@@ -108,7 +108,7 @@ export class InstallationService {
     const list = this.store.installations;
     let changed = false;
     for (const i of list) {
-      if (isLegacyAutoDisplayName(i.displayName)) {
+      if (isLegacyAutoDisplayName(i.displayName, i.clientType)) {
         i.displayName = getClientTypeLabel(i.clientType);
         changed = true;
       }

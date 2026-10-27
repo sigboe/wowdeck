@@ -4,6 +4,7 @@
 
 - [Language](#language)
 - [Get Addons rework](#get-addons-rework)
+- [WoW clients](#wow-clients)
 
 A Decky plugin that manages World of Warcraft addons on the Steam Deck. This
 glossary fixes the language used across UI, engine and docs.
@@ -146,3 +147,15 @@ The plugin restores where you were on each plugin tab. One exception: entering
 Get Addons always lands collapsed on the nav bar and never restores the
 slid-out state; widened mode is entered only by focusing a destination.
 _Avoid_: state restore
+
+## WoW clients
+
+**Forever**:
+The live World of Warcraft: Forever client, installed in `_forever_`. It runs
+the Retail game binary; only its folder tells it apart from Retail.
+_Avoid_: Forever Live, WoW Forever (in the UI)
+
+**Forever Beta**:
+The World of Warcraft: Forever beta client, installed in `_classic_beta_`.
+Called plain "Forever" before Forever launched (until 2026-10).
+_Avoid_: Forever (beta), Classic Beta

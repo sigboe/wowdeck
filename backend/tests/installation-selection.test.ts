@@ -140,7 +140,7 @@ describe("installation selection", () => {
 
     // Simulate installations persisted before the naming fix (the old
     // `World of Warcraft (${label})` composition, and the brief
-    // intermediate "World of Warcraft: Forever" scheme) and a genuinely
+    // intermediate "World of Warcraft: Forever" full-name scheme) and a genuinely
     // user-customized name — fixed on *read*, not only re-detection,
     // since My Addons' own Refresh button never calls
     // detectInstallations() at all (it only re-scans addon/provider
@@ -157,7 +157,7 @@ describe("installation selection", () => {
     );
 
     const after = service.installations.list();
-    expect(after.find((i) => i.id === beta.id)!.displayName).toBe("Forever");
+    expect(after.find((i) => i.id === beta.id)!.displayName).toBe("Forever Beta");
     // a custom name must survive the read untouched
     expect(after.find((i) => i.id === era.id)!.displayName).toBe("My Era Copy");
   });
