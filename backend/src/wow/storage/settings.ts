@@ -6,11 +6,13 @@
  * of reaching the engine.
  */
 
-import type {
-  AutoUpdateResult,
-  PluginSettings,
-  PluginUpdateBackoff,
-  PluginUpdateSnapshot,
+import {
+  type AutoUpdateResult,
+  type PluginSettings,
+  type PluginUpdateBackoff,
+  type PluginUpdateSnapshot,
+  UPDATE_CHANNELS,
+  type UpdateChannel,
 } from "../../api/contracts";
 import { normalizeVersion } from "../plugin/PluginVersion";
 
@@ -61,6 +63,11 @@ export function normalizeSteamGame(value: unknown): PluginSettings["steamGame"] 
  * (`pluginUpdateToastShownFor`, the snapshot's `latestVersion`): a bad value
  * only costs one repeated toast, a guessed one could cost a missed one.
  */
+/** An update channel id; anything else (missing, a channel this build does not know) is Stable. */
+function normalizeUpdateChannel(value: unknown): UpdateChannel {
+  return UPDATE_CHANNELS.find((channel) => channel === value) ?? "stable";
+}
+
 function normalizedVersion(value: unknown): string | null {
   if (typeof value !== "string") {
     return null;
@@ -69,8 +76,9 @@ function normalizedVersion(value: unknown): string | null {
 }
 
 /**
- * The stored WoWDeck-release answer: a timestamp, a parseable version (no
- * leading v), two optional URLs and the optional release notes. Anything
+ * The stored WoWDeck-release answer: a timestamp, the channel that answered
+ * (absent before channels, meaning Stable), a parseable version (no leading
+ * v), two optional URLs and the optional release notes. Anything
  * else is dropped rather than half-trusted — a bad stamp only costs one
  * extra check.
  */
@@ -78,7 +86,7 @@ export function normalizePluginUpdateSnapshot(value: unknown): PluginUpdateSnaps
   if (!value || typeof value !== "object") {
     return null;
   }
-  const { checkedAt, latestVersion, releaseUrl, downloadUrl, releaseNotes } = value as Record<string, unknown>;
+  const { checkedAt, channel, latestVersion, releaseUrl, downloadUrl, releaseNotes } = value as Record<string, unknown>;
   if (typeof checkedAt !== "number" || !Number.isFinite(checkedAt)) {
     return null;
   }
@@ -90,6 +98,7 @@ export function normalizePluginUpdateSnapshot(value: unknown): PluginUpdateSnaps
     typeof candidate === "string" && candidate !== "" ? candidate : null;
   return {
     checkedAt,
+    ...(channel !== undefined && { channel: normalizeUpdateChannel(channel) }),
     latestVersion: latest,
     releaseUrl: url(releaseUrl),
     downloadUrl: url(downloadUrl),
@@ -167,6 +176,9 @@ const RULES: Rules = {
     normalize: normalizePluginUpdateBackoff,
     userWritable: false,
   },
+  // Set through system.setUpdateChannel only, so a switch always runs its
+  // check; a missing value (every install before channels) is Stable.
+  pluginUpdateChannel: { default: () => "stable", normalize: normalizeUpdateChannel, userWritable: false },
   // Only ever stored after validation (settings.set checks the folder).
   wtfBackupDir: stringOrNull(true),
   wtfKeepSnapshots: {

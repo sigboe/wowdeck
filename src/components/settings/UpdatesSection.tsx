@@ -1,5 +1,6 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { DialogButton, Field, PanelSection, ToggleField } from "@decky/ui";
+import { FaEllipsisH } from "react-icons/fa";
 import * as api from "../../services/backend";
 import { descriptionStyle } from "../../steamTheme";
 import { pluginToast, toastError } from "../../toast";
@@ -8,14 +9,15 @@ import { formatBytes } from "../../wtfFormat";
 import { settingsStore } from "../../settings";
 import { pluginUpdateRow } from "../../pluginUpdate";
 import { selfUpdateStore } from "../../selfUpdate";
+import { openUpdateChannelModal } from "../UpdateChannelModal";
 import { SettingsRow } from "./common";
 
 /**
  * Automatic updates (WF-02) and rollback (BEYOND-02; owner: a way to turn it
  * off, the space it uses, clear). The last row is WoWDeck's own version —
  * the plugin, never an addon — read from the shared self-update store, so
- * plugin load's answer shows here without a second fetch. Informational
- * only: the Update button lives in the Options update panel.
+ * plugin load's answer shows here without a second fetch. Its ⋯ opens the
+ * update channel modal; the Update button lives in the Options update panel.
  */
 export function UpdatesSection() {
   const { settings } = useSyncExternalStore(settingsStore.subscribe, settingsStore.get);
@@ -47,6 +49,20 @@ export function UpdatesSection() {
       setClearingPrevious(false);
     }
   };
+
+  // The checkmark is the engine's stored channel, read on each open; the
+  // switch's answer lands in the self-update store (panel, dot, row).
+  const openChannelModal = async () => {
+    const channel = await selfUpdateStore.getChannel();
+    if (channel !== null) {
+      openUpdateChannelModal(channel, (next) => void selfUpdateStore.setChannel(next));
+    }
+  };
+
+  // Shown before the first answer too: the ⋯ is the way to the channel.
+  const wowdeckRow = pluginUpdate
+    ? pluginUpdateRow(pluginUpdate)
+    : { label: "WoWDeck", description: "" };
 
   useEffect(() => {
     void loadPreviousUsage();
@@ -106,16 +122,23 @@ export function UpdatesSection() {
           </DialogButton>
         </Field>
       </SettingsRow>
-      {pluginUpdate ? (
-        <SettingsRow id="wowdeckUpdate">
-          <Field
-            label={pluginUpdateRow(pluginUpdate).label}
-            description={
-              <span style={descriptionStyle}>{pluginUpdateRow(pluginUpdate).description}</span>
-            }
-          />
-        </SettingsRow>
-      ) : null}
+      <SettingsRow id="wowdeckUpdate">
+        <Field
+          label={wowdeckRow.label}
+          description={
+            wowdeckRow.description ? (
+              <span style={descriptionStyle}>{wowdeckRow.description}</span>
+            ) : undefined
+          }
+        >
+          <DialogButton
+            style={{ minWidth: 0, width: "auto", padding: "8px 16px" }}
+            onClick={() => void openChannelModal()}
+          >
+            <FaEllipsisH />
+          </DialogButton>
+        </Field>
+      </SettingsRow>
     </PanelSection>
   );
 }

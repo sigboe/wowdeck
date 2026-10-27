@@ -366,10 +366,11 @@ export interface MethodMap {
   "system.updateCheck": {
     /**
      * Whether a newer WoWDeck release exists on GitHub — the plugin's own
-     * update notice. At most one call to GitHub's releases/latest API per
-     * 24 hours, following the same cadence rule as the addon check behind
-     * the SteamOS toast (CheckCadence): each check keeps its own stored
-     * timestamp, so a sleeping Deck re-checks on wake instead of trusting a
+     * update notice, on the owner's update channel (Stable: GitHub's
+     * releases/latest; Beta: the releases list, newest stable or beta). At
+     * most one call to GitHub per 24 hours, following the same cadence
+     * rule as the addon check behind the SteamOS toast (CheckCadence):
+     * each check keeps its own stored timestamp, so a sleeping Deck re-checks on wake instead of trusting a
      * session that may be weeks old. Inside the interval the stored answer
      * is returned (recomputed against the running version) and `checked` is
      * false. A failed check never advances the interval — instead it backs
@@ -400,6 +401,19 @@ export interface MethodMap {
       releaseUrl: string | null;
       downloadUrl: string | null;
       /**
+       * True when the offered `latestVersion` is a stable release older than
+       * the running beta build: an owner who left the Beta channel is
+       * offered the latest stable ("Switch to stable X"). Only ever true on
+       * "available".
+       */
+      switchToStable: boolean;
+      /**
+       * The offered build's release notes (its GitHub release body,
+       * Markdown, untrusted text: shown as plain text, never as HTML). On
+       * "available" only, and null when the release has no body.
+       */
+      releaseNotes: string | null;
+      /**
        * True when a network attempt just ran (a failed one still serves the
        * stored answer); false when the interval or a failure-backoff window
        * served it without one. No surface keys on it: it makes the cadence
@@ -420,6 +434,22 @@ export interface MethodMap {
        */
       toastPending: boolean;
     };
+  };
+  "system.getUpdateChannel": {
+    /** Which WoWDeck builds the update check offers (GLOSSARY: Update channel). Stable until the owner picks another. */
+    params: Record<string, never>;
+    result: { channel: UpdateChannel };
+  };
+  "system.setUpdateChannel": {
+    /**
+     * Store the update channel and check it at once: this check ignores the
+     * daily interval and any failure-backoff window, so the owner sees what
+     * the new channel offers right away. Answers like system.updateCheck
+     * (never spending the toast); "unknown" when the channel's source could
+     * not be asked. The channel is stored even then.
+     */
+    params: { channel: UpdateChannel };
+    result: MethodMap["system.updateCheck"]["result"];
   };
   "system.updateStage": {
     /**
@@ -898,6 +928,12 @@ export interface PluginSettings {
    * yet).
    */
   pluginUpdateBackoff: PluginUpdateBackoff | null;
+  /**
+   * Which WoWDeck builds the update check offers, set through
+   * system.setUpdateChannel (never settings.set, so a switch always runs its
+   * check). Missing or unknown in the stored file means Stable.
+   */
+  pluginUpdateChannel: UpdateChannel;
   /** User-chosen folder for WTF backups (e.g. on an SD card); null = the plugin's own data folder. */
   wtfBackupDir: string | null;
   /** How many automatic pre-restore safety backups to keep per game version (1-10). */
@@ -971,10 +1007,20 @@ export interface Diagnostics {
 // Events emitted by the engine
 // ---------------------------------------------------------------------------
 
+/**
+ * The WoWDeck update channels (GLOSSARY): which builds the owner is offered.
+ * String ids, so a later build source (PR builds, say) is one more id here —
+ * no other contract or stored-setting change.
+ */
+export const UPDATE_CHANNELS = ["stable", "beta"] as const;
+export type UpdateChannel = (typeof UPDATE_CHANNELS)[number];
+
 /** The last completed WoWDeck release check, as persisted (see PluginSettings.lastPluginUpdate). */
 export interface PluginUpdateSnapshot {
   /** Epoch ms of the check that produced this answer. */
   checkedAt: number;
+  /** The update channel that answered; absent in answers stored before channels, which were Stable's. */
+  channel?: UpdateChannel;
   /** The offered build's version (X.Y.Z or X.Y.Z-beta.N), without a leading v. */
   latestVersion: string;
   /** The release page to point the user at. */

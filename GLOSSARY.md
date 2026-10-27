@@ -100,6 +100,15 @@ own notification-badge colour, marks a WoWDeck update: on the Options tab and
 the panel's Update button. No counts.
 _Avoid_: badge (that is the Steam library tile's).
 
+**Update channel**:
+Which WoWDeck builds the owner is offered: **Stable** (releases from `main`,
+"Recommended for most users.") or **Beta** (builds of every change merged into
+`next`, "Built from every merged change. Newer features, may have bugs.").
+Beta also offers a stable release when it is newer than the latest beta build;
+leaving Beta offers the latest stable even when it is older ("Switch to
+stable"). Set under Options › Updates › WoWDeck.
+_Avoid_: release channel (that is an addon's Stable/Beta/Alpha).
+
 **Status tag**:
 A small uppercase chip on an addon row stating its state at a glance
 (`wowdeck-status-tag`). My Addons rows show Ignored, Unmanaged, Library,

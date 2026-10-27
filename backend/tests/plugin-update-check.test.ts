@@ -7,7 +7,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import type { PluginUpdateBackoff, PluginUpdateSnapshot } from "../src/api/contracts";
+import type { PluginUpdateBackoff, PluginUpdateSnapshot, UpdateChannel } from "../src/api/contracts";
 import { NetworkError } from "../src/wow/net/network";
 import { DAY_MS, HOUR_MS } from "../src/wow/notifications/CheckCadence";
 import { compareVersions, PluginUpdateCheck } from "../src/wow/notifications/PluginUpdateCheck";
@@ -39,17 +39,21 @@ interface Harness {
   backoff: () => PluginUpdateBackoff | null;
   /** The version the toast gate marked as shown, when it already has. */
   toastShown: () => string | null;
+  /** The persisted update channel. */
+  channel: () => UpdateChannel;
   /** A new engine session over the same persisted state (a restart). */
-  restart: (over?: { currentVersion?: string; now?: number; respond?: () => unknown }) => void;
+  restart: (over?: { currentVersion?: string; now?: number; respond?: (url: string) => unknown }) => void;
 }
 
 function makeCheck(options: {
-  respond: () => unknown;
+  /** The fake GitHub API's answer; `url` tells releases/latest from the releases list. */
+  respond: (url: string) => unknown;
   currentVersion?: string;
   releasesUrl?: string;
   token?: string;
   stored?: PluginUpdateSnapshot | null;
   toastShownFor?: string | null;
+  channel?: UpdateChannel;
   now?: number;
 }): Harness {
   let calls = 0;
@@ -63,7 +67,7 @@ function makeCheck(options: {
       calls += 1;
       askedUrl = url;
       authHeaders.push(opts?.headers?.Authorization);
-      const value = respond();
+      const value = respond(url);
       if (value instanceof Error) throw value;
       return value as T;
     },
@@ -73,6 +77,7 @@ function makeCheck(options: {
     stamp: options.stored ?? null,
     toastShownFor: options.toastShownFor ?? null,
     backoff: null as PluginUpdateBackoff | null,
+    channel: options.channel ?? null,
   };
   let check = build();
   function build() {
@@ -94,6 +99,11 @@ function makeCheck(options: {
         writeToastShown: (version) => {
           persisted.toastShownFor = version;
         },
+        // Null until the owner picks one: the setting a pre-channel install has.
+        readChannel: () => persisted.channel ?? "stable",
+        writeChannel: (channel) => {
+          persisted.channel = channel;
+        },
       },
       () => nowMs,
     );
@@ -108,6 +118,7 @@ function makeCheck(options: {
     stamp: () => persisted.stamp,
     backoff: () => persisted.backoff,
     toastShown: () => persisted.toastShownFor,
+    channel: () => persisted.channel ?? "stable",
     restart(over = {}) {
       if (over.respond) respond = over.respond;
       if (over.currentVersion) currentVersion = over.currentVersion;
@@ -176,6 +187,8 @@ describe("PluginUpdateCheck", () => {
       latestVersion: "0.2.0",
       releaseUrl: "https://github.com/sigboe/wowdeck/releases/tag/v0.2.0",
       downloadUrl: "https://api.github.com/repos/sigboe/wowdeck/releases/assets/7",
+      switchToStable: false,
+      releaseNotes: null,
       checked: true,
       toastPending: true,
     });
@@ -198,6 +211,21 @@ describe("PluginUpdateCheck", () => {
     const { check, stamp } = makeCheck({ respond: () => withZip("v0.2.0") });
     await check.check();
     expect(stamp()).not.toHaveProperty("releaseNotes");
+  });
+
+  test("the offered build's release notes come with the answer, fresh and cached", async () => {
+    const { check, restart } = makeCheck({
+      respond: () => ({ ...withZip("v0.2.0"), body: "## What's changed\n- Fixes" }),
+    });
+    expect((await check.check()).releaseNotes).toBe("## What's changed\n- Fixes");
+    restart();
+    expect(await check.check()).toMatchObject({ checked: false, releaseNotes: "## What's changed\n- Fixes" });
+  });
+
+  test("no release notes without a body, or for a build that is not offered", async () => {
+    expect((await makeCheck({ respond: () => withZip("v0.2.0") }).check.check()).releaseNotes).toBeNull();
+    const current = makeCheck({ respond: () => ({ ...withZip("v0.1.1"), body: "Old news" }) });
+    expect(await current.check.check()).toMatchObject({ status: "current", releaseNotes: null });
   });
 
   test("an asset without an API url falls back to its browser_download_url", async () => {
@@ -230,6 +258,31 @@ describe("PluginUpdateCheck", () => {
   test("same release: current", async () => {
     const { check } = makeCheck({ respond: () => ({ tag_name: "v0.1.1", html_url: "https://x" }) });
     expect((await check.check()).status).toBe("current");
+  });
+
+  test("Stable on a beta build: the older latest stable is offered as a switch", async () => {
+    const { check } = makeCheck({ respond: () => withZip("v0.3.0"), currentVersion: "0.3.1-beta.57" });
+    const result = await check.check();
+    expect(result).toMatchObject({ status: "available", latestVersion: "0.3.0", downloadUrl: ZIP, switchToStable: true });
+  });
+
+  test("Stable on a beta of an older release: a plain update, not a switch", async () => {
+    const { check } = makeCheck({ respond: () => withZip("v0.3.0"), currentVersion: "0.3.0-beta.5" });
+    expect(await check.check()).toMatchObject({ status: "available", switchToStable: false });
+  });
+
+  test("Stable on a stable build: an older stable is still not offered", async () => {
+    const { check } = makeCheck({ respond: () => withZip("v0.3.0"), currentVersion: "0.3.1" });
+    expect(await check.check()).toMatchObject({ status: "current", downloadUrl: null, switchToStable: false });
+  });
+
+  test("Beta on a beta build: an older stable is not offered", async () => {
+    const { check } = makeCheck({
+      channel: "beta",
+      currentVersion: "0.3.1-beta.57",
+      respond: () => [withZip("v0.3.0")],
+    });
+    expect(await check.check()).toMatchObject({ status: "current", switchToStable: false });
   });
 
   test("older tag: current, never a downgrade offer", async () => {
@@ -493,6 +546,8 @@ describe("the once-a-day cap", () => {
       latestVersion: "0.2.0",
       releaseUrl: "https://github.com/sigboe/wowdeck/releases/tag/v0.2.0",
       downloadUrl: "https://api.github.com/repos/sigboe/wowdeck/releases/assets/7",
+      switchToStable: false,
+      releaseNotes: null,
       checked: false,
       toastPending: true,
     });
@@ -515,6 +570,8 @@ describe("the once-a-day cap", () => {
       latestVersion: "0.2.0",
       releaseUrl: "https://github.com/sigboe/wowdeck/releases/tag/v0.2.0",
       downloadUrl: null,
+      switchToStable: false,
+      releaseNotes: null,
       checked: false,
       toastPending: false,
     });
@@ -563,6 +620,7 @@ describe("the once-a-day cap", () => {
     expect(calls()).toBe(1);
     expect(stamp()).toEqual({
       checkedAt: NOW,
+      channel: "stable",
       latestVersion: "0.2.0",
       releaseUrl: "https://x",
       downloadUrl: null,
@@ -731,5 +789,172 @@ describe("the failure backoff", () => {
     expect(cached.status).toBe("unknown");
     expect(cached.checked).toBe(false);
     expect(h.calls()).toBe(1);
+  });
+});
+
+describe("the update channel", () => {
+  const LATEST = "https://api.github.com/repos/sigboe/wowdeck/releases/latest";
+  const release = (tag: string, over: Record<string, unknown> = {}) => ({
+    ...withZip(tag),
+    html_url: `https://github.com/sigboe/wowdeck/releases/tag/${tag}`,
+    prerelease: tag.includes("-beta."),
+    ...over,
+  });
+  /** The fake GitHub: releases/latest answers `latest`; the releases list answers `list`. */
+  const github = (latest: unknown, list: unknown[]) => (url: string) => (url.includes("/releases/latest") ? latest : list);
+
+  test("no stored channel: Stable, asking releases/latest only", async () => {
+    const h = makeCheck({
+      releasesUrl: LATEST,
+      respond: github(release("v0.2.0"), [release("v0.2.1-beta.7"), release("v0.2.0")]),
+    });
+    expect(h.check.channel()).toBe("stable");
+    const res = await h.check.check();
+    expect(res.latestVersion).toBe("0.2.0");
+    expect(h.askedUrl()).toBe(LATEST);
+    expect(h.stamp()?.channel).toBe("stable");
+  });
+
+  test("Stable never offers a beta, even one GitHub calls latest", async () => {
+    const h = makeCheck({ respond: github(release("v0.3.0-beta.4", { prerelease: false }), []) });
+    expect((await h.check.check()).status).toBe("unknown");
+    expect(h.stamp()).toBeNull();
+  });
+
+  test("Beta: the newest beta is offered from the releases list", async () => {
+    const h = makeCheck({
+      channel: "beta",
+      releasesUrl: LATEST,
+      respond: github(release("v0.2.0"), [release("v0.2.1-beta.9"), release("v0.2.1-beta.12"), release("v0.2.0")]),
+    });
+    const res = await h.check.check();
+    expect(res).toMatchObject({
+      status: "available",
+      latestVersion: "0.2.1-beta.12",
+      releaseUrl: "https://github.com/sigboe/wowdeck/releases/tag/v0.2.1-beta.12",
+      downloadUrl: ZIP,
+    });
+    expect(h.askedUrl()).toStartWith("https://api.github.com/repos/sigboe/wowdeck/releases?");
+    expect(h.stamp()?.channel).toBe("beta");
+  });
+
+  test("Beta: a stable release newer than the newest beta wins", async () => {
+    const h = makeCheck({
+      channel: "beta",
+      respond: github(null, [release("v0.3.0"), release("v0.3.0-beta.40"), release("v0.2.1-beta.9")]),
+    });
+    expect((await h.check.check()).latestVersion).toBe("0.3.0");
+  });
+
+  test("Beta: drafts are ignored", async () => {
+    const h = makeCheck({
+      channel: "beta",
+      respond: github(null, [release("v0.4.0-beta.2", { draft: true }), release("v0.3.0-beta.40")]),
+    });
+    expect((await h.check.check()).latestVersion).toBe("0.3.0-beta.40");
+  });
+
+  test("Beta: an unreachable releases list is unknown, never an error", async () => {
+    const h = makeCheck({ channel: "beta", respond: () => new NetworkError("request to … failed: 404") });
+    expect((await h.check.check()).status).toBe("unknown");
+  });
+
+  test("an answer stored for another channel never serves this one", async () => {
+    // A beta answer from yesterday's channel, then the Deck is on Stable
+    // and offline: the beta must not be offered on Stable.
+    const h = makeCheck({
+      respond: () => new NetworkError("request to … failed: timeout"),
+      stored: stampOf({ channel: "beta", latestVersion: "0.3.0-beta.40" }),
+    });
+    const res = await h.check.check();
+    expect(res.status).toBe("unknown");
+    expect(res.checked).toBe(true);
+  });
+
+  test("an answer stored before channels counts as Stable's", async () => {
+    const h = makeCheck({
+      respond: () => {
+        throw new Error("must not be asked");
+      },
+      stored: stampOf(),
+    });
+    expect((await h.check.check()).latestVersion).toBe("0.2.0");
+    expect(h.calls()).toBe(0);
+  });
+
+  test("switching checks at once inside the daily interval, stores the channel and returns the fresh answer", async () => {
+    const h = makeCheck({
+      respond: github(release("v0.2.0"), [release("v0.2.1-beta.3"), release("v0.2.0")]),
+    });
+    await h.check.check();
+    expect(h.calls()).toBe(1);
+
+    const res = await h.check.setChannel("beta");
+    expect(h.channel()).toBe("beta");
+    expect(h.check.channel()).toBe("beta");
+    expect(h.calls()).toBe(2);
+    expect(res).toMatchObject({ status: "available", latestVersion: "0.2.1-beta.3", checked: true, toastPending: false });
+
+    // Switching back ignores the interval too.
+    expect((await h.check.setChannel("stable")).latestVersion).toBe("0.2.0");
+    expect(h.calls()).toBe(3);
+  });
+
+  test("switching checks at once inside a failure backoff", async () => {
+    let n = 0;
+    const h = makeCheck({
+      respond: (url) => (++n === 1 ? new NetworkError("request to … failed: timeout") : github(null, [release("v0.2.1-beta.3")])(url)),
+    });
+    await h.check.check(); // failure #1: an hour's backoff
+    expect(h.backoff()).not.toBeNull();
+
+    h.restart({ now: NOW + 60 * 1000 });
+    const res = await h.check.setChannel("beta");
+    expect(res.latestVersion).toBe("0.2.1-beta.3");
+    expect(res.checked).toBe(true);
+    expect(h.calls()).toBe(2);
+    expect(h.backoff()).toBeNull();
+  });
+
+  test("a switch is not merged into a check already in flight for the old channel", async () => {
+    let unblock: () => void = () => {};
+    const held = new Promise<void>((resolve) => {
+      unblock = resolve;
+    });
+    const answer = github(release("v0.2.0"), [release("v0.2.1-beta.3")]);
+    // Stable's request hangs until the switch has been asked.
+    const h = makeCheck({ respond: (url) => (url.includes("/latest") ? held.then(() => answer(url)) : answer(url)) });
+    const first = h.check.check();
+    const switched = h.check.setChannel("beta");
+    unblock();
+    expect((await first).latestVersion).toBe("0.2.0");
+    expect((await switched).latestVersion).toBe("0.2.1-beta.3");
+  });
+
+  test("the channel survives an engine restart", async () => {
+    const h = makeCheck({ respond: github(release("v0.2.0"), [release("v0.2.1-beta.3")]) });
+    await h.check.setChannel("beta");
+    h.restart({ now: NOW + 60 * 1000 });
+    expect(h.check.channel()).toBe("beta");
+    const res = await h.check.check();
+    expect(res.latestVersion).toBe("0.2.1-beta.3");
+    expect(res.checked).toBe(false); // the switch's answer serves the day
+  });
+
+  test("the toast fires once per beta build, not again after a restart, and again for the next build", async () => {
+    let list = [release("v0.2.1-beta.3")];
+    const h = makeCheck({ channel: "beta", respond: () => list });
+    expect((await h.check.check(NOTIFY)).toastPending).toBe(true);
+    expect((await h.check.check(NOTIFY)).toastPending).toBe(false);
+
+    h.restart({ now: NOW + DAY_MS });
+    expect((await h.check.check(NOTIFY)).toastPending).toBe(false);
+    expect(h.calls()).toBe(2);
+
+    list = [release("v0.2.1-beta.4")];
+    h.restart({ now: NOW + 2 * DAY_MS });
+    const next = await h.check.check(NOTIFY);
+    expect(next.latestVersion).toBe("0.2.1-beta.4");
+    expect(next.toastPending).toBe(true);
   });
 });
