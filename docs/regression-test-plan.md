@@ -196,6 +196,17 @@ classes on the QAM's `BasicUI` div; the plugin re-applies and enforces them
 while a destination is focused; if the mechanism is missing everything
 degrades to collapsed. Addon details use the details modal.
 
+The destinations building their own requests and the one sources store (#34)
+passed GA-6, GA-9 (Category and Details round trips), GA-19, GA-20 and GA-25
+on device on 2026-10-27, with a virtual pad and the engine requests logged in
+memory. Latest: Source to WowUp Hub sent one request from index 0, Load more
+continued it from index 10, focus on the first new row. Popular: a category
+sent its `categoryId`, a Source change dropped it (Category back to All),
+All categories sent none; CurseForge's categories were asked once and not
+again after a Details round trip. Turning WowUp Hub off in Options moved
+Latest to CurseForge without an error. Switching the installation put Latest
+and Popular on CurseForge at once, with the new installation's results.
+
 | ID | Pri | S | Steps | Expected |
 |---|---|---|---|---|
 | GA-1 | P1 | S | Enter Get Addons fresh, by touch, and bumper-cycled back from My Addons/Options | One title bar: Decky's, left-aligned against its back button. **Install into**, then a vertical destination list (Search, Latest, Popular, From URL, each with an icon); focus lands on the plugin-tab nav bar, QAM at the standard width; no pane |
@@ -223,7 +234,7 @@ device-passed 2026-10-23 on the Deck screen, pane 506 CSS px):
 |---|---|---|---|---|
 | GA-18 | P1 | S | Right/A from Latest and from Popular, with results loaded; then Up | Focus lands on the first result row, never on the bar; Up reaches the bar (Source, and Category on Popular). Search and From URL start on their text field |
 | GA-19 | P1 | S | Popular with two discover sources on (WowUp Hub + CurseForge) | One bar row: **Source** and **Category** inline side by side, values truncated with an ellipsis, nothing wraps; with one source on, Source is hidden and Category closes up to the left. No "(off)"/"(not set up)" entry in either menu |
-| GA-20 | P1 | S | Popular open on row 3; R1 to Options, toggle a discover source off; L1 back to Popular | Same list, same source, focus back on row 3; the bar stays one row (a segment may hide); results never reload or jump |
+| GA-20 | P1 | S | Popular open on row 3; R1 to Options, toggle a discover source off; L1 back to Popular | Get Addons lands collapsed (GA-1); opening Popular again shows the same list and source with focus back on row 3; the bar stays one row (a segment may hide); results never reload or jump (verified DEVICE 2026-10-27: WowUp Hub off, Popular on CurseForge kept its page and row 3, Source hid, Category closed up to the left, no request) |
 | GA-21 | P1 | S | Turn every discover source off (CurseForge and WowUp Hub); open Latest, then Popular | The zero-source screen, not results: each destination with its own icon (clock for Latest, flame for Popular) and words ("No addon source is on for Latest" / "…for Popular"), body naming the sources that can serve it, **Open addon sources** focused on entry; no turn-on offer row. Search with no name-search source shows the same shape naming those sources. Destination rows read "Needs an addon source" |
 | GA-22 | P1 | S | A on **Open addon sources** | Options opens at Addon sources; the compatible rows (WowUp Hub, CurseForge) pulse together with Steam's own row highlight, full row size and no outline, three times (~1.8 s), and the first one's toggle has focus. Nothing was turned on. Moving focus clears the marks; focus is never trapped |
 | GA-23 | P1 | S | From URL: a direct .zip link (test data), Look up, X; then a WoWInterface link with WoWInterface off | The zip installs into the selected installation as a Zip addon; the WoWInterface result shows its "turned off: installs, but won't get updates" notice on an **Open addon sources** row; A jumps to Options with WoWInterface marked and focused, nothing turned on (Get Addons never enables a source) |

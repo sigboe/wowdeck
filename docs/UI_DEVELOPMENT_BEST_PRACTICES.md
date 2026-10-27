@@ -524,10 +524,12 @@ The former `docs/ui-guidelines.md` (removed 2026-10-22) is superseded by
   remount looks like a tab switch to React**.
 - Therefore, state that must survive a modal round-trip lives in module scope:
   - `persistedTab` in `index.tsx`;
-  - `searchState`, `latestState`, `popularState` and `pageState` in
-    `browseSessionState.ts` for the Get Addons tab, reset by
-    `resetBrowseSessionState()` when the selected installation changes
-    (results depend on its game version).
+  - the Get Addons destinations in `browseDestinations.ts` and `pageState`
+    in `browseSessionState.ts`, reset by `resetBrowseSessionState()` when
+    the selected installation changes (results depend on its game version);
+  - `sourcesStore` in `sourcesStore.ts`: the addon sources and their
+    categories, shared by Get Addons and Options and kept across that reset
+    (reference data, not per installation).
 - `Content()` fetches status/installations/addons on every mount, so a modal
   round-trip triggers backend calls again (INFERRED from source, not measured;
   backlog U-6).

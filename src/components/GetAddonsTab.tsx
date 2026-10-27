@@ -9,7 +9,7 @@ import {
   PanelSectionRow,
   type GamepadEvent,
 } from "@decky/ui";
-import type { Installation, ProviderCategory, ProviderInfo } from "../types";
+import type { Installation, ProviderInfo } from "../types";
 import * as api from "../services/backend";
 import {
   BROWSE_TABS,
@@ -27,14 +27,14 @@ import {
   widening,
 } from "../browseSessionState";
 import {
-  applySources,
   latestDestination,
-  knownSources,
-  sourceCategories,
+  listDestination,
+  type ListDestinationId,
   popularDestination,
   setCategory as showCategory,
   setSource,
 } from "../browseDestinations";
+import { loadCategories, loadSources, sourcesStore } from "../sourcesStore";
 import {
   attachQamWidening,
   detachQamWidening,
@@ -67,6 +67,9 @@ const DESTINATIONS: Record<GetAddonsTab, { label: string; icon: ReactNode }> = {
   // widened-session state survive the rename (spec: install-from-file).
   url: { label: "Manual Install", icon: <FaFileArchive /> },
 };
+
+/** Before the first load: a stable empty list, so the sources' derivations don't re-run. */
+const NO_PROVIDERS: ProviderInfo[] = [];
 
 export function GetAddonsTab({
   installations,
@@ -160,15 +163,19 @@ export function GetAddonsTab({
     };
   }, []);
 
-  const [providers, setProvidersState] = useState<ProviderInfo[]>(knownSources.list ?? []);
-  const [providersLoaded, setProvidersLoaded] = useState(knownSources.list !== null);
-  // The stores own what the sources mean for the lists (applySources): each
-  // list's pick is kept or falls back there, and the list is cached for the
-  // next remount.
-  const setProviders = (next: ProviderInfo[]) => {
-    applySources(next);
-    setProvidersState(next);
-  };
+  // The sources as last loaded (sourcesStore), so a remount (every dropdown
+  // menu, G4) renders the bar and its list at once instead of an empty pane
+  // that focus falls out of; read again on every mount. The lists' picks
+  // follow them in browseDestinations.ts.
+  const {
+    providers: loadedProviders,
+    loaded: providersLoaded,
+    categories: categoriesBySource,
+  } = useSyncExternalStore(sourcesStore.subscribe, sourcesStore.get);
+  const providers = loadedProviders ?? NO_PROVIDERS;
+  useEffect(() => {
+    void loadSources(api.rpc);
+  }, []);
   const { categoryId, sourceId: popularSource } = useSyncExternalStore(
     popularDestination.subscribe,
     popularDestination.get,
@@ -177,34 +184,12 @@ export function GetAddonsTab({
     latestDestination.subscribe,
     latestDestination.get,
   );
-  const [categoriesBySource, setCategoriesBySource] = useState(sourceCategories.bySource);
-
-  useEffect(() => {
-    // A remount (every dropdown menu, G4) applies the cached sources' picks
-    // at once — a reset (another installation) left them null — so the lists
-    // render, not spinners, while the fresh load is on its way.
-    if (knownSources.list) {
-      applySources(knownSources.list);
-    }
-    void (async () => {
-      try {
-        const { providers: p } = await api.rpc("providers.list");
-        setProviders(p);
-      } catch {
-        // engine not ready: the tabs show their own errors when they load
-      } finally {
-        setProvidersLoaded(true);
-      }
-    })();
-  }, []);
-
   /** Another source in the bar's Source segment: the list starts over, and so does its place. */
-  const pickSource = (tab: "latest" | "popular", id: string) => {
-    const list = tab === "latest" ? latestDestination : popularDestination;
-    if (id === list.get().sourceId) {
+  const pickSource = (tab: ListDestinationId, id: string) => {
+    if (id === listDestination(tab).get().sourceId) {
       return;
     }
-    setSource(list, id);
+    setSource(tab, id);
     forgetFocus(browseFocusView(tab));
     // The pick changed the list, not the bar: drop the stale row memory (the
     // list it remembered is gone) and remember the segment instead, so pane
@@ -215,29 +200,13 @@ export function GetAddonsTab({
 
   // The browse bar's Category segment needs the active source's categories,
   // and only the answer says whether it has any (capability, never a
-  // provider's name — ADR 0002): a lookup per Popular source, cached beside
-  // the lists and asked for once. Only a source the bar still offers is
+  // provider's name — ADR 0002): a lookup per Popular source, kept in the
+  // sources store and asked for once. Only a source the bar still offers is
   // asked: with every source off there is no list to narrow.
   useEffect(() => {
-    if (!popularSource || !validDiscoverSources(providers).some((p) => p.id === popularSource)) {
-      return;
+    if (popularSource && validDiscoverSources(providers).some((p) => p.id === popularSource)) {
+      void loadCategories(api.rpc, popularSource);
     }
-    if (sourceCategories.bySource[popularSource]) {
-      return; // asked already; an empty answer counts (nothing to act on)
-    }
-    void (async () => {
-      let fetched: ProviderCategory[] = [];
-      try {
-        const { categories } = await api.rpc("addons.getCategories", {
-          providerId: popularSource,
-        });
-        fetched = categories ?? [];
-      } catch {
-        return; // not cached: asked again on the next sources change or remount
-      }
-      sourceCategories.bySource = { ...sourceCategories.bySource, [popularSource]: fetched };
-      setCategoriesBySource(sourceCategories.bySource);
-    })();
   }, [popularSource, providers]);
 
   const installation = installations.find((i) => i.id === selectedId) ?? null;
@@ -452,14 +421,7 @@ export function GetAddonsTab({
           >
             <ListTab
               key={latestSource ?? ""}
-              list={latestDestination}
-              load={(o, n) =>
-                api.rpc("discover.latest", {
-                  providerId: latestDestination.get().sourceId ?? "",
-                  index: o,
-                  pageSize: n,
-                })
-              }
+              destination="latest"
               view={browseFocusView("latest")}
             />
           </CapabilityGate>
@@ -475,15 +437,7 @@ export function GetAddonsTab({
           >
             <ListTab
               key={`${popularSource ?? ""}:${categoryId ?? "all"}`}
-              list={popularDestination}
-              load={(o, n) =>
-                api.rpc("discover.popular", {
-                  providerId: popularDestination.get().sourceId ?? "",
-                  index: o,
-                  pageSize: n,
-                  categoryId: popularDestination.get().categoryId || undefined,
-                })
-              }
+              destination="popular"
               view={browseFocusView("popular")}
             />
           </CapabilityGate>
