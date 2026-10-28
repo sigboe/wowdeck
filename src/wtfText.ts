@@ -7,7 +7,7 @@ import type {
   WtfImportResult,
   WtfJobSnapshot,
 } from "./types";
-import { backupOrigin, formatWhen } from "./wtfFormat";
+import { backupOrigin, formatBytes, formatWhen } from "./wtfFormat";
 
 /**
  * Friendly text for the engine's stable WTF error codes. Never shows raw
@@ -330,6 +330,30 @@ export function copySourceRows(
 ): CopySourceRow[] {
   const backups = source.backups.map((backup): CopySourceRow => ({ kind: "backup", backup }));
   return source.installed && source.current ? [{ kind: "current" }, ...backups] : backups;
+}
+
+/** The section header over the rows: names the version the settings come from. */
+export function copySourceHeader(source: Pick<WtfCopySource, "displayName">): string {
+  return `Copying from ${source.displayName}`;
+}
+
+/** A row's label. Each one starts with the source version, so the list stays labelled after the header scrolls off. */
+export function copySourceRowLabel(
+  source: Pick<WtfCopySource, "displayName">,
+  row: CopySourceRow,
+  now: number,
+): string {
+  return row.kind === "current"
+    ? `${source.displayName} · Current settings`
+    : `${source.displayName} · ${formatWhen(row.backup.createdAt, now)} · ${formatBytes(row.backup.sizeBytes)}`;
+}
+
+/** The line under the Current settings row: when they last changed (the label already names the version). */
+export function currentSettingsDescription(
+  current: Pick<WtfBackupInfo, "createdAt">,
+  now: number,
+): string {
+  return `Changed ${formatWhen(current.createdAt, now)}`;
 }
 
 /** The line under the Copy from dropdown for the chosen version (null: nothing to say). */
