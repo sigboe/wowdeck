@@ -90,6 +90,35 @@ describe("WtfJobRunner", () => {
     expect(completed).toHaveLength(1);
   });
 
+  test("a copy completes as kind copy, naming the version the settings came from", async () => {
+    write("Config.wtf", "retail");
+    const { service, runner, done } = setup();
+    const ptrWtf = join(tmp, "game", "_ptr_", "WTF");
+    mkdirSync(ptrWtf, { recursive: true });
+    writeFileSync(join(ptrWtf, "Config.wtf"), "ptr");
+    const b = await service.createBackup({ wtfPath: ptrWtf, flavor: "_ptr_" }, { kind: "manual" });
+    const { jobId } = runner.startCopy(target, "_ptr_", b.fileName, { keepCurrentConfig: false });
+    expect(runner.current()).toMatchObject({ jobId, kind: "copy" });
+    const result = await done();
+    expect(result).toMatchObject({ kind: "copy", fileName: b.fileName, sourceName: "Retail PTR", error: null });
+    expect(result.snapshotFileName).toMatch(/^wtf_\d+\.zip$/);
+  });
+
+  test("a copy of current settings completes as one copy job: source backed up, then restored here", async () => {
+    write("Config.wtf", "retail");
+    const { service, runner, done, progress } = setup();
+    const ptr = { wtfPath: join(tmp, "game", "_ptr_", "WTF"), flavor: "_ptr_" };
+    mkdirSync(ptr.wtfPath, { recursive: true });
+    writeFileSync(join(ptr.wtfPath, "Config.wtf"), "ptr");
+    const { jobId } = runner.startCopyCurrent(target, ptr, { keepCurrentConfig: false });
+    expect(runner.current()).toMatchObject({ jobId, kind: "copy" });
+    const result = await done();
+    const { backups } = await service.listBackups(ptr);
+    expect(result).toMatchObject({ kind: "copy", fileName: backups[0]!.fileName, sourceName: "Retail PTR", error: null });
+    expect(result.snapshotFileName).toMatch(/^wtf_\d+\.zip$/);
+    expect(progress.map((p) => p.job.phase)).toEqual(expect.arrayContaining(["compress", "snapshot", "swap"]));
+  });
+
   test("only one job at a time", async () => {
     write("a/big.bin", randomBytes(4 * 1024 * 1024));
     const { runner, done } = setup();

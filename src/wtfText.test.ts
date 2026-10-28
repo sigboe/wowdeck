@@ -8,6 +8,11 @@ import {
   jobPercent,
   jobProgressText,
   keepCurrentConfigFor,
+  copySourceOption,
+  copySourceRows,
+  copySourceStatus,
+  currentSettingsBackup,
+  outcomeOf,
   restoreDialogText,
 } from "./wtfText";
 import { backupKindLabel, backupOrigin, formatBytes, formatWhen } from "./wtfFormat";
@@ -202,6 +207,7 @@ describe("wtfCompletedToast", () => {
     installationId: "i",
     fileName: "wtf_1.zip",
     snapshotFileName: null,
+    sourceName: null,
     error: null,
   };
   test("says what happened", () => {
@@ -214,6 +220,31 @@ describe("wtfCompletedToast", () => {
       body: "Your previous settings were saved as a safety backup.",
     });
   });
+  test("a copy names the version the settings came from", () => {
+    expect(
+      wtfCompletedToast({
+        ...done,
+        kind: "copy",
+        snapshotFileName: "wtf_0.zip",
+        sourceName: "Forever Beta",
+      }),
+    ).toEqual({
+      title: "Settings copied from Forever Beta",
+      body: "Your previous settings were saved as a safety backup.",
+    });
+    expect(
+      wtfCompletedToast({
+        ...done,
+        kind: "copy",
+        sourceName: "Forever Beta",
+        error: { code: "game_running", message: "x" },
+      }),
+    ).toEqual({
+      title: "Couldn't copy settings",
+      body: "Close World of Warcraft first. It rewrites these files when you log out.",
+    });
+  });
+
   test("a failure gets plain text; a cancel gets nothing", () => {
     expect(
       wtfCompletedToast({
@@ -225,5 +256,172 @@ describe("wtfCompletedToast", () => {
     expect(
       wtfCompletedToast({ ...done, kind: "restore", error: { code: "cancelled", message: "x" } }),
     ).toBeNull();
+  });
+});
+
+describe("Settings copy text", () => {
+  const now = 1_700_000_000_000;
+  const backup = {
+    createdAt: now - 3 * 86_400_000,
+    flavor: "_classic_beta_",
+    hasConfig: true,
+    fromThisDevice: true,
+    keepConfigSuggested: false,
+  };
+
+  test("related version: Copy, the realms/addons line, Keep graphics on even for this device's backup", () => {
+    const d = restoreDialogText(backup, "Forever", "not_running", now, {
+      name: "Forever Beta",
+      related: true,
+    });
+    expect(d.title).toBe("Copy settings?");
+    expect(d.okText).toBe("Copy");
+    expect(d.paragraphs[0]).toContain("Forever Beta");
+    expect(d.paragraphs.join(" ")).toContain("safety backup");
+    expect(d.warning).toEqual({
+      text: "Characters on the old realms won't match, and addons you don't have here keep their settings unused.",
+      danger: false,
+    });
+    expect(d.config.defaultOn).toBe(true);
+  });
+
+  test("unrelated version: red warning and Copy anyway", () => {
+    const d = restoreDialogText(backup, "Classic Era", "not_running", now, {
+      name: "Retail",
+      related: false,
+    });
+    expect(d.okText).toBe("Copy anyway");
+    expect(d.warning?.danger).toBe(true);
+    expect(d.warning?.text).toContain("Retail");
+    expect(d.warning?.text).toContain("may not work");
+  });
+
+  test("a desktop WowUp backup from another version asks no version question", () => {
+    const d = restoreDialogText({ ...backup, flavor: null }, "Forever", "not_running", now, {
+      name: "Forever Beta",
+      related: true,
+    });
+    expect(d.acceptUnknownFlavor).toBe(false);
+    expect(d.paragraphs.join(" ")).not.toContain("doesn't say which WoW version");
+  });
+
+  test("a plain restore has no copy warning", () => {
+    expect(restoreDialogText(backup, "Forever", "not_running", now).warning).toBeNull();
+  });
+
+  test("a version that is no longer installed says so", () => {
+    expect(copySourceStatus({ installed: false })).toBe("Not installed · backups only");
+    expect(copySourceStatus({ installed: true })).toBeNull();
+    expect(copySourceOption({ displayName: "Anniversary", installed: false })).toBe(
+      "Anniversary (not installed)",
+    );
+    expect(copySourceOption({ displayName: "Forever Beta", installed: true })).toBe("Forever Beta");
+  });
+
+  test("the inline outcome names the source version", () => {
+    expect(
+      outcomeOf({
+        jobId: "j",
+        kind: "copy",
+        installationId: "i",
+        fileName: "wtf_1.zip",
+        snapshotFileName: "wtf_0.zip",
+        sourceName: "Forever Beta",
+        error: null,
+      }).text,
+    ).toBe(
+      "Settings copied from Forever Beta. Your previous settings were saved as a safety backup.",
+    );
+  });
+
+  test("progress says Copying", () => {
+    expect(
+      jobProgressText({
+        jobId: "j",
+        kind: "copy",
+        installationId: "i",
+        phase: "extract",
+        done: 1,
+        total: 2,
+      }),
+    ).toBe("Copying… 50%");
+  });
+});
+
+describe("Settings copy of current settings", () => {
+  const now = 1_700_000_000_000;
+  const beta = {
+    flavor: "_classic_beta_",
+    displayName: "Forever Beta",
+    installed: true,
+    current: { modifiedAt: now - 3_600_000, hasConfig: true },
+    backups: [],
+  };
+  const dialog = (gameRunning: "running" | "not_running" | "unknown") =>
+    restoreDialogText(currentSettingsBackup(beta), "Forever", gameRunning, now, {
+      name: "Forever Beta",
+      related: true,
+      current: true,
+    });
+
+  test("wording: the source's current settings, backed up into its own list first", () => {
+    const d = dialog("not_running");
+    expect(d.title).toBe("Copy settings?");
+    expect(d.okText).toBe("Copy");
+    expect(d.paragraphs[0]).toContain("with Forever Beta's current settings");
+    expect(d.paragraphs[0]).not.toContain("backup from");
+    expect(d.paragraphs.join(" ")).toContain("Forever Beta's settings are backed up first");
+    expect(d.origin).toEqual({ text: "From this device", good: true });
+    expect(d.config.defaultOn).toBe(true);
+    expect(d.sessionWarning).toBeNull();
+  });
+
+  test("the source's WoW running warns that this session's changes aren't included", () => {
+    expect(dialog("running").sessionWarning).toBe(
+      "WoW is running. It saves addon settings when you log out or reload, so a copy made now won't include this session's changes.",
+    );
+    expect(dialog("unknown").sessionWarning).toBeNull();
+  });
+
+  test("a backup copy never shows the session warning", () => {
+    const backup = { ...currentSettingsBackup(beta), createdAt: now - 86_400_000 };
+    const d = restoreDialogText(backup, "Forever", "running", now, {
+      name: "Forever Beta",
+      related: true,
+    });
+    expect(d.sessionWarning).toBeNull();
+  });
+
+  test("current settings without a Config.wtf: the toggle is off and disabled", () => {
+    const d = restoreDialogText(
+      currentSettingsBackup({ ...beta, current: { modifiedAt: now, hasConfig: false } }),
+      "Forever",
+      "not_running",
+      now,
+      { name: "Forever Beta", related: true, current: true },
+    );
+    expect(d.config).toMatchObject({ defaultOn: false, disabled: true });
+  });
+
+  test("Current settings is listed first, only for an installed version that has them", () => {
+    const backup = { ...currentSettingsBackup(beta), fileName: "wtf_1.zip" };
+    expect(copySourceRows({ ...beta, backups: [backup] })).toEqual([
+      { kind: "current" },
+      { kind: "backup", backup },
+    ]);
+    expect(copySourceRows({ ...beta, installed: false, current: null, backups: [backup] })).toEqual(
+      [{ kind: "backup", backup }],
+    );
+    expect(copySourceRows({ ...beta, current: null, backups: [backup] })).toEqual([
+      { kind: "backup", backup },
+    ]);
+  });
+
+  test("progress while the source is backed up", () => {
+    const job = { jobId: "j", kind: "copy" as const, installationId: "i", done: 1, total: 4 };
+    expect(jobProgressText({ ...job, phase: "scan" })).toBe("Looking at the settings to copy…");
+    expect(jobProgressText({ ...job, phase: "compress" })).toBe(
+      "Backing up the settings to copy… 25%",
+    );
   });
 });

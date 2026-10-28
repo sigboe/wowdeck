@@ -29,6 +29,7 @@ export type {
   SearchResultScreenshot,
   UpdateChannel,
   WtfBackupInfo,
+  WtfCopySource,
   WtfBackupKind,
   WtfJobKind,
   WtfJobSnapshot,

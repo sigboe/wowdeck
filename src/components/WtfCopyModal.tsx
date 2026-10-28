@@ -1,0 +1,203 @@
+import { ScrollBuffer } from "./ScrollBuffer";
+import { useState, useSyncExternalStore } from "react";
+import {
+  DialogBody,
+  DialogBodyText,
+  DialogControlsSection,
+  DialogControlsSectionHeader,
+  DialogHeader,
+  DropdownItem,
+  Field,
+  ModalRoot,
+  Spinner,
+  showModal,
+} from "@decky/ui";
+import { FaChevronRight } from "react-icons/fa";
+import { wowupModalStyleCss } from "../sharedStyles";
+import { STEAM } from "../steamTheme";
+import type { Installation, WtfBackupInfo, WtfCopySource } from "../types";
+import * as api from "../services/backend";
+import { useWtfCopySources } from "../useWtfCopySources";
+import { clearWtfOutcome, getWtfState, subscribeWtfState } from "../wtfBackupState";
+import { formatBytes, formatWhen } from "../wtfFormat";
+import {
+  copySourceOption,
+  copySourceRows,
+  copySourceStatus,
+  currentSettingsBackup,
+  friendlyWtfCallError,
+  restoreBlockedReason,
+} from "../wtfText";
+import { BackupRowDescription } from "./BackupRowDescription";
+import { confirmRestoreBackup } from "./confirmWtf";
+
+interface ModalProps {
+  installation: Installation;
+  /** Called once the copy job has started (Manage backups attaches to it). */
+  onStarted: () => void;
+  closeModal?: () => void;
+}
+
+/**
+ * Settings copy (GLOSSARY.md): one screen with a **Copy from** dropdown and,
+ * below it, what that version has: **Current settings** first (installed
+ * versions only), then its backups, newest first. Choosing a row opens the
+ * Restore dialog worded for a copy; once the job starts this modal closes and
+ * Manage backups shows its progress and Cancel, as for a restore. D-pad: the
+ * dropdown (A opens it) then every backup row; B closes.
+ */
+function WtfCopyModal({ installation, onStarted, closeModal }: ModalProps) {
+  const wtf = useSyncExternalStore(subscribeWtfState, getWtfState);
+  const { sources, dirAvailable, error, reload } = useWtfCopySources(
+    installation.id,
+    wtf.listVersion,
+  );
+  const [chosen, setChosen] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const anyJob = wtf.job !== null;
+  const now = Date.now();
+
+  const source: WtfCopySource | undefined =
+    sources?.find((s) => s.flavor === chosen) ?? sources?.find((s) => s.isDefault) ?? sources?.[0];
+
+  /** `backup` null: copy the source's current settings. */
+  const startCopy = (from: WtfCopySource, backup: WtfBackupInfo | null) => {
+    const shown = backup ?? currentSettingsBackup(from);
+    confirmRestoreBackup(
+      shown,
+      installation.displayName,
+      from.gameRunning,
+      async (options) => {
+        clearWtfOutcome();
+        setActionError(null);
+        try {
+          await api.rpc("wtf.copy", {
+            installationId: installation.id,
+            sourceFlavor: from.flavor,
+            ...(backup
+              ? { fileName: backup.fileName }
+              : { sourceInstallationId: from.installationId ?? undefined }),
+            keepCurrentConfig: options.keepCurrentConfig,
+          });
+          onStarted();
+          closeModal?.();
+        } catch (e) {
+          setActionError(friendlyWtfCallError(e));
+        }
+      },
+      {
+        blockedReason: restoreBlockedReason(shown, anyJob, from.gameRunning),
+        onDelete: null,
+        copyFrom: { name: from.displayName, related: from.related, current: backup === null },
+      },
+    );
+  };
+
+  return (
+    <ModalRoot onCancel={closeModal} closeModal={closeModal} bAllowFullSize>
+      <DialogHeader>Copy settings to {installation.displayName}</DialogHeader>
+      <DialogBody>
+        <style>{wowupModalStyleCss()}</style>
+        <ScrollBuffer>
+          <DialogBodyText>
+            Bring another WoW version&apos;s addon settings, keybinds, macros and UI layout into{" "}
+            {installation.displayName}. The other version&apos;s files are only read.
+          </DialogBodyText>
+          {source?.gameRunning === "running" && (
+            <DialogBodyText style={{ color: STEAM.warning }}>
+              WoW is running. Close it before copying.
+            </DialogBodyText>
+          )}
+          {actionError && (
+            <DialogBodyText style={{ color: STEAM.danger }}>{actionError}</DialogBodyText>
+          )}
+          {!sources && !error && <Spinner style={{ width: "1.2em" }} />}
+          {error && (
+            <Field
+              label="Retry"
+              description={<span style={{ color: STEAM.danger }}>{error}</span>}
+              focusable
+              onClick={() => void reload()}
+            />
+          )}
+          {!dirAvailable && (
+            <DialogBodyText style={{ color: STEAM.warning }}>
+              The backup folder isn&apos;t available. Is the SD card inserted?
+            </DialogBodyText>
+          )}
+          {sources && dirAvailable && sources.length === 0 && (
+            <DialogBodyText style={{ color: STEAM.textMuted }}>
+              No other WoW version has settings to copy.
+            </DialogBodyText>
+          )}
+
+          {source && (
+            <>
+              <DialogControlsSection>
+                <DropdownItem
+                  label="Copy from"
+                  description={copySourceStatus(source) ?? undefined}
+                  rgOptions={sources!.map((s) => ({ data: s.flavor, label: copySourceOption(s) }))}
+                  selectedOption={source.flavor}
+                  onChange={(option) => setChosen(option.data as string)}
+                />
+              </DialogControlsSection>
+              <DialogControlsSection>
+                <DialogControlsSectionHeader>
+                  {source.displayName} settings
+                </DialogControlsSectionHeader>
+                {copySourceRows(source).map((row) => {
+                  if (row.kind === "current") {
+                    const current = currentSettingsBackup(source);
+                    return (
+                      <Field
+                        key="current"
+                        focusable
+                        label="Current settings"
+                        onClick={() => startCopy(source, null)}
+                        onOKActionDescription={
+                          restoreBlockedReason(current, anyJob, source.gameRunning)
+                            ? "Details"
+                            : "Copy"
+                        }
+                        description={`What ${source.displayName} has now · changed ${formatWhen(current.createdAt, now)}`}
+                      >
+                        <FaChevronRight />
+                      </Field>
+                    );
+                  }
+                  const { backup } = row;
+                  return (
+                    <Field
+                      key={backup.fileName}
+                      focusable
+                      label={`${formatWhen(backup.createdAt, now)} · ${formatBytes(backup.sizeBytes)}`}
+                      onClick={() => startCopy(source, backup)}
+                      onOKActionDescription={
+                        restoreBlockedReason(backup, anyJob, source.gameRunning)
+                          ? "Details"
+                          : "Copy"
+                      }
+                      description={<BackupRowDescription backup={backup} />}
+                    >
+                      <FaChevronRight />
+                    </Field>
+                  );
+                })}
+              </DialogControlsSection>
+            </>
+          )}
+        </ScrollBuffer>
+      </DialogBody>
+    </ModalRoot>
+  );
+}
+
+export function openWtfCopyModal(installation: Installation, onStarted: () => void): void {
+  const close = () => modalResult.Close();
+  const modalResult = showModal(
+    <WtfCopyModal installation={installation} onStarted={onStarted} closeModal={close} />,
+    window,
+    { strTitle: "Copy settings", bHideMainWindowForPopouts: false },
+  );
+}

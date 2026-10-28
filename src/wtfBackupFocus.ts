@@ -1,7 +1,7 @@
 import type { WtfListResult } from "./types";
 
 /** Focus-memory keys of the Manage backups action rows. */
-export type BackupActionKey = "backUp" | "import";
+export type BackupActionKey = "backUp" | "import" | "copy";
 
 /** Which Manage backups actions are on (null list: still loading). */
 export function backupActions(list: WtfListResult | null, anyJob: boolean) {

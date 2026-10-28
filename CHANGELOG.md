@@ -12,6 +12,8 @@ What's new in each version of WoWDeck Addon Manager. The format follows
   features early, or switch back to Stable at any time.
 - Press Y on the update panel's Update button to read what's new in the version
   on offer.
+- Copy another WoW version's current settings or one of its backups in Manage
+  backups, such as your Forever Beta addon settings, keybinds and layout into Forever.
 
 ### Changed
 

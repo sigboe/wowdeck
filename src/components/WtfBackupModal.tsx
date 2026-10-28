@@ -16,15 +16,18 @@ import { FaChevronRight } from "react-icons/fa";
 import { wowupModalStyleCss } from "../sharedStyles";
 import { requestFocus } from "../focusMemory";
 import { STEAM, descriptionStyle } from "../steamTheme";
-import type { GameRunning, Installation, WtfBackupInfo } from "../types";
+import type { Installation, WtfBackupInfo } from "../types";
 import * as api from "../services/backend";
 import { useWtfList } from "../useWtfList";
 import { type BackupActionKey, backupActions, loadedBackupFocus } from "../wtfBackupFocus";
 import { bumpWtfList, clearWtfOutcome, getWtfState, subscribeWtfState } from "../wtfBackupState";
-import { backupKindLabel, backupOrigin, formatBytes, formatWhen } from "../wtfFormat";
-import { friendlyWtfCallError, jobProgressText } from "../wtfText";
+import { formatBytes, formatWhen } from "../wtfFormat";
+import { friendlyWtfCallError, jobProgressText, restoreBlockedReason } from "../wtfText";
+import { useWtfCopySources } from "../useWtfCopySources";
 import { confirmDeleteBackup, confirmRestoreBackup } from "./confirmWtf";
+import { BackupRowDescription } from "./BackupRowDescription";
 import { focusTarget } from "./FocusSlot";
+import { openWtfCopyModal } from "./WtfCopyModal";
 
 /** Focus-memory view of the modal's action rows. */
 const VIEW = "modal.wtfBackups";
@@ -46,6 +49,7 @@ interface ModalProps {
 function WtfBackupModal({ installation, closeModal }: ModalProps) {
   const wtf = useSyncExternalStore(subscribeWtfState, getWtfState);
   const { list, error, loading, reload } = useWtfList(installation.id, wtf.listVersion);
+  const { sources } = useWtfCopySources(installation.id, wtf.listVersion);
   const [actionError, setActionError] = useState<string | null>(null);
   const [busyFile, setBusyFile] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -233,6 +237,18 @@ function WtfBackupModal({ installation, closeModal }: ModalProps) {
               onClick={importFromFile}
               {...actionFocus("import")}
             />
+            {/* Hidden, never disabled, when no other version has anything to copy (#12's focus trap). */}
+            {list?.dirAvailable && sources && sources.length > 0 && (
+              <Field
+                label="Copy settings from another version…"
+                description="Bring over another WoW version's addon settings, keybinds and layout"
+                focusable
+                onClick={() => openWtfCopyModal(installation, () => void reload(true))}
+                {...actionFocus("copy")}
+              >
+                <FaChevronRight />
+              </Field>
+            )}
           </DialogControlsSection>
 
           <DialogControlsSection>
@@ -266,7 +282,6 @@ function WtfBackupModal({ installation, closeModal }: ModalProps) {
 
             {list?.dirAvailable &&
               list.backups.map((backup) => {
-                const origin = backupOrigin(backup);
                 const blockedReason = restoreBlockedReason(backup, anyJob, gameRunning);
                 const deleteOff = anyJob || busyFile === backup.fileName;
                 // One focus stop per backup (guide S14): A (or a tap) opens the
@@ -281,24 +296,7 @@ function WtfBackupModal({ installation, closeModal }: ModalProps) {
                     onOKActionDescription={blockedReason ? "Details" : "Restore"}
                     onSecondaryButton={deleteOff ? undefined : () => startDelete(backup)}
                     onSecondaryActionDescription={deleteOff ? undefined : "Delete"}
-                    description={
-                      <>
-                        <div style={{ color: backup.valid ? undefined : STEAM.danger }}>
-                          {backupKindLabel(backup)}
-                          {backup.valid && backup.fileCount !== null
-                            ? ` · ${backup.fileCount} files`
-                            : ""}
-                          {!backup.valid && backup.invalidReason
-                            ? ` · ${backup.invalidReason}`
-                            : ""}
-                        </div>
-                        {origin && (
-                          <div style={{ color: origin.good ? STEAM.positive : STEAM.danger }}>
-                            {origin.text}
-                          </div>
-                        )}
-                      </>
-                    }
+                    description={<BackupRowDescription backup={backup} />}
                   >
                     <FaChevronRight />
                   </Field>
@@ -309,24 +307,6 @@ function WtfBackupModal({ installation, closeModal }: ModalProps) {
       </DialogBody>
     </ModalRoot>
   );
-}
-
-/** Why a backup can't be restored now, shown in its Restore dialog (null: it can). */
-function restoreBlockedReason(
-  backup: WtfBackupInfo,
-  anyJob: boolean,
-  gameRunning: GameRunning,
-): string | null {
-  if (!backup.valid) {
-    return `This backup can't be restored${backup.invalidReason ? `: ${backup.invalidReason}` : "."}`;
-  }
-  if (anyJob) {
-    return "A backup or restore is running. Wait for it to finish.";
-  }
-  if (gameRunning === "running") {
-    return "Close World of Warcraft first.";
-  }
-  return null;
 }
 
 export function openWtfBackupModal(installation: Installation): void {

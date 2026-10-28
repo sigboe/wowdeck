@@ -363,7 +363,38 @@ export interface WtfBackupInfo {
   invalidReason: string | null;
 }
 
-export type WtfJobKind = "create" | "restore";
+/**
+ * Another WoW version a Settings copy can bring settings from (wtf.copySources).
+ * Ordered related first, then newest settings first.
+ */
+export interface WtfCopySource {
+  /** Flavor key (`_classic_beta_`, …), as recorded in its backups and named back to wtf.copy. */
+  flavor: string;
+  /** The client's display name (Forever Beta, Retail PTR …), never the folder name. */
+  displayName: string;
+  installed: boolean;
+  /** An installation of this version, when installed. */
+  installationId: string | null;
+  /** In the same version family as the target installation (the engine alone decides). */
+  related: boolean;
+  /** Whether WoW is running (the engine sees one state for every version). */
+  gameRunning: GameRunning;
+  /**
+   * This version's current settings (its WTF folder), copyable as "Current settings". Null when it isn't
+   * installed or has no WTF folder yet.
+   */
+  current: {
+    /** Last time the settings changed: Config.wtf's mtime (WoW rewrites it on every logout), else the folder's (ms). */
+    modifiedAt: number;
+    hasConfig: boolean;
+  } | null;
+  /** This version's backups, newest first, as in wtf.list. */
+  backups: WtfBackupInfo[];
+  /** The source the copy dialog opens on: the related version with the newest settings, else the newest of any kind. */
+  isDefault: boolean;
+}
+
+export type WtfJobKind = "create" | "restore" | "copy";
 export type WtfPhase = "scan" | "compress" | "snapshot" | "extract" | "verify" | "swap" | "cleanup";
 /** "unknown" = /proc couldn't be read; never treated as "not running". */
 export type GameRunning = "running" | "not_running" | "unknown";
@@ -845,6 +876,31 @@ export interface MethodMap {
     };
     result: { jobId: string };
   };
+  "wtf.copySources": {
+    /** Other versions with something to copy; empty when there is none (or the backup folder is unavailable). */
+    params: { installationId?: string };
+    result: { dirAvailable: boolean; sources: WtfCopySource[] };
+  };
+  "wtf.copy": {
+    /**
+     * Settings copy: restore another version's backup into this installation (a job, see wtf.restore,
+     * with the same safety backup, verification and swap). Plain wtf.restore keeps refusing other versions.
+     * Without `fileName` it copies the current settings of `sourceInstallationId`: one job first backs up
+     * that installation's WTF into its own list (kept, as the record of what was copied), then restores it.
+     */
+    params: {
+      installationId?: string;
+      /** Flavor key of the version the settings belong to (WtfCopySource.flavor). */
+      sourceFlavor: string;
+      /** A backup of that version; omit to copy its current settings. */
+      fileName?: string;
+      /** Current settings only: the source installation (WtfCopySource.installationId). */
+      sourceInstallationId?: string;
+      /** Keep this device's Config.wtf (graphics/display settings). Default true: another version's describes another client. */
+      keepCurrentConfig?: boolean;
+    };
+    result: { jobId: string };
+  };
   "wtf.delete": {
     params: { installationId?: string; fileName: string };
     result: { fileName: string };
@@ -1112,10 +1168,12 @@ export interface EventMap {
     jobId: string;
     kind: WtfJobKind;
     installationId: string;
-    /** create: the new backup; restore: the backup that was restored. */
+    /** create: the new backup; restore/copy: the backup that was restored (for current settings, the source's new backup). */
     fileName: string | null;
-    /** restore only: the automatic safety backup of the settings that were replaced. */
+    /** restore/copy: the automatic safety backup of the settings that were replaced. */
     snapshotFileName: string | null;
+    /** copy only: the display name of the version the settings came from. */
+    sourceName: string | null;
     error: { code: string; message: string } | null;
   };
 }

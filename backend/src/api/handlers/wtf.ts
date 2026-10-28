@@ -1,9 +1,10 @@
 /** RPC handlers: WTF backup and restore (docs/wtf-backup.md): create/restore run as jobs reporting through wtf.progress / wtf.completed. */
 
 import type { JsonlServer } from "../../bridge/jsonl";
+import { WtfBackupError } from "../../wow/wtf/errors";
 import type { HandlerDeps } from "./deps";
 
-export function register(server: JsonlServer, { wtfService, wtfJobs, wtfJobTarget }: HandlerDeps): void {
+export function register(server: JsonlServer, { wtfService, wtfJobs, wtfJobTarget, installationService }: HandlerDeps): void {
   server.on("wtf.list", async (params) => {
     const target = wtfJobTarget(params.installationId);
     const [listed, measured, gameRunning] = await Promise.all([
@@ -34,6 +35,26 @@ export function register(server: JsonlServer, { wtfService, wtfJobs, wtfJobTarge
       keepCurrentConfig: params.keepCurrentConfig === true,
     }),
   );
+
+  server.on("wtf.copySources", async (params) => {
+    const target = wtfJobTarget(params.installationId);
+    const installed = installationService.list().map((i) => wtfJobTarget(i.id));
+    return wtfService.listCopySources(target, installed);
+  });
+
+  server.on("wtf.copy", async (params) => {
+    const target = wtfJobTarget(params.installationId);
+    const options = { keepCurrentConfig: params.keepCurrentConfig !== false };
+    if (params.fileName !== undefined) {
+      return wtfJobs.startCopy(target, params.sourceFlavor, params.fileName, options);
+    }
+    // Current settings: the named installation must be the named version.
+    const source = params.sourceInstallationId === undefined ? null : wtfJobTarget(params.sourceInstallationId);
+    if (!source || source.flavor !== params.sourceFlavor) {
+      throw new WtfBackupError("not_found", "That WoW version isn't installed any more.");
+    }
+    return wtfJobs.startCopyCurrent(target, source, options);
+  });
 
   server.on("wtf.delete", async (params) => {
     // Refused while a job runs: the service takes the job lock.
