@@ -196,6 +196,7 @@ describe("PluginUpdateCheck", () => {
         installable: true,
       },
       checked: true,
+      failed: false,
       toastPending: true,
     });
   });
@@ -579,6 +580,7 @@ describe("the once-a-day cap", () => {
         installable: true,
       },
       checked: false,
+      failed: false,
       toastPending: true,
     });
     expect(calls()).toBe(0);
@@ -599,6 +601,7 @@ describe("the once-a-day cap", () => {
       currentVersion: "0.2.0",
       offer: null,
       checked: false,
+      failed: false,
       toastPending: false,
     });
     expect(calls()).toBe(0);
@@ -1032,6 +1035,71 @@ describe("forStaging({ refresh: true }): the stored zip answered 404", () => {
     unblock();
     expect((await first).offer?.version).toBe("0.2.0");
     expect((await forced).downloadUrl).toBe(ZIP_B);
+    expect(h.calls()).toBe(2);
+  });
+});
+
+describe("check({ force: true }): Check again", () => {
+  const FORCE = { force: true };
+
+  test("inside the daily interval: asks at once and answers fresh", async () => {
+    const h = makeCheck({ respond: () => withZip("v0.2.1"), stored: stampOf() });
+    const res = await h.check.check(FORCE);
+    expect(res).toMatchObject({ status: "available", offer: { version: "0.2.1" }, checked: true, failed: false });
+    expect(h.calls()).toBe(1);
+  });
+
+  test("a success stores the answer at now and restarts the daily cadence", async () => {
+    const h = makeCheck({ respond: () => withZip("v0.2.1"), stored: stampOf() });
+    await h.check.check(FORCE);
+    expect(h.stamp()).toMatchObject({ latestVersion: "0.2.1", checkedAt: NOW });
+    // The next automatic check serves that answer without a request.
+    expect((await h.check.check()).checked).toBe(false);
+    expect(h.calls()).toBe(1);
+  });
+
+  test("inside a failure backoff: asks at once, and a success clears the backoff", async () => {
+    let n = 0;
+    const h = makeCheck({ respond: () => (++n === 1 ? new NetworkError("request to … failed: timeout") : withZip("v0.2.1")) });
+    await h.check.check(); // failure #1: an hour's backoff
+    h.restart({ now: NOW + 60 * 1000 });
+    expect((await h.check.check()).checked).toBe(false); // the backoff holds an automatic check
+
+    const res = await h.check.check(FORCE);
+    expect(res).toMatchObject({ offer: { version: "0.2.1" }, checked: true });
+    expect(h.calls()).toBe(2);
+    expect(h.backoff()).toBeNull();
+  });
+
+  test("a failure counts toward the backoff and serves the stored answer", async () => {
+    const h = makeCheck({ respond: () => new NetworkError("request to … failed: timeout"), stored: stampOf() });
+    await h.check.check(FORCE);
+    expect(h.backoff()).toEqual({ failedAt: NOW, failures: 1 });
+    const res = await h.check.check(FORCE);
+    // The stored answer serves, flagged so Check again can say it failed.
+    expect(res).toMatchObject({ offer: { version: "0.2.0" }, checked: true, failed: true });
+    expect(h.backoff()).toEqual({ failedAt: NOW, failures: 2 });
+    expect(h.calls()).toBe(2);
+  });
+
+  test("never spends the toast unless asked to notify", async () => {
+    const h = makeCheck({ respond: () => withZip("v0.2.1") });
+    expect((await h.check.check(FORCE)).toastPending).toBe(false);
+    expect(h.toastShown()).toBeNull();
+  });
+
+  test("is not merged into a check already in flight", async () => {
+    let unblock: () => void = () => {};
+    const held = new Promise<void>((resolve) => {
+      unblock = resolve;
+    });
+    let n = 0;
+    const h = makeCheck({ respond: () => (++n === 1 ? held.then(() => withZip("v0.2.0")) : withZip("v0.2.1")) });
+    const first = h.check.check();
+    const forced = h.check.check(FORCE);
+    unblock();
+    expect((await first).offer?.version).toBe("0.2.0");
+    expect((await forced).offer?.version).toBe("0.2.1");
     expect(h.calls()).toBe(2);
   });
 });

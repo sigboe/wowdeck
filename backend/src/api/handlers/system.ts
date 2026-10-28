@@ -12,7 +12,9 @@ export function register(server: JsonlServer, { store, registry, service, instal
     pid: process.pid,
   }));
 
-  server.on("system.updateCheck", async (params) => pluginUpdate.check({ notify: params.notify === true }));
+  server.on("system.updateCheck", async (params) =>
+    pluginUpdate.check({ notify: params.notify === true, force: params.force === true }),
+  );
 
   server.on("system.getUpdateChannel", async () => ({ channel: pluginUpdate.channel() }));
 

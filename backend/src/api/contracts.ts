@@ -451,6 +451,13 @@ export interface MethodMap {
        * and staging leave it unset; they show the update panel instead.
        */
       notify?: boolean;
+      /**
+       * Check again (GLOSSARY): ask GitHub at once, past the daily interval
+       * and any failure backoff. Its answer is stored and clears the
+       * backoff like any success, so the daily cadence restarts; a failure
+       * counts toward the backoff like any other.
+       */
+      force?: boolean;
     };
     result: {
       status: "current" | "available" | "unknown";
@@ -468,6 +475,12 @@ export interface MethodMap {
        * observable over the RPC.
        */
       checked: boolean;
+      /**
+       * True when this call's network attempt failed, so the answer is the
+       * stored one (or "unknown"): Check again says "Couldn't check for
+       * updates" instead of reporting a stale answer as fresh.
+       */
+      failed: boolean;
       /**
        * Whether the update toast should fire now: computed engine-side,
        * true only for a `notify` call's first answer whose `offer` is
