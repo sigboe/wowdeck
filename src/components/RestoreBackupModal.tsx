@@ -17,7 +17,7 @@ import {
 import { STEAM } from "../steamTheme";
 import { wowupModalStyleCss } from "../sharedStyles";
 import type { GameRunning, WtfBackupInfo } from "../types";
-import { keepCurrentConfigFor, restoreDialogText } from "../wtfText";
+import { type CopyFrom, keepCurrentConfigFor, restoreDialogText } from "../wtfText";
 
 export interface RestoreChoice {
   acceptUnknownFlavor: boolean;
@@ -29,6 +29,8 @@ export interface RestoreDialogExtras {
   blockedReason: string | null;
   /** Delete the backup (asks for confirmation). For touch and mouse; X does it in the list. */
   onDelete: (() => void) | null;
+  /** Settings copy: the version the backup belongs to (adds the copy wording and warning). */
+  copyFrom?: CopyFrom;
 }
 
 interface Props extends RestoreDialogExtras {
@@ -45,7 +47,8 @@ interface Props extends RestoreDialogExtras {
  * overrides, so spacing, type and focus colours are Steam's. It is not
  * ConfirmModal because it carries the per-restore choice "keep this device's
  * graphics & display settings" (Config.wtf): off for this device's own backups,
- * on for one from another computer or WowUp, disabled for one without it. A green/red line says whether the
+ * on for one from another computer or WowUp or for a Settings copy, disabled for one without it. A copy
+ * adds its warning line (red for an unrelated version). A green/red line says whether the
  * backup is from this device or another computer. Footer order follows Steam's
  * own dialogs: the action first, Cancel second, two equal columns. Focus starts
  * on the toggle (the first control), so a stray A press changes nothing; B
@@ -59,8 +62,9 @@ function RestoreBackupModal({
   closeModal,
   blockedReason,
   onDelete,
+  copyFrom,
 }: Props) {
-  const text = restoreDialogText(backup, installationName, gameRunning, Date.now());
+  const text = restoreDialogText(backup, installationName, gameRunning, Date.now(), copyFrom);
   const [keepConfig, setKeepConfig] = useState(text.config.defaultOn);
 
   return (
@@ -77,6 +81,13 @@ function RestoreBackupModal({
           {text.paragraphs.map((p) => (
             <DialogBodyText key={p}>{p}</DialogBodyText>
           ))}
+          {text.warning && (
+            <DialogBodyText
+              style={text.warning.danger ? { color: STEAM.danger, fontWeight: "bold" } : undefined}
+            >
+              {text.warning.text}
+            </DialogBodyText>
+          )}
           {blockedReason && (
             <DialogBodyText style={{ color: STEAM.warning }}>{blockedReason}</DialogBodyText>
           )}
@@ -142,8 +153,12 @@ export function openRestoreBackupModal(
       closeModal={close}
       blockedReason={extras.blockedReason}
       onDelete={extras.onDelete}
+      copyFrom={extras.copyFrom}
     />,
     window,
-    { strTitle: "Restore backup", bHideMainWindowForPopouts: false },
+    {
+      strTitle: extras.copyFrom ? "Copy settings" : "Restore backup",
+      bHideMainWindowForPopouts: false,
+    },
   );
 }

@@ -363,7 +363,36 @@ export interface WtfBackupInfo {
   invalidReason: string | null;
 }
 
-export type WtfJobKind = "create" | "restore";
+/**
+ * Another WoW version a Settings copy can bring settings from (wtf.copySources).
+ * Ordered related first, then newest settings first.
+ */
+export interface WtfCopySource {
+  /** Flavor key (`_classic_beta_`, …), as recorded in its backups and named back to wtf.copy. */
+  flavor: string;
+  /** The client's display name (Forever Beta, Retail PTR …), never the folder name. A version this build can't name isn't listed. */
+  displayName: string;
+  installed: boolean;
+  /** An installation of this version, when installed. */
+  installationId: string | null;
+  /** In the same version family as the target installation (the engine alone decides). */
+  related: boolean;
+  /**
+   * This version's current settings (its WTF folder), copyable as "Current settings". Null when it isn't
+   * installed or has no WTF folder yet.
+   */
+  current: {
+    /** Last time the settings changed: Config.wtf's mtime (WoW rewrites it on every logout), else the folder's (ms). */
+    modifiedAt: number;
+    hasConfig: boolean;
+  } | null;
+  /** This version's backups, newest first, as in wtf.list. */
+  backups: WtfBackupInfo[];
+  /** The source the copy dialog opens on: the related version with the newest settings, else the newest of any kind. */
+  isDefault: boolean;
+}
+
+export type WtfJobKind = "create" | "restore" | "copy";
 export type WtfPhase = "scan" | "compress" | "snapshot" | "extract" | "verify" | "swap" | "cleanup";
 /** "unknown" = /proc couldn't be read; never treated as "not running". */
 export type GameRunning = "running" | "not_running" | "unknown";
@@ -845,14 +874,64 @@ export interface MethodMap {
     };
     result: { jobId: string };
   };
+  "wtf.copySources": {
+    /** Other versions with something to copy; empty when there is none (or the backup folder is unavailable). */
+    params: { installationId?: string };
+    result: {
+      dirAvailable: boolean;
+      /**
+       * Whether WoW is running. One state for every version: the process scan can't tell installations
+       * apart, so WoW running blocks every copy, whichever version it is.
+       */
+      gameRunning: GameRunning;
+      sources: WtfCopySource[];
+    };
+  };
+  "wtf.copy": {
+    /**
+     * Settings copy: restore another version's backup into this installation (a job, see wtf.restore,
+     * with the same safety backup, verification and swap). Plain wtf.restore keeps refusing other versions.
+     * With `sourceInstallationId` instead it copies that installation's current settings: one job first backs
+     * up its WTF into its own list (kept, as the record of what was copied), then restores it.
+     * Refused with game_running while WoW runs at all, the source's WoW included.
+     */
+    params: {
+      installationId?: string;
+      /** Flavor key of the version the settings belong to (WtfCopySource.flavor). */
+      sourceFlavor: string;
+      /** Keep this device's Config.wtf (graphics/display settings). Default true: another version's describes another client. */
+      keepCurrentConfig?: boolean;
+    } & (
+      | {
+          /** A backup of that version. */
+          fileName: string;
+          /** Required to copy a backup that doesn't record its game version (desktop WowUp), as for wtf.restore. */
+          acceptUnknownFlavor?: boolean;
+        }
+      | {
+          /** Copy the current settings of this installation of that version (WtfCopySource.installationId). */
+          sourceInstallationId: string;
+        }
+    );
+    result: { jobId: string };
+  };
   "wtf.delete": {
     params: { installationId?: string; fileName: string };
     result: { fileName: string };
   };
   "wtf.import": {
-    /** Add a backup zip from anywhere (copied into this flavor's backup folder after validation). */
+    /**
+     * Add a backup zip from anywhere (copied into a backup folder after validation). A zip that records
+     * another flavor goes into that flavor's folder, never this one's: it is then a Settings copy source.
+     * Zips that record no flavor (desktop WowUp) go into this flavor's folder.
+     */
     params: { installationId?: string; path: string };
-    result: { fileName: string; alreadyPresent: boolean };
+    result: {
+      fileName: string;
+      alreadyPresent: boolean;
+      /** The other version the zip was filed under; null when it went into this installation's list. */
+      otherVersion: { flavor: string; displayName: string } | null;
+    };
   };
   "wtf.cancel": {
     /** Create can be cancelled any time; a restore only until it starts swapping folders (`too_late_to_cancel`). */
@@ -1112,10 +1191,12 @@ export interface EventMap {
     jobId: string;
     kind: WtfJobKind;
     installationId: string;
-    /** create: the new backup; restore: the backup that was restored. */
+    /** create: the new backup; restore/copy: the backup that was restored (for current settings, the source's new backup). */
     fileName: string | null;
-    /** restore only: the automatic safety backup of the settings that were replaced. */
+    /** restore/copy: the automatic safety backup of the settings that were replaced. */
     snapshotFileName: string | null;
+    /** copy only: the display name of the version the settings came from. */
+    sourceName: string | null;
     error: { code: string; message: string } | null;
   };
 }

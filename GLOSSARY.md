@@ -165,3 +165,8 @@ _Avoid_: Forever Live, WoW Forever (in the UI)
 The World of Warcraft: Forever beta client, installed in `_classic_beta_`.
 Called plain "Forever" before Forever launched (until 2026-10).
 _Avoid_: Forever (beta), Classic Beta
+
+**Settings copy**:
+Restoring one WoW version's WTF (its current settings or one of its backups)
+into another version's installation. The source is only read; nothing moves.
+_Avoid_: migrate, transfer, cross-flavor restore

@@ -27,6 +27,7 @@ const completed = (over: Partial<WtfCompleted> = {}): WtfCompleted => ({
   installationId: "i1",
   fileName: "wtf_1.zip",
   snapshotFileName: null,
+  sourceName: null,
   error: null,
   ...over,
 });

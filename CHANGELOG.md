@@ -12,6 +12,8 @@ What's new in each version of WoWDeck Addon Manager. The format follows
   features early, or switch back to Stable at any time.
 - Press Y on the update panel's Update button to read what's new in the version
   on offer.
+- Copy addon settings, keybinds and layout from another WoW version, such as
+  Forever Beta into Forever.
 
 ### Changed
 
@@ -28,6 +30,8 @@ What's new in each version of WoWDeck Addon Manager. The format follows
 
 - On Beta, Update no longer fails after a newer beta replaces the one on offer. It
   installs the newer beta instead.
+- With no backups yet, Manage backups now starts on Back up now, or on Import
+  from file… when there's no WTF folder to back up.
 - Update all no longer reports failures for addons from a source you turned off.
 - Updating, ignoring or removing an addon changes its row once, without the list
   flickering or briefly showing the old version.

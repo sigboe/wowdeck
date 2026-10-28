@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { randomBytes } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { rename as fsRename } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -88,6 +88,47 @@ describe("WtfJobRunner", () => {
     expect(result).toMatchObject({ kind: "restore", fileName: b.fileName, error: null });
     expect(result.snapshotFileName).toMatch(/^wtf_\d+\.zip$/);
     expect(completed).toHaveLength(1);
+  });
+
+  test("a copy completes as kind copy, naming the version the settings came from", async () => {
+    write("Config.wtf", "retail");
+    const { service, runner, done } = setup();
+    const ptrWtf = join(tmp, "game", "_ptr_", "WTF");
+    mkdirSync(ptrWtf, { recursive: true });
+    writeFileSync(join(ptrWtf, "Config.wtf"), "ptr");
+    const b = await service.createBackup({ wtfPath: ptrWtf, flavor: "_ptr_" }, { kind: "manual" });
+    const { jobId } = runner.startCopy(target, "_ptr_", b.fileName, { keepCurrentConfig: false });
+    expect(runner.current()).toMatchObject({ jobId, kind: "copy" });
+    const result = await done();
+    expect(result).toMatchObject({ kind: "copy", fileName: b.fileName, sourceName: "Retail PTR", error: null });
+    expect(result.snapshotFileName).toMatch(/^wtf_\d+\.zip$/);
+  });
+
+  test("a copy of a desktop WowUp backup fails with the unknown-version confirm unless it is accepted", async () => {
+    write("Config.wtf", "retail");
+    const { runner, done, completed } = setup();
+    mkdirSync(join(backupRoot, "_ptr_"), { recursive: true });
+    copyFileSync(join(import.meta.dir, "fixtures/wtf/upstream-wowup-backup.zip"), join(backupRoot, "_ptr_", "wtf_1.zip"));
+    runner.startCopy(target, "_ptr_", "wtf_1.zip", {});
+    expect((await done()).error?.code).toBe("flavor_unknown_needs_confirm");
+    completed.length = 0;
+    runner.startCopy(target, "_ptr_", "wtf_1.zip", { acceptUnknownFlavor: true });
+    expect(await done()).toMatchObject({ kind: "copy", fileName: "wtf_1.zip", error: null });
+  });
+
+  test("a copy of current settings completes as one copy job: source backed up, then restored here", async () => {
+    write("Config.wtf", "retail");
+    const { service, runner, done, progress } = setup();
+    const ptr = { wtfPath: join(tmp, "game", "_ptr_", "WTF"), flavor: "_ptr_" };
+    mkdirSync(ptr.wtfPath, { recursive: true });
+    writeFileSync(join(ptr.wtfPath, "Config.wtf"), "ptr");
+    const { jobId } = runner.startCopyCurrent(target, ptr, { keepCurrentConfig: false });
+    expect(runner.current()).toMatchObject({ jobId, kind: "copy" });
+    const result = await done();
+    const { backups } = await service.listBackups(ptr);
+    expect(result).toMatchObject({ kind: "copy", fileName: backups[0]!.fileName, sourceName: "Retail PTR", error: null });
+    expect(result.snapshotFileName).toMatch(/^wtf_\d+\.zip$/);
+    expect(progress.map((p) => p.job.phase)).toEqual(expect.arrayContaining(["compress", "snapshot", "swap"]));
   });
 
   test("only one job at a time", async () => {

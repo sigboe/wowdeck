@@ -13,7 +13,7 @@
 
 import { copyFile, rename as fsRename, stat, statfs, unlink } from "node:fs/promises";
 import { dirname, isAbsolute, join, resolve } from "node:path";
-import type { GameRunning, WtfBackupInfo, WtfPhase } from "../../api/contracts";
+import type { GameRunning, MethodMap, WtfBackupInfo, WtfCopySource, WtfPhase } from "../../api/contracts";
 import { createDirectory, isDirectory, listDirectory, pathExists, removeDirectory } from "../fs/safe-fs";
 import { kindOf, parseBackupMeta, type BackupKind, type BackupMeta, type BackupMetaEntry } from "./BackupMeta";
 import { WtfBackupError } from "./errors";
@@ -23,6 +23,7 @@ import { extractBackupZip } from "./ZipExtractor";
 import { detectGameRunning } from "./GameProcessGuard";
 import { throwIfAborted, writeBackupZip } from "./ZipWriter";
 import { walkWtf } from "./WtfWalker";
+import { areRelated, flavorDisplayName } from "./VersionFamilies";
 
 export interface WtfTarget {
   /** Absolute path of the WTF folder. */
@@ -45,7 +46,10 @@ export interface WtfServiceOptions {
   deviceId?: () => string;
   /** Free bytes on the volume holding `path`, or null when unknown. Injectable for tests. */
   freeBytes?: (path: string) => Promise<number | null>;
-  /** Whether WoW is running. Defaults to a /proc scan. */
+  /**
+   * Whether WoW is running. Defaults to a /proc scan, which sees one state for every version: it can't
+   * tell installations apart, so WoW running anywhere blocks every restore and copy.
+   */
   gameStatus?: () => Promise<GameRunning>;
   /** How many "pre-restore" safety snapshots to keep per flavor (default 3). */
   keepSnapshots?: () => number;
@@ -63,8 +67,13 @@ export interface CreateOptions {
 export interface RestoreOptions {
   /** Required to restore a backup that doesn't record its game flavor (made by desktop WowUp). */
   acceptUnknownFlavor?: boolean;
-  /** Keep this device's current Config.wtf (graphics/display settings) instead of the backup's. */
+  /** Keep this device's current Config.wtf (graphics/display settings) instead of the backup's. Default: on for a copy, off otherwise. */
   keepCurrentConfig?: boolean;
+  /**
+   * Settings copy: restore a backup of this other version (flavor key) instead of one of the target's
+   * own. The backup is read from that version's folder and must record that version (or none).
+   */
+  sourceFlavor?: string;
   signal?: AbortSignal;
   onProgress?: (phase: WtfPhase, done: number, total: number | null) => void;
 }
@@ -81,6 +90,28 @@ export interface ListResult {
   backups: WtfBackupInfo[];
   totalBackupBytes: number;
 }
+
+export type ImportResult = MethodMap["wtf.import"]["result"];
+
+/** A flavor key as backup folders use it (see flavorBackupDir). */
+const FLAVOR_KEY_RE = /^[a-z0-9_]+$/;
+
+/** An installed WoW version, as Settings copy sees it. */
+export interface InstalledFlavor {
+  installationId: string;
+  flavor: string;
+  /** Its WTF folder (its current settings, when present). */
+  wtfPath: string;
+}
+
+export interface CopyCurrentOptions {
+  /** As RestoreOptions.keepCurrentConfig (default on for a copy). */
+  keepCurrentConfig?: boolean;
+  signal?: AbortSignal;
+  onProgress?: (phase: WtfPhase, done: number, total: number | null) => void;
+}
+
+export type CopySourcesResult = MethodMap["wtf.copySources"]["result"];
 
 export interface MeasureResult {
   exists: boolean;
@@ -114,6 +145,33 @@ async function defaultFreeBytes(path: string): Promise<number | null> {
   } catch {
     return null;
   }
+}
+
+/** Of several installations of one version, the one whose current settings changed last (null: none has any). */
+async function newestInstallation(
+  installations: InstalledFlavor[],
+): Promise<{ installation: InstalledFlavor | null; current: WtfCopySource["current"] }> {
+  let best: { installation: InstalledFlavor | null; current: WtfCopySource["current"] } = {
+    installation: installations[0] ?? null,
+    current: null,
+  };
+  for (const installation of installations) {
+    const current = await currentSettings(installation.wtfPath);
+    if (current && (!best.current || current.modifiedAt > best.current.modifiedAt)) {
+      best = { installation, current };
+    }
+  }
+  return best;
+}
+
+/** A WTF folder's current settings for Settings copy, or null when there is no folder. */
+async function currentSettings(wtfPath: string): Promise<WtfCopySource["current"]> {
+  if (!(await isDirectory(wtfPath))) {
+    return null;
+  }
+  const config = await stat(join(wtfPath, CONFIG_FILE)).catch(() => null);
+  const modified = config?.isFile() ? config : await stat(wtfPath);
+  return { modifiedAt: Math.floor(modified.mtimeMs), hasConfig: config?.isFile() ?? false };
 }
 
 export class WtfBackupService {
@@ -158,6 +216,11 @@ export class WtfBackupService {
 
   async gameStatus(): Promise<GameRunning> {
     return (this.#opts.gameStatus ?? detectGameRunning)();
+  }
+
+  /** A custom backup folder (SD card) that isn't there; the default one is created on demand. */
+  async #rootUnavailable(root: { path: string; custom: boolean }): Promise<boolean> {
+    return root.custom && !(await isDirectory(root.path));
   }
 
   #freeBytes(path: string): Promise<number | null> {
@@ -264,9 +327,14 @@ export class WtfBackupService {
   }
 
   async listBackups(target: WtfTarget): Promise<ListResult> {
+    return this.#listFlavor(target.flavor);
+  }
+
+  /** One flavor's backups, newest first (they are keyed by flavor, not by WTF folder). */
+  async #listFlavor(flavor: string): Promise<ListResult> {
     const root = this.#opts.backupRoot();
-    const backupDir = flavorBackupDir(root.path, target.flavor);
-    if (root.custom && !(await isDirectory(root.path))) {
+    const backupDir = flavorBackupDir(root.path, flavor);
+    if (await this.#rootUnavailable(root)) {
       return { backupDir, dirAvailable: false, backups: [], totalBackupBytes: 0 };
     }
     const names = (await listDirectory(backupDir))
@@ -284,6 +352,53 @@ export class WtfBackupService {
       backups: infos,
       totalBackupBytes: infos.reduce((sum, b) => sum + b.sizeBytes, 0),
     };
+  }
+
+  /**
+   * Other versions a Settings copy can bring settings from: every flavor other than the target's that
+   * has a valid backup, installed (from `installed`) or backups only. Related first, then newest first;
+   * the first one is the default. A version this build can't name is left out (players never see a
+   * folder name). With several installations of one version, its Current settings are those changed
+   * most recently. WoW running is one state for the whole list (see wtf.copySources).
+   */
+  async listCopySources(target: WtfTarget, installed: InstalledFlavor[]): Promise<CopySourcesResult> {
+    const root = this.#opts.backupRoot();
+    const gameRunning = await this.gameStatus();
+    if (await this.#rootUnavailable(root)) {
+      return { dirAvailable: false, gameRunning, sources: [] };
+    }
+    const folders = (await listDirectory(root.path))
+      .filter((e) => e.isDirectory && !e.isSymlink && FLAVOR_KEY_RE.test(e.name))
+      .map((e) => e.name);
+    const flavors = [...new Set([...folders, ...installed.map((i) => i.flavor)])].filter((f) => f !== target.flavor);
+    const sources: WtfCopySource[] = [];
+    for (const flavor of flavors) {
+      const displayName = flavorDisplayName(flavor);
+      if (displayName === null) {
+        continue;
+      }
+      const { backups } = await this.#listFlavor(flavor);
+      const { installation, current } = await newestInstallation(installed.filter((i) => i.flavor === flavor));
+      if (!current && !backups.some((b) => b.valid)) {
+        continue;
+      }
+      sources.push({
+        flavor,
+        displayName,
+        installed: installation !== null,
+        installationId: installation?.installationId ?? null,
+        related: areRelated(flavor, target.flavor),
+        current,
+        backups,
+        isDefault: false,
+      });
+    }
+    const newest = (s: WtfCopySource) => Math.max(s.current?.modifiedAt ?? 0, s.backups.find((b) => b.valid)?.createdAt ?? 0);
+    sources.sort((a, b) => Number(b.related) - Number(a.related) || newest(b) - newest(a));
+    if (sources[0]) {
+      sources[0].isDefault = true;
+    }
+    return { dirAvailable: true, gameRunning, sources };
   }
 
   /** Delete one backup; refused while a backup or restore runs (the same lock as jobs). */
@@ -320,10 +435,12 @@ export class WtfBackupService {
     const { onProgress, signal } = options;
     assertBareZipName(fileName);
     const root = this.#opts.backupRoot();
-    if (root.custom && !(await isDirectory(root.path))) {
+    if (await this.#rootUnavailable(root)) {
       throw new WtfBackupError("backup_dir_unavailable", "The backup folder isn't available. Is the SD card inserted?");
     }
-    const zipPath = join(flavorBackupDir(root.path, target.flavor), fileName);
+    const sourceFlavor = options.sourceFlavor ?? target.flavor;
+    const copying = sourceFlavor !== target.flavor;
+    const zipPath = join(flavorBackupDir(root.path, sourceFlavor), fileName);
     if (!(await pathExists(zipPath))) {
       throw new WtfBackupError("not_found", "That backup no longer exists.");
     }
@@ -344,7 +461,7 @@ export class WtfBackupService {
           "This backup doesn't say which WoW version it is for. Confirm it is for this one to continue.",
         );
       }
-    } else if (recorded !== target.flavor) {
+    } else if (recorded !== sourceFlavor) {
       throw new WtfBackupError("flavor_mismatch", "This backup was made for a different WoW version.");
     }
 
@@ -400,7 +517,8 @@ export class WtfBackupService {
       // "Keep this device's graphics/display settings": the current Config.wtf replaces the backup's.
       // With no current Config.wtf there is nothing to keep, so the backup's own is restored rather
       // than leaving the device without one; a backup without a Config.wtf just keeps the current one.
-      if (options.keepCurrentConfig) {
+      // Another version's Config.wtf never describes this installation's client, so a copy keeps this one unless told not to.
+      if (options.keepCurrentConfig ?? copying) {
         const current = join(target.wtfPath, CONFIG_FILE);
         if (hadWtf && (await pathExists(current))) {
           await copyFile(current, join(stageDir, CONFIG_FILE));
@@ -430,6 +548,49 @@ export class WtfBackupService {
     onProgress?.("cleanup", 0, null);
     await removeDirectory(oldDir).catch(() => {});
     return { restoredFileName: fileName, snapshotFileName };
+  }
+
+  /**
+   * Settings copy of another installation's current settings, as one operation: back up `source`'s WTF
+   * as a manual backup in its own list (kept afterwards, the record of what was copied), then restore that
+   * backup into `target` exactly as a backup copy does. The source's WTF is only read. WoW running blocks
+   * before anything is written, whichever version it is: the process scan can't tell installations apart.
+   * If the copy doesn't happen (cancel, failure), the source backup is removed again, so both sides are
+   * as they were.
+   */
+  async copyCurrentSettings(target: WtfTarget, source: WtfTarget, options: CopyCurrentOptions = {}): Promise<RestoreResult> {
+    return this.#exclusive(async () => {
+      const { signal, onProgress } = options;
+      if (source.flavor === target.flavor) {
+        throw new WtfBackupError("flavor_mismatch", "Choose another WoW version to copy from.");
+      }
+      if (!(await isDirectory(source.wtfPath))) {
+        throw new WtfBackupError("wtf_missing", "That version has no settings to copy yet.");
+      }
+      if (!(await isDirectory(dirname(target.wtfPath)))) {
+        throw new WtfBackupError("wtf_missing", "The WoW folder for this installation wasn't found.");
+      }
+      if ((await this.gameStatus()) === "running") {
+        throw new WtfBackupError("game_running", "Close World of Warcraft first. It rewrites these files when you log out.");
+      }
+      // Reported as scan/compress; the target's own safety backup that follows is "snapshot".
+      const backup = await this.#createUnlocked(source, { kind: "manual", signal, onProgress });
+      try {
+        return await this.#restoreUnlocked(target, backup.fileName, {
+          sourceFlavor: source.flavor,
+          keepCurrentConfig: options.keepCurrentConfig,
+          signal,
+          onProgress,
+        });
+      } catch (err) {
+        await this.#deleteUnlocked(source, backup.fileName).catch((cleanupErr: unknown) => {
+          // The copy's own error is what the player sees; the leftover backup is only logged (names, no paths).
+          const reason = cleanupErr instanceof WtfBackupError ? cleanupErr.code : cleanupErr instanceof Error ? cleanupErr.name : "unknown";
+          console.error(`[wtf] copy failed and its source backup ${source.flavor}/${backup.fileName} couldn't be removed (${reason})`);
+        });
+        throw err;
+      }
+    });
   }
 
   /**
@@ -475,7 +636,7 @@ export class WtfBackupService {
       return 0;
     }
     const root = this.#opts.backupRoot();
-    if (root.custom && !(await isDirectory(root.path))) {
+    if (await this.#rootUnavailable(root)) {
       return 0;
     }
     let removed = 0;
@@ -494,11 +655,12 @@ export class WtfBackupService {
 
   /**
    * Add a backup zip from anywhere (e.g. one made on another computer and copied over, or by desktop
-   * WowUp) to this flavor's list. Validated before anything is copied: a readable zip with WowUp-style
-   * metadata, and — when it records a flavor — the right one. Copied via `.partial` + atomic rename.
-   * Importing a file that is already in the list is a no-op that returns the existing name.
+   * WowUp). Validated before anything is copied: a readable zip with WowUp-style metadata. It goes into
+   * the list of the flavor it records — another flavor's zip is filed under that flavor (a Settings copy
+   * source) and never into this one's — or this flavor's when it records none. Copied via `.partial` +
+   * atomic rename. Importing a file that is already in the list is a no-op that returns the existing name.
    */
-  async importBackup(target: WtfTarget, sourcePath: string): Promise<{ fileName: string; alreadyPresent: boolean }> {
+  async importBackup(target: WtfTarget, sourcePath: string): Promise<ImportResult> {
     return this.#exclusive(async () => {
       if (sourcePath.includes("\0") || !isAbsolute(sourcePath) || !sourcePath.toLowerCase().endsWith(".zip")) {
         throw new WtfBackupError("backup_invalid", "Choose a .zip backup file.");
@@ -509,13 +671,22 @@ export class WtfBackupService {
       }
       const meta = await this.readMeta(sourcePath);
       const recorded = meta.wowupDecky?.flavor;
-      if (recorded !== undefined && recorded !== target.flavor) {
-        throw new WtfBackupError("flavor_mismatch", "This backup was made for a different WoW version.");
+      if (recorded !== undefined && !FLAVOR_KEY_RE.test(recorded)) {
+        throw new WtfBackupError("backup_invalid", "This backup records a WoW version that isn't valid.");
       }
-      const dir = await this.#prepareBackupDir(target);
+      const flavor = recorded ?? target.flavor;
+      let otherVersion: ImportResult["otherVersion"] = null;
+      if (flavor !== target.flavor) {
+        const displayName = flavorDisplayName(flavor);
+        if (displayName === null) {
+          throw new WtfBackupError("backup_invalid", "This backup is for a WoW version WoWDeck Addon Manager doesn't know yet.");
+        }
+        otherVersion = { flavor, displayName };
+      }
+      const dir = await this.#prepareBackupDir({ ...target, flavor });
       const resolvedSource = resolve(sourcePath);
       if (dirname(resolvedSource) === resolve(dir)) {
-        return { fileName: resolvedSource.slice(resolve(dir).length + 1), alreadyPresent: true };
+        return { fileName: resolvedSource.slice(resolve(dir).length + 1), alreadyPresent: true, otherVersion };
       }
       const free = await this.#freeBytes(dir);
       if (free !== null && free < st.size + SPACE_SLACK_BYTES) {
@@ -529,7 +700,7 @@ export class WtfBackupService {
           break;
         }
         if ((await stat(existing)).size === st.size) {
-          return { fileName: name, alreadyPresent: true };
+          return { fileName: name, alreadyPresent: true, otherVersion };
         }
         stamp += 1;
       }
@@ -543,7 +714,7 @@ export class WtfBackupService {
         await unlink(partial).catch(() => {});
         throw err;
       }
-      return { fileName, alreadyPresent: false };
+      return { fileName, alreadyPresent: false, otherVersion };
     });
   }
 
