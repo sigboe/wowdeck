@@ -7,6 +7,12 @@
  * See docs/wowup-provenance.md.
  */
 
+/**
+ * `PROVIDER_ID` (api/providers.ts) lists the providers we register.
+ * `RaiderIO`, `WowUpCompanion` and `Wago` are kept as WowUp's own ids, so a
+ * record written by desktop WowUp still type-checks; `Unknown` names a
+ * provider before it is set.
+ */
 export type AddonProviderType = "TukUI" | "WowInterface" | "WowUpHub" | "GitHub" | "RaiderIO" | "Zip" | "File" | "WowUpCompanion" | "Wago" | "Curse" | "Unknown";
 export enum AddonChannelType {
   Stable,
