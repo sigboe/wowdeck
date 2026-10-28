@@ -18,6 +18,12 @@
  * (silverfoxy/decktation), which stages the same way for the same
  * reasons; verified against decky-loader 3.3.0 source.
  *
+ * The stored update answer can outlive its zip: CI prunes older betas
+ * whenever a new one publishes, so the offered asset may answer 404. Only
+ * that 404 asks the update check for a forced answer and stages from it,
+ * once — which may be a different release. Every other failure (offline,
+ * 5xx, rate limited, a damaged or wrong package) is reported as is.
+ *
  * The staged file intentionally outlives the RPC — the native prompt
  * may sit unanswered, and cancelling leaves the file — so stage()
  * first removes our staging files older than a day (SteamOS clears
@@ -29,7 +35,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { unzip } from "fflate";
 import type { NetworkClient } from "../net/network";
-import type { StagingAnswer } from "../notifications/PluginUpdateCheck";
+import type { PluginUpdateCheck, StagingAnswer } from "../notifications/PluginUpdateCheck";
+import { NetworkError } from "../net/network";
 import { InstallError } from "../errors";
 
 export interface StagedUpdate {
@@ -48,17 +55,34 @@ export type StageOutcome = {
 const PLUGIN_NAME = "WoWDeck";
 const STALE_AFTER_MS = 24 * 60 * 60 * 1000;
 
+/** The offered zip answered 404: the stored answer is stale. */
+const GONE = Symbol("gone");
+const DOWNLOAD_FAILED = outcome("download_failed", "Couldn't download the update. Try again");
+
 export class UpdateStager {
   constructor(
     private net: Pick<NetworkClient, "downloadToFile">,
-    /** The update check's answer with the zip's URL; never spends the toast. */
-    private check: { forStaging(): Promise<StagingAnswer> },
+    /**
+     * The update check's answer with the zip's URL; `refresh` forces a
+     * fresh check. Never spends the toast.
+     */
+    private check: Pick<PluginUpdateCheck, "forStaging">,
     private tokenProvider: () => string | undefined = () => undefined,
     private tempDir: string = tmpdir(),
   ) {}
 
   async stage(): Promise<StageOutcome> {
-    const { status, offer, downloadUrl } = await this.check.forStaging();
+    const first = await this.#stageFrom(await this.check.forStaging());
+    if (first !== GONE) {
+      return first;
+    }
+    // One forced check and one retry, never a loop: a forced answer that
+    // still names the gone zip (or a failed check serving it) fails as is.
+    const retry = await this.#stageFrom(await this.check.forStaging({ refresh: true }));
+    return retry === GONE ? DOWNLOAD_FAILED : retry;
+  }
+
+  async #stageFrom({ status, offer, downloadUrl }: StagingAnswer): Promise<StageOutcome | typeof GONE> {
     if (offer === null) {
       return status === "current"
         ? outcome("up_to_date", "WoWDeck is already up to date")
@@ -97,7 +121,7 @@ export class UpdateStager {
         console.error(
           `[self-update] download failed: ${failure instanceof Error ? failure.message : String(failure)}`,
         );
-        return outcome("download_failed", "Couldn't download the update. Try again");
+        return failure instanceof NetworkError && failure.status === 404 ? GONE : DOWNLOAD_FAILED;
       }
       const sha256 = sha256OfFile(zipPath);
       await this.#verifyPackage(zipPath, version);
