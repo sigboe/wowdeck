@@ -48,8 +48,7 @@ interface Props extends RestoreDialogExtras {
  * ConfirmModal because it carries the per-restore choice "keep this device's
  * graphics & display settings" (Config.wtf): off for this device's own backups,
  * on for one from another computer or WowUp or for a Settings copy, disabled for one without it. A copy
- * adds its warning line (red for an unrelated version), and a copy of current settings while WoW runs
- * says it won't include this session's changes. A green/red line says whether the
+ * adds its warning line (red for an unrelated version). A green/red line says whether the
  * backup is from this device or another computer. Footer order follows Steam's
  * own dialogs: the action first, Cancel second, two equal columns. Focus starts
  * on the toggle (the first control), so a stray A press changes nothing; B
@@ -88,9 +87,6 @@ function RestoreBackupModal({
             >
               {text.warning.text}
             </DialogBodyText>
-          )}
-          {text.sessionWarning && (
-            <DialogBodyText style={{ color: STEAM.warning }}>{text.sessionWarning}</DialogBodyText>
           )}
           {blockedReason && (
             <DialogBodyText style={{ color: STEAM.warning }}>{blockedReason}</DialogBodyText>

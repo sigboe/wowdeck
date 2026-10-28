@@ -26,6 +26,7 @@ import {
   friendlyWtfCallError,
   importNotice,
   jobProgressText,
+  okActionLabel,
   restoreBlockedReason,
 } from "../wtfText";
 import { useWtfCopySources } from "../useWtfCopySources";
@@ -296,7 +297,7 @@ function WtfBackupModal({ installation, closeModal }: ModalProps) {
                     focusable
                     label={`${formatWhen(backup.createdAt, now)} · ${formatBytes(backup.sizeBytes)}`}
                     onClick={() => startRestore(backup, blockedReason)}
-                    onOKActionDescription={blockedReason ? "Details" : "Restore"}
+                    onOKActionDescription={okActionLabel(blockedReason, "Restore")}
                     onSecondaryButton={deleteOff ? undefined : () => startDelete(backup)}
                     onSecondaryActionDescription={deleteOff ? undefined : "Delete"}
                     description={<BackupRowDescription backup={backup} />}

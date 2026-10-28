@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as api from "./services/backend";
-import type { WtfCopySource } from "./types";
+import type { GameRunning, WtfCopySource } from "./types";
 import { friendlyWtfCallError } from "./wtfText";
 
 /**
@@ -13,6 +13,7 @@ import { friendlyWtfCallError } from "./wtfText";
 export function useWtfCopySources(installationId: string, refreshKey: number, pollMs = 10_000) {
   const [sources, setSources] = useState<WtfCopySource[] | null>(null);
   const [dirAvailable, setDirAvailable] = useState(true);
+  const [gameRunning, setGameRunning] = useState<GameRunning>("unknown");
   const [error, setError] = useState<string | null>(null);
   const requestRef = useRef(0);
 
@@ -26,6 +27,7 @@ export function useWtfCopySources(installationId: string, refreshKey: number, po
         }
         setSources(result.sources);
         setDirAvailable(result.dirAvailable);
+        setGameRunning(result.gameRunning);
         setError(null);
       } catch (e) {
         if (mine === requestRef.current && !silent) {
@@ -45,5 +47,5 @@ export function useWtfCopySources(installationId: string, refreshKey: number, po
     return () => clearInterval(timer);
   }, [load, pollMs]);
 
-  return { sources, dirAvailable, error, reload: load };
+  return { sources, dirAvailable, gameRunning, error, reload: load };
 }

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { randomBytes } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { rename as fsRename } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -102,6 +102,18 @@ describe("WtfJobRunner", () => {
     const result = await done();
     expect(result).toMatchObject({ kind: "copy", fileName: b.fileName, sourceName: "Retail PTR", error: null });
     expect(result.snapshotFileName).toMatch(/^wtf_\d+\.zip$/);
+  });
+
+  test("a copy of a desktop WowUp backup fails with the unknown-version confirm unless it is accepted", async () => {
+    write("Config.wtf", "retail");
+    const { runner, done, completed } = setup();
+    mkdirSync(join(backupRoot, "_ptr_"), { recursive: true });
+    copyFileSync(join(import.meta.dir, "fixtures/wtf/upstream-wowup-backup.zip"), join(backupRoot, "_ptr_", "wtf_1.zip"));
+    runner.startCopy(target, "_ptr_", "wtf_1.zip", {});
+    expect((await done()).error?.code).toBe("flavor_unknown_needs_confirm");
+    completed.length = 0;
+    runner.startCopy(target, "_ptr_", "wtf_1.zip", { acceptUnknownFlavor: true });
+    expect(await done()).toMatchObject({ kind: "copy", fileName: "wtf_1.zip", error: null });
   });
 
   test("a copy of current settings completes as one copy job: source backed up, then restored here", async () => {

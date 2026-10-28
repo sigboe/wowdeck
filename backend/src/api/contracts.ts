@@ -370,15 +370,13 @@ export interface WtfBackupInfo {
 export interface WtfCopySource {
   /** Flavor key (`_classic_beta_`, …), as recorded in its backups and named back to wtf.copy. */
   flavor: string;
-  /** The client's display name (Forever Beta, Retail PTR …), never the folder name. */
+  /** The client's display name (Forever Beta, Retail PTR …), never the folder name. A version this build can't name isn't listed. */
   displayName: string;
   installed: boolean;
   /** An installation of this version, when installed. */
   installationId: string | null;
   /** In the same version family as the target installation (the engine alone decides). */
   related: boolean;
-  /** Whether WoW is running (the engine sees one state for every version). */
-  gameRunning: GameRunning;
   /**
    * This version's current settings (its WTF folder), copyable as "Current settings". Null when it isn't
    * installed or has no WTF folder yet.
@@ -879,26 +877,42 @@ export interface MethodMap {
   "wtf.copySources": {
     /** Other versions with something to copy; empty when there is none (or the backup folder is unavailable). */
     params: { installationId?: string };
-    result: { dirAvailable: boolean; sources: WtfCopySource[] };
+    result: {
+      dirAvailable: boolean;
+      /**
+       * Whether WoW is running. One state for every version: the process scan can't tell installations
+       * apart, so WoW running blocks every copy, whichever version it is.
+       */
+      gameRunning: GameRunning;
+      sources: WtfCopySource[];
+    };
   };
   "wtf.copy": {
     /**
      * Settings copy: restore another version's backup into this installation (a job, see wtf.restore,
      * with the same safety backup, verification and swap). Plain wtf.restore keeps refusing other versions.
-     * Without `fileName` it copies the current settings of `sourceInstallationId`: one job first backs up
-     * that installation's WTF into its own list (kept, as the record of what was copied), then restores it.
+     * With `sourceInstallationId` instead it copies that installation's current settings: one job first backs
+     * up its WTF into its own list (kept, as the record of what was copied), then restores it.
+     * Refused with game_running while WoW runs at all, the source's WoW included.
      */
     params: {
       installationId?: string;
       /** Flavor key of the version the settings belong to (WtfCopySource.flavor). */
       sourceFlavor: string;
-      /** A backup of that version; omit to copy its current settings. */
-      fileName?: string;
-      /** Current settings only: the source installation (WtfCopySource.installationId). */
-      sourceInstallationId?: string;
       /** Keep this device's Config.wtf (graphics/display settings). Default true: another version's describes another client. */
       keepCurrentConfig?: boolean;
-    };
+    } & (
+      | {
+          /** A backup of that version. */
+          fileName: string;
+          /** Required to copy a backup that doesn't record its game version (desktop WowUp), as for wtf.restore. */
+          acceptUnknownFlavor?: boolean;
+        }
+      | {
+          /** Copy the current settings of this installation of that version (WtfCopySource.installationId). */
+          sourceInstallationId: string;
+        }
+    );
     result: { jobId: string };
   };
   "wtf.delete": {

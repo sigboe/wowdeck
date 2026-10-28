@@ -25,9 +25,12 @@ export function areRelated(a: string, b: string): boolean {
   return family !== -1 && family === familyOf(b);
 }
 
-/** The client display name for a flavor key (folder name or game-type fallback); the key itself when unknown. */
-export function flavorDisplayName(flavor: string): string {
+/**
+ * The client display name for a flavor key (folder name or game-type fallback), or null when this build
+ * doesn't know the version. Never the key itself: players never see folder names (UI guide C05).
+ */
+export function flavorDisplayName(flavor: string): string | null {
   const byFolder = getClientTypeForFolderName(flavor);
   const clientType = byFolder !== WowClientType.None ? byFolder : getClientTypeForGameType(flavor);
-  return clientType !== WowClientType.None ? getClientTypeLabel(clientType) : flavor;
+  return clientType !== WowClientType.None ? getClientTypeLabel(clientType) : null;
 }

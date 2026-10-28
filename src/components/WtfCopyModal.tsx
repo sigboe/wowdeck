@@ -21,11 +21,13 @@ import { useWtfCopySources } from "../useWtfCopySources";
 import { clearWtfOutcome, getWtfState, subscribeWtfState } from "../wtfBackupState";
 import { formatBytes, formatWhen } from "../wtfFormat";
 import {
+  copyGameRunningNotice,
   copySourceOption,
   copySourceRows,
   copySourceStatus,
   currentSettingsBackup,
   friendlyWtfCallError,
+  okActionLabel,
   restoreBlockedReason,
 } from "../wtfText";
 import { BackupRowDescription } from "./BackupRowDescription";
@@ -43,12 +45,14 @@ interface ModalProps {
  * below it, what that version has: **Current settings** first (installed
  * versions only), then its backups, newest first. Choosing a row opens the
  * Restore dialog worded for a copy; once the job starts this modal closes and
- * Manage backups shows its progress and Cancel, as for a restore. D-pad: the
- * dropdown (A opens it) then every backup row; B closes.
+ * Manage backups shows its progress and Cancel, as for a restore. WoW running
+ * blocks every copy (the engine can't tell which version runs): one line under
+ * the intro says so, each row's A reads Details and its dialog has Copy off.
+ * Navigation contract: UI guide §6.6, "Copy settings modal".
  */
 function WtfCopyModal({ installation, onStarted, closeModal }: ModalProps) {
   const wtf = useSyncExternalStore(subscribeWtfState, getWtfState);
-  const { sources, dirAvailable, error, reload } = useWtfCopySources(
+  const { sources, dirAvailable, gameRunning, error, reload } = useWtfCopySources(
     installation.id,
     wtf.listVersion,
   );
@@ -60,13 +64,25 @@ function WtfCopyModal({ installation, onStarted, closeModal }: ModalProps) {
   const source: WtfCopySource | undefined =
     sources?.find((s) => s.flavor === chosen) ?? sources?.find((s) => s.isDefault) ?? sources?.[0];
 
-  /** `backup` null: copy the source's current settings. */
+  const runningNotice = copyGameRunningNotice(gameRunning);
+  const blockedReasonFor = (shown: WtfBackupInfo) =>
+    restoreBlockedReason(shown, anyJob, gameRunning, "copy");
+
+  /** `backup` null: copy the source's current settings (offered only for an installed version). */
   const startCopy = (from: WtfCopySource, backup: WtfBackupInfo | null) => {
+    const what = backup
+      ? { fileName: backup.fileName }
+      : from.installationId
+        ? { sourceInstallationId: from.installationId }
+        : null;
+    if (!what) {
+      return;
+    }
     const shown = backup ?? currentSettingsBackup(from);
     confirmRestoreBackup(
       shown,
       installation.displayName,
-      from.gameRunning,
+      gameRunning,
       async (options) => {
         clearWtfOutcome();
         setActionError(null);
@@ -74,10 +90,11 @@ function WtfCopyModal({ installation, onStarted, closeModal }: ModalProps) {
           await api.rpc("wtf.copy", {
             installationId: installation.id,
             sourceFlavor: from.flavor,
-            ...(backup
-              ? { fileName: backup.fileName }
-              : { sourceInstallationId: from.installationId ?? undefined }),
             keepCurrentConfig: options.keepCurrentConfig,
+            // Only a backup can lack its version (desktop WowUp); the dialog then asked to confirm it.
+            ...("fileName" in what
+              ? { ...what, acceptUnknownFlavor: options.acceptUnknownFlavor }
+              : what),
           });
           onStarted();
           closeModal?.();
@@ -86,7 +103,7 @@ function WtfCopyModal({ installation, onStarted, closeModal }: ModalProps) {
         }
       },
       {
-        blockedReason: restoreBlockedReason(shown, anyJob, from.gameRunning),
+        blockedReason: blockedReasonFor(shown),
         onDelete: null,
         copyFrom: { name: from.displayName, related: from.related, current: backup === null },
       },
@@ -103,10 +120,8 @@ function WtfCopyModal({ installation, onStarted, closeModal }: ModalProps) {
             Bring another WoW version&apos;s addon settings, keybinds, macros and UI layout into{" "}
             {installation.displayName}. The other version&apos;s files are only read.
           </DialogBodyText>
-          {source?.gameRunning === "running" && (
-            <DialogBodyText style={{ color: STEAM.warning }}>
-              WoW is running. Close it before copying.
-            </DialogBodyText>
+          {runningNotice && (
+            <DialogBodyText style={{ color: STEAM.warning }}>{runningNotice}</DialogBodyText>
           )}
           {actionError && (
             <DialogBodyText style={{ color: STEAM.danger }}>{actionError}</DialogBodyText>
@@ -155,11 +170,7 @@ function WtfCopyModal({ installation, onStarted, closeModal }: ModalProps) {
                         focusable
                         label="Current settings"
                         onClick={() => startCopy(source, null)}
-                        onOKActionDescription={
-                          restoreBlockedReason(current, anyJob, source.gameRunning)
-                            ? "Details"
-                            : "Copy"
-                        }
+                        onOKActionDescription={okActionLabel(blockedReasonFor(current), "Copy")}
                         description={`What ${source.displayName} has now · changed ${formatWhen(current.createdAt, now)}`}
                       >
                         <FaChevronRight />
@@ -173,11 +184,7 @@ function WtfCopyModal({ installation, onStarted, closeModal }: ModalProps) {
                       focusable
                       label={`${formatWhen(backup.createdAt, now)} · ${formatBytes(backup.sizeBytes)}`}
                       onClick={() => startCopy(source, backup)}
-                      onOKActionDescription={
-                        restoreBlockedReason(backup, anyJob, source.gameRunning)
-                          ? "Details"
-                          : "Copy"
-                      }
+                      onOKActionDescription={okActionLabel(blockedReasonFor(backup), "Copy")}
                       description={<BackupRowDescription backup={backup} />}
                     >
                       <FaChevronRight />

@@ -151,7 +151,10 @@ trap focus (#12).
   only". Related versions come first, then the newest settings first, and the first is the
   default. "Newest" compares the newest valid backup with the current settings' date, which is
   Config.wtf's mtime (WoW rewrites it on every logout) or else the WTF folder's. Display names are
-  the client names (Forever Beta), never folder names.
+  the client names (Forever Beta), never folder names. A flavor folder this build has no name for
+  isn't listed. When two installations share a flavor, **Current settings** comes from the one whose
+  settings changed last. The result carries one `gameRunning` for the whole list, because the
+  process scan can't tell installations apart.
 - **Version families.** `backend/src/wow/wtf/VersionFamilies.ts` alone decides "related". The
   families are Retail (`_retail_`, `_ptr_`, `_xptr_`, `_beta_`), Classic progression
   (`_classic_`, `_classic_ptr_`), Classic Era (`_classic_era_`, `_classic_era_ptr_`,
@@ -159,33 +162,37 @@ trap focus (#12).
   nothing.
 - **Copy.** `wtf.copy` starts a job of kind `copy`. It runs the restore pipeline above, unchanged,
   and reads the backup from the named source flavor's folder. The backup must record that flavor,
-  or none. Config.wtf is kept unless `keepCurrentConfig` is false. The safety snapshot lands in
+  or none. A backup that records none (desktop WowUp) needs `acceptUnknownFlavor`, the same confirm
+  a plain restore asks for. Config.wtf is kept unless `keepCurrentConfig` is false. The safety snapshot lands in
   the target's list, and the source's files are only read.
   `wtf.completed` carries `sourceName` for the notification ("Settings copied from Forever Beta").
   Plain `wtf.restore` keeps refusing another flavor's backup (`flavor_mismatch`).
-- **Current settings.** `wtf.copy` without `fileName` copies the current settings of
-  `sourceInstallationId`, which must be the named `sourceFlavor`. One `copy` job runs two phases.
+- **Current settings.** `wtf.copy` with `sourceInstallationId` instead of `fileName` copies that
+  installation's current settings. It must be the named `sourceFlavor`. One `copy` job runs two phases.
   It first backs up the source's WTF as a manual backup in the source's own list, reported as
   `scan` and `compress`. It then restores that backup into the target as a backup copy does, with
   the target's safety snapshot reported as `snapshot`. Progress and cancel work across both
   phases. The source backup stays afterwards as the record of what was copied. If the copy doesn't
   happen (cancelled or failed), the engine deletes that backup again, so neither side changes. The
-  source's WTF is only read. WoW running for the source isn't checked. WoW running for the target
-  blocks with `game_running` before anything is written. The process scan can't tell which
-  installation is running, so on the Deck any running WoW blocks a copy.
+  source's WTF is only read.
+- **WoW running.** Any running WoW blocks every copy with `game_running` before anything is
+  written, even when it is the source version that runs. The `/proc` scan sees one state and
+  can't tell installations apart. The engine blocks on purpose and has no per-version detection.
 - **Import.** **Import from file…** files a zip that records another flavor under that flavor, in
   its own backup folder, so the version shows up as a source with that backup listed. It never
   goes into the importing version's list. The `wtf.import` result's `otherVersion` gives the
   flavor and its display name, and the UI says "Added to Forever Beta's backups. To use it here,
-  choose Copy settings from another version." A recorded flavor that isn't a valid flavor key is
-  refused as `backup_invalid`.
+  choose Copy settings from another version." A recorded flavor that isn't a valid flavor key, or
+  one this build can't name, is refused as `backup_invalid`.
 - **Dialog.** The Restore dialog, worded for a copy. **Keep this device's graphics & display
   settings** starts on. A related version adds a plain line saying characters on the old realms
   won't match and addons you don't have keep their settings unused. An unrelated version gets a
   red warning and **Copy anyway**. Below the dropdown, **Current settings** comes first for an
   installed version that has a WTF folder, then the backups. For a current-settings copy the
-  dialog says the source is backed up first and kept in its backups. While WoW runs, it adds the
-  warning Back up now shows: a copy made now won't include this session's changes.
+  dialog says the source is backed up first and kept in its backups. A desktop WowUp backup asks
+  whether it is for the source version. While WoW runs, the copy screen says to close it, even when
+  it is the version you copy from; each row's A reads Details, and the dialog says to close WoW and
+  has **Copy** off.
 
 ## Protocol (engine ⇄ UI)
 

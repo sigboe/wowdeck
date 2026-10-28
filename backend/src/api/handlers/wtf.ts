@@ -44,16 +44,20 @@ export function register(server: JsonlServer, { wtfService, wtfJobs, wtfJobTarge
 
   server.on("wtf.copy", async (params) => {
     const target = wtfJobTarget(params.installationId);
-    const options = { keepCurrentConfig: params.keepCurrentConfig !== false };
-    if (params.fileName !== undefined) {
-      return wtfJobs.startCopy(target, params.sourceFlavor, params.fileName, options);
+    const keepCurrentConfig = params.keepCurrentConfig !== false;
+    if ("fileName" in params) {
+      return wtfJobs.startCopy(target, params.sourceFlavor, params.fileName, {
+        keepCurrentConfig,
+        acceptUnknownFlavor: params.acceptUnknownFlavor === true,
+      });
     }
     // Current settings: the named installation must be the named version.
-    const source = params.sourceInstallationId === undefined ? null : wtfJobTarget(params.sourceInstallationId);
+    // Never an empty id: require() would fall back to the selected installation.
+    const source = params.sourceInstallationId ? wtfJobTarget(params.sourceInstallationId) : null;
     if (!source || source.flavor !== params.sourceFlavor) {
       throw new WtfBackupError("not_found", "That WoW version isn't installed any more.");
     }
-    return wtfJobs.startCopyCurrent(target, source, options);
+    return wtfJobs.startCopyCurrent(target, source, { keepCurrentConfig });
   });
 
   server.on("wtf.delete", async (params) => {

@@ -1,11 +1,14 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { unzipSync, zipSync } from "fflate";
 import { detectGameRunning, type ProcReader } from "../src/wow/wtf/GameProcessGuard";
 import { WtfBackupService, type WtfTarget } from "../src/wow/wtf/WtfBackupService";
+
+/** A backup made by desktop WowUp: it records no game version. */
+const DESKTOP_WOWUP_ZIP = join(import.meta.dir, "fixtures/wtf/upstream-wowup-backup.zip");
 
 const sha = (b: Uint8Array | Buffer) => createHash("sha256").update(b).digest("hex");
 
@@ -109,7 +112,43 @@ describe("copy sources", () => {
     ]);
     expect(sources[0]!.backups).toHaveLength(1);
     expect(sources[0]!.backups[0]!.flavor).toBe("_classic_beta_");
-    expect(sources.every((s) => s.gameRunning === "not_running")).toBe(true);
+  });
+
+  test("reports one WoW-running state for the whole list (the process scan can't tell installations apart)", async () => {
+    const forever = makeWtf("_forever_", "forever");
+    const beta = makeWtf("_classic_beta_", "beta");
+    await service().createBackup(beta, { kind: "manual" });
+    expect((await service().listCopySources(forever, [])).gameRunning).toBe("not_running");
+    expect((await service(wowProc).listCopySources(forever, [])).gameRunning).toBe("running");
+  });
+
+  test("a backup folder for a version this build can't name is not offered (never shown by its folder name)", async () => {
+    const forever = makeWtf("_forever_", "forever");
+    const beta = makeWtf("_classic_beta_", "beta");
+    const made = await service().createBackup(beta, { kind: "manual" });
+    mkdirSync(join(backupRoot, "_future_"), { recursive: true });
+    writeFileSync(join(backupRoot, "_future_", made.fileName), readFileSync(join(backupRoot, "_classic_beta_", made.fileName)));
+    const { sources } = await service().listCopySources(forever, []);
+    expect(sources.map((s) => s.flavor)).toEqual(["_classic_beta_"]);
+  });
+
+  test("two installations of one version: Current settings comes from the one changed most recently", async () => {
+    const forever = makeWtf("_forever_", "forever");
+    const older = makeWtf("_classic_beta_", "beta");
+    const newerPath = join(tmp, "Second WoW", "_classic_beta_", "WTF");
+    makeWtfAt(newerPath);
+    utimesSync(join(older.wtfPath, "Config.wtf"), 1_700_000_000, 1_700_000_000);
+    utimesSync(join(newerPath, "Config.wtf"), 1_700_000_900, 1_700_000_900);
+    const installs = [
+      { installationId: "beta-1", flavor: "_classic_beta_", wtfPath: older.wtfPath },
+      { installationId: "beta-2", flavor: "_classic_beta_", wtfPath: newerPath },
+    ];
+    for (const order of [installs, [...installs].reverse()]) {
+      const { sources } = await service().listCopySources(forever, order);
+      expect(sources.map((s) => [s.flavor, s.installationId, s.current?.modifiedAt])).toEqual([
+        ["_classic_beta_", "beta-2", 1_700_000_900_000],
+      ]);
+    }
   });
 
   test("with no related version, the newest of any kind is the default", async () => {
@@ -155,7 +194,7 @@ describe("copy sources", () => {
       backupRoot: () => ({ path: join(tmp, "sdcard", "backups"), custom: true }),
       gameStatus: () => detectGameRunning(quietProc),
     });
-    expect(await s.listCopySources(forever, [])).toEqual({ dirAvailable: false, sources: [] });
+    expect(await s.listCopySources(forever, [])).toEqual({ dirAvailable: false, gameRunning: "not_running", sources: [] });
   });
 });
 
@@ -210,6 +249,21 @@ describe("copying another version's backup", () => {
     ).rejects.toMatchObject({ code: "flavor_mismatch" });
   });
 
+  test("a desktop WowUp backup (no recorded version) in the source's folder asks the unknown-version confirm", async () => {
+    const forever = makeWtf("_forever_", "forever");
+    const before = tree(forever.wtfPath);
+    mkdirSync(join(backupRoot, "_classic_beta_"), { recursive: true });
+    copyFileSync(DESKTOP_WOWUP_ZIP, join(backupRoot, "_classic_beta_", "wtf_1.zip"));
+    const s = service();
+    await expect(s.restoreBackup(forever, "wtf_1.zip", { sourceFlavor: "_classic_beta_" })).rejects.toMatchObject({
+      code: "flavor_unknown_needs_confirm",
+    });
+    expect(tree(forever.wtfPath)).toEqual(before);
+
+    await s.restoreBackup(forever, "wtf_1.zip", { sourceFlavor: "_classic_beta_", acceptUnknownFlavor: true });
+    expect(readFileSync(join(forever.wtfPath, "Account/ACC1/SavedVariables/A.lua"), "utf8")).toBe("A={}\n");
+  });
+
   test("plain restore still refuses another version's backup", async () => {
     const { forever, backup } = await betaBackup();
     mkdirSync(join(backupRoot, "_forever_"), { recursive: true });
@@ -223,17 +277,6 @@ describe("copying another version's current settings", () => {
     const forever = makeWtf("_forever_", "forever");
     const beta = makeWtf("_classic_beta_", "beta");
     return { forever, beta, betaTree: tree(beta.wtfPath), foreverTree: tree(forever.wtfPath) };
-  }
-
-  /** WoW reported running for one WTF folder only (the service asks about the target it restores into). */
-  function serviceRunningFor(wtfPath: string) {
-    let t = 1_700_000_000_000;
-    return new WtfBackupService({
-      backupRoot: () => ({ path: backupRoot, custom: false }),
-      now: () => (t += 1000),
-      freeBytes: async () => 10 * 1024 ** 3,
-      gameStatus: async (target) => (target?.wtfPath === wtfPath ? "running" : "not_running"),
-    });
   }
 
   test("adds a manual backup to the source's list and leaves the source tree byte-identical", async () => {
@@ -264,19 +307,9 @@ describe("copying another version's current settings", () => {
     expect(readFileSync(join(forever.wtfPath, "Config.wtf"), "utf8")).toBe('SET gxApi "beta"\n');
   });
 
-  test("the source's WoW running doesn't block the copy", async () => {
-    const { forever, beta } = setupCurrent();
-    await service().copyCurrentSettings(forever, beta);
-    const s = serviceRunningFor(beta.wtfPath);
-    await s.copyCurrentSettings(forever, beta);
-    expect(readFileSync(join(forever.wtfPath, "Account/ACC1/SavedVariables/A.lua"), "utf8")).toBe('A = "beta"\n');
-  });
-
-  test("the target's WoW running blocks with game_running and nothing changes on either side", async () => {
+  test("WoW running blocks with game_running and nothing changes on either side (it may be the source or the target)", async () => {
     const { forever, beta, betaTree, foreverTree } = setupCurrent();
-    await expect(serviceRunningFor(forever.wtfPath).copyCurrentSettings(forever, beta)).rejects.toMatchObject({
-      code: "game_running",
-    });
+    await expect(service(wowProc).copyCurrentSettings(forever, beta)).rejects.toMatchObject({ code: "game_running" });
     expect(tree(forever.wtfPath)).toEqual(foreverTree);
     expect(tree(beta.wtfPath)).toEqual(betaTree);
     expect(zipsFor("_forever_")).toEqual([]);
@@ -414,6 +447,17 @@ describe("importing another version's zip", () => {
     const inFolder = await service().importBackup(forever, join(backupRoot, "_classic_beta_", first.fileName));
     expect(inFolder).toEqual({ ...first, alreadyPresent: true });
     expect(zipsFor("_classic_beta_")).toEqual([first.fileName]);
+  });
+
+  test("a version this build can't name is refused (it couldn't be shown or copied) and nothing is copied", async () => {
+    const { zip, forever } = await betaZipElsewhere();
+    const entries = unzipSync(readFileSync(zip));
+    const meta = JSON.parse(new TextDecoder().decode(entries["wowup-meta.json"]));
+    meta.wowupDecky.flavor = "_future_";
+    entries["wowup-meta.json"] = new TextEncoder().encode(JSON.stringify(meta));
+    writeFileSync(zip, zipSync(entries));
+    await expect(service().importBackup(forever, zip)).rejects.toMatchObject({ code: "backup_invalid" });
+    expect(existsSync(join(backupRoot, "_future_"))).toBe(false);
   });
 
   test("a recorded flavor that isn't a flavor key is refused and nothing is copied", async () => {

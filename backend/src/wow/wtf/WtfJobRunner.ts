@@ -11,7 +11,7 @@
 
 import type { EventMap, WtfJobKind, WtfJobSnapshot, WtfPhase } from "../../api/contracts";
 import { WtfBackupError } from "./errors";
-import type { WtfBackupService, WtfTarget } from "./WtfBackupService";
+import type { RestoreResult, WtfBackupService, WtfTarget } from "./WtfBackupService";
 import { flavorDisplayName } from "./VersionFamilies";
 
 export interface WtfJobEvents {
@@ -65,28 +65,36 @@ export class WtfJobRunner {
   }
 
   /** Settings copy: restore another version's backup (see RestoreOptions.sourceFlavor). */
-  startCopy(target: WtfJobTarget, sourceFlavor: string, fileName: string, options: { keepCurrentConfig?: boolean }): { jobId: string } {
-    return this.#start(
-      "copy",
-      target,
-      (signal, onProgress) =>
-        this.#service
-          .restoreBackup(target, fileName, { ...options, sourceFlavor, signal, onProgress })
-          .then((r) => ({ fileName: r.restoredFileName, snapshotFileName: r.snapshotFileName })),
-      flavorDisplayName(sourceFlavor),
+  startCopy(
+    target: WtfJobTarget,
+    sourceFlavor: string,
+    fileName: string,
+    options: { keepCurrentConfig?: boolean; acceptUnknownFlavor?: boolean },
+  ): { jobId: string } {
+    return this.#startCopy(target, sourceFlavor, (signal, onProgress) =>
+      this.#service.restoreBackup(target, fileName, { ...options, sourceFlavor, signal, onProgress }),
     );
   }
 
   /** Settings copy of another installation's current settings (see WtfBackupService.copyCurrentSettings). */
   startCopyCurrent(target: WtfJobTarget, source: WtfTarget, options: { keepCurrentConfig?: boolean }): { jobId: string } {
+    return this.#startCopy(target, source.flavor, (signal, onProgress) =>
+      this.#service.copyCurrentSettings(target, source, { ...options, signal, onProgress }),
+    );
+  }
+
+  /** A "copy" job, completing with the display name of the version the settings came from. */
+  #startCopy(
+    target: WtfJobTarget,
+    sourceFlavor: string,
+    run: (signal: AbortSignal, onProgress: (phase: WtfPhase, done: number, total: number | null) => void) => Promise<RestoreResult>,
+  ): { jobId: string } {
     return this.#start(
       "copy",
       target,
       (signal, onProgress) =>
-        this.#service
-          .copyCurrentSettings(target, source, { ...options, signal, onProgress })
-          .then((r) => ({ fileName: r.restoredFileName, snapshotFileName: r.snapshotFileName })),
-      flavorDisplayName(source.flavor),
+        run(signal, onProgress).then((r) => ({ fileName: r.restoredFileName, snapshotFileName: r.snapshotFileName })),
+      flavorDisplayName(sourceFlavor),
     );
   }
 

@@ -13,7 +13,10 @@ import {
   copySourceRows,
   copySourceStatus,
   currentSettingsBackup,
+  copyGameRunningNotice,
+  okActionLabel,
   outcomeOf,
+  restoreBlockedReason,
   restoreDialogText,
 } from "./wtfText";
 import { backupKindLabel, backupOrigin, formatBytes, formatWhen } from "./wtfFormat";
@@ -297,13 +300,61 @@ describe("Settings copy text", () => {
     expect(d.warning?.text).toContain("may not work");
   });
 
-  test("a desktop WowUp backup from another version asks no version question", () => {
+  test("a desktop WowUp backup in another version's list asks the same version question as a restore", () => {
     const d = restoreDialogText({ ...backup, flavor: null }, "Forever", "not_running", now, {
       name: "Forever Beta",
       related: true,
     });
-    expect(d.acceptUnknownFlavor).toBe(false);
-    expect(d.paragraphs.join(" ")).not.toContain("doesn't say which WoW version");
+    expect(d.acceptUnknownFlavor).toBe(true);
+    expect(d.paragraphs).toContain(
+      "This backup was made by WowUp and doesn't say which WoW version it is for. Only continue if it is for Forever Beta.",
+    );
+  });
+
+  test("why a copy can't start is worded for a copy", () => {
+    const valid = { valid: true, invalidReason: null };
+    expect(
+      restoreBlockedReason(
+        { valid: false, invalidReason: "Damaged" },
+        false,
+        "not_running",
+        "copy",
+      ),
+    ).toBe("This backup can't be copied: Damaged");
+    expect(
+      restoreBlockedReason({ valid: false, invalidReason: null }, false, "not_running", "copy"),
+    ).toBe("This backup can't be copied.");
+    expect(restoreBlockedReason(valid, true, "not_running", "copy")).toBe(
+      "Settings are already being backed up, restored or copied. Wait for it to finish.",
+    );
+    expect(restoreBlockedReason(valid, false, "running", "copy")).toBe(
+      "Close World of Warcraft first.",
+    );
+    expect(restoreBlockedReason(valid, false, "unknown", "copy")).toBeNull();
+  });
+
+  test("a restore keeps its own wording", () => {
+    expect(
+      restoreBlockedReason(
+        { valid: false, invalidReason: "Damaged" },
+        false,
+        "not_running",
+        "restore",
+      ),
+    ).toBe("This backup can't be restored: Damaged");
+  });
+
+  test("a row's A label says Details when the action is blocked", () => {
+    expect(okActionLabel(null, "Copy")).toBe("Copy");
+    expect(okActionLabel("Close World of Warcraft first.", "Copy")).toBe("Details");
+  });
+
+  test("WoW running blocks every copy, and the copy screen says it may be the source version", () => {
+    expect(copyGameRunningNotice("running")).toBe(
+      "World of Warcraft is running. Close it to copy settings, even when it's the version you copy from.",
+    );
+    expect(copyGameRunningNotice("not_running")).toBeNull();
+    expect(copyGameRunningNotice("unknown")).toBeNull();
   });
 
   test("a plain restore has no copy warning", () => {
@@ -374,23 +425,13 @@ describe("Settings copy of current settings", () => {
     expect(d.paragraphs.join(" ")).toContain("Forever Beta's settings are backed up first");
     expect(d.origin).toEqual({ text: "From this device", good: true });
     expect(d.config.defaultOn).toBe(true);
-    expect(d.sessionWarning).toBeNull();
   });
 
-  test("the source's WoW running warns that this session's changes aren't included", () => {
-    expect(dialog("running").sessionWarning).toBe(
-      "WoW is running. It saves addon settings when you log out or reload, so a copy made now won't include this session's changes.",
+  test("WoW running blocks a copy of current settings too: the dialog says it must be closed", () => {
+    expect(dialog("running").paragraphs).toContain("World of Warcraft must be closed.");
+    expect(restoreBlockedReason(currentSettingsBackup(beta), false, "running", "copy")).toBe(
+      "Close World of Warcraft first.",
     );
-    expect(dialog("unknown").sessionWarning).toBeNull();
-  });
-
-  test("a backup copy never shows the session warning", () => {
-    const backup = { ...currentSettingsBackup(beta), createdAt: now - 86_400_000 };
-    const d = restoreDialogText(backup, "Forever", "running", now, {
-      name: "Forever Beta",
-      related: true,
-    });
-    expect(d.sessionWarning).toBeNull();
   });
 
   test("current settings without a Config.wtf: the toggle is off and disabled", () => {

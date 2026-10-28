@@ -1,5 +1,6 @@
 import { errorText } from "./errors";
 import type {
+  GameRunning,
   WtfBackupInfo,
   WtfCompleted,
   WtfCopySource,
@@ -168,8 +169,6 @@ export interface RestoreDialogText {
   okText: string;
   /** Settings copy only: what may not carry over; red (`danger`) for an unrelated version. */
   warning: { text: string; danger: boolean } | null;
-  /** Copy of current settings while WoW runs: the copy won't include this session's changes (as Back up now says). */
-  sessionWarning: string | null;
   /** Sent as acceptUnknownFlavor: only for backups that don't record their game version. */
   acceptUnknownFlavor: boolean;
   config: {
@@ -204,7 +203,7 @@ export interface CopyFrom {
 export function restoreDialogText(
   backup: RestoreDialogBackup,
   installationName: string,
-  gameRunning: "running" | "not_running" | "unknown",
+  gameRunning: GameRunning,
   now: number,
   copyFrom?: CopyFrom,
 ): RestoreDialogText {
@@ -222,11 +221,11 @@ export function restoreDialogText(
       `${copyFrom.name}'s settings are backed up first and kept in its backups, as a record of what was copied. They are only read.`,
     );
   }
-  // A copy names its source on purpose; the engine asks no version question for it.
-  const unknownFlavor = backup.flavor === null && !copyFrom;
+  // A desktop WowUp backup asks the same question in another version's list: it may be for any version.
+  const unknownFlavor = backup.flavor === null;
   if (unknownFlavor) {
     paragraphs.push(
-      "This backup was made by WowUp and doesn't say which WoW version it is for. Only continue if it is for this one.",
+      `This backup was made by WowUp and doesn't say which WoW version it is for. Only continue if it is for ${copyFrom ? copyFrom.name : "this one"}.`,
     );
   }
   paragraphs.push(
@@ -250,10 +249,6 @@ export function restoreDialogText(
             text: `${copyFrom.name} is a different kind of WoW from ${installationName}. Its addon settings, keybinds and macros may not work here.`,
             danger: true,
           },
-    sessionWarning:
-      copyFrom?.current && gameRunning === "running"
-        ? "WoW is running. It saves addon settings when you log out or reload, so a copy made now won't include this session's changes."
-        : null,
     acceptUnknownFlavor: unknownFlavor,
     config: {
       label: "Keep this device's graphics & display settings",
@@ -267,22 +262,42 @@ export function restoreDialogText(
   };
 }
 
-/** Why a backup can't be restored or copied now, shown in its Restore dialog (null: it can). */
+/**
+ * Why a backup can't be restored (or copied, for a Settings copy) now, shown in its Restore dialog
+ * (null: it can). WoW running blocks a copy whichever version is running: the engine can't tell them apart.
+ */
 export function restoreBlockedReason(
   backup: Pick<WtfBackupInfo, "valid" | "invalidReason">,
   anyJob: boolean,
-  gameRunning: "running" | "not_running" | "unknown",
+  gameRunning: GameRunning,
+  action: "restore" | "copy" = "restore",
 ): string | null {
   if (!backup.valid) {
-    return `This backup can't be restored${backup.invalidReason ? `: ${backup.invalidReason}` : "."}`;
+    const verb = action === "copy" ? "copied" : "restored";
+    return `This backup can't be ${verb}${backup.invalidReason ? `: ${backup.invalidReason}` : "."}`;
   }
   if (anyJob) {
-    return "A backup or restore is running. Wait for it to finish.";
+    return "Settings are already being backed up, restored or copied. Wait for it to finish.";
   }
   if (gameRunning === "running") {
     return "Close World of Warcraft first.";
   }
   return null;
+}
+
+/** A backup row's A label: the action, or Details when its dialog will only say why it can't run. */
+export function okActionLabel(blockedReason: string | null, action: string): string {
+  return blockedReason ? "Details" : action;
+}
+
+/**
+ * The copy screen's line while WoW runs. Every copy is blocked then, the source version's WoW included:
+ * the engine sees one running state and can't tell which version it is.
+ */
+export function copyGameRunningNotice(gameRunning: GameRunning): string | null {
+  return gameRunning === "running"
+    ? "World of Warcraft is running. Close it to copy settings, even when it's the version you copy from."
+    : null;
 }
 
 /**
