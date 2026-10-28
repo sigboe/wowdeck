@@ -1,8 +1,8 @@
 name: Beta
 
-# Every push to `next` that changes more than docs becomes a beta build on
-# the Beta update channel: CI's gates (ci.yml, called with the beta version
-# to stamp), then a GitHub pre-release tagged v<version> on the merged
+# Every push to `next` that changes more than docs and dev-only files
+# becomes a beta build on the Beta update channel: CI's gates (ci.yml,
+# called with the beta version to stamp), then a GitHub pre-release tagged v<version> on the merged
 # commit, then pruning down to the newest three betas. The version is
 # `<last stable tag, patch+1>-beta.<run number>` and is stamped into the
 # build only, never committed to `next`. The decisions live in
@@ -13,6 +13,10 @@ on:
     paths-ignore:
       - "**.md"
       - "docs/**"
+      # Agent skills, editor settings and device test scripts: none ship.
+      - ".claude/**"
+      - "deck-debug/**"
+      - "tools/deck-ui/**"
 
 permissions:
   contents: read
