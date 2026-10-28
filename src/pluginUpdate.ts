@@ -103,6 +103,23 @@ type Loader = { call?: (...args: unknown[]) => Promise<unknown> };
 const LOADER_UNAVAILABLE =
   "Decky's plugin installer is not available in this version. Update manually from the releases page.";
 
+/** The versions the engine stages: X.Y.Z or X.Y.Z-beta.N (PluginVersion, without the v). */
+const STAGED_VERSION = /^\d+(?:\.\d+){0,2}(?:-beta\.\d+)?$/;
+
+/**
+ * Whether the artifact is the engine's local staging file for this exact
+ * version: file:///<dirs>/wowdeck-update-<version>.zip, with no "." or
+ * ".." segment in the path.
+ * The name must stay in step with UpdateStager.stage().
+ */
+function isStagedArtifact(staged: StagedUpdate): boolean {
+  if (!STAGED_VERSION.test(staged.version)) return false;
+  const m = /^file:\/\/\/((?:[^/]+\/)*)([^/]+)$/.exec(staged.artifact);
+  if (!m) return false;
+  if (m[1]!.split("/").some((s) => s === "." || s === "..")) return false;
+  return m[2] === `wowdeck-update-${staged.version}.zip`;
+}
+
 /**
  * Hand a staged update to Decky's own installer
  * (utilities/install_plugin, install type UPDATE): the loader shows its
@@ -123,7 +140,7 @@ export async function requestPluginUpdate(staged: StagedUpdate): Promise<UpdateR
     if (typeof loader?.call !== "function") {
       return { success: false, error: LOADER_UNAVAILABLE };
     }
-    if (!/^file:\/\/\/(?:[^/]+\/)*wowdeck-update-[0-9.]+\.zip$/.test(staged.artifact)) {
+    if (!isStagedArtifact(staged)) {
       return {
         success: false,
         error: "The update could not be verified, so it was not installed.",

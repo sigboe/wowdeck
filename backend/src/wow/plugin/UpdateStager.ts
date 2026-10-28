@@ -92,6 +92,7 @@ export class UpdateStager {
       return outcome("no_download", "The release has no WoWDeck.zip to install");
     }
     const { version } = offer;
+    // src/pluginUpdate.ts (isStagedArtifact) accepts only this name.
     const zipPath = join(this.tempDir, `wowdeck-update-${version}.zip`);
     this.#sweepStale(zipPath);
     try {

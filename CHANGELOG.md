@@ -31,6 +31,8 @@ What's new in each version of WoWDeck Addon Manager. The format follows
 - Updating, ignoring or removing an addon changes its row once, without the list
   flickering or briefly showing the old version.
 - Pausing automatic updates or ignoring an addon while updates run now sticks.
+- Updating to a beta now opens Decky's install prompt instead of saying the
+  update could not be verified.
 
 ## [0.2.0] - 2026-10-25
 
