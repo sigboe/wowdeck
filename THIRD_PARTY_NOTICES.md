@@ -50,3 +50,14 @@
   Decktation plugin (itself bundling the same unmodified upstream
   binary for an unrelated feature), not independently built or
   modified.
+
+## pstack `unslop` skill (https://github.com/cursor/plugins/tree/main/pstack)
+
+- License: MIT, Copyright (c) 2026 Lauren Tan; full text at
+  `.claude/skills/unslop/LICENSE`.
+- Used as: the agent skill at `.claude/skills/unslop/SKILL.md`, copied from
+  `pstack/skills/unslop/SKILL.md` at commit
+  `c742dd61706fbacc1b95f1a20b7b988cf096ce6c`. Changed only in its
+  frontmatter: a description naming this repo's docs replaces the original
+  one, and `disable-model-invocation` is removed so agents load it
+  themselves. It is development tooling and does not ship in the plugin.

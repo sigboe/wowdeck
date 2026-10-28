@@ -92,6 +92,14 @@ messages or PR descriptions — the owner asks for it per PR.
 
 ## Agent skills
 
+### Writing
+
+Markdown people read (`README.md`, `CHANGELOG.md`,
+`THIRD_PARTY_NOTICES.md`, `docs/` outside `docs/agents/`) goes through
+`unslop` before it is committed. Markdown agents read (`AGENTS.md`,
+`CLAUDE.md`, `.claude/skills/`, `docs/agents/`) follows
+`writing-for-agents`.
+
 ### Issue tracker
 
 GitHub Issues for finished work (`/to-spec`, `/to-tickets`, `/triage`);
