@@ -1,5 +1,11 @@
 import { errorText } from "./errors";
-import type { WtfBackupInfo, WtfCompleted, WtfCopySource, WtfJobSnapshot } from "./types";
+import type {
+  WtfBackupInfo,
+  WtfCompleted,
+  WtfCopySource,
+  WtfImportResult,
+  WtfJobSnapshot,
+} from "./types";
 import { backupOrigin, formatWhen } from "./wtfFormat";
 
 /**
@@ -327,6 +333,21 @@ export function keepCurrentConfigFor(
   toggle: boolean,
 ): boolean {
   return backup.hasConfig && toggle;
+}
+
+/** What Import from file… says afterwards. Another version's zip is filed under that version: say where, and how to use it here. */
+export function importNotice(
+  result: Pick<WtfImportResult, "alreadyPresent" | "otherVersion">,
+): string {
+  const { alreadyPresent, otherVersion } = result;
+  if (!otherVersion) {
+    return alreadyPresent ? "That backup is already in the list." : "Backup added to the list.";
+  }
+  const where = `${otherVersion.displayName}'s backups`;
+  const next = "To use it here, choose Copy settings from another version.";
+  return alreadyPresent
+    ? `That backup is already in ${where}. ${next}`
+    : `Added to ${where}. ${next}`;
 }
 
 export function deleteConfirmation(

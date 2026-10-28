@@ -14,6 +14,7 @@ What's new in each version of WoWDeck Addon Manager. The format follows
   on offer.
 - Copy another WoW version's current settings or one of its backups in Manage
   backups, such as your Forever Beta addon settings, keybinds and layout into Forever.
+  Import from file… accepts other versions' backups for this.
 
 ### Changed
 

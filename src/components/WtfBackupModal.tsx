@@ -22,7 +22,12 @@ import { useWtfList } from "../useWtfList";
 import { type BackupActionKey, backupActions, loadedBackupFocus } from "../wtfBackupFocus";
 import { bumpWtfList, clearWtfOutcome, getWtfState, subscribeWtfState } from "../wtfBackupState";
 import { formatBytes, formatWhen } from "../wtfFormat";
-import { friendlyWtfCallError, jobProgressText, restoreBlockedReason } from "../wtfText";
+import {
+  friendlyWtfCallError,
+  importNotice,
+  jobProgressText,
+  restoreBlockedReason,
+} from "../wtfText";
 import { useWtfCopySources } from "../useWtfCopySources";
 import { confirmDeleteBackup, confirmRestoreBackup } from "./confirmWtf";
 import { BackupRowDescription } from "./BackupRowDescription";
@@ -147,13 +152,11 @@ function WtfBackupModal({ installation, closeModal }: ModalProps) {
     setActionError(null);
     setNotice(null);
     try {
-      const { alreadyPresent } = await api.rpc("wtf.import", {
+      const result = await api.rpc("wtf.import", {
         path: picked.path,
         installationId: installation.id,
       });
-      setNotice(
-        alreadyPresent ? "That backup is already in the list." : "Backup added to the list.",
-      );
+      setNotice(importNotice(result));
       bumpWtfList();
     } catch (e) {
       setActionError(friendlyWtfCallError(e));

@@ -4,6 +4,7 @@ import {
   errorCodeOf,
   friendlyWtfCallError,
   friendlyWtfError,
+  importNotice,
   wtfCompletedToast,
   jobPercent,
   jobProgressText,
@@ -422,6 +423,27 @@ describe("Settings copy of current settings", () => {
     expect(jobProgressText({ ...job, phase: "scan" })).toBe("Looking at the settings to copy…");
     expect(jobProgressText({ ...job, phase: "compress" })).toBe(
       "Backing up the settings to copy… 25%",
+    );
+  });
+});
+
+describe("import notice", () => {
+  test("another version's zip: names the version (display name) and points at Copy settings", () => {
+    const otherVersion = { flavor: "_classic_beta_", displayName: "Forever Beta" };
+    expect(importNotice({ alreadyPresent: false, otherVersion })).toBe(
+      "Added to Forever Beta's backups. To use it here, choose Copy settings from another version.",
+    );
+    expect(importNotice({ alreadyPresent: true, otherVersion })).toBe(
+      "That backup is already in Forever Beta's backups. To use it here, choose Copy settings from another version.",
+    );
+  });
+
+  test("this version's zip, or one that records no version: as before", () => {
+    expect(importNotice({ alreadyPresent: false, otherVersion: null })).toBe(
+      "Backup added to the list.",
+    );
+    expect(importNotice({ alreadyPresent: true, otherVersion: null })).toBe(
+      "That backup is already in the list.",
     );
   });
 });

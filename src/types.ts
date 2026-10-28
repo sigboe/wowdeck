@@ -37,6 +37,7 @@ export type {
 } from "../backend/src/api/contracts";
 
 export type WtfListResult = MethodMap["wtf.list"]["result"];
+export type WtfImportResult = MethodMap["wtf.import"]["result"];
 
 /** An addon's folders and the running file manager (addons.folders, WF-20). */
 export type AddonFolders = MethodMap["addons.folders"]["result"];

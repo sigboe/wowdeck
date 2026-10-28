@@ -906,9 +906,18 @@ export interface MethodMap {
     result: { fileName: string };
   };
   "wtf.import": {
-    /** Add a backup zip from anywhere (copied into this flavor's backup folder after validation). */
+    /**
+     * Add a backup zip from anywhere (copied into a backup folder after validation). A zip that records
+     * another flavor goes into that flavor's folder, never this one's: it is then a Settings copy source.
+     * Zips that record no flavor (desktop WowUp) go into this flavor's folder.
+     */
     params: { installationId?: string; path: string };
-    result: { fileName: string; alreadyPresent: boolean };
+    result: {
+      fileName: string;
+      alreadyPresent: boolean;
+      /** The other version the zip was filed under; null when it went into this installation's list. */
+      otherVersion: { flavor: string; displayName: string } | null;
+    };
   };
   "wtf.cancel": {
     /** Create can be cancelled any time; a restore only until it starts swapping folders (`too_late_to_cancel`). */

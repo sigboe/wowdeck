@@ -514,32 +514,33 @@ describe("importBackup", () => {
     const s = service();
     const b = await s.createBackup(target, { kind: "manual" });
     const again = await s.importBackup(target, join(backupDir(), b.fileName));
-    expect(again).toEqual({ fileName: b.fileName, alreadyPresent: true });
+    expect(again).toEqual({ fileName: b.fileName, alreadyPresent: true, otherVersion: null });
     mkdirSync(outside(), { recursive: true });
     const src = join(outside(), "copy.zip");
     copyFileSync(join(backupDir(), b.fileName), src);
     const first = await s.importBackup(target, src);
     const second = await s.importBackup(target, src);
-    expect(second).toEqual({ fileName: first.fileName, alreadyPresent: true });
+    expect(second).toEqual({ fileName: first.fileName, alreadyPresent: true, otherVersion: null });
     expect(zipsIn().length).toBeLessThanOrEqual(2);
   });
 
-  test("accepts a desktop WowUp backup", async () => {
+  test("accepts a desktop WowUp backup (no recorded flavor) into this flavor's list", async () => {
     const r = await service().importBackup(target, FIXTURE);
-    expect(r.alreadyPresent).toBe(false);
+    expect(r).toMatchObject({ alreadyPresent: false, otherVersion: null });
+    expect(zipsIn()).toEqual([r.fileName]);
+    expect(readdirSync(backupRoot)).toEqual(["_retail_"]);
+    expect(await service().importBackup(target, FIXTURE)).toEqual({ ...r, alreadyPresent: true });
     const [info] = (await service().listBackups(target)).backups;
     expect(info).toMatchObject({ valid: true, flavor: null });
   });
 
-  test("rejects relative paths, non-zips, missing files, garbage and the wrong flavor; copies nothing", async () => {
+  test("rejects relative paths, non-zips, missing files and garbage; copies nothing", async () => {
     makeWtf();
     const s = service();
     const b = await s.createBackup(target, { kind: "manual" });
     mkdirSync(outside(), { recursive: true });
     writeFileSync(join(outside(), "notes.txt"), "x");
     writeFileSync(join(outside(), "junk.zip"), randomBytes(300));
-    const other = join(outside(), "era.zip");
-    copyFileSync(join(backupDir(), b.fileName), other);
     for (const [path, code] of [
       ["relative.zip", "backup_invalid"],
       [join(outside(), "notes.txt"), "backup_invalid"],
@@ -548,7 +549,6 @@ describe("importBackup", () => {
     ] as const) {
       await expect(s.importBackup(target, path)).rejects.toMatchObject({ code });
     }
-    await expect(s.importBackup({ ...target, flavor: "_classic_era_" }, other)).rejects.toMatchObject({ code: "flavor_mismatch" });
     expect(zipsIn()).toEqual([b.fileName]);
   });
 

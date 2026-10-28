@@ -13,7 +13,7 @@
 
 import { copyFile, rename as fsRename, stat, statfs, unlink } from "node:fs/promises";
 import { dirname, isAbsolute, join, resolve } from "node:path";
-import type { GameRunning, WtfBackupInfo, WtfCopySource, WtfPhase } from "../../api/contracts";
+import type { GameRunning, MethodMap, WtfBackupInfo, WtfCopySource, WtfPhase } from "../../api/contracts";
 import { createDirectory, isDirectory, listDirectory, pathExists, removeDirectory } from "../fs/safe-fs";
 import { kindOf, parseBackupMeta, type BackupKind, type BackupMeta, type BackupMetaEntry } from "./BackupMeta";
 import { WtfBackupError } from "./errors";
@@ -92,6 +92,11 @@ export interface ListResult {
 }
 
 /** An installed WoW version, as Settings copy sees it. */
+export type ImportResult = MethodMap["wtf.import"]["result"];
+
+/** A flavor key as backup folders use it (see flavorBackupDir). */
+const FLAVOR_KEY_RE = /^[a-z0-9_]+$/;
+
 export interface InstalledFlavor {
   installationId: string;
   flavor: string;
@@ -341,7 +346,7 @@ export class WtfBackupService {
       return { dirAvailable: false, sources: [] };
     }
     const folders = (await listDirectory(root.path))
-      .filter((e) => e.isDirectory && !e.isSymlink && /^[a-z0-9_]+$/.test(e.name))
+      .filter((e) => e.isDirectory && !e.isSymlink && FLAVOR_KEY_RE.test(e.name))
       .map((e) => e.name);
     const flavors = [...new Set([...folders, ...installed.map((i) => i.flavor)])].filter((f) => f !== target.flavor);
     const gameRunning = await this.gameStatus();
@@ -624,11 +629,12 @@ export class WtfBackupService {
 
   /**
    * Add a backup zip from anywhere (e.g. one made on another computer and copied over, or by desktop
-   * WowUp) to this flavor's list. Validated before anything is copied: a readable zip with WowUp-style
-   * metadata, and — when it records a flavor — the right one. Copied via `.partial` + atomic rename.
-   * Importing a file that is already in the list is a no-op that returns the existing name.
+   * WowUp). Validated before anything is copied: a readable zip with WowUp-style metadata. It goes into
+   * the list of the flavor it records — another flavor's zip is filed under that flavor (a Settings copy
+   * source) and never into this one's — or this flavor's when it records none. Copied via `.partial` +
+   * atomic rename. Importing a file that is already in the list is a no-op that returns the existing name.
    */
-  async importBackup(target: WtfTarget, sourcePath: string): Promise<{ fileName: string; alreadyPresent: boolean }> {
+  async importBackup(target: WtfTarget, sourcePath: string): Promise<ImportResult> {
     return this.#exclusive(async () => {
       if (sourcePath.includes("\0") || !isAbsolute(sourcePath) || !sourcePath.toLowerCase().endsWith(".zip")) {
         throw new WtfBackupError("backup_invalid", "Choose a .zip backup file.");
@@ -639,13 +645,15 @@ export class WtfBackupService {
       }
       const meta = await this.readMeta(sourcePath);
       const recorded = meta.wowupDecky?.flavor;
-      if (recorded !== undefined && recorded !== target.flavor) {
-        throw new WtfBackupError("flavor_mismatch", "This backup was made for a different WoW version.");
+      if (recorded !== undefined && !FLAVOR_KEY_RE.test(recorded)) {
+        throw new WtfBackupError("backup_invalid", "This backup records a WoW version that isn't valid.");
       }
-      const dir = await this.#prepareBackupDir(target);
+      const flavor = recorded ?? target.flavor;
+      const otherVersion = flavor === target.flavor ? null : { flavor, displayName: flavorDisplayName(flavor) };
+      const dir = await this.#prepareBackupDir({ ...target, flavor });
       const resolvedSource = resolve(sourcePath);
       if (dirname(resolvedSource) === resolve(dir)) {
-        return { fileName: resolvedSource.slice(resolve(dir).length + 1), alreadyPresent: true };
+        return { fileName: resolvedSource.slice(resolve(dir).length + 1), alreadyPresent: true, otherVersion };
       }
       const free = await this.#freeBytes(dir);
       if (free !== null && free < st.size + SPACE_SLACK_BYTES) {
@@ -659,7 +667,7 @@ export class WtfBackupService {
           break;
         }
         if ((await stat(existing)).size === st.size) {
-          return { fileName: name, alreadyPresent: true };
+          return { fileName: name, alreadyPresent: true, otherVersion };
         }
         stamp += 1;
       }
@@ -673,7 +681,7 @@ export class WtfBackupService {
         await unlink(partial).catch(() => {});
         throw err;
       }
-      return { fileName, alreadyPresent: false };
+      return { fileName, alreadyPresent: false, otherVersion };
     });
   }
 

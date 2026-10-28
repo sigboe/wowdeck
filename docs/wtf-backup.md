@@ -172,7 +172,14 @@ trap focus (#12).
   happen (cancelled or failed), the engine deletes that backup again, so neither side changes. The
   source's WTF is only read. WoW running for the source isn't checked. WoW running for the target
   blocks with `game_running` before anything is written. The process scan can't tell which
-  installation is running, so on the Deck any running WoW blocks a copy.- **Dialog.** The Restore dialog, worded for a copy. **Keep this device's graphics & display
+  installation is running, so on the Deck any running WoW blocks a copy.
+- **Import.** **Import from file…** files a zip that records another flavor under that flavor, in
+  its own backup folder, so the version shows up as a source with that backup listed. It never
+  goes into the importing version's list. The `wtf.import` result's `otherVersion` gives the
+  flavor and its display name, and the UI says "Added to Forever Beta's backups. To use it here,
+  choose Copy settings from another version." A recorded flavor that isn't a valid flavor key is
+  refused as `backup_invalid`.
+- **Dialog.** The Restore dialog, worded for a copy. **Keep this device's graphics & display
   settings** starts on. A related version adds a plain line saying characters on the old realms
   won't match and addons you don't have keep their settings unused. An unrelated version gets a
   red warning and **Copy anyway**. Below the dropdown, **Current settings** comes first for an
@@ -202,9 +209,10 @@ inside any installation's `WTF` or `Interface` folder.
 Nothing syncs: copy a `wtf_*.zip` into the other machine's backup folder (for a Deck:
 `<plugin data>/wtf-backups/<flavor>/`, or the chosen folder). `Config.wtf` and the layout files
 are machine-specific; the restore keeps this device's `Config.wtf` for backups made elsewhere.
-Manage backups > **Import from file…** (file picker) validates a zip (readable, WowUp-style
-metadata, right flavor if it records one) and copies it into this flavor's list; importing the same
-file again is a no-op. Options > Settings backup lets you choose the backup folder (e.g. an SD card; it
+Manage backups > **Import from file…** (file picker) checks that a zip is readable and has
+WowUp-style metadata. It then copies the zip into the list of the flavor it records, or into this
+flavor's list when it records none (desktop WowUp). Another flavor's zip becomes a Settings copy
+source (see above). Importing the same file again is a no-op. Options > Settings backup lets you choose the backup folder (e.g. an SD card; it
 must exist and be writable and not be inside a game's `WTF`/`Interface`) and how many automatic
 safety backups to keep (1-10, default 3).
 

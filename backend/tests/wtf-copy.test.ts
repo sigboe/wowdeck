@@ -3,6 +3,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { unzipSync, zipSync } from "fflate";
 import { detectGameRunning, type ProcReader } from "../src/wow/wtf/GameProcessGuard";
 import { WtfBackupService, type WtfTarget } from "../src/wow/wtf/WtfBackupService";
 
@@ -370,5 +371,61 @@ describe("copy sources: current settings", () => {
       ["_ptr_", false],
       ["_retail_", false],
     ]);
+  });
+});
+
+describe("importing another version's zip", () => {
+  /** A Forever Beta backup zip outside the backup folder (copied off another device), and the Forever target. */
+  async function betaZipElsewhere() {
+    const beta = makeWtf("_classic_beta_", "beta");
+    const s = service();
+    const made = await s.createBackup(beta, { kind: "manual" });
+    const incoming = join(tmp, "incoming");
+    mkdirSync(incoming, { recursive: true });
+    const zip = join(incoming, "beta-settings.zip");
+    writeFileSync(zip, readFileSync(join(backupRoot, "_classic_beta_", made.fileName)));
+    await s.deleteBackup(beta, made.fileName);
+    return { zip, forever: makeWtf("_forever_", "forever") };
+  }
+
+  test("files it in that version's backup folder and reports the version; this version's list stays empty", async () => {
+    const { zip, forever } = await betaZipElsewhere();
+    const r = await service().importBackup(forever, zip);
+    expect(r.alreadyPresent).toBe(false);
+    expect(r.otherVersion).toEqual({ flavor: "_classic_beta_", displayName: "Forever Beta" });
+    expect(zipsFor("_classic_beta_")).toEqual([r.fileName]);
+    expect(zipsFor("_forever_")).toEqual([]);
+    expect((await service().listBackups(forever)).backups).toEqual([]);
+  });
+
+  test("afterwards that version is a copy source with the imported backup listed", async () => {
+    const { zip, forever } = await betaZipElsewhere();
+    const r = await service().importBackup(forever, zip);
+    const { sources } = await service().listCopySources(forever, []);
+    const beta = sources.find((s) => s.flavor === "_classic_beta_");
+    expect(beta?.backups.map((b) => b.fileName)).toEqual([r.fileName]);
+  });
+
+  test("re-importing it is a no-op", async () => {
+    const { zip, forever } = await betaZipElsewhere();
+    const first = await service().importBackup(forever, zip);
+    const again = await service().importBackup(forever, zip);
+    expect(again).toEqual({ ...first, alreadyPresent: true });
+    const inFolder = await service().importBackup(forever, join(backupRoot, "_classic_beta_", first.fileName));
+    expect(inFolder).toEqual({ ...first, alreadyPresent: true });
+    expect(zipsFor("_classic_beta_")).toEqual([first.fileName]);
+  });
+
+  test("a recorded flavor that isn't a flavor key is refused and nothing is copied", async () => {
+    const { zip, forever } = await betaZipElsewhere();
+    const entries = unzipSync(readFileSync(zip));
+    const metaName = "wowup-meta.json";
+    const meta = JSON.parse(new TextDecoder().decode(entries[metaName]));
+    meta.wowupDecky.flavor = "../escape";
+    entries[metaName] = new TextEncoder().encode(JSON.stringify(meta));
+    writeFileSync(zip, zipSync(entries));
+    await expect(service().importBackup(forever, zip)).rejects.toMatchObject({ code: "backup_invalid" });
+    expect(readdirSync(backupRoot).sort()).toEqual(["_classic_beta_"]);
+    expect(zipsFor("_classic_beta_")).toEqual([]);
   });
 });

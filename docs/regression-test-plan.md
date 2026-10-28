@@ -438,6 +438,7 @@ Back up WTF by hand before starting this section.
 | W-22 | P1 | | Choose a version that is no longer installed but still has backups | No **Current settings** row; only its backups are listed |
 | W-23 | P1 | | Start WoW, then choose **Current settings** in the copy modal | The dialog warns that WoW saves addon settings when you log out or reload, so a copy made now won't include this session's changes; the copy button is off and it says to close WoW |
 | W-24 | P1 | | Start a **Current settings** copy and press Cancel while it reports "Backing up the settings to copy…" | "Cancelled. Nothing was changed."; neither version's list gains a backup and both WTF folders are unchanged |
+| W-25 | P1 | | On Forever, **Import from file…** with a Forever Beta zip (a Forever Beta backup copied out and deleted from its list first); then import the same zip again | "Added to Forever Beta's backups. To use it here, choose Copy settings from another version." Forever's own list doesn't change. **Copy settings from another version…** appears (or stays) and lists that backup under Forever Beta. The second import says the backup is already in Forever Beta's backups and adds nothing. A desktop WowUp zip still lands in Forever's list as "Backup added to the list." |
 
 ## 5. In-game and notifications
 
