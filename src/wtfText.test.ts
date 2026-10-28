@@ -9,9 +9,12 @@ import {
   jobPercent,
   jobProgressText,
   keepCurrentConfigFor,
+  copySourceHeader,
   copySourceOption,
+  copySourceRowLabel,
   copySourceRows,
   copySourceStatus,
+  currentSettingsDescription,
   currentSettingsBackup,
   copyGameRunningNotice,
   okActionLabel,
@@ -457,6 +460,37 @@ describe("Settings copy of current settings", () => {
     expect(copySourceRows({ ...beta, current: null, backups: [backup] })).toEqual([
       { kind: "backup", backup },
     ]);
+  });
+
+  test("the list names its source: the header and every row", () => {
+    const backup = {
+      ...currentSettingsBackup(beta),
+      fileName: "wtf_1.zip",
+      createdAt: now - 3 * 86_400_000,
+      sizeBytes: 2_100_000,
+    };
+    expect(copySourceHeader(beta)).toBe("Copying from Forever Beta");
+    expect(copySourceRowLabel(beta, { kind: "current" }, now)).toBe(
+      "Forever Beta · Current settings",
+    );
+    expect(currentSettingsDescription(currentSettingsBackup(beta), now)).toBe("Changed 1 hour ago");
+    expect(copySourceRowLabel(beta, { kind: "backup", backup }, now)).toBe(
+      "Forever Beta · 3 days ago · 2.1 MB",
+    );
+  });
+
+  test("a version that isn't installed labels its backup rows the same way", () => {
+    const anniversary = { displayName: "Anniversary", installed: false, current: null };
+    const backup = {
+      ...currentSettingsBackup(beta),
+      flavor: "_anniversary_",
+      createdAt: now - 7_200_000,
+      sizeBytes: 38_000,
+    };
+    expect(copySourceHeader(anniversary)).toBe("Copying from Anniversary");
+    expect(copySourceRowLabel(anniversary, { kind: "backup", backup }, now)).toBe(
+      "Anniversary · 2 hours ago · 38 KB",
+    );
   });
 
   test("progress while the source is backed up", () => {

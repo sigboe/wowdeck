@@ -725,7 +725,9 @@ spacing, type and focus colours are right. The old `.wowdeck-root` Field
 override (removed, S3) took away the 12 px row padding and made the label touch
 the edge of the lighter row (found on the Restore
 dialog, owner, 2026-10-15). Hand-rolled `<div>` headings with `em` sizes are the
-other symptom: use the components.
+other symptom: use the components. The owner set one exception. The Copy
+settings modal colours its "Copying from <version>" section header
+`STEAM.primary` so that the source of a copy stands out.
 
 **S9 [PROJECT] MUST** present an action in a modal or list as a whole-row
 `Field` (label, description, `onClick`, `focusable`), not as a free-standing
@@ -1657,7 +1659,7 @@ needs a human on a controller to confirm.
 | Details modal, news-style carousel (DEVICE-verified by the owner, 2026-10-13; see 6.4) | LB/RB and D-pad Left/Right switch page, clamped, Gallery present only with screenshots; Up/Down scroll the active page the way Valve's gamepad-scroll regions do (30 % viewport per press, 300–500 ms sine tween, 400→50 ms repeats retargeting linearly; `valveScroll.ts`); Y = View on <Provider> (only when `websiteUrl`), X = Install (disabled while installing), B closes; in the stacked Gallery viewer B closes only the viewer and LB/RB/Left/Right belong to the viewer (`galleryOpenRef`). Links and video are pointer-only (U-18). The footer legend does render for a `showModal` modal when the page is a `Field focusable` (6.1) |
 | Options | Steam settings rows, every control reachable by Up/Down. TextFields open the platform keyboard on activation. |
 | Manage backups (Settings backup; device verification pending) | Up/Down over the action rows (Back up now or Cancel, Import from file…, Copy settings from another version…) and then one focus stop per backup, newest first. A row that can't act is unfocusable; **Copy settings from another version…** is hidden, never disabled, when no other version has anything to copy (#12). With no backups listed, focus starts on the first action that can run (#12). Backup row: A = Restore (Details when it can't run), X = Delete; B closes. |
-| Copy settings modal (Settings copy; device verification pending) | Focus starts on **Copy from**; A opens its dropdown (B closes the dropdown only). Down reaches **Current settings** (installed versions only), then every backup of that version, newest first. A on a row opens the Restore dialog worded for a copy; its A label reads Details while the copy can't run (WoW running, another job, damaged backup). B closes the modal; once a copy starts the modal closes itself and Manage backups shows progress and Cancel. |
+| Copy settings modal (Settings copy; device verification pending) | Focus starts on **Copy from**; A opens its dropdown (B closes the dropdown only). Under it, the section header reads "Copying from <version>" in Steam blue. Down reaches **<version> · Current settings** (installed versions only), then every backup of that version, newest first, labelled **<version> · <when> · <size>**; switching **Copy from** renames the header and every row. A on a row opens the Restore dialog worded for a copy; its A label reads Details while the copy can't run (WoW running, another job, damaged backup). B closes the modal; once a copy starts the modal closes itself and Manage backups shows progress and Cancel. |
 
 Acceptance criteria for any change that touches focus:
 

@@ -19,13 +19,15 @@ import type { Installation, WtfBackupInfo, WtfCopySource } from "../types";
 import * as api from "../services/backend";
 import { useWtfCopySources } from "../useWtfCopySources";
 import { clearWtfOutcome, getWtfState, subscribeWtfState } from "../wtfBackupState";
-import { formatBytes, formatWhen } from "../wtfFormat";
 import {
   copyGameRunningNotice,
+  copySourceHeader,
   copySourceOption,
+  copySourceRowLabel,
   copySourceRows,
   copySourceStatus,
   currentSettingsBackup,
+  currentSettingsDescription,
   friendlyWtfCallError,
   okActionLabel,
   restoreBlockedReason,
@@ -43,11 +45,13 @@ interface ModalProps {
 /**
  * Settings copy (GLOSSARY.md): one screen with a **Copy from** dropdown and,
  * below it, what that version has: **Current settings** first (installed
- * versions only), then its backups, newest first. Choosing a row opens the
- * Restore dialog worded for a copy; once the job starts this modal closes and
- * Manage backups shows its progress and Cancel, as for a restore. WoW running
- * blocks every copy (the engine can't tell which version runs): one line under
- * the intro says so, each row's A reads Details and its dialog has Copy off.
+ * versions only), then its backups, newest first. The header ("Copying from
+ * <version>", in Steam blue) and every row label name the source version.
+ * Choosing a row opens the Restore dialog worded for a copy; once the job
+ * starts this modal closes and Manage backups shows its progress and Cancel,
+ * as for a restore. WoW running blocks every copy (the engine can't tell which
+ * version runs): one line under the intro says so, each row's A reads Details
+ * and its dialog has Copy off.
  * Navigation contract: UI guide §6.6, "Copy settings modal".
  */
 function WtfCopyModal({ installation, onStarted, closeModal }: ModalProps) {
@@ -158,8 +162,8 @@ function WtfCopyModal({ installation, onStarted, closeModal }: ModalProps) {
                 />
               </DialogControlsSection>
               <DialogControlsSection>
-                <DialogControlsSectionHeader>
-                  {source.displayName} settings
+                <DialogControlsSectionHeader style={{ color: STEAM.primary }}>
+                  {copySourceHeader(source)}
                 </DialogControlsSectionHeader>
                 {copySourceRows(source).map((row) => {
                   if (row.kind === "current") {
@@ -168,10 +172,10 @@ function WtfCopyModal({ installation, onStarted, closeModal }: ModalProps) {
                       <Field
                         key="current"
                         focusable
-                        label="Current settings"
+                        label={copySourceRowLabel(source, row, now)}
                         onClick={() => startCopy(source, null)}
                         onOKActionDescription={okActionLabel(blockedReasonFor(current), "Copy")}
-                        description={`What ${source.displayName} has now · changed ${formatWhen(current.createdAt, now)}`}
+                        description={currentSettingsDescription(current, now)}
                       >
                         <FaChevronRight />
                       </Field>
@@ -182,7 +186,7 @@ function WtfCopyModal({ installation, onStarted, closeModal }: ModalProps) {
                     <Field
                       key={backup.fileName}
                       focusable
-                      label={`${formatWhen(backup.createdAt, now)} · ${formatBytes(backup.sizeBytes)}`}
+                      label={copySourceRowLabel(source, row, now)}
                       onClick={() => startCopy(source, backup)}
                       onOKActionDescription={okActionLabel(blockedReasonFor(backup), "Copy")}
                       description={<BackupRowDescription backup={backup} />}
