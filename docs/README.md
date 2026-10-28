@@ -47,6 +47,8 @@ is read-only.
 | [../THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md) | License posture for extraction and dependencies. |
 | [adr/0001-get-addons-widened-qam.md](adr/0001-get-addons-widened-qam.md) | Decision record: Get Addons moves into a widened QAM (Steam Friends pattern). |
 | [adr/0002-get-addons-browse-bar.md](adr/0002-get-addons-browse-bar.md) | Decision record: the browse bar — one picker row above the results, enablement lives in Options. |
+| [adr/0003-release-notes-from-changelog.md](adr/0003-release-notes-from-changelog.md) | Decision record: release notes come from `CHANGELOG.md`, written for players. |
+| [adr/0004-release-notes-are-plain-text-from-the-engine.md](adr/0004-release-notes-are-plain-text-from-the-engine.md) | Decision record: release notes are plain text, made in the engine. |
 
 ## Upstream contributions (WowUp)
 
