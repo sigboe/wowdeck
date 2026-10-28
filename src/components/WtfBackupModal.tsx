@@ -1,5 +1,5 @@
 import { ScrollBuffer } from "./ScrollBuffer";
-import { useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   DialogBody,
   DialogBodyText,
@@ -14,14 +14,21 @@ import {
 import { FileSelectionType, openFilePicker } from "@decky/api";
 import { FaChevronRight } from "react-icons/fa";
 import { wowupModalStyleCss } from "../sharedStyles";
+import { requestFocus } from "../focusMemory";
 import { STEAM, descriptionStyle } from "../steamTheme";
 import type { GameRunning, Installation, WtfBackupInfo } from "../types";
 import * as api from "../services/backend";
 import { useWtfList } from "../useWtfList";
+import { type BackupActionKey, backupActions, loadedBackupFocus } from "../wtfBackupFocus";
 import { bumpWtfList, clearWtfOutcome, getWtfState, subscribeWtfState } from "../wtfBackupState";
 import { backupKindLabel, backupOrigin, formatBytes, formatWhen } from "../wtfFormat";
 import { friendlyWtfCallError, jobProgressText } from "../wtfText";
 import { confirmDeleteBackup, confirmRestoreBackup } from "./confirmWtf";
+import { focusTarget } from "./FocusSlot";
+
+/** Focus-memory view of the modal's action rows. */
+const VIEW = "modal.wtfBackups";
+const actionFocus = (key: BackupActionKey) => focusTarget(VIEW, key);
 
 interface ModalProps {
   installation: Installation;
@@ -50,6 +57,20 @@ function WtfBackupModal({ installation, closeModal }: ModalProps) {
     wtf.outcome && wtf.outcome.installationId === installation.id ? wtf.outcome : null;
   const gameRunning = list?.gameRunning ?? "unknown";
   const now = Date.now();
+  const focusChosen = useRef(false);
+
+  // Once, when the list first arrives (loadedBackupFocus says why); later
+  // polls and job changes leave focus alone, hence `list` as the only dep.
+  useEffect(() => {
+    if (!list || focusChosen.current) {
+      return;
+    }
+    focusChosen.current = true;
+    const key = loadedBackupFocus(list, anyJob);
+    if (key) {
+      requestFocus(VIEW, key);
+    }
+  }, [list]);
 
   const startCreate = async () => {
     clearWtfOutcome();
@@ -147,8 +168,7 @@ function WtfBackupModal({ installation, closeModal }: ModalProps) {
     }
   };
 
-  const canBackUp = !anyJob && !!list?.wtfExists && !!list?.dirAvailable;
-  const canImport = !anyJob && !!list?.dirAvailable;
+  const { canBackUp, canImport } = backupActions(list, anyJob);
 
   return (
     <ModalRoot onCancel={closeModal} closeModal={closeModal} bAllowFullSize>
@@ -200,6 +220,7 @@ function WtfBackupModal({ installation, closeModal }: ModalProps) {
               disabled={!canBackUp}
               focusable={canBackUp}
               onClick={startCreate}
+              {...actionFocus("backUp")}
             />
             {jobHere && (
               <Field label="Cancel" description="Stop the backup" focusable onClick={cancelJob} />
@@ -210,6 +231,7 @@ function WtfBackupModal({ installation, closeModal }: ModalProps) {
               disabled={!canImport}
               focusable={canImport}
               onClick={importFromFile}
+              {...actionFocus("import")}
             />
           </DialogControlsSection>
 

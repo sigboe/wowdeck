@@ -428,6 +428,7 @@ Back up WTF by hand before starting this section.
 | W-12 | P1 | | Desktop WowUp round trip (optional) | A Deck backup restores in WowUp; a WowUp backup restores here |
 | W-13 | P2 | | **Safety backups to keep** = 1, restore twice | Only one safety backup remains |
 | W-14 | P1 | | Delete a backup (X in the list) → confirm | File gone; Cancel keeps it |
+| W-15 | P1 | S | An installation with no backups: open **Manage backups**; press Down and Up. Then an installation with no WTF folder (a version never started) and no backups: the same | Once the list loads ("No backups yet."), focus lands on **Back up now**, and Down reaches **Import from file…**. With no WTF folder, **Back up now** is off and focus lands on **Import from file…** (verified DEVICE 2026-10-28, build 95f402e, arrow keys over CDP and a virtual pad. Forever, no WTF folder and no backups: focus on **Import from file…** from the first sample after A and still there 2 s later; Up and Down stayed on it. Classic Era, WTF folder and no backups: focus on **Back up now**, Down reached **Import from file…**, Up returned. W-10 on Classic Era with no backups: the picker opened from the focused row, the zip was added ("Backup added to the list.", Backups (1)) and focus stayed on **Import from file…**. The zip was a fresh Classic Era backup copied out and deleted from the list first; a Forever Beta zip imported into Forever was refused as "made for a different WoW version", as expected) |
 
 ## 5. In-game and notifications
 
