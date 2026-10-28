@@ -10,8 +10,10 @@ What's new in each version of WoWDeck Addon Manager. The format follows
 
 - Beta updates: pick the Beta channel (Options → Updates → ⋯) to get new
   features early, or switch back to Stable at any time.
-- Press Y on the update panel's Update button to read what's new in the version
-  on offer.
+- Press Y on the update panel's Update button, or on WoWDeck under Options →
+  Updates, to read what's new in the version on offer.
+- Press X on the Update button or on WoWDeck under Options → Updates to check
+  for a newer version right away.
 - Copy addon settings, keybinds and layout from another WoW version, such as
   Forever Beta into Forever.
 

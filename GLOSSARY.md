@@ -121,9 +121,17 @@ _Avoid_: release channel (that is an addon's Stable/Beta/Alpha).
 
 **Release notes**:
 What the offered WoWDeck build brings, written for players from our
-`CHANGELOG.md`. Y on the Update button opens them in a modal that also
-offers Update. The panel never shows them inline under the button.
+`CHANGELOG.md`. Y on the Update button, or on the WoWDeck row under
+Options › Updates, opens them in a modal that also offers Update. Neither
+shows them inline.
 _Avoid_: changelog (that is an addon's, in its Details modal).
+
+**Check again**:
+A WoWDeck update check the owner starts by hand (X on the Update button or
+on the WoWDeck row under Options › Updates). Unlike the automatic checks, it
+asks GitHub right away, even when the daily check already ran or a failed
+check is waiting to retry.
+_Avoid_: refresh, force check (in the UI).
 
 **Status tag**:
 A small uppercase chip on an addon row stating its state at a glance

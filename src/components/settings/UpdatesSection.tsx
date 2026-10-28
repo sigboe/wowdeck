@@ -7,8 +7,9 @@ import { pluginToast, toastError } from "../../toast";
 import { lastAutoUpdateLine } from "../../text";
 import { formatBytes } from "../../wtfFormat";
 import { settingsStore } from "../../settings";
-import { pluginUpdateRow } from "../../pluginUpdate";
+import { panelOffer, pluginUpdateRow, releaseNotesAction } from "../../pluginUpdate";
 import { selfUpdateStore } from "../../selfUpdate";
+import { openReleaseNotesModal } from "../ReleaseNotesModal";
 import { openUpdateChannelModal } from "../UpdateChannelModal";
 import { SettingsRow } from "./common";
 
@@ -17,11 +18,13 @@ import { SettingsRow } from "./common";
  * off, the space it uses, clear). The last row is WoWDeck's own version —
  * the plugin, never an addon — read from the shared self-update store, so
  * plugin load's answer shows here without a second fetch. Its ⋯ opens the
- * update channel modal; the Update button lives in the Options update panel.
+ * update channel modal (A), checks again (X) and, while the panel offers
+ * an update with notes, opens its release notes (Y), as on the panel's
+ * button; the Update button itself lives in the Options update panel.
  */
 export function UpdatesSection() {
   const { settings } = useSyncExternalStore(settingsStore.subscribe, settingsStore.get);
-  const { info: pluginUpdate } = useSyncExternalStore(
+  const { info: pluginUpdate, checking } = useSyncExternalStore(
     selfUpdateStore.subscribe,
     selfUpdateStore.get,
   );
@@ -63,6 +66,8 @@ export function UpdatesSection() {
   const wowdeckRow = pluginUpdate
     ? pluginUpdateRow(pluginUpdate)
     : { label: "WoWDeck", description: "" };
+  const offer = panelOffer(pluginUpdate);
+  const releaseNotes = releaseNotesAction(offer);
 
   useEffect(() => {
     void loadPreviousUsage();
@@ -126,14 +131,24 @@ export function UpdatesSection() {
         <Field
           label={wowdeckRow.label}
           description={
-            wowdeckRow.description ? (
-              <span style={descriptionStyle}>{wowdeckRow.description}</span>
+            checking || wowdeckRow.description ? (
+              <span style={descriptionStyle}>
+                {checking ? "Checking…" : wowdeckRow.description}
+              </span>
             ) : undefined
           }
         >
           <DialogButton
             style={{ minWidth: 0, width: "auto", padding: "8px 16px" }}
             onClick={() => void openChannelModal()}
+            onSecondaryActionDescription="Check again"
+            onSecondaryButton={() => void selfUpdateStore.checkAgain()}
+            onOptionsActionDescription={releaseNotes?.label}
+            onOptionsButton={
+              releaseNotes && offer
+                ? () => openReleaseNotesModal(releaseNotes, offer.buttonLabel)
+                : undefined
+            }
           >
             <FaEllipsisH />
           </DialogButton>

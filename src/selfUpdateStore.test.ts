@@ -9,6 +9,7 @@ const info = (over: Partial<PluginUpdateInfo>): PluginUpdateInfo => ({
   currentVersion: "0.1.1",
   offer: null,
   checked: true,
+  failed: false,
   toastPending: false,
   ...over,
 });
@@ -68,7 +69,10 @@ function harness() {
   /** The engine's stored channel, as system.getUpdateChannel answers it. */
   let storedChannel: UpdateChannel | Error = "stable";
   const deps: SelfUpdateDeps = {
-    rpc: (async (method: string, params?: { notify?: boolean; channel?: UpdateChannel }) => {
+    rpc: (async (
+      method: string,
+      params?: { notify?: boolean; force?: boolean; channel?: UpdateChannel },
+    ) => {
       calls.push(method);
       if (method === "system.getUpdateChannel") {
         if (storedChannel instanceof Error) throw storedChannel;
@@ -139,7 +143,7 @@ function harness() {
 describe("self-update store: refresh", () => {
   test("a trigger with no answer asks the engine, lands the answer, and tells subscribers", async () => {
     const h = harness();
-    expect(h.store.get()).toEqual({ info: null, staging: false });
+    expect(h.store.get()).toEqual({ info: null, staging: false, checking: false });
     const heard: number[] = [];
     h.store.subscribe(() => heard.push(h.store.get().info?.offer?.version === "0.2.0" ? 1 : 0));
 
@@ -147,7 +151,7 @@ describe("self-update store: refresh", () => {
     expect(h.calls).toEqual(["system.updateCheck"]);
 
     await refreshing;
-    expect(h.store.get()).toEqual({ info: available, staging: false });
+    expect(h.store.get()).toEqual({ info: available, staging: false, checking: false });
     expect(heard).toContain(1);
   });
 
@@ -449,5 +453,84 @@ describe("self-update store: getChannel", () => {
     h.storedChannel(new Error("engine went away"));
     expect(await h.store.getChannel()).toBeNull();
     expect(h.toasts).toEqual(["Couldn't read the update channel: engine went away"]);
+  });
+});
+
+describe("self-update store: checkAgain", () => {
+  test("asks the engine with force even inside the freshness window, and lands its answer", async () => {
+    const h = harness();
+    await h.store.refresh();
+    h.answer(info({ status: "available", offer: offerOf("0.2.1") }));
+
+    const result = await h.store.checkAgain();
+    expect(h.checkParams).toEqual([{}, { force: true }]);
+    expect(result).toEqual({ kind: "available", version: "0.2.1" });
+    expect(h.store.get().info?.offer?.version).toBe("0.2.1");
+  });
+
+  test("checking is true while it runs, false once it lands", async () => {
+    const h = harness();
+    const release = h.holdCheck();
+    const pressed = h.store.checkAgain();
+    expect(h.store.get().checking).toBe(true);
+    release();
+    await pressed;
+    expect(h.store.get().checking).toBe(false);
+  });
+
+  test("each outcome has its own toast", async () => {
+    const h = harness();
+    h.answer(info({ status: "current" }));
+    expect(await h.store.checkAgain()).toEqual({ kind: "current" });
+    h.answer(available);
+    expect(await h.store.checkAgain()).toEqual({ kind: "available", version: "0.2.0" });
+    h.answer(new Error("engine went away"));
+    expect(await h.store.checkAgain()).toEqual({ kind: "failed" });
+    expect(h.toasts).toEqual([
+      "WoWDeck is up to date",
+      "WoWDeck 0.2.0 is available",
+      "Couldn't check for updates",
+    ]);
+  });
+
+  test("a failed network attempt is a failure, even though the engine serves the stored offer", async () => {
+    const h = harness();
+    h.answer(info({ ...available, failed: true }));
+    expect(await h.store.checkAgain()).toEqual({ kind: "failed" });
+    h.answer(info({ status: "unknown" }));
+    expect(await h.store.checkAgain()).toEqual({ kind: "failed" });
+    expect(h.toasts).toEqual(["Couldn't check for updates", "Couldn't check for updates"]);
+  });
+
+  test("a second press while one runs joins it: one ask, one toast", async () => {
+    const h = harness();
+    const release = h.holdCheck();
+    const first = h.store.checkAgain();
+    const second = h.store.checkAgain();
+    release();
+    await Promise.all([first, second]);
+    expect(h.checkParams).toEqual([{ force: true }]);
+    expect(h.toasts).toEqual(["WoWDeck 0.2.0 is available"]);
+  });
+
+  test("a press during a trigger's unforced ask waits it out, then forces its own", async () => {
+    const h = harness();
+    const release = h.holdCheck();
+    const options = h.store.refresh();
+    const pressed = h.store.checkAgain();
+    release();
+    await Promise.all([options, pressed]);
+    expect(h.checkParams).toEqual([{}, { force: true }]);
+    expect(h.toasts).toEqual(["WoWDeck 0.2.0 is available"]);
+  });
+
+  test("a trigger during a Check again joins it", async () => {
+    const h = harness();
+    const release = h.holdCheck();
+    const pressed = h.store.checkAgain();
+    const options = h.store.refresh();
+    release();
+    await Promise.all([options, pressed]);
+    expect(h.checkParams).toEqual([{ force: true }]);
   });
 });

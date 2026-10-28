@@ -13,10 +13,14 @@ import { UpdateDot } from "./UpdateDot";
  * only Update button ("Preparing…" while staging). When the offer has
  * release notes, Y on the button opens them in a modal (ReleaseNotesModal);
  * they are never shown inline, so the Options rows below scroll freely.
+ * X is Check again: the button reads "Checking…", disabled, until it lands.
  * Same row context and focus memory as My Addons' installation switcher.
  */
 export function SelfUpdatePanel() {
-  const { info, staging } = useSyncExternalStore(selfUpdateStore.subscribe, selfUpdateStore.get);
+  const { info, staging, checking } = useSyncExternalStore(
+    selfUpdateStore.subscribe,
+    selfUpdateStore.get,
+  );
   const offer = panelOffer(info);
   if (!offer) {
     return null;
@@ -28,8 +32,10 @@ export function SelfUpdatePanel() {
         <Field label={offer.headline} bottomSeparator="none">
           <DialogButton
             style={{ position: "relative", minWidth: 0, width: "auto", padding: "8px 16px" }}
-            disabled={staging}
+            disabled={staging || checking}
             onClick={() => void selfUpdateStore.runUpdate()}
+            onSecondaryActionDescription="Check again"
+            onSecondaryButton={() => void selfUpdateStore.checkAgain()}
             onOptionsActionDescription={releaseNotes?.label}
             onOptionsButton={
               releaseNotes
@@ -37,7 +43,7 @@ export function SelfUpdatePanel() {
                 : undefined
             }
           >
-            {staging ? "Preparing…" : offer.buttonLabel}
+            {checking ? "Checking…" : staging ? "Preparing…" : offer.buttonLabel}
             <UpdateDot color={pluginUpdateDot(info)} />
           </DialogButton>
         </Field>
