@@ -5,6 +5,7 @@ import {
   pluginUpdateDot,
   pluginUpdateRow,
   pluginUpdateToast,
+  releaseNotesAction,
   requestPluginUpdate,
   UPDATE_CHANNEL_ROWS,
   type PluginUpdateInfo,
@@ -99,6 +100,31 @@ describe("the update panel and its dot", () => {
   });
 });
 
+describe("releaseNotesAction: Y on the panel's Update button", () => {
+  test("an offer with notes: Y opens the release notes modal, titled with the version", () => {
+    const offer = {
+      ...UPDATE.offer!,
+      version: "0.2.1-beta.4",
+      releaseNotes: "Added\n• Beta updates",
+    };
+    expect(releaseNotesAction(offer)).toEqual({
+      label: "Release notes",
+      title: "WoWDeck 0.2.1-beta.4 release notes",
+      notes: "Added\n• Beta updates",
+    });
+  });
+
+  test("an offer without notes, or only whitespace, has no Y action and no hint", () => {
+    expect(releaseNotesAction(UPDATE.offer)).toBeNull();
+    expect(releaseNotesAction({ ...UPDATE.offer!, releaseNotes: "" })).toBeNull();
+    expect(releaseNotesAction({ ...UPDATE.offer!, releaseNotes: " \n " })).toBeNull();
+  });
+
+  test("no offer, no action", () => {
+    expect(releaseNotesAction(null)).toBeNull();
+  });
+});
+
 describe("pluginUpdateRow", () => {
   test("an offer: current → offered with the release link", () => {
     expect(pluginUpdateRow(UPDATE)).toEqual({
@@ -145,6 +171,20 @@ describe("requestPluginUpdate", () => {
     delete g.window;
   });
 
+  /** A loader bridge that accepts every call and records its arguments. */
+  function recordingLoader(): unknown[][] {
+    const calls: unknown[][] = [];
+    g.window = {
+      DeckyBackend: {
+        call: async (...args: unknown[]) => {
+          calls.push(args);
+          return true;
+        },
+      },
+    };
+    return calls;
+  }
+
   test("no loader bridge (older loaders, tests): unavailable, never a throw", async () => {
     delete g.window;
     const result = await requestPluginUpdate(staged);
@@ -153,15 +193,7 @@ describe("requestPluginUpdate", () => {
   });
 
   test("calls Decky's installer with the staged file, version, hash, UPDATE", async () => {
-    const calls: unknown[][] = [];
-    g.window = {
-      DeckyBackend: {
-        call: async (...args: unknown[]) => {
-          calls.push(args);
-          return true;
-        },
-      },
-    };
+    const calls = recordingLoader();
     const result = await requestPluginUpdate(staged);
     expect(result.success).toBe(true);
     expect(calls).toEqual([
@@ -169,21 +201,52 @@ describe("requestPluginUpdate", () => {
     ]);
   });
 
+  test("a staged beta reaches Decky's installer (#10)", async () => {
+    const calls = recordingLoader();
+    const result = await requestPluginUpdate({
+      artifact: "file:///tmp/wowdeck-update-0.2.1-beta.4.zip",
+      version: "0.2.1-beta.4",
+      sha256: "deadbeef",
+    });
+    expect(result.success).toBe(true);
+    expect(calls).toEqual([
+      [
+        "utilities/install_plugin",
+        "file:///tmp/wowdeck-update-0.2.1-beta.4.zip",
+        "WoWDeck",
+        "0.2.1-beta.4",
+        "deadbeef",
+        2,
+      ],
+    ]);
+  });
+
   test("a remote artifact is refused outright (decky-loader #984)", async () => {
-    const calls: unknown[][] = [];
-    g.window = {
-      DeckyBackend: {
-        call: async (...args: unknown[]) => {
-          calls.push(args);
-          return true;
-        },
-      },
-    };
+    const calls = recordingLoader();
     const result = await requestPluginUpdate({
       ...staged,
       artifact: "https://github.com/sigboe/wowdeck/releases/download/v0.2.0/WoWDeck.zip",
     });
     expect(result.success).toBe(false);
+    expect(calls).toEqual([]);
+  });
+
+  test.each([
+    ["an http URL", "http://localhost/wowdeck-update-0.2.0.zip", "0.2.0"],
+    ["another file name", "file:///tmp/WoWDeck.zip", "0.2.0"],
+    ["an rc", "file:///tmp/wowdeck-update-0.2.1-rc.1.zip", "0.2.1-rc.1"],
+    ["a bare -beta", "file:///tmp/wowdeck-update-0.2.1-beta.zip", "0.2.1-beta"],
+    ["a -beta.x", "file:///tmp/wowdeck-update-0.2.1-beta.x.zip", "0.2.1-beta.x"],
+    ["a .. segment", "file:///tmp/../home/wowdeck-update-0.2.0.zip", "0.2.0"],
+    ["a name for another version", "file:///tmp/wowdeck-update-0.2.1-beta.4.zip", "0.2.1-beta.5"],
+    ["a release name with a beta version", "file:///tmp/wowdeck-update-0.2.1.zip", "0.2.1-beta.4"],
+  ])("%s is refused before the installer", async (_, artifact, version) => {
+    const calls = recordingLoader();
+    const result = await requestPluginUpdate({ artifact, version, sha256: "deadbeef" });
+    expect(result).toEqual({
+      success: false,
+      error: "The update could not be verified, so it was not installed.",
+    });
     expect(calls).toEqual([]);
   });
 

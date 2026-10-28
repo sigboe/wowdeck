@@ -987,3 +987,51 @@ describe("the update channel", () => {
     expect(next.toastPending).toBe(true);
   });
 });
+
+describe("forStaging({ refresh: true }): the stored zip answered 404", () => {
+  const ZIP_B = "https://api.github.com/repos/sigboe/wowdeck/releases/assets/8";
+  const newer = { tag_name: "v0.2.1", html_url: "https://x", assets: [{ name: "WoWDeck.zip", url: ZIP_B }] };
+
+  test("asks at once inside the interval and stores the answer, never spending the toast", async () => {
+    const h = makeCheck({ respond: () => newer, stored: stampOf() });
+    const answer = await h.check.forStaging({ refresh: true });
+    expect(answer).toMatchObject({ status: "available", offer: { version: "0.2.1" }, downloadUrl: ZIP_B });
+    expect(h.calls()).toBe(1);
+    expect(h.stamp()).toMatchObject({ latestVersion: "0.2.1", downloadUrl: ZIP_B, checkedAt: NOW });
+    expect(h.toastShown()).toBeNull();
+    // The panel's next quiet ask reads that stored answer without a request.
+    expect((await h.check.check()).offer?.version).toBe("0.2.1");
+    expect(h.calls()).toBe(1);
+  });
+
+  test("asks at once inside a failure backoff", async () => {
+    let n = 0;
+    const h = makeCheck({ respond: () => (++n === 1 ? new NetworkError("request to … failed: timeout") : newer) });
+    await h.check.check(); // failure #1: an hour's backoff
+    expect(h.backoff()).not.toBeNull();
+    expect((await h.check.forStaging({ refresh: true })).downloadUrl).toBe(ZIP_B);
+    expect(h.calls()).toBe(2);
+  });
+
+  test("a failed forced check serves the stored answer", async () => {
+    const h = makeCheck({ respond: () => new NetworkError("request to … failed: timeout"), stored: stampOf() });
+    expect((await h.check.forStaging({ refresh: true })).downloadUrl).toBe(ZIP);
+    expect(h.calls()).toBe(1);
+  });
+
+  test("is not merged into a check already in flight", async () => {
+    let unblock: () => void = () => {};
+    const held = new Promise<void>((resolve) => {
+      unblock = resolve;
+    });
+    let n = 0;
+    // The first request (still answering the gone zip) hangs until the forced check is asked.
+    const h = makeCheck({ respond: () => (++n === 1 ? held.then(() => withZip("v0.2.0")) : newer) });
+    const first = h.check.check();
+    const forced = h.check.forStaging({ refresh: true });
+    unblock();
+    expect((await first).offer?.version).toBe("0.2.0");
+    expect((await forced).downloadUrl).toBe(ZIP_B);
+    expect(h.calls()).toBe(2);
+  });
+});

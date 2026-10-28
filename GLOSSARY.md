@@ -119,6 +119,12 @@ leaving Beta offers the latest stable even when it is older ("Switch to
 stable"). Set under Options › Updates › WoWDeck.
 _Avoid_: release channel (that is an addon's Stable/Beta/Alpha).
 
+**Release notes**:
+What the offered WoWDeck build brings, written for players from our
+`CHANGELOG.md`. Y on the Update button opens them in a modal that also
+offers Update. The panel never shows them inline under the button.
+_Avoid_: changelog (that is an addon's, in its Details modal).
+
 **Status tag**:
 A small uppercase chip on an addon row stating its state at a glance
 (`wowdeck-status-tag`). My Addons rows show Ignored, Unmanaged, Library,

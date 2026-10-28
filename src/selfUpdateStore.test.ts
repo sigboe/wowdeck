@@ -82,10 +82,12 @@ function harness() {
       }
       if (method === "system.updateCheck") {
         checkParams.push(params);
+        // The engine answers as of the ask; a held ask is that answer in transit.
+        const answer = checkAnswer;
         if (checkGate) await checkGate.promise;
-        if (checkAnswer instanceof Error) throw checkAnswer;
+        if (answer instanceof Error) throw answer;
         // Like the engine: only a notify ask may report the toast.
-        return params?.notify ? checkAnswer : { ...checkAnswer, toastPending: false };
+        return params?.notify ? answer : { ...answer, toastPending: false };
       }
       if (stageGate) await stageGate.promise;
       if (stageAnswer instanceof Error) throw stageAnswer;
@@ -308,7 +310,7 @@ describe("self-update store: runUpdate", () => {
 
     release();
     await running;
-    expect(h.calls).toEqual(["system.updateStage", "install 0.2.0"]);
+    expect(h.calls).toEqual(["system.updateStage", "install 0.2.0", "system.updateCheck"]);
     expect(h.store.get().staging).toBe(false);
     expect(h.toasts).toEqual([]);
   });
@@ -321,14 +323,14 @@ describe("self-update store: runUpdate", () => {
     const second = h.store.runUpdate();
     release();
     await Promise.all([first, second]);
-    expect(h.calls).toEqual(["system.updateStage", "install 0.2.0"]);
+    expect(h.calls).toEqual(["system.updateStage", "install 0.2.0", "system.updateCheck"]);
   });
 
   test("an engine staging refusal says so and re-enables the button", async () => {
     const h = harness();
     h.stage({ result: null, error: { code: "no_download", message: "No zip on the release" } });
     await h.store.runUpdate();
-    expect(h.calls).toEqual(["system.updateStage"]);
+    expect(h.calls).toEqual(["system.updateStage", "system.updateCheck"]);
     expect(h.toasts).toEqual(["Couldn't update WoWDeck: No zip on the release"]);
     expect(h.store.get().staging).toBe(false);
   });
@@ -338,6 +340,43 @@ describe("self-update store: runUpdate", () => {
     h.install({ success: false, error: "Installer unavailable" });
     await h.store.runUpdate();
     expect(h.toasts).toEqual(["Couldn't update WoWDeck: Installer unavailable"]);
+    expect(h.store.get().staging).toBe(false);
+  });
+
+  test("afterwards the panel shows the engine's current answer, even inside the freshness window", async () => {
+    // Staging may have forced a fresh check (a pruned beta's zip answered
+    // 404), so the held 0.2.0 offer is stale.
+    const h = harness();
+    await h.store.refresh();
+    expect(h.store.get().info?.offer?.version).toBe("0.2.0");
+    h.answer(info({ status: "available", offer: offerOf("0.2.1-beta.4") }));
+    await h.store.runUpdate();
+    expect(h.store.get().info?.offer?.version).toBe("0.2.1-beta.4");
+    // A quiet ask: the engine answers from what staging just stored.
+    expect(h.checkParams[h.checkParams.length - 1]).toEqual({});
+  });
+
+  test("a check in flight since before staging cannot leave its stale answer showing", async () => {
+    const h = harness();
+    const release = h.holdCheck();
+    const pending = h.store.refresh();
+    const running = h.store.runUpdate();
+    h.answer(info({ status: "available", offer: offerOf("0.2.1-beta.4") }));
+    release();
+    await Promise.all([pending, running]);
+    expect(h.store.get().info?.offer?.version).toBe("0.2.1-beta.4");
+  });
+
+  test("a failed run refreshes the answer too", async () => {
+    const h = harness();
+    await h.store.refresh();
+    h.stage({
+      result: null,
+      error: { code: "up_to_date", message: "WoWDeck is already up to date" },
+    });
+    h.answer(info({ status: "current" }));
+    await h.store.runUpdate();
+    expect(h.store.get().info?.status).toBe("current");
     expect(h.store.get().staging).toBe(false);
   });
 

@@ -10,7 +10,8 @@ What's new in each version of WoWDeck Addon Manager. The format follows
 
 - Beta updates: pick the Beta channel (Options → Updates → ⋯) to get new
   features early, or switch back to Stable at any time.
-- The update panel shows what's new in the version on offer.
+- Press Y on the update panel's Update button to read what's new in the version
+  on offer.
 
 ### Changed
 
@@ -25,10 +26,14 @@ What's new in each version of WoWDeck Addon Manager. The format follows
 
 ### Fixed
 
+- On Beta, Update no longer fails after a newer beta replaces the one on offer. It
+  installs the newer beta instead.
 - Update all no longer reports failures for addons from a source you turned off.
 - Updating, ignoring or removing an addon changes its row once, without the list
   flickering or briefly showing the old version.
 - Pausing automatic updates or ignoring an addon while updates run now sticks.
+- Updating to a beta now opens Decky's install prompt instead of saying the
+  update could not be verified.
 
 ## [0.2.0] - 2026-10-25
 

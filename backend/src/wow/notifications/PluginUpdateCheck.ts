@@ -27,6 +27,10 @@
  * re-arms the daily cadence. Failed checks stay completely silent: no
  * toast, no error, one structured stderr line (below).
  *
+ * system.updateStage forces one check too (forStaging's `refresh`) when
+ * the stored answer's zip is gone, so Update stages the release that
+ * replaced it instead of failing until the next day's check.
+ *
  * The builds come from the update channel's build source (BuildSource):
  * Stable asks GitHub's `releases/latest`, Beta lists the releases. Of the
  * candidates it returns, the newest is the answer. The stored answer
@@ -160,9 +164,17 @@ export class PluginUpdateCheck {
   /**
    * check()'s answer for system.updateStage, with the offered WoWDeck.zip's
    * URL. Never spends the toast: staging shows the panel already.
+   *
+   * `refresh` checks at once, past the daily interval and any failure
+   * backoff, and its answer replaces the stored one: the stored zip
+   * answered 404 (CI prunes older betas whenever a new one publishes). Like
+   * setChannel, it waits out a check in flight instead of joining it, since
+   * that one may still hand back the gone zip.
    */
-  async forStaging(): Promise<StagingAnswer> {
-    const { status, offer, downloadUrl } = await this.#flight.run(() => this.#run());
+  async forStaging({ refresh = false }: { refresh?: boolean } = {}): Promise<StagingAnswer> {
+    const { status, offer, downloadUrl } = refresh
+      ? await this.#flight.runAfterPending(() => this.#run({ force: true }))
+      : await this.#flight.run(() => this.#run());
     return { status, offer, downloadUrl };
   }
 

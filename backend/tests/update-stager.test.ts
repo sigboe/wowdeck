@@ -11,8 +11,8 @@ import { join } from "node:path";
 import { zipSync } from "fflate";
 import { NetworkError } from "../src/wow/net/network";
 import { UpdateStager } from "../src/wow/plugin/UpdateStager";
-import type { PluginUpdateOffer } from "../src/api/contracts";
-import type { StagingAnswer } from "../src/wow/notifications/PluginUpdateCheck";
+import type { PluginUpdateOffer, PluginUpdateSnapshot } from "../src/api/contracts";
+import { PluginUpdateCheck, type StagingAnswer } from "../src/wow/notifications/PluginUpdateCheck";
 
 const ROOT = "/tmp/opencode/wowdeck-tests/update-stager";
 
@@ -148,7 +148,7 @@ describe("UpdateStager.stage", () => {
 
   test("a failed download stages nothing", async () => {
     mkdirSync(ROOT, { recursive: true });
-    const { stager, auths } = makeStager(() => new NetworkError("GET … failed: HTTP 404", 404), {}, "ghp_limited");
+    const { stager, auths } = makeStager(() => new NetworkError("GET … failed: HTTP 403", 403), {}, "ghp_limited");
     const outcome = await stager.stage();
     expect(outcome.result).toBeNull();
     expect(outcome.error?.code).toBe("download_failed");
@@ -195,5 +195,177 @@ describe("UpdateStager.stage", () => {
     expect(existsSync(fresh)).toBe(true);
     rmSync(fresh, { force: true });
     rmSync(join(ROOT, "wowdeck-update-0.2.0.zip"), { force: true });
+  });
+});
+
+/**
+ * A 404 on the stored answer's zip (CI prunes older betas whenever a new one
+ * publishes): one forced check, one retry with its answer. A real
+ * PluginUpdateCheck on one fake net that serves both the releases listing
+ * and the downloads.
+ */
+describe("UpdateStager.stage after the offered zip is gone", () => {
+  const NOW = 1_800_000_000_000;
+  const ASSET_A = "https://api.github.com/repos/sigboe/wowdeck/releases/assets/682923259";
+  const ASSET_B = "https://api.github.com/repos/sigboe/wowdeck/releases/assets/684438832";
+  const release = (tag: string, zip: string) => ({
+    tag_name: tag,
+    prerelease: tag.includes("-beta."),
+    html_url: `https://github.com/sigboe/wowdeck/releases/tag/${tag}`,
+    assets: [{ name: "WoWDeck.zip", url: zip }],
+  });
+  const gone = () => new NetworkError(`GET ${ASSET_A} failed: HTTP 404`, 404);
+
+  function harness(opts: {
+    /** The releases listing a forced check gets, or the error it fails with. */
+    listing: unknown[] | Error;
+    /** What each asset URL answers. */
+    assets: Record<string, () => Uint8Array | Error>;
+  }) {
+    const persisted = {
+      // Yesterday's beta answer, inside the daily interval: beta.1 with asset A.
+      stamp: {
+        checkedAt: NOW - 60 * 60 * 1000,
+        channel: "beta",
+        latestVersion: "0.2.1-beta.1",
+        releaseUrl: "https://github.com/sigboe/wowdeck/releases/tag/v0.2.1-beta.1",
+        downloadUrl: ASSET_A,
+      } as PluginUpdateSnapshot,
+      toastShownFor: null as string | null,
+    };
+    const checks: string[] = [];
+    const downloads: string[] = [];
+    const net = {
+      async getJson<T>(url: string): Promise<T> {
+        checks.push(url);
+        if (opts.listing instanceof Error) throw opts.listing;
+        return opts.listing as T;
+      },
+      async downloadToFile(url: string, destination: string): Promise<number> {
+        downloads.push(url);
+        const value = opts.assets[url]?.() ?? new NetworkError(`GET ${url} failed: HTTP 404`, 404);
+        if (value instanceof Error) throw value;
+        writeFileSync(destination, value);
+        return value.length;
+      },
+    };
+    const check = new PluginUpdateCheck(
+      net,
+      "0.2.0",
+      undefined,
+      undefined,
+      {
+        read: () => persisted.stamp,
+        write: (snapshot) => {
+          persisted.stamp = snapshot;
+        },
+        readBackoff: () => null,
+        writeBackoff: () => {},
+        readToastShown: () => persisted.toastShownFor,
+        writeToastShown: (version) => {
+          persisted.toastShownFor = version;
+        },
+        readChannel: () => "beta",
+        writeChannel: () => {},
+      },
+      () => NOW,
+    );
+    return { stager: new UpdateStager(net, check, undefined, ROOT), persisted, checks, downloads };
+  }
+
+  test("a newer release from the forced check is staged, and its answer is stored", async () => {
+    mkdirSync(ROOT, { recursive: true });
+    const zip = pluginZip("0.2.1-beta.4");
+    const h = harness({
+      listing: [release("v0.2.1-beta.4", ASSET_B), release("v0.2.1-beta.3", "https://x/3")],
+      assets: { [ASSET_A]: gone, [ASSET_B]: () => zip },
+    });
+    const outcome = await h.stager.stage();
+    expect(outcome.error).toBeNull();
+    expect(outcome.result).toEqual({
+      artifact: `file://${join(ROOT, "wowdeck-update-0.2.1-beta.4.zip")}`,
+      version: "0.2.1-beta.4",
+      sha256: sha256(zip),
+    });
+    expect(h.downloads).toEqual([ASSET_A, ASSET_B]);
+    expect(h.checks).toHaveLength(1);
+    expect(h.persisted.stamp).toMatchObject({ latestVersion: "0.2.1-beta.4", downloadUrl: ASSET_B, checkedAt: NOW });
+    // Staging shows the panel already: the forced check never spends the toast.
+    expect(h.persisted.toastShownFor).toBeNull();
+    rmSync(join(ROOT, "wowdeck-update-0.2.1-beta.4.zip"), { force: true });
+  });
+
+  test("the forced check offering the same gone zip, or failing: download_failed after one retry", async () => {
+    mkdirSync(ROOT, { recursive: true });
+    for (const listing of [[release("v0.2.1-beta.1", ASSET_A)], new NetworkError("offline")]) {
+      const h = harness({ listing, assets: { [ASSET_A]: gone } });
+      const outcome = await h.stager.stage();
+      expect(outcome).toEqual({
+        result: null,
+        error: { code: "download_failed", message: "Couldn't download the update. Try again" },
+      });
+      expect(h.downloads).toEqual([ASSET_A, ASSET_A]);
+      expect(h.checks).toHaveLength(1);
+    }
+  });
+
+  test("the forced check finding the running version current: up_to_date", async () => {
+    const h = harness({ listing: [release("v0.2.0", "https://x/0.2.0")], assets: { [ASSET_A]: gone } });
+    expect((await h.stager.stage()).error?.code).toBe("up_to_date");
+    expect(h.downloads).toEqual([ASSET_A]);
+  });
+
+  test("the forced check's release without a zip: no_download", async () => {
+    const h = harness({
+      listing: [{ ...release("v0.2.1-beta.4", ASSET_B), assets: [] }],
+      assets: { [ASSET_A]: gone },
+    });
+    expect((await h.stager.stage()).error?.code).toBe("no_download");
+    expect(h.downloads).toEqual([ASSET_A]);
+  });
+
+  test("other download failures and a damaged zip: today's outcome, no forced check", async () => {
+    mkdirSync(ROOT, { recursive: true });
+    const cases: [() => Uint8Array | Error, string][] = [
+      [() => new NetworkError("GET … failed: connection reset"), "download_failed"],
+      [() => new NetworkError("GET … failed: HTTP 500", 500), "download_failed"],
+      [() => new NetworkError("GET … failed: HTTP 429", 429), "download_failed"],
+      [() => new TextEncoder().encode("this is not a zip"), "archive_invalid"],
+      [() => pluginZip("0.2.1-beta.4"), "archive_invalid"],
+    ];
+    for (const [respond, code] of cases) {
+      const h = harness({ listing: [release("v0.2.1-beta.4", ASSET_B)], assets: { [ASSET_A]: respond } });
+      expect((await h.stager.stage()).error?.code).toBe(code);
+      expect(h.downloads).toEqual([ASSET_A]);
+      expect(h.checks).toEqual([]);
+      expect(h.persisted.stamp.downloadUrl).toBe(ASSET_A);
+    }
+  });
+
+  test("with a token, a 404 on both attempts is one round; the retry round tries both again", async () => {
+    mkdirSync(ROOT, { recursive: true });
+    const auths: (string | undefined)[] = [];
+    const answers = [answerOf({ downloadUrl: ASSET_A }), answerOf({ version: "0.2.1", downloadUrl: ASSET_B })];
+    const refreshes: (boolean | undefined)[] = [];
+    const zip = pluginZip("0.2.1");
+    const net = {
+      async downloadToFile(url: string, destination: string, options?: { headers?: Record<string, string> }) {
+        auths.push(options?.headers?.Authorization);
+        if (url === ASSET_A) throw gone();
+        writeFileSync(destination, zip);
+        return zip.length;
+      },
+    };
+    const check = {
+      async forStaging(opts?: { refresh?: boolean }) {
+        refreshes.push(opts?.refresh);
+        return answers.shift()!;
+      },
+    };
+    const outcome = await new UpdateStager(net, check, () => "ghp_test", ROOT).stage();
+    expect(outcome.result?.version).toBe("0.2.1");
+    expect(refreshes).toEqual([undefined, true]);
+    expect(auths).toEqual(["Bearer ghp_test", undefined, "Bearer ghp_test"]);
+    rmSync(join(ROOT, "wowdeck-update-0.2.1.zip"), { force: true });
   });
 });

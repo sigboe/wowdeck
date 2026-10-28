@@ -52,7 +52,10 @@ export interface SelfUpdateStore extends Pick<Store<SelfUpdateState>, "get" | "s
    * Stage the new release in the engine (download + verify), then hand it
    * to Decky's own installer: the loader's native prompt installs from the
    * local file and reloads the plugin. Declining the prompt changes
-   * nothing; the button stays usable.
+   * nothing; the button stays usable. Either way the run ends by re-reading
+   * the engine's answer, past the freshness window: staging may have forced
+   * a fresh check (the offered zip was gone), and the engine serves that
+   * stored answer without another request.
    */
   runUpdate(): Promise<void>;
   /**
@@ -149,6 +152,10 @@ export function createSelfUpdateStore(deps: SelfUpdateDeps): SelfUpdateStore {
         toastError("Couldn't update WoWDeck", e);
       } finally {
         store.patch({ staging: false });
+        // A check in flight since before staging may land the stale answer;
+        // let it, then ask again.
+        await inFlight;
+        await check(false);
       }
     },
     async setChannel(channel) {
