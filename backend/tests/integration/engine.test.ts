@@ -738,6 +738,7 @@ describe("system.updateCheck (the plugin's own update notice)", () => {
         currentVersion: version,
         offer: null,
         checked: true,
+        failed: false,
         toastPending: false,
       });
       expect(releasesSeenAuth.length).toBe(baseline + 1);
@@ -765,6 +766,7 @@ describe("system.updateCheck (the plugin's own update notice)", () => {
         currentVersion: version,
         offer: null,
         checked: true,
+        failed: true,
         toastPending: false,
       });
       expect(releasesSeenAuth.length).toBe(baseline + 1);
@@ -867,6 +869,7 @@ describe("system.updateCheck (the plugin's own update notice)", () => {
           installable: true,
         },
         checked: true,
+        failed: false,
       });
       expect(quiet.result).not.toHaveProperty("downloadUrl");
       expect(quiet.result.toastPending).toBe(false);

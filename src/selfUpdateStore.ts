@@ -23,7 +23,13 @@ export interface SelfUpdateState {
   info: PluginUpdateInfo | null;
   /** Stage-and-hand-off (the Update button's job) is running. */
   staging: boolean;
+  /** A Check again is running: the panel's button and the Updates row say "Checking…". */
+  checking: boolean;
 }
+
+/** How a Check again ended; each has its own toast. */
+export type CheckAgainResult =
+  { kind: "current" } | { kind: "available"; version: string } | { kind: "failed" };
 
 export interface SelfUpdateDeps {
   rpc: ReturnType<typeof rpcVia>;
@@ -72,6 +78,15 @@ export interface SelfUpdateStore extends Pick<Store<SelfUpdateState>, "get" | "s
    * failure toasts and resolves null.
    */
   getChannel(): Promise<UpdateChannel | null>;
+  /**
+   * Check again (X on the panel's Update button and on the Updates row):
+   * ask the engine with `force`, past this side's freshness window and the
+   * engine's daily cap and failure backoff. Its answer replaces what every
+   * surface shows, and a toast says how it ended. A press while one runs
+   * joins it (one ask, one toast); a press during a trigger's unforced ask
+   * waits it out, then forces its own.
+   */
+  checkAgain(): Promise<CheckAgainResult>;
 }
 
 /**
@@ -86,14 +101,19 @@ export interface SelfUpdateStore extends Pick<Store<SelfUpdateState>, "get" | "s
 export const ANSWER_FRESH_MS = 15 * 60 * 1000;
 
 export function createSelfUpdateStore(deps: SelfUpdateDeps): SelfUpdateStore {
-  const store = createStore<SelfUpdateState>({ info: null, staging: false });
+  const store = createStore<SelfUpdateState>({ info: null, staging: false, checking: false });
   const { rpc, toast, toastError, requestUpdate } = deps;
   const now = deps.now ?? Date.now;
   /** When the engine last answered with a checked status; 0 until then. */
   let answeredAt = 0;
-  let inFlight: Promise<void> | null = null;
+  /** The ask in flight; it resolves to the engine's answer, or null when the ask failed. */
+  let inFlight: Promise<PluginUpdateInfo | null> | null = null;
   /** Whether the in-flight ask carries notify (may report the toast). */
   let inFlightNotify = false;
+  /** Whether the in-flight ask carries force (Check again). */
+  let inFlightForce = false;
+  /** The Check again in progress; a second press joins it. */
+  let checkAgainFlight: Promise<CheckAgainResult> | null = null;
 
   /** Show an engine answer; only one that could check counts as fresh. */
   const land = (answer: PluginUpdateInfo) => {
@@ -101,22 +121,33 @@ export function createSelfUpdateStore(deps: SelfUpdateDeps): SelfUpdateStore {
     store.patch({ info: answer });
   };
 
-  /** One engine ask; concurrent callers share it. Never rejects. */
-  const check = (notify: boolean): Promise<void> => {
+  /**
+   * One engine ask; concurrent callers share it. A caller that needs what
+   * the ask in flight lacks (notify, force) asks again once it lands.
+   * Never rejects: a failed ask resolves null.
+   */
+  const check = (notify: boolean, force = false): Promise<PluginUpdateInfo | null> => {
     if (inFlight) {
-      return notify && !inFlightNotify ? inFlight.then(() => check(true)) : inFlight;
+      const joinable = (!notify || inFlightNotify) && (!force || inFlightForce);
+      return joinable ? inFlight : inFlight.then(() => check(notify, force));
     }
     inFlightNotify = notify;
+    inFlightForce = force;
     inFlight = (async () => {
       try {
-        const answer = await rpc("system.updateCheck", notify ? { notify: true } : {});
+        const answer = await rpc("system.updateCheck", {
+          ...(notify && { notify: true }),
+          ...(force && { force: true }),
+        });
         land(answer);
         const t = notify ? pluginUpdateToast(answer) : null;
         if (t) {
           toast(t.title, t.body);
         }
+        return answer;
       } catch {
         // Engine not ready: keep what is shown; the next trigger re-asks.
+        return null;
       } finally {
         inFlight = null;
       }
@@ -131,7 +162,7 @@ export function createSelfUpdateStore(deps: SelfUpdateDeps): SelfUpdateStore {
       if (!opts.force && now() - answeredAt < ANSWER_FRESH_MS) {
         return Promise.resolve();
       }
-      return check(opts.toast === true);
+      return check(opts.toast === true).then(() => undefined);
     },
     async runUpdate() {
       if (store.get().staging) {
@@ -169,6 +200,21 @@ export function createSelfUpdateStore(deps: SelfUpdateDeps): SelfUpdateStore {
         return false;
       }
     },
+    checkAgain() {
+      if (checkAgainFlight) {
+        return checkAgainFlight;
+      }
+      store.patch({ checking: true });
+      checkAgainFlight = (async () => {
+        const result = checkAgainResult(await check(false, true));
+        toast(checkAgainToast(result));
+        return result;
+      })().finally(() => {
+        checkAgainFlight = null;
+        store.patch({ checking: false });
+      });
+      return checkAgainFlight;
+    },
     async getChannel() {
       try {
         return (await rpc("system.getUpdateChannel")).channel;
@@ -178,4 +224,23 @@ export function createSelfUpdateStore(deps: SelfUpdateDeps): SelfUpdateStore {
       }
     },
   };
+}
+
+/** A forced answer's outcome: anything but a fresh, known answer failed. */
+function checkAgainResult(answer: PluginUpdateInfo | null): CheckAgainResult {
+  if (answer === null || answer.failed || answer.status === "unknown") {
+    return { kind: "failed" };
+  }
+  return answer.offer ? { kind: "available", version: answer.offer.version } : { kind: "current" };
+}
+
+function checkAgainToast(result: CheckAgainResult): string {
+  switch (result.kind) {
+    case "current":
+      return "WoWDeck is up to date";
+    case "available":
+      return `WoWDeck ${result.version} is available`;
+    case "failed":
+      return "Couldn't check for updates";
+  }
 }

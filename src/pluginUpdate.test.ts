@@ -17,6 +17,7 @@ const info = (over: Partial<PluginUpdateInfo>): PluginUpdateInfo => ({
   currentVersion: "0.1.1",
   offer: null,
   checked: true,
+  failed: false,
   toastPending: false,
   ...over,
 });

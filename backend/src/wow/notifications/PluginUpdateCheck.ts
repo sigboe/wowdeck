@@ -27,7 +27,8 @@
  * re-arms the daily cadence. Failed checks stay completely silent: no
  * toast, no error, one structured stderr line (below).
  *
- * system.updateStage forces one check too (forStaging's `refresh`) when
+ * Check again (system.updateCheck's `force`) asks at once, past both
+ * gates; so does system.updateStage (forStaging's `refresh`) when
  * the stored answer's zip is gone, so Update stages the release that
  * replaced it instead of failing until the next day's check.
  *
@@ -155,9 +156,18 @@ export class PluginUpdateCheck {
    * the version's toast; Options' refresh and system.updateStage show the
    * panel instead, so they must not use it up. The gate runs per caller,
    * after the shared run, so a toast caller joining a quiet one still gets it.
+   *
+   * `force` is Check again: it asks at once, past the daily interval and
+   * any failure backoff, and its answer (or failure) counts like any other
+   * check's. Like setChannel, it waits out a check in flight instead of
+   * joining it, since that one may have been served from the stored answer.
    */
-  async check(opts: { notify?: boolean } = {}): Promise<PluginUpdateStatus> {
-    const answer = toWire(await this.#flight.run(() => this.#run()));
+  async check(opts: { notify?: boolean; force?: boolean } = {}): Promise<PluginUpdateStatus> {
+    const answer = toWire(
+      await (opts.force
+        ? this.#flight.runAfterPending(() => this.#run({ force: true }))
+        : this.#flight.run(() => this.#run())),
+    );
     return opts.notify ? this.#toastGate(answer) : { ...answer, toastPending: false };
   }
 
@@ -208,7 +218,7 @@ export class PluginUpdateCheck {
     // A failure keeps serving the stored answer, as inside the backoff
     // window: otherwise the panel would vanish on the failed attempt and
     // come back on the next trigger.
-    return stamp !== null ? { ...this.#fromStamp(stamp), checked: true } : this.#unknown(true);
+    return stamp !== null ? { ...this.#fromStamp(stamp), checked: true, failed: true } : this.#unknown(true);
   }
 
   /**
@@ -259,7 +269,14 @@ export class PluginUpdateCheck {
     const betaOnStable = stampChannel(stamp) === "stable" && isBetaVersion(this.currentVersion);
     const switchToStable = cmp < 0 && betaOnStable;
     if (cmp <= 0 && !switchToStable) {
-      return { status: "current", currentVersion: this.currentVersion, offer: null, downloadUrl: null, checked: false };
+      return {
+        status: "current",
+        currentVersion: this.currentVersion,
+        offer: null,
+        downloadUrl: null,
+        checked: false,
+        failed: false,
+      };
     }
     const version = stamp.latestVersion;
     const switchLabel = `Switch to stable ${version}`;
@@ -279,11 +296,23 @@ export class PluginUpdateCheck {
       },
       downloadUrl: stamp.downloadUrl,
       checked: false,
+      failed: false,
     };
   }
 
-  #unknown(checked: boolean): Answer {
-    return { status: "unknown", currentVersion: this.currentVersion, offer: null, downloadUrl: null, checked };
+  /**
+   * "unknown"; `failed` marks a network attempt that just failed. Only a
+   * failure reports "unknown" after a network attempt, so `checked` follows it.
+   */
+  #unknown(failed: boolean): Answer {
+    return {
+      status: "unknown",
+      currentVersion: this.currentVersion,
+      offer: null,
+      downloadUrl: null,
+      checked: failed,
+      failed,
+    };
   }
 
   /**
