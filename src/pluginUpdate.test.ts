@@ -5,6 +5,7 @@ import {
   pluginUpdateDot,
   pluginUpdateRow,
   pluginUpdateToast,
+  releaseNotesAction,
   requestPluginUpdate,
   UPDATE_CHANNEL_ROWS,
   type PluginUpdateInfo,
@@ -96,6 +97,31 @@ describe("the update panel and its dot", () => {
       expect(panelOffer(answer)).toBeNull();
       expect(pluginUpdateDot(answer)).toBeNull();
     }
+  });
+});
+
+describe("releaseNotesAction: Y on the panel's Update button", () => {
+  test("an offer with notes: Y opens the release notes modal, titled with the version", () => {
+    const offer = {
+      ...UPDATE.offer!,
+      version: "0.2.1-beta.4",
+      releaseNotes: "Added\n• Beta updates",
+    };
+    expect(releaseNotesAction(offer)).toEqual({
+      label: "Release notes",
+      title: "WoWDeck 0.2.1-beta.4 release notes",
+      notes: "Added\n• Beta updates",
+    });
+  });
+
+  test("an offer without notes, or only whitespace, has no Y action and no hint", () => {
+    expect(releaseNotesAction(UPDATE.offer)).toBeNull();
+    expect(releaseNotesAction({ ...UPDATE.offer!, releaseNotes: "" })).toBeNull();
+    expect(releaseNotesAction({ ...UPDATE.offer!, releaseNotes: " \n " })).toBeNull();
+  });
+
+  test("no offer, no action", () => {
+    expect(releaseNotesAction(null)).toBeNull();
   });
 });
 

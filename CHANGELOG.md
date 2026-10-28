@@ -10,7 +10,8 @@ What's new in each version of WoWDeck Addon Manager. The format follows
 
 - Beta updates: pick the Beta channel (Options → Updates → ⋯) to get new
   features early, or switch back to Stable at any time.
-- The update panel shows what's new in the version on offer.
+- Press Y on the update panel's Update button to read what's new in the version
+  on offer.
 
 ### Changed
 
