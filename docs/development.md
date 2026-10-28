@@ -32,6 +32,18 @@ there. With Nix, `nix develop` enters the shell, and `make` enters it on its
 own. Without Nix, install those packages from your distro and run
 `make USE_NIX=0 …`.
 
+### Workflow skills
+
+The agent guidelines reference two skill sets. The project's own skills
+(`deck-test`, `unslop`) live in `.claude/skills/`. The `mattpocock/skills`
+set (`to-spec`, `to-tickets`, `triage`, `implement`, `writing-for-agents`, …)
+is vendored into `.agents/skills/` and tracked by `skills-lock.json` so
+OpenCode can load it too. OpenCode cannot use Claude Code plugins, and Claude
+Code users get this set from the `mattpocock-skills` plugin. To update the
+vendored copy, run `npx skills@latest update` at the repo root and commit the
+result. Pick one install path per agent. The plugin and a copy in the same
+agent would list every skill twice.
+
 ## Common tasks
 
 ```bash
