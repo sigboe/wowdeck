@@ -8,6 +8,15 @@
 /** Marks where markup was removed, so a line left holding only markup is dropped. */
 const REMOVED = "\u0001";
 
+const HEADING = /^\s{0,3}#{1,6}\s+/;
+const LIST_ITEM = /^\s*(?:[*+-]|\d+[.)])\s+/;
+/** Wrapped nested bullets keep their lines, as before joining existed. */
+const NESTED_ITEM = /^\s+(?:[*+-]|\d+[.)])\s+/;
+/** A thematic break or a setext heading's underline. */
+const RULE = /^\s{0,3}(?:([-*_])(?:\s*\1){2,}|=+|-+)\s*$/;
+const TABLE_ROW = /^\s*\|/;
+const HARD_BREAK = /(?: {2}|\\)$/;
+
 const ENTITIES: Record<string, string> = {
   "&amp;": "&",
   "&lt;": "<",
@@ -21,14 +30,18 @@ const ENTITIES: Record<string, string> = {
  * A release body (Markdown) as plain text for a text node, never HTML:
  * heading marks, emphasis, code ticks, images, HTML tags and comments go;
  * links keep their text, autolinks their URL;
- * bullets read "•"; code fences keep their lines verbatim; line breaks
- * stay, runs of blank lines collapse to one. Text that only looks like
+ * bullets read "•"; code fences keep their lines verbatim; a bullet's or
+ * paragraph's wrapped lines join with one space, so the reader wraps them,
+ * while bullets, headings, rules, table rows and hard breaks keep their
+ * lines; runs of blank lines collapse to one. Text that only looks like
  * markup (`x < y`, `Vec<T>`, `2 * 3`, a URL's underscores) stays as
  * written. Null when nothing readable is left.
  */
 export function releaseNotesText(markdown: string): string | null {
   const lines: string[] = [];
   let fenced = false;
+  /** The last kept line is a bullet's or paragraph's text, so a continuation joins it. */
+  let joinable = false;
   const source = markdown
     .replace(/\r\n?/g, "\n")
     .split(REMOVED)
@@ -37,6 +50,7 @@ export function releaseNotesText(markdown: string): string | null {
   for (const line of source.split("\n")) {
     if (/^\s*```/.test(line)) {
       fenced = !fenced;
+      joinable = false;
       continue;
     }
     if (fenced) {
@@ -45,9 +59,18 @@ export function releaseNotesText(markdown: string): string | null {
     }
     const text = plainLine(line);
     const kept = text.split(REMOVED).join("").trimEnd();
-    if (kept !== "" || !text.includes(REMOVED)) {
-      lines.push(kept);
+    if (kept === "" && text.includes(REMOVED)) {
+      joinable = false;
+      continue;
     }
+    const ownLine = HEADING.test(line) || RULE.test(line) || TABLE_ROW.test(line);
+    if (joinable && kept !== "" && !ownLine && !LIST_ITEM.test(line)) {
+      lines[lines.length - 1] += ` ${kept.trimStart()}`;
+      joinable = !HARD_BREAK.test(line);
+      continue;
+    }
+    lines.push(kept);
+    joinable = kept !== "" && !ownLine && !NESTED_ITEM.test(line) && !HARD_BREAK.test(line);
   }
   const text = lines
     .join("\n")
@@ -70,7 +93,7 @@ function plainLine(line: string): string {
     .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
     .replace(/(^|[^\w])<[A-Za-z][\w-]*(\s[^>]*)?\/?>/g, `$1${REMOVED}`)
     .replace(/<\/[A-Za-z][\w-]*\s*>/g, REMOVED)
-    .replace(/^\s{0,3}#{1,6}\s+/, "")
+    .replace(HEADING, "")
     .replace(/^(\s*)[*+-]\s+/, "$1• ");
   return text
     .split(/(https?:\/\/\S+)/)
