@@ -79,9 +79,9 @@ Work flows feature branch → `next` → `main`:
 
 - `main` is what users have: it equals the newest published release and
   receives `next` only at release time.
-- `next` (the repo's default branch until the 1.0 release) carries all
-  in-progress work. Feature branches branch off it and PR back into it;
-  until after 1.0 nothing merges or pushes straight to `main`.
+- `next` is the repo's default branch, so contributors' forks and PRs land
+  there, and it carries all in-progress work. Feature branches branch off
+  it and PR back into it; `main` receives only releases.
 - A branch carries its own tickets' work. Anything else (docs, tooling,
   the release flow) goes on its own branch off `next`.
 - Releasing: `docs/development.md` "Releases".
