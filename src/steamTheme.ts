@@ -5,6 +5,8 @@
  * a SteamOS update; the values are Valve's to change.
  */
 export const STEAM = {
+  /** Dialog header text (DialogHeader's own colour). */
+  header: "#ffffff",
   /** Row label text. */
   text: "#dcdedf",
   /** Row description and secondary text. */
