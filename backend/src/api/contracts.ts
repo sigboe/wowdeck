@@ -956,13 +956,14 @@ export interface MethodMap {
      * Called once when the plugin loads and once each time the Deck
      * wakes from sleep (src/index.tsx). Internally
      * rate-limited to at most once per real day and gated by
-     * `updateToastEnabled` — most calls return `shouldToast: false`
+     * `updateToastEnabled` — most calls return `toast: null`
      * immediately without doing any provider/network work at all. When
      * it does run, it refreshes every known installation (not just the
-     * selected one) via the normal update-check pipeline.
+     * selected one) via the normal update-check pipeline. `toast` comes
+     * worded (UpdateToastText): the frontend shows it as is.
      */
     params: Record<string, never>;
-    result: { shouldToast: boolean; updateCount: number; installationCount: number };
+    result: { toast: { title: string; body: string } | null };
   };
 }
 
