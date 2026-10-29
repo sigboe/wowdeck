@@ -6,41 +6,28 @@ What's new in each version of WoWDeck Addon Manager. The format follows
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-10-29
+
+First public release.
+
 ### Added
 
-- Beta updates: pick the Beta channel (Options → Updates → ⋯) to get new
-  features early, or switch back to Stable at any time.
-- Press Y on the update panel's Update button, or on WoWDeck under Options →
-  Updates, to read what's new in the version on offer.
-- Press X on the Update button or on WoWDeck under Options → Updates to check
-  for a newer version right away.
+- Manage your WoW addons from Game Mode: update one or all, remove, roll
+  back, and turn on automatic updates.
+- Find and install addons from CurseForge, WowUp Hub, TukUI, GitHub and
+  WoWInterface, or from a link or a zip file.
+- Finds your WoW installation on its own, whether it runs through Steam,
+  Lutris or a custom folder. Forever and Forever Beta both get Forever addons.
+- Back up and restore your WoW settings.
 - Copy addon settings, keybinds and layout from another WoW version, such as
   Forever Beta into Forever.
-
-### Changed
-
-- Updating WoWDeck moved to a panel at the top of the plugin, with an
-  orange dot on the Options tab while an update is waiting.
-- The update notification shows once per new version instead of every time
-  the plugin loads.
-- WoWDeck checks for its own updates once a day, including after the Deck
-  wakes from sleep.
-- The Forever beta client is now called Forever Beta. The live Forever
-  client is found too, and both get Forever addons.
-
-### Fixed
-
-- Roll back is no longer offered when the old version's kept copy is gone.
-- On Beta, Update no longer fails after a newer beta replaces the one on offer. It
-  installs the newer beta instead.
-- With no backups yet, Manage backups now starts on Back up now, or on Import
-  from file… when there's no WTF folder to back up.
-- Update all no longer reports failures for addons from a source you turned off.
-- Updating, ignoring or removing an addon changes its row once, without the list
-  flickering or briefly showing the old version.
-- Pausing automatic updates or ignoring an addon while updates run now sticks.
-- Updating to a beta now opens Decky's install prompt instead of saying the
-  update could not be verified.
+- Import and export addon lists that WowUp understands.
+- Update WoWDeck from the panel at the top of the plugin. An orange dot on the
+  Options tab tells you when a new version is out.
+- Press Y on the Update button, or on WoWDeck under Options → Updates, to
+  read what's new. Press X there to check for a newer version right away.
+- Pick the Beta channel (Options → Updates → ⋯) to get new features early,
+  or switch back to Stable at any time.
 
 ## [0.2.0] - 2026-10-25
 
@@ -74,7 +61,8 @@ First release.
 - Back up and restore your WoW settings.
 - Import and export addon lists that WowUp understands.
 
-[Unreleased]: https://github.com/sigboe/wowdeck/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/sigboe/wowdeck/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/sigboe/wowdeck/compare/v0.2.0...v1.0.0
 [0.2.0]: https://github.com/sigboe/wowdeck/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/sigboe/wowdeck/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/sigboe/wowdeck/releases/tag/v0.1.0

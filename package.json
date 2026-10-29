@@ -1,6 +1,6 @@
 {
   "name": "wowdeck",
-  "version": "0.2.0",
+  "version": "1.0.0",
   "description": "WoWDeck Addon Manager for Decky - manage World of Warcraft addons on Steam Deck",
   "type": "module",
   "scripts": {
