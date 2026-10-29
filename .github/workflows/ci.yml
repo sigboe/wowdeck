@@ -36,10 +36,16 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+      # The frontend suite runs on bun (package.json "test"); keep the
+      # version in step with the backend job's nix-locked bun.
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
       - run: pnpm install --frozen-lockfile
       - run: pnpm run lint
       - run: pnpm run format:check
       - run: pnpm run typecheck
+      - run: pnpm test
       - run: pnpm run build
       - uses: actions/upload-artifact@v4
         with:
@@ -114,6 +120,9 @@ jobs:
       # package.json, plugin.json and backend/package.json must agree; the
       # tag-triggered release workflow refuses to publish otherwise.
       - run: python3 tools/test_version.py -v
+      # main.py must forward every contract method unchanged (AGENTS.md
+      # "Contracts first").
+      - run: python3 tools/test_main_bridge.py
       # tools/package.py reads CURSEFORGE_API_KEY and bundles it into the
       # generated bin/bundled-curseforge-key resource — a repository
       # secret, never checked into source. GitHub Actions itself withholds

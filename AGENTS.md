@@ -29,7 +29,8 @@ Binding for every coding agent and human working on this repository.
 ## Toolchain
 
 Dependencies live in `flake.nix` (`nix develop`); `make` enters that shell
-itself. Before every commit: `make lint typecheck test build`. A tool needed
+itself. When `make` is not on PATH, run `nix develop -c make <targets>`.
+Before every commit: `make lint typecheck test build`. A tool needed
 once goes through `nix shell nixpkgs#<pkg> -c …`; a tool needed again goes into
 `flake.nix` with a comment saying why.
 
