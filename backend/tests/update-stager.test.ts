@@ -10,7 +10,8 @@ import { existsSync, mkdirSync, rmSync, statSync, utimesSync, writeFileSync } fr
 import { join } from "node:path";
 import { zipSync } from "fflate";
 import { NetworkError } from "../src/wow/net/network";
-import { UpdateStager } from "../src/wow/plugin/UpdateStager";
+import { stagedFileName, UpdateStager } from "../src/wow/plugin/UpdateStager";
+import { normalizeVersion } from "../src/wow/plugin/PluginVersion";
 import type { PluginUpdateOffer, PluginUpdateSnapshot } from "../src/api/contracts";
 import { PluginUpdateCheck, type StagingAnswer } from "../src/wow/notifications/PluginUpdateCheck";
 
@@ -117,6 +118,21 @@ describe("UpdateStager.stage", () => {
     expect(outcome.result?.version).toBe("0.3.0");
     rmSync(join(ROOT, "wowdeck-update-0.3.0.zip"), { force: true });
   });
+
+  test.each(["1.2.3", "1.3.0-beta.2"])(
+    "%s stages under stagedFileName(version), a canonical WoWDeck version",
+    async (version) => {
+      mkdirSync(ROOT, { recursive: true });
+      const { stager } = makeStager(() => pluginZip(version), { version });
+      const outcome = await stager.stage();
+      expect(outcome.error).toBeNull();
+      const result = outcome.result!;
+      expect(result.version).toBe(version);
+      expect(normalizeVersion(result.version)).toBe(result.version);
+      expect(result.artifact).toBe(`file://${join(ROOT, stagedFileName(version))}`);
+      rmSync(join(ROOT, stagedFileName(version)), { force: true });
+    },
+  );
 
   test("a rejected token falls back to one unauthenticated attempt", async () => {
     mkdirSync(ROOT, { recursive: true });
