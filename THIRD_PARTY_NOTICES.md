@@ -61,3 +61,22 @@
   frontmatter: a description naming this repo's docs replaces the original
   one, and `disable-model-invocation` is removed so agents load it
   themselves. It is development tooling and does not ship in the plugin.
+
+## README glyphs (`docs/glyphs/`)
+
+The README shows the Deck's buttons and the plugin's icons as small SVGs.
+They are the paths the UI draws, recoloured grey so they read on light
+and dark GitHub themes. None of them ship in the plugin.
+
+- `button-x.svg`, `button-y.svg`, `button-qam.svg`: Steam's own button
+  glyphs (the `ABXYButton` X/Y cases and the `Dots` icon), © Valve
+  Corporation. Copied from `steamui/sp.js` of the Steam Deck stable
+  client, version `1792618285`, to show which button to press.
+- `decky-settings.svg`: the gear on Decky Loader's settings button
+  (Decky v3.3.1), which is `BsGearFill` from
+  [Bootstrap Icons](https://github.com/twbs/icons), MIT.
+- `wowdeck-box.svg`, `ellipsis.svg`, `options.svg`: `FaBoxOpen`,
+  `FaEllipsisH` and `FaCog` from Font Awesome Free 5 as packaged by
+  `react-icons` 5.7.0, the same icons the plugin draws. Fonticons, Inc.
+  licenses the Font Awesome Free icons under
+  [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
