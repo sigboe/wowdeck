@@ -866,10 +866,6 @@ export interface MethodMap {
       job: WtfJobSnapshot | null;
     };
   };
-  "wtf.measure": {
-    params: { installationId?: string };
-    result: { exists: boolean; fileCount: number; totalBytes: number; freeBytes: number | null };
-  };
   "wtf.create": {
     /** Returns at once; progress arrives as `wtf.progress`, the outcome as `wtf.completed`. */
     params: { installationId?: string };

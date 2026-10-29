@@ -23,8 +23,6 @@ export function register(server: JsonlServer, { wtfService, wtfJobs, wtfJobTarge
     };
   });
 
-  server.on("wtf.measure", async (params) => wtfService.measure(wtfJobTarget(params.installationId)));
-
   // create/restore return immediately: the work runs as a job (one RPC at a time is served and the bridge
   // times out after 120 s), reporting through wtf.progress / wtf.completed events.
   server.on("wtf.create", async (params) => wtfJobs.startCreate(wtfJobTarget(params.installationId)));
