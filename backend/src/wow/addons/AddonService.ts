@@ -31,7 +31,7 @@ import { scanAddons } from "./AddonScanner";
 import { computeWowUpFingerprints } from "./FingerprintScanner";
 import { AddonInstaller, AddonRemover } from "./AddonInstaller";
 import { hasNewerPrerelease, installsFolder, latestFile, updateCandidate } from "./releaseChannel";
-import { cacheUsage, clearAll, dropPrevious, swapWithPrevious } from "./RollbackCache";
+import { cacheUsage, clearAll, dropPrevious, readPrevious, swapWithPrevious } from "./RollbackCache";
 import { AddonListPortability } from "./AddonPortability";
 import { dependantsIndex, libraryFlagsAfterImport, orphanedLibraries } from "./libraries";
 import type { DownloadService } from "../downloads/DownloadService";
@@ -414,12 +414,13 @@ export class AddonService {
   async #listAddons(records: AddonRecords, installation: WowInstallation): Promise<Addon[]> {
     const folders = await scanAddons(installation);
     const present = new Set(folders.map((f) => f.name));
-    records.patchMany(
-      records.forInstallation(installation.id).flatMap((record) => {
+    records.patchMany([
+      ...records.forInstallation(installation.id).flatMap((record) => {
         const patch = folderStatePatch(record, present);
         return patch ? [{ id: record.id, patch }] : [];
       }),
-    );
+      ...await this.#staleRollbackPatches(records, installation),
+    ]);
     const listed = records.forInstallation(installation.id);
     const unmanaged = unmanagedFolders(folders, listed).map((f) => toWireUnmanaged(f, installation, present));
 
@@ -449,6 +450,33 @@ export class AddonService {
       return wire;
     });
     return [...managed, ...unmanaged];
+  }
+
+  /**
+   * Rollback labels with no kept copy behind them (#33): the label lives
+   * on the record, but the cache decides whether Roll back can work.
+   * Anything that loses the kept folders without clearing the label (the
+   * cache folder moved, the dot folder deleted by hand, a keep that
+   * failed after removing the old copy) leaves an offer that cannot
+   * work; the list drops it instead of showing it — the same
+   * reconciliation folderStatePatch runs for folder warnings. Costs one
+   * small meta.json read per labelled record; records without a label
+   * (most of them) read nothing.
+   */
+  async #staleRollbackPatches(
+    records: AddonRecordReader,
+    installation: WowInstallation,
+  ): Promise<{ id: string; patch: AddonPatch }[]> {
+    const labeled = records.forInstallation(installation.id).filter((record) => record.rollbackVersion);
+    const checked = await Promise.all(
+      labeled.map(
+        async (record): Promise<{ id: string; patch: AddonPatch } | null> =>
+          (await readPrevious(installation, record.id))
+            ? null
+            : { id: record.id, patch: { rollbackVersion: undefined } },
+      ),
+    );
+    return checked.filter((entry): entry is { id: string; patch: AddonPatch } => entry !== null);
   }
 
   /** A failed operation, broadcast like every finished one, and returned. */
