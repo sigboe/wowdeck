@@ -30,6 +30,7 @@ What's new in each version of WoWDeck Addon Manager. The format follows
 
 ### Fixed
 
+- Roll back is no longer offered when the old version's kept copy is gone.
 - On Beta, Update no longer fails after a newer beta replaces the one on offer. It
   installs the newer beta instead.
 - With no backups yet, Manage backups now starts on Back up now, or on Import

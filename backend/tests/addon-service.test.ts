@@ -1223,6 +1223,71 @@ describe("previous version and rollback (BEYOND-02)", () => {
     await f.service.updateAddon(again.id);
     expect((await f.service.rollbackStatus()).count).toBe(0);
   });
+
+  test("a label whose kept copy is gone is not offered (#33)", async () => {
+    const f = localFixture("rollback-stale", [{ id: "800", name: "Roll", version: "1.0.0", releaseId: "r1", folders: ["Roll"] }]);
+    const { addon } = await f.service.install({ intent: "install", providerId: "WowUpHub", externalId: "800", installation: f.installation });
+    bump(f, "1.1.0", "r2");
+    await f.service.refresh(f.installation);
+    await f.service.updateAddon(addon.id);
+    expect((await listed(f, addon.id)).previousVersion).toBe("1.0.0");
+
+    // The kept copy goes without the label knowing (on the owner's Deck:
+    // the cache folder had moved). My Addons must not offer a dead roll back.
+    rmSync(join(f.addonsPath, ".wowdeck", "rollback", addon.id), { recursive: true, force: true });
+    const row = await listed(f, addon.id);
+    expect(row.previousVersion).toBeNull();
+    expect(row.version).toBe("1.1.0"); // the row itself is as it was
+    expect(stored(f, addon.id).rollbackVersion).toBeUndefined(); // the record agrees from now on
+    expect((await f.service.rollbackStatus()).count).toBe(0);
+    const back = await f.service.rollback(addon.id);
+    expect(back.operation.status).toBe("failed");
+  });
+
+  test("Keep previous versions off after an earlier keep leaves a working offer, not a stale one", async () => {
+    const f = localFixture("rollback-off-after-keep", [{ id: "800", name: "Roll", version: "1.0.0", releaseId: "r1", folders: ["Roll"] }]);
+    const { addon } = await f.service.install({ intent: "install", providerId: "WowUpHub", externalId: "800", installation: f.installation });
+    bump(f, "1.1.0", "r2");
+    await f.service.refresh(f.installation);
+    await f.service.updateAddon(addon.id); // keeps 1.0.0
+    f.store.updateSettings({ keepPreviousVersions: false });
+    bump(f, "1.2.0", "r3");
+    await f.service.refresh(f.installation);
+    const { operation } = await f.service.updateAddon(addon.id);
+    expect(operation.status).toBe("updated");
+
+    // Nothing was kept for 1.1.0, but the 1.0.0 copy is still in the cache
+    // and the label still names it: the offer is real, so it stays.
+    expect((await listed(f, addon.id)).previousVersion).toBe("1.0.0");
+    const back = await f.service.rollback(addon.id);
+    expect(back.operation.status).toBe("installed");
+    expect(toc(f)).toContain("1.0.0");
+  });
+
+  test("a keep that fails after the old copy is gone leaves a dead label; the list drops it (#33)", async () => {
+    const f = localFixture("rollback-keep-fails", [{ id: "800", name: "Roll", version: "1.0.0", releaseId: "r1", folders: ["Roll"] }]);
+    const { addon } = await f.service.install({ intent: "install", providerId: "WowUpHub", externalId: "800", installation: f.installation });
+    bump(f, "1.1.0", "r2");
+    await f.service.refresh(f.installation);
+    await f.service.updateAddon(addon.id); // label 1.0.0, copy kept
+
+    // The next keep fails and takes the old copy with it (keepPrevious
+    // removes the old cache entry before writing the new one): make the
+    // cache root something no keep can write to.
+    rmSync(join(f.addonsPath, ".wowdeck", "rollback"), { recursive: true, force: true });
+    writeFileSync(join(f.addonsPath, ".wowdeck", "rollback"), "not a directory");
+    bump(f, "1.2.0", "r3");
+    await f.service.refresh(f.installation);
+    const { operation } = await f.service.updateAddon(addon.id);
+    expect(operation.status).toBe("updated"); // the install itself is fine; only the keep failed
+    expect(stored(f, addon.id).rollbackVersion).toBe("1.0.0"); // the failed keep left the old label
+
+    expect((await listed(f, addon.id)).previousVersion).toBeNull(); // the list drops the dead offer
+    expect(stored(f, addon.id).rollbackVersion).toBeUndefined();
+    expect(await f.service.rollbackStatus()).toMatchObject({ count: 0 });
+    const back = await f.service.rollback(addon.id);
+    expect(back.operation.status).toBe("failed");
+  });
 });
 
 describe("automatic updates (WF-02)", () => {
