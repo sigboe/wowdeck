@@ -32,7 +32,8 @@ export function register(server: JsonlServer, { wtfService, wtfJobs, wtfJobTarge
   server.on("wtf.restore", async (params) =>
     wtfJobs.startRestore(wtfJobTarget(params.installationId), params.fileName, {
       acceptUnknownFlavor: params.acceptUnknownFlavor === true,
-      keepCurrentConfig: params.keepCurrentConfig === true,
+      // Passed as given: absent means the service default (off for a restore, on for a copy).
+      keepCurrentConfig: params.keepCurrentConfig,
     }),
   );
 
@@ -44,7 +45,7 @@ export function register(server: JsonlServer, { wtfService, wtfJobs, wtfJobTarge
 
   server.on("wtf.copy", async (params) => {
     const target = wtfJobTarget(params.installationId);
-    const keepCurrentConfig = params.keepCurrentConfig !== false;
+    const { keepCurrentConfig } = params;
     if ("fileName" in params) {
       return wtfJobs.startCopy(target, params.sourceFlavor, params.fileName, {
         keepCurrentConfig,

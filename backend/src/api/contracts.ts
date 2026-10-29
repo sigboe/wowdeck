@@ -882,7 +882,7 @@ export interface MethodMap {
       fileName: string;
       /** Required for backups that don't record their game flavor (made by desktop WowUp). */
       acceptUnknownFlavor?: boolean;
-      /** Keep this device's Config.wtf (graphics/display settings). */
+      /** Keep this device's Config.wtf (graphics/display settings). Default false: the backup's own is restored. */
       keepCurrentConfig?: boolean;
     };
     result: { jobId: string };
@@ -912,7 +912,10 @@ export interface MethodMap {
       installationId?: string;
       /** Flavor key of the version the settings belong to (WtfCopySource.flavor). */
       sourceFlavor: string;
-      /** Keep this device's Config.wtf (graphics/display settings). Default true: another version's describes another client. */
+      /**
+       * Keep this device's Config.wtf (graphics/display settings). Default true when sourceFlavor is another
+       * version (its Config.wtf describes another client); false when it is this installation's own, as for wtf.restore.
+       */
       keepCurrentConfig?: boolean;
     } & (
       | {
