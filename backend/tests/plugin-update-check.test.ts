@@ -1102,4 +1102,34 @@ describe("check({ force: true }): Check again", () => {
     expect((await forced).offer?.version).toBe("0.2.1");
     expect(h.calls()).toBe(2);
   });
+
+  test("two at once on the same channel are not merged: the second runs after the first", async () => {
+    // The store's Check again flight is what keeps a double press to one request.
+    let unblock: () => void = () => {};
+    const held = new Promise<void>((resolve) => {
+      unblock = resolve;
+    });
+    let firstAnswered = false;
+    let secondAskedAfterFirst = false;
+    let n = 0;
+    const h = makeCheck({
+      respond: () => {
+        if (++n === 1) {
+          return held.then(() => {
+            firstAnswered = true;
+            return withZip("v0.2.0");
+          });
+        }
+        secondAskedAfterFirst = firstAnswered;
+        return withZip("v0.2.1");
+      },
+    });
+    const first = h.check.check(FORCE);
+    const second = h.check.check(FORCE);
+    unblock();
+    expect((await first).offer?.version).toBe("0.2.0");
+    expect((await second).offer?.version).toBe("0.2.1");
+    expect(h.calls()).toBe(2);
+    expect(secondAskedAfterFirst).toBe(true);
+  });
 });

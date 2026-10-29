@@ -23,8 +23,6 @@ export function register(server: JsonlServer, { wtfService, wtfJobs, wtfJobTarge
     };
   });
 
-  server.on("wtf.measure", async (params) => wtfService.measure(wtfJobTarget(params.installationId)));
-
   // create/restore return immediately: the work runs as a job (one RPC at a time is served and the bridge
   // times out after 120 s), reporting through wtf.progress / wtf.completed events.
   server.on("wtf.create", async (params) => wtfJobs.startCreate(wtfJobTarget(params.installationId)));
@@ -32,7 +30,8 @@ export function register(server: JsonlServer, { wtfService, wtfJobs, wtfJobTarge
   server.on("wtf.restore", async (params) =>
     wtfJobs.startRestore(wtfJobTarget(params.installationId), params.fileName, {
       acceptUnknownFlavor: params.acceptUnknownFlavor === true,
-      keepCurrentConfig: params.keepCurrentConfig === true,
+      // Passed as given: absent means the service default (off for a restore, on for a copy).
+      keepCurrentConfig: params.keepCurrentConfig,
     }),
   );
 
@@ -44,7 +43,7 @@ export function register(server: JsonlServer, { wtfService, wtfJobs, wtfJobTarge
 
   server.on("wtf.copy", async (params) => {
     const target = wtfJobTarget(params.installationId);
-    const keepCurrentConfig = params.keepCurrentConfig !== false;
+    const { keepCurrentConfig } = params;
     if ("fileName" in params) {
       return wtfJobs.startCopy(target, params.sourceFlavor, params.fileName, {
         keepCurrentConfig,

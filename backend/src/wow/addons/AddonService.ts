@@ -55,7 +55,6 @@ import {
 
 export interface ServiceEvents {
   addonsChanged: (addonIds: string[]) => void;
-  operationProgress: (progress: import("../../api/contracts").OperationProgress) => void;
   operationResult: (result: OperationResult) => void;
   /** An automatic update ran (WF-02). */
   autoUpdated?: (result: AutoUpdateResult) => void;
@@ -810,7 +809,6 @@ export class AddonService {
         searchResult,
         provider,
         operationId,
-        onProgress: intent.broadcast ? (progress) => this.events.operationProgress(progress) : () => {},
         // An install over files on disk keeps the previous version
         // (BEYOND-02); the installer leaves the kept one alone for a
         // reinstall of the same release.

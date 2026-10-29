@@ -58,18 +58,16 @@ describe("JsonlServer", () => {
 
   test("ignores non-request messages", async () => {
     const { server, lines } = makeServer();
-    await server.handleLine('{"event":"operation.progress","params":{}}');
+    await server.handleLine('{"event":"addons.changed","params":{}}');
     expect(lines).toEqual([]);
   });
 
   test("emits events as JSONL lines", () => {
     const { server, lines } = makeServer();
-    server.emit("operation.progress", {
-      progress: { operationId: "a", addonId: null, phase: "download", progress: 0.5, message: null },
-    });
+    server.emit("addons.changed", { addonIds: ["a"] });
     expect(lines).toHaveLength(1);
     const msg = JSON.parse(lines[0]!);
-    expect(msg.event).toBe("operation.progress");
+    expect(msg.event).toBe("addons.changed");
   });
 
   test("missing params default to empty object", async () => {

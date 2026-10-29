@@ -68,7 +68,6 @@ function fixture(dir: string, files: Record<string, Uint8Array>) {
   const { net, downloads } = fakeNet(files);
   const service = new AddonService(store, registry, new DownloadService(net, join(root, "dl")), {
     addonsChanged: () => {},
-    operationProgress: () => {},
     operationResult: () => {},
   });
   const catalogue = new Catalogue(registry);

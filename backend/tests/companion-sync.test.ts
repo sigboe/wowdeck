@@ -85,7 +85,6 @@ function setup(): { service: AddonService; store: StateStore; registry: Provider
   registry.attachStore(store);
   const service = new AddonService(store, registry, new DownloadService(new NetworkClient(), join(dataDir, "dl")), {
     addonsChanged: () => {},
-    operationProgress: () => {},
     operationResult: () => {},
   });
   return { service, store, registry, provider };

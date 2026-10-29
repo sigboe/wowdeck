@@ -23,8 +23,6 @@ import { leaveBrowseSession, subscribeWidening, widening } from "./browseSession
 import { pluginToast } from "./toast";
 import { selfUpdateStore } from "./selfUpdate";
 import { pluginUpdateDot } from "./pluginUpdate";
-import { plural } from "./text";
-import { formatList } from "./search";
 import { addonSession } from "./session";
 import { askUntilAnswered } from "./askUntilAnswered";
 import { QAM_TABS, QAM_VIEW, qamState, type QamTab } from "./qamState";
@@ -292,32 +290,16 @@ function Content() {
  * navigation lifecycle — opening/leaving/returning to My Addons must
  * not re-trigger it. The backend (UpdateToastGate) owns the actual
  * decision — whether the setting is on, whether a day has actually
- * passed, and the real per-installation update count — so this just
- * asks and, when told to, shows one toast. Safe to call liberally;
- * most calls return `shouldToast: false` immediately without any
+ * passed, and the toast's words — so this just asks and shows the
+ * toast it gets, if any. Safe to call liberally;
+ * most calls return `toast: null` immediately without any
  * backend network work at all.
  */
 async function checkUpdateToast(): Promise<void> {
   try {
-    const { shouldToast, updateCount, installationCount } = await api.rpc(
-      "notifications.checkUpdateToast",
-    );
-    if (shouldToast) {
-      let body: string = "Open WoWDeck Manager to update";
-      if (installationCount > 1) {
-        try {
-          const { installations } = await api.rpc("addons.updateSummary", { refresh: false });
-          const names = installations
-            .filter((installation) => installation.updates > 0)
-            .map((installation) => installation.displayName);
-          body = names.length
-            ? `In ${formatList(names)}`
-            : `In ${plural(installationCount, "installation")}`;
-        } catch {
-          body = `In ${plural(installationCount, "installation")}`;
-        }
-      }
-      pluginToast(`${plural(updateCount, "addon update")} available`, body);
+    const { toast } = await api.rpc("notifications.checkUpdateToast");
+    if (toast) {
+      pluginToast(toast.title, toast.body);
     }
   } catch {
     // Engine not ready yet, or the RPC failed — silently skip. The next
@@ -340,7 +322,7 @@ export default definePlugin(() => {
   void checkUpdateToast();
   // WoWDeck's own release check too — the engine's daily cap decides whether
   // it costs a request, so waking the Deck is a useful trigger as well.
-  void selfUpdateStore.refresh({ toast: true, force: true });
+  void selfUpdateStore.refresh({ toast: true, bypassWindow: true });
 
   // WTF backup/restore jobs run in the engine and outlive any panel or modal, so their
   // progress/outcome events are subscribed once per plugin load into a module-scope
@@ -393,7 +375,7 @@ export default definePlugin(() => {
   if (typeof SteamClient?.System?.RegisterForOnResumeFromSuspend === "function") {
     resumeRegistration = SteamClient.System.RegisterForOnResumeFromSuspend(() => {
       void checkUpdateToast();
-      void selfUpdateStore.refresh({ toast: true, force: true });
+      void selfUpdateStore.refresh({ toast: true, bypassWindow: true });
     });
   } else {
     console.log(

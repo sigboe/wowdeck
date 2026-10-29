@@ -83,7 +83,6 @@ function makeService(claimOrder: Array<["WowUpHub" | "TukUI", Record<string, str
   store.setInstallations([installation]);
   return new AddonService(store, registry, new DownloadService(new NetworkClient(), join(ROOT, "dl")), {
     addonsChanged: () => {},
-    operationProgress: () => {},
     operationResult: () => {},
   });
 }
@@ -146,7 +145,6 @@ describe("scan reconciliation", () => {
     store.setInstallations([contentionInstall]);
     const service = new AddonService(store, registry, new DownloadService(new NetworkClient(), join(ROOT, "dl-contention")), {
       addonsChanged: () => {},
-      operationProgress: () => {},
       operationResult: () => {},
     });
 
@@ -181,7 +179,6 @@ describe("scan reconciliation", () => {
       store.setInstallations([install]);
       return new AddonService(store, registry, new DownloadService(new NetworkClient(), join(ROOT, "dl-rio")), {
         addonsChanged: () => {},
-        operationProgress: () => {},
         operationResult: () => {},
       });
     }
@@ -228,7 +225,6 @@ describe("scan reconciliation", () => {
     store.setInstallations([install]);
     const service = new AddonService(store, registry, new DownloadService(new NetworkClient(), join(ROOT, "dl-modules")), {
       addonsChanged: () => {},
-      operationProgress: () => {},
       operationResult: () => {},
     });
 
@@ -256,7 +252,6 @@ describe("scan reconciliation", () => {
       registry.register(new ClaimingProvider("WowUpHub", claims, modules));
       return new AddonService(store, registry, new DownloadService(new NetworkClient(), join(ROOT, "dl-owned")), {
         addonsChanged: () => {},
-        operationProgress: () => {},
         operationResult: () => {},
       });
     };

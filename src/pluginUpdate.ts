@@ -129,21 +129,18 @@ type Loader = { call?: (...args: unknown[]) => Promise<unknown> };
 const LOADER_UNAVAILABLE =
   "Decky's plugin installer is not available in this version. Update manually from the releases page.";
 
-/** The versions the engine stages: X.Y.Z or X.Y.Z-beta.N (PluginVersion, without the v). */
-const STAGED_VERSION = /^\d+(?:\.\d+){0,2}(?:-beta\.\d+)?$/;
-
 /**
- * Whether the artifact is the engine's local staging file for this exact
- * version: file:///<dirs>/wowdeck-update-<version>.zip, with no "." or
- * ".." segment in the path.
- * The name must stay in step with UpdateStager.stage().
+ * Whether the artifact can go to the loader at all: a local
+ * file:///<dirs>/<file> path with no "." or ".." segment, never a remote
+ * URL (decky-loader #984; #985 installs before its hash check). This is
+ * the loader's transport, not the package: the engine names the staged
+ * file and verifies it (manifest name and exact version) in UpdateStager
+ * before it hands the path over.
  */
-function isStagedArtifact(staged: StagedUpdate): boolean {
-  if (!STAGED_VERSION.test(staged.version)) return false;
+function isLocalArtifact(staged: StagedUpdate): boolean {
   const m = /^file:\/\/\/((?:[^/]+\/)*)([^/]+)$/.exec(staged.artifact);
   if (!m) return false;
-  if (m[1]!.split("/").some((s) => s === "." || s === "..")) return false;
-  return m[2] === `wowdeck-update-${staged.version}.zip`;
+  return ![...m[1]!.split("/"), m[2]].some((s) => s === "." || s === "..");
 }
 
 /**
@@ -166,7 +163,7 @@ export async function requestPluginUpdate(staged: StagedUpdate): Promise<UpdateR
     if (typeof loader?.call !== "function") {
       return { success: false, error: LOADER_UNAVAILABLE };
     }
-    if (!isStagedArtifact(staged)) {
+    if (!isLocalArtifact(staged)) {
       return {
         success: false,
         error: "The update could not be verified, so it was not installed.",

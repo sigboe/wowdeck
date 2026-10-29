@@ -15,7 +15,7 @@ import {
   copySourceRows,
   copySourceStatus,
   currentSettingsDescription,
-  currentSettingsBackup,
+  currentSettingsSource,
   copyGameRunningNotice,
   okActionLabel,
   outcomeOf,
@@ -23,7 +23,7 @@ import {
   restoreDialogText,
 } from "./wtfText";
 import { backupKindLabel, backupOrigin, formatBytes, formatWhen } from "./wtfFormat";
-import type { WtfJobSnapshot } from "./types";
+import type { WtfBackupInfo, WtfJobSnapshot } from "./types";
 
 const CODES = [
   "wtf_missing",
@@ -412,8 +412,23 @@ describe("Settings copy of current settings", () => {
     current: { modifiedAt: now - 3_600_000, hasConfig: true },
     backups: [],
   };
+  /** A backup of `beta` in its list. */
+  const betaBackup = (over: Partial<WtfBackupInfo> = {}): WtfBackupInfo => ({
+    fileName: "wtf_1.zip",
+    sizeBytes: 1_000,
+    createdAt: now - 86_400_000,
+    kind: "manual",
+    fileCount: 1,
+    flavor: beta.flavor,
+    hasConfig: true,
+    fromThisDevice: true,
+    keepConfigSuggested: false,
+    valid: true,
+    invalidReason: null,
+    ...over,
+  });
   const dialog = (gameRunning: "running" | "not_running" | "unknown") =>
-    restoreDialogText(currentSettingsBackup(beta), "Forever", gameRunning, now, {
+    restoreDialogText(currentSettingsSource(beta), "Forever", gameRunning, now, {
       name: "Forever Beta",
       related: true,
       current: true,
@@ -432,14 +447,14 @@ describe("Settings copy of current settings", () => {
 
   test("WoW running blocks a copy of current settings too: the dialog says it must be closed", () => {
     expect(dialog("running").paragraphs).toContain("World of Warcraft must be closed.");
-    expect(restoreBlockedReason(currentSettingsBackup(beta), false, "running", "copy")).toBe(
+    expect(restoreBlockedReason(currentSettingsSource(beta), false, "running", "copy")).toBe(
       "Close World of Warcraft first.",
     );
   });
 
   test("current settings without a Config.wtf: the toggle is off and disabled", () => {
     const d = restoreDialogText(
-      currentSettingsBackup({ ...beta, current: { modifiedAt: now, hasConfig: false } }),
+      currentSettingsSource({ ...beta, current: { modifiedAt: now, hasConfig: false } }),
       "Forever",
       "not_running",
       now,
@@ -449,7 +464,7 @@ describe("Settings copy of current settings", () => {
   });
 
   test("Current settings is listed first, only for an installed version that has them", () => {
-    const backup = { ...currentSettingsBackup(beta), fileName: "wtf_1.zip" };
+    const backup = betaBackup();
     expect(copySourceRows({ ...beta, backups: [backup] })).toEqual([
       { kind: "current" },
       { kind: "backup", backup },
@@ -463,17 +478,12 @@ describe("Settings copy of current settings", () => {
   });
 
   test("the list names its source: the header and every row", () => {
-    const backup = {
-      ...currentSettingsBackup(beta),
-      fileName: "wtf_1.zip",
-      createdAt: now - 3 * 86_400_000,
-      sizeBytes: 2_100_000,
-    };
+    const backup = betaBackup({ createdAt: now - 3 * 86_400_000, sizeBytes: 2_100_000 });
     expect(copySourceHeader(beta)).toBe("Copying from Forever Beta");
     expect(copySourceRowLabel(beta, { kind: "current" }, now)).toBe(
       "Forever Beta · Current settings",
     );
-    expect(currentSettingsDescription(currentSettingsBackup(beta), now)).toBe("Changed 1 hour ago");
+    expect(currentSettingsDescription(currentSettingsSource(beta), now)).toBe("Changed 1 hour ago");
     expect(copySourceRowLabel(beta, { kind: "backup", backup }, now)).toBe(
       "Forever Beta · 3 days ago · 2.1 MB",
     );
@@ -481,12 +491,11 @@ describe("Settings copy of current settings", () => {
 
   test("a version that isn't installed labels its backup rows the same way", () => {
     const anniversary = { displayName: "Anniversary", installed: false, current: null };
-    const backup = {
-      ...currentSettingsBackup(beta),
+    const backup = betaBackup({
       flavor: "_anniversary_",
       createdAt: now - 7_200_000,
       sizeBytes: 38_000,
-    };
+    });
     expect(copySourceHeader(anniversary)).toBe("Copying from Anniversary");
     expect(copySourceRowLabel(anniversary, { kind: "backup", backup }, now)).toBe(
       "Anniversary · 2 hours ago · 38 KB",

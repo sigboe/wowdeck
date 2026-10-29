@@ -24,7 +24,7 @@ export class DownloadService {
   async download(
     url: string,
     fileName: string,
-    options: { auth?: DownloadAuth; onProgress?: (received: number, total: number | null) => void } = {},
+    options: { auth?: DownloadAuth } = {},
   ): Promise<DownloadHandle> {
     await removeDirectory(this.downloadDir);
     await createDirectory(this.downloadDir);
@@ -35,7 +35,6 @@ export class DownloadService {
         headers: options.auth?.headers,
         query: options.auth?.queryParams,
         trustedHostsForHeaders: options.auth?.trustedHostsForHeaders,
-        onProgress: options.onProgress,
         timeoutMs: 120_000,
       });
       if (bytes === 0) {

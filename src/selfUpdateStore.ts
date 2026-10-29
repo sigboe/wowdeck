@@ -49,11 +49,11 @@ export interface SelfUpdateStore extends Pick<Store<SelfUpdateState>, "get" | "s
    * caller asks the engine with `notify` (the one ask that may report the
    * version's toast); one that arrives during a quiet ask asks again with
    * notify once it lands, which the engine answers from its stored answer. The
-   * time-passing triggers (load, wake) pass `force`: they are rare and
+   * time-passing triggers (load, wake) pass `bypassWindow`: they are rare and
    * say time may have moved, so they ask even inside the window and let
    * the engine's own cadence decide whether it costs a request.
    */
-  refresh(opts?: { toast?: boolean; force?: boolean }): Promise<void>;
+  refresh(opts?: { toast?: boolean; bypassWindow?: boolean }): Promise<void>;
   /**
    * Stage the new release in the engine (download + verify), then hand it
    * to Decky's own installer: the loader's native prompt installs from the
@@ -112,7 +112,12 @@ export function createSelfUpdateStore(deps: SelfUpdateDeps): SelfUpdateStore {
   let inFlightNotify = false;
   /** Whether the in-flight ask carries force (Check again). */
   let inFlightForce = false;
-  /** The Check again in progress; a second press joins it. */
+  /**
+   * The Check again in progress; a second press joins it. The engine's
+   * forced check waits out a pending run instead of joining it
+   * (PluginUpdateCheck.check, SingleFlight.runAfterPending), so this flight
+   * is what keeps a double press to one request and one toast.
+   */
   let checkAgainFlight: Promise<CheckAgainResult> | null = null;
 
   /** Show an engine answer; only one that could check counts as fresh. */
@@ -159,7 +164,7 @@ export function createSelfUpdateStore(deps: SelfUpdateDeps): SelfUpdateStore {
     get: store.get,
     subscribe: store.subscribe,
     refresh(opts = {}) {
-      if (!opts.force && now() - answeredAt < ANSWER_FRESH_MS) {
+      if (!opts.bypassWindow && now() - answeredAt < ANSWER_FRESH_MS) {
         return Promise.resolve();
       }
       return check(opts.toast === true).then(() => undefined);

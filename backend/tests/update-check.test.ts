@@ -36,7 +36,6 @@ function recordingStack() {
   store.updateSettings({ autoUpdate: true, updateToastEnabled: true });
   const service = new AddonService(store, new ProviderRegistry(), new DownloadService(new NetworkClient(), join(dir, "dl")), {
     addonsChanged: () => {},
-    operationProgress: () => {},
     operationResult: () => {},
   });
   const calls: string[] = [];

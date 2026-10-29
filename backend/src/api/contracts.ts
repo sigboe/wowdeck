@@ -253,15 +253,6 @@ export interface ProviderCategory {
   name: string;
 }
 
-export interface OperationProgress {
-  operationId: string;
-  addonId: string | null;
-  phase: "resolve" | "download" | "extract" | "validate" | "install" | "rescan";
-  /** 0..1, or null when indeterminate. */
-  progress: number | null;
-  message: string | null;
-}
-
 export interface OperationResult {
   operationId: string;
   addonId: string | null;
@@ -866,10 +857,6 @@ export interface MethodMap {
       job: WtfJobSnapshot | null;
     };
   };
-  "wtf.measure": {
-    params: { installationId?: string };
-    result: { exists: boolean; fileCount: number; totalBytes: number; freeBytes: number | null };
-  };
   "wtf.create": {
     /** Returns at once; progress arrives as `wtf.progress`, the outcome as `wtf.completed`. */
     params: { installationId?: string };
@@ -882,7 +869,7 @@ export interface MethodMap {
       fileName: string;
       /** Required for backups that don't record their game flavor (made by desktop WowUp). */
       acceptUnknownFlavor?: boolean;
-      /** Keep this device's Config.wtf (graphics/display settings). */
+      /** Keep this device's Config.wtf (graphics/display settings). Default false: the backup's own is restored. */
       keepCurrentConfig?: boolean;
     };
     result: { jobId: string };
@@ -912,7 +899,10 @@ export interface MethodMap {
       installationId?: string;
       /** Flavor key of the version the settings belong to (WtfCopySource.flavor). */
       sourceFlavor: string;
-      /** Keep this device's Config.wtf (graphics/display settings). Default true: another version's describes another client. */
+      /**
+       * Keep this device's Config.wtf (graphics/display settings). Default true when sourceFlavor is another
+       * version (its Config.wtf describes another client); false when it is this installation's own, as for wtf.restore.
+       */
       keepCurrentConfig?: boolean;
     } & (
       | {
@@ -956,13 +946,14 @@ export interface MethodMap {
      * Called once when the plugin loads and once each time the Deck
      * wakes from sleep (src/index.tsx). Internally
      * rate-limited to at most once per real day and gated by
-     * `updateToastEnabled` — most calls return `shouldToast: false`
+     * `updateToastEnabled` — most calls return `toast: null`
      * immediately without doing any provider/network work at all. When
      * it does run, it refreshes every known installation (not just the
-     * selected one) via the normal update-check pipeline.
+     * selected one) via the normal update-check pipeline. `toast` comes
+     * worded (UpdateToastText): the frontend shows it as is.
      */
     params: Record<string, never>;
-    result: { shouldToast: boolean; updateCount: number; installationCount: number };
+    result: { toast: { title: string; body: string } | null };
   };
 }
 
@@ -1195,7 +1186,6 @@ export interface AutoUpdateResult {
 export interface EventMap {
   /** An automatic update ran and updated or failed something (WF-02). */
   "addons.autoUpdated": { result: AutoUpdateResult };
-  "operation.progress": { progress: OperationProgress };
   "operation.completed": { result: OperationResult };
   "operation.failed": { result: OperationResult };
   "addons.changed": { addonIds: string[] };

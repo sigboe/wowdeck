@@ -339,10 +339,7 @@ describe("engine JSONL integration", () => {
     expect(existsSync(join(addonsPath, "MockLib", "MockLib.toc"))).toBe(true);
     expect(readFileSync(join(addonsPath, "MockAddon", "init.lua"), "utf-8")).toContain("1.1.0");
 
-    // progress events were emitted
-    const progressEvents = events.filter((e) => e.event === "operation.progress");
-    expect(progressEvents.length).toBeGreaterThan(0);
-    expect(progressEvents.some((e) => e.params.progress.phase === "download")).toBe(true);
+    // the result event was emitted
     expect(events.some((e) => e.event === "operation.completed")).toBe(true);
   });
 

@@ -1,6 +1,6 @@
 import { ConfirmModal, showModal } from "@decky/ui";
 import type { GameRunning, WtfBackupInfo } from "../types";
-import { deleteConfirmation } from "../wtfText";
+import { deleteConfirmation, type RestoreSource } from "../wtfText";
 import {
   openRestoreBackupModal,
   type RestoreChoice,
@@ -14,7 +14,7 @@ import {
  */
 /** Restore confirmation: our own dialog, because it carries the per-restore Config.wtf choice. */
 export function confirmRestoreBackup(
-  backup: WtfBackupInfo,
+  backup: RestoreSource,
   installationName: string,
   gameRunning: GameRunning,
   onOK: (options: RestoreChoice) => void,

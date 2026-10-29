@@ -233,17 +233,16 @@ describe("requestPluginUpdate", () => {
   });
 
   test.each([
-    ["an http URL", "http://localhost/wowdeck-update-0.2.0.zip", "0.2.0"],
-    ["another file name", "file:///tmp/WoWDeck.zip", "0.2.0"],
-    ["an rc", "file:///tmp/wowdeck-update-0.2.1-rc.1.zip", "0.2.1-rc.1"],
-    ["a bare -beta", "file:///tmp/wowdeck-update-0.2.1-beta.zip", "0.2.1-beta"],
-    ["a -beta.x", "file:///tmp/wowdeck-update-0.2.1-beta.x.zip", "0.2.1-beta.x"],
-    ["a .. segment", "file:///tmp/../home/wowdeck-update-0.2.0.zip", "0.2.0"],
-    ["a name for another version", "file:///tmp/wowdeck-update-0.2.1-beta.4.zip", "0.2.1-beta.5"],
-    ["a release name with a beta version", "file:///tmp/wowdeck-update-0.2.1.zip", "0.2.1-beta.4"],
-  ])("%s is refused before the installer", async (_, artifact, version) => {
+    ["an http URL", "http://localhost/wowdeck-update-0.2.0.zip"],
+    ["a non-file scheme", "ftp:///tmp/wowdeck-update-0.2.0.zip"],
+    ["a file URL with a host", "file://host/tmp/wowdeck-update-0.2.0.zip"],
+    ["a .. segment", "file:///tmp/../home/wowdeck-update-0.2.0.zip"],
+    ["a . segment", "file:///tmp/./wowdeck-update-0.2.0.zip"],
+    ["a .. file segment", "file:///tmp/.."],
+    ["a directory, not a file", "file:///tmp/"],
+  ])("%s is refused before the installer", async (_, artifact) => {
     const calls = recordingLoader();
-    const result = await requestPluginUpdate({ artifact, version, sha256: "deadbeef" });
+    const result = await requestPluginUpdate({ ...staged, artifact });
     expect(result).toEqual({
       success: false,
       error: "The update could not be verified, so it was not installed.",

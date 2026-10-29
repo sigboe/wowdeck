@@ -135,16 +135,15 @@ export class NetworkClient {
   }
 
   /**
-   * Stream a download to a file with progress callbacks.
+   * Stream a download to a file.
    * Returns the byte count written.
    */
   async downloadToFile(
     url: string,
     destinationPath: string,
-    options: RequestOptions & { onProgress?: (received: number, total: number | null) => void } = {},
+    options: RequestOptions = {},
   ): Promise<number> {
     const res = await this.requestWithRetry("GET", url, { ...options, streamBody: true });
-    const total = res.headers.get("content-length") ? Number(res.headers.get("content-length")) : null;
     let received = 0;
     const chunks: Uint8Array[] = [];
     if (res.body) {
@@ -155,7 +154,6 @@ export class NetworkClient {
         if (value) {
           chunks.push(value);
           received += value.length;
-          options.onProgress?.(received, total);
         }
       }
     }

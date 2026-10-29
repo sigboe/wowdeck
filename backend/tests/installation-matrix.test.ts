@@ -124,7 +124,7 @@ function makeStack(dataDir: string, provider: ScopedFakeProvider) {
       } as unknown as NetworkClient,
       join(dataDir, "dl"),
     ),
-    { addonsChanged: () => {}, operationProgress: () => {}, operationResult: () => {} },
+    { addonsChanged: () => {}, operationResult: () => {} },
   );
   return { store, service, catalogue: new Catalogue(registry) };
 }

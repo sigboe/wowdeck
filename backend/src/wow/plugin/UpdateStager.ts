@@ -55,6 +55,11 @@ export type StageOutcome = {
 const PLUGIN_NAME = "WoWDeck";
 const STALE_AFTER_MS = 24 * 60 * 60 * 1000;
 
+/** The staged zip's file name for a release version; the stale sweep matches the same prefix. */
+export function stagedFileName(version: string): string {
+  return `wowdeck-update-${version}.zip`;
+}
+
 /** The offered zip answered 404: the stored answer is stale. */
 const GONE = Symbol("gone");
 const DOWNLOAD_FAILED = outcome("download_failed", "Couldn't download the update. Try again");
@@ -92,8 +97,7 @@ export class UpdateStager {
       return outcome("no_download", "The release has no WoWDeck.zip to install");
     }
     const { version } = offer;
-    // src/pluginUpdate.ts (isStagedArtifact) accepts only this name.
-    const zipPath = join(this.tempDir, `wowdeck-update-${version}.zip`);
+    const zipPath = join(this.tempDir, stagedFileName(version));
     this.#sweepStale(zipPath);
     try {
       const token = this.tokenProvider()?.trim();
