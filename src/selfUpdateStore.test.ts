@@ -197,7 +197,7 @@ describe("self-update store: refresh", () => {
 
   test("only a toast trigger asks the engine with notify", async () => {
     const h = harness();
-    await h.store.refresh({ toast: true, force: true }); // plugin load
+    await h.store.refresh({ toast: true, bypassWindow: true }); // plugin load
     h.advance(16 * 60_000);
     await h.store.refresh(); // Options
     expect(h.checkParams).toEqual([{ notify: true }, {}]);
@@ -224,7 +224,7 @@ describe("self-update store: refresh", () => {
     const h = harness();
     await h.store.refresh();
     h.advance(60_000); // still fresh: a surface trigger would not re-ask…
-    await h.store.refresh({ toast: true, force: true }); // …but a wake always does
+    await h.store.refresh({ toast: true, bypassWindow: true }); // …but a wake always does
     expect(h.calls).toEqual(["system.updateCheck", "system.updateCheck"]);
   });
 });
@@ -284,7 +284,7 @@ describe("self-update store: a check that cannot run", () => {
   test("an answer that could not check is not fresh: the next Options visit re-asks", async () => {
     const h = harness();
     h.answer(info({ status: "unknown" }));
-    await h.store.refresh({ toast: true, force: true }); // plugin load, offline
+    await h.store.refresh({ toast: true, bypassWindow: true }); // plugin load, offline
     h.advance(60_000); // Wi-Fi back, Options a minute later
     h.answer(available);
     await h.store.refresh();

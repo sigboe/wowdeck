@@ -340,7 +340,7 @@ export default definePlugin(() => {
   void checkUpdateToast();
   // WoWDeck's own release check too — the engine's daily cap decides whether
   // it costs a request, so waking the Deck is a useful trigger as well.
-  void selfUpdateStore.refresh({ toast: true, force: true });
+  void selfUpdateStore.refresh({ toast: true, bypassWindow: true });
 
   // WTF backup/restore jobs run in the engine and outlive any panel or modal, so their
   // progress/outcome events are subscribed once per plugin load into a module-scope
@@ -393,7 +393,7 @@ export default definePlugin(() => {
   if (typeof SteamClient?.System?.RegisterForOnResumeFromSuspend === "function") {
     resumeRegistration = SteamClient.System.RegisterForOnResumeFromSuspend(() => {
       void checkUpdateToast();
-      void selfUpdateStore.refresh({ toast: true, force: true });
+      void selfUpdateStore.refresh({ toast: true, bypassWindow: true });
     });
   } else {
     console.log(
