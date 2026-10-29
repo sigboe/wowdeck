@@ -46,7 +46,7 @@ interface ModalProps {
  * Settings copy (GLOSSARY.md): one screen with a **Copy from** dropdown and,
  * below it, what that version has: **Current settings** first (installed
  * versions only), then its backups, newest first. The header ("Copying from
- * <version>", in Steam blue) and every row label name the source version.
+ * <version>", white like the dialog title) and every row label name the source version.
  * Choosing a row opens the Restore dialog worded for a copy; once the job
  * starts this modal closes and Manage backups shows its progress and Cancel,
  * as for a restore. WoW running blocks every copy (the engine can't tell which
@@ -162,7 +162,7 @@ function WtfCopyModal({ installation, onStarted, closeModal }: ModalProps) {
                 />
               </DialogControlsSection>
               <DialogControlsSection>
-                <DialogControlsSectionHeader style={{ color: STEAM.primary }}>
+                <DialogControlsSectionHeader style={{ color: STEAM.header }}>
                   {copySourceHeader(source)}
                 </DialogControlsSectionHeader>
                 {copySourceRows(source).map((row) => {
