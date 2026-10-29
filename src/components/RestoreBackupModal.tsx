@@ -16,8 +16,13 @@ import {
 } from "@decky/ui";
 import { STEAM } from "../steamTheme";
 import { wowupModalStyleCss } from "../sharedStyles";
-import type { GameRunning, WtfBackupInfo } from "../types";
-import { type CopyFrom, keepCurrentConfigFor, restoreDialogText } from "../wtfText";
+import type { GameRunning } from "../types";
+import {
+  type CopyFrom,
+  keepCurrentConfigFor,
+  type RestoreSource,
+  restoreDialogText,
+} from "../wtfText";
 
 export interface RestoreChoice {
   acceptUnknownFlavor: boolean;
@@ -34,7 +39,7 @@ export interface RestoreDialogExtras {
 }
 
 interface Props extends RestoreDialogExtras {
-  backup: WtfBackupInfo;
+  backup: RestoreSource;
   installationName: string;
   gameRunning: GameRunning;
   onOK: (choice: RestoreChoice) => void;
@@ -137,7 +142,7 @@ function RestoreBackupModal({
 }
 
 export function openRestoreBackupModal(
-  backup: WtfBackupInfo,
+  backup: RestoreSource,
   installationName: string,
   gameRunning: GameRunning,
   onOK: (choice: RestoreChoice) => void,

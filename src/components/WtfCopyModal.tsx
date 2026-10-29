@@ -26,11 +26,12 @@ import {
   copySourceRowLabel,
   copySourceRows,
   copySourceStatus,
-  currentSettingsBackup,
   currentSettingsDescription,
+  currentSettingsSource,
   friendlyWtfCallError,
   okActionLabel,
   restoreBlockedReason,
+  type RestoreSource,
 } from "../wtfText";
 import { BackupRowDescription } from "./BackupRowDescription";
 import { confirmRestoreBackup } from "./confirmWtf";
@@ -69,7 +70,7 @@ function WtfCopyModal({ installation, onStarted, closeModal }: ModalProps) {
     sources?.find((s) => s.flavor === chosen) ?? sources?.find((s) => s.isDefault) ?? sources?.[0];
 
   const runningNotice = copyGameRunningNotice(gameRunning);
-  const blockedReasonFor = (shown: WtfBackupInfo) =>
+  const blockedReasonFor = (shown: RestoreSource) =>
     restoreBlockedReason(shown, anyJob, gameRunning, "copy");
 
   /** `backup` null: copy the source's current settings (offered only for an installed version). */
@@ -82,7 +83,7 @@ function WtfCopyModal({ installation, onStarted, closeModal }: ModalProps) {
     if (!what) {
       return;
     }
-    const shown = backup ?? currentSettingsBackup(from);
+    const shown: RestoreSource = backup ?? currentSettingsSource(from);
     confirmRestoreBackup(
       shown,
       installation.displayName,
@@ -167,7 +168,7 @@ function WtfCopyModal({ installation, onStarted, closeModal }: ModalProps) {
                 </DialogControlsSectionHeader>
                 {copySourceRows(source).map((row) => {
                   if (row.kind === "current") {
-                    const current = currentSettingsBackup(source);
+                    const current = currentSettingsSource(source);
                     return (
                       <Field
                         key="current"

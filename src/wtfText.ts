@@ -301,18 +301,26 @@ export function copyGameRunningNotice(gameRunning: GameRunning): string | null {
 }
 
 /**
- * A version's current settings as a backup-shaped value for the Restore dialog (made on this device,
- * dated by their last change). `fileName` is empty: a current-settings copy names no backup.
+ * What the Restore dialog restores (or copies) from: a backup's metadata, or a version's current
+ * settings (currentSettingsSource). Only the fields the dialog and its helpers read; no file name or size.
  */
-export function currentSettingsBackup(
+export type RestoreSource = Pick<
+  WtfBackupInfo,
+  | "createdAt"
+  | "flavor"
+  | "hasConfig"
+  | "fromThisDevice"
+  | "keepConfigSuggested"
+  | "valid"
+  | "invalidReason"
+>;
+
+/** A version's current settings as the Restore dialog's source (made on this device, dated by their last change). */
+export function currentSettingsSource(
   source: Pick<WtfCopySource, "flavor" | "current">,
-): WtfBackupInfo {
+): RestoreSource {
   return {
-    fileName: "",
-    sizeBytes: 0,
     createdAt: source.current?.modifiedAt ?? 0,
-    kind: "manual",
-    fileCount: null,
     flavor: source.flavor,
     hasConfig: source.current?.hasConfig ?? false,
     fromThisDevice: true,
