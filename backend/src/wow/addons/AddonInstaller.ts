@@ -25,7 +25,6 @@ import { getTocForGameType2 } from "../utils/toc";
 import { extractArchive } from "../archives/ArchiveExtractor";
 import { PROVIDER_ID } from "../../api/providers";
 import type { DownloadService } from "../downloads/DownloadService";
-import type { OperationProgress } from "../../api/contracts";
 import { latestFile } from "./releaseChannel";
 import { STAGING_DIR_NAME, keepPrevious } from "./RollbackCache";
 
@@ -38,7 +37,6 @@ export interface InstallOptions {
   searchResult: AddonSearchResult;
   provider: AddonProvider;
   operationId: string;
-  onProgress?: (progress: OperationProgress) => void;
   /** Keep the replaced folders as the addon's previous version (BEYOND-02). */
   keepPreviousVersion?: boolean;
   /**
@@ -51,21 +49,6 @@ export interface InstallOptions {
 export interface InstallOutcome {
   /** What the install changed on the record; the caller writes it. */
   patch: AddonPatch;
-}
-
-function progress(
-  opts: InstallOptions,
-  phase: OperationProgress["phase"],
-  value: number | null,
-  message: string | null,
-): void {
-  opts.onProgress?.({
-    operationId: opts.operationId,
-    addonId: opts.addon.id,
-    phase,
-    progress: value,
-    message,
-  });
 }
 
 export class AddonInstaller {
@@ -106,33 +89,22 @@ export class AddonInstaller {
     }
 
     try {
-      // 1. resolve (metadata already known here — kept as its own phase for UX)
-      progress(opts, "resolve", 0, "resolving release");
-
-      // 2. download — or, for the File provider, copy the picked archive
+      // 1. download — or, for the File provider, copy the picked archive
       //    in: its downloadUrl is a path on this Deck, never a network
       //    address. Keyed on the provider (which owns that meaning), not
       //    on the URL's shape; copyLocal re-validates the path itself.
-      progress(opts, "download", 0, "downloading");
       const auth = await opts.provider.getDownloadAuth().catch(() => undefined);
       const handle =
         provider.name === PROVIDER_ID.File
           ? await this.downloads.copyLocal(downloadUrl, `${addon.id}.archive`)
-          : await this.downloads.download(downloadUrl, `${addon.id}.archive`, {
-              auth,
-              onProgress: (received, total) => {
-                progress(opts, "download", total ? Math.min(received / total, 1) : null, "downloading");
-              },
-            });
+          : await this.downloads.download(downloadUrl, `${addon.id}.archive`, { auth });
 
-      // 3. extract to staging (same fs as AddOns -> atomic renames possible)
-      progress(opts, "extract", null, "extracting");
+      // 2. extract to staging (same fs as AddOns -> atomic renames possible)
       await createDirectory(stagingRoot);
       await removeDirectory(stagingDir);
       const extracted = await extractArchive(handle.filePath, stagingDir);
 
-      // 4. validate structure
-      progress(opts, "validate", null, "validating structure");
+      // 3. validate structure
       // The required folder is the addon's main one: it stays first
       // (recordFolders), whatever order the archive has.
       const plannedFolders = this.planFolders(extracted.topLevelDirs, file?.folders ?? []).sort(
@@ -151,17 +123,10 @@ export class AddonInstaller {
         }
       }
 
-      // 5. install with backups + rollback
-      progress(opts, "install", 0, "installing");
-      const { installed, backedUp } = await this.swapFolders(
-        addonsPath,
-        stagingDir,
-        backupDir,
-        plannedFolders,
-        (done, total) => progress(opts, "install", done / total, "installing"),
-      );
+      // 4. install with backups + rollback
+      const { installed, backedUp } = await this.swapFolders(addonsPath, stagingDir, backupDir, plannedFolders);
 
-      // 6. the record's changes, from the installed TOC
+      // 5. the record's changes, from the installed TOC
       const toc = await this.readInstalledToc(addonsPath, installed, installation);
       const patch: AddonPatch = {
         installedFolderList: installed,
@@ -224,7 +189,6 @@ export class AddonInstaller {
         }
       }
 
-      progress(opts, "install", 1, "installed");
       return { patch };
     } finally {
       await removeDirectory(stagingDir).catch(() => {});
@@ -266,7 +230,6 @@ export class AddonInstaller {
     stagingDir: string,
     backupDir: string,
     folders: string[],
-    onProgress: (done: number, total: number) => void,
   ): Promise<{ installed: string[]; backedUp: string[] }> {
     const backups: { name: string; from: string }[] = [];
     const installed: string[] = [];
@@ -275,7 +238,6 @@ export class AddonInstaller {
       await createDirectory(backupDir);
 
       // backup existing target folders
-      let done = 0;
       for (const folder of folders) {
         const target = joinWithin(addonsPath, folder);
         if (await pathExists(target)) {
@@ -283,8 +245,6 @@ export class AddonInstaller {
           await renameSafe(target, backupPath);
           backups.push({ name: folder, from: backupPath });
         }
-        done += 1;
-        onProgress(done, folders.length * 2);
       }
 
       // move staged folders into place
@@ -293,8 +253,6 @@ export class AddonInstaller {
         const target = joinWithin(addonsPath, folder);
         await renameSafe(source, target);
         installed.push(folder);
-        done += 1;
-        onProgress(done, folders.length * 2);
       }
 
       return { installed, backedUp: backups.map((b) => b.name) };

@@ -18,7 +18,6 @@ export type {
   ImportSummary,
   Installation,
   InstallationSource,
-  OperationProgress,
   OperationResult,
   PluginSettings,
   ProviderCategory,

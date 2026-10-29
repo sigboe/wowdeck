@@ -183,7 +183,6 @@ beforeEach(() => {
 
   const events = {
     addonsChanged: () => {},
-    operationProgress: () => {},
     operationResult: () => {},
   };
 
@@ -490,7 +489,6 @@ describe("install()/updateAddon() broadcast status (UUID-toast regression)", () 
       new DownloadService(makeNetwork(localProvider.catalog, localVersions), join(localRoot, "dl")),
       {
         addonsChanged: () => {},
-        operationProgress: () => {},
         operationResult: (op) => events.push(op),
       },
     );
@@ -541,7 +539,6 @@ describe("install()/updateAddon() report failures as a failed operation, never a
     } as unknown as NetworkClient;
     const localService = new AddonService(store, registry, new DownloadService(failingNetwork, join(localRoot, "dl")), {
       addonsChanged: () => {},
-      operationProgress: () => {},
       operationResult: () => {},
     });
 
@@ -577,7 +574,7 @@ describe("install()/updateAddon() report failures as a failed operation, never a
       store,
       registry,
       new DownloadService(makeNetwork(localProvider.catalog, localVersions), join(localRoot, "dl")),
-      { addonsChanged: () => {}, operationProgress: () => {}, operationResult: () => {} },
+      { addonsChanged: () => {}, operationResult: () => {} },
     );
 
     const { addon } = await localService.install({ intent: "install", providerId: "WowUpHub", externalId: "555", installation: localInstallation });
@@ -627,7 +624,7 @@ describe("required-dependency auto-install and autoremove (apt/pacman-style)", (
       store,
       registry,
       new DownloadService(makeNetwork(localProvider.catalog, { "700": "1.0.0", "701": "1.0.0" }), join(localRoot, "dl")),
-      { addonsChanged: () => {}, operationProgress: () => {}, operationResult: () => {} },
+      { addonsChanged: () => {}, operationResult: () => {} },
     );
 
     const { addon: suite } = await localService.install({ intent: "install", providerId: "WowUpHub", externalId: "701", installation: localInstallation });
@@ -687,7 +684,7 @@ describe("required-dependency auto-install and autoremove (apt/pacman-style)", (
         makeNetwork(localProvider.catalog, { "710": "1.0.0", "711": "1.0.0", "712": "1.0.0" }),
         join(localRoot, "dl"),
       ),
-      { addonsChanged: () => {}, operationProgress: () => {}, operationResult: () => {} },
+      { addonsChanged: () => {}, operationResult: () => {} },
     );
 
     const { addon: suiteA } = await localService.install({ intent: "install", providerId: "WowUpHub", externalId: "711", installation: localInstallation });
@@ -733,14 +730,20 @@ function localFixture(name: string, catalog: CatalogEntry[]) {
   store.setInstallations([localInstallation]);
   const operations: OperationResult[] = [];
   const changed: string[][] = [];
-  const progress: string[] = [];
+  // Each download's URL, in order: a test waits on it to act while an install runs.
+  const downloads: string[] = [];
+  const network = makeNetwork(localProvider.catalog, localVersions);
+  const downloadToFile = network.downloadToFile.bind(network);
+  network.downloadToFile = (url, ...rest) => {
+    downloads.push(url);
+    return downloadToFile(url, ...rest);
+  };
   const localService = new AddonService(
     store,
     registry,
-    new DownloadService(makeNetwork(localProvider.catalog, localVersions), join(localRoot, "dl")),
+    new DownloadService(network, join(localRoot, "dl")),
     {
       addonsChanged: (ids) => changed.push(ids),
-      operationProgress: (p) => progress.push(p.operationId),
       operationResult: (op) => operations.push(op),
     },
   );
@@ -753,7 +756,7 @@ function localFixture(name: string, catalog: CatalogEntry[]) {
     addonsPath,
     operations,
     changed,
-    progress,
+    downloads,
   };
 }
 
@@ -1302,9 +1305,9 @@ describe("automatic updates (WF-02)", () => {
     publish(f);
     await f.service.refresh(f.installation);
     f.store.updateSettings({ autoUpdate: true });
-    f.progress.length = 0;
+    f.downloads.length = 0;
     const run = f.service.autoUpdate(notRunning);
-    while (f.progress.length === 0) {
+    while (f.downloads.length === 0) {
       await Bun.sleep(0);
     }
     await f.service.setAutoUpdatePaused(b.id, true);
@@ -1318,9 +1321,9 @@ describe("automatic updates (WF-02)", () => {
     const { addon: b } = await f.service.install({ intent: "install", providerId: "WowUpHub", externalId: "811", installation: f.installation });
     publish(f);
     await f.service.refresh(f.installation);
-    f.progress.length = 0;
+    f.downloads.length = 0;
     const run = f.service.updateAll(f.installation);
-    while (f.progress.length === 0) {
+    while (f.downloads.length === 0) {
       await Bun.sleep(0);
     }
     await f.service.setIgnored(b.id, true);
@@ -1392,7 +1395,7 @@ describe("per-addon methods, failures and new records (RF-08)", () => {
 
 // RF-12 pins: what each kind of install does, recorded at the installer.
 describe("install intents (RF-12)", () => {
-  type Seen = { name: string; operationId: string; keepPreviousVersion: boolean | undefined; progress: boolean };
+  type Seen = { name: string; operationId: string; keepPreviousVersion: boolean | undefined };
   let seen: Seen[] = [];
   const realInstall = AddonInstaller.prototype.install;
   beforeAll(() => {
@@ -1401,7 +1404,6 @@ describe("install intents (RF-12)", () => {
         name: opts.searchResult.name,
         operationId: opts.operationId,
         keepPreviousVersion: opts.keepPreviousVersion,
-        progress: !!opts.onProgress && opts.onProgress.toString() !== "() => {}",
       });
       return realInstall.call(this, opts);
     };
@@ -1434,12 +1436,11 @@ describe("install intents (RF-12)", () => {
     // RF-12: recorded like any install (the separate path skipped these).
     expect(record(f, "Base")).toMatchObject({ hasNewerPrerelease: false, dependencies: [] });
     expect(seen).toEqual([
-      { name: "Top", operationId: operation.operationId, keepPreviousVersion: false, progress: true },
-      { name: "Base", operationId: expect.any(String), keepPreviousVersion: DEP_KEEP_PREVIOUS, progress: false },
+      { name: "Top", operationId: operation.operationId, keepPreviousVersion: false },
+      { name: "Base", operationId: expect.any(String), keepPreviousVersion: DEP_KEEP_PREVIOUS },
     ]);
     expect(f.operations).toEqual([operation]);
     expect(f.changed).toEqual([[record(f, "Base").id], [record(f, "Top").id]]);
-    expect(new Set(f.progress)).toEqual(new Set([operation.operationId]));
   });
 
   test("install over a dependency makes it the user's choice", async () => {
@@ -1450,7 +1451,7 @@ describe("install intents (RF-12)", () => {
     const { operation } = await f.service.install({ intent: "install", providerId: f.provider.name, externalId: "950", installation: f.installation });
     expect(operation.status).toBe("installed");
     expect(record(f, "Base").isDependency).toBe(false);
-    expect(seen).toEqual([{ name: "Base", operationId: operation.operationId, keepPreviousVersion: true, progress: true }]);
+    expect(seen).toEqual([{ name: "Base", operationId: operation.operationId, keepPreviousVersion: true }]);
   });
 
   test("update: updated, stamped, pause cleared, dependency flag kept", async () => {
@@ -1466,7 +1467,7 @@ describe("install intents (RF-12)", () => {
     expect(record(f, "Base").lastUpdatedAt).toBeNumber();
     expect(record(f, "Base").autoUpdatePaused).toBeUndefined();
     expect(record(f, "Base").skipReleaseId).toBeUndefined();
-    expect(seen).toEqual([{ name: "Base", operationId: operation.operationId, keepPreviousVersion: true, progress: true }]);
+    expect(seen).toEqual([{ name: "Base", operationId: operation.operationId, keepPreviousVersion: true }]);
   });
 
   test("reinstall: installed, not stamped, dependency flag kept", async () => {
@@ -1478,7 +1479,7 @@ describe("install intents (RF-12)", () => {
     expect(operation.status).toBe("installed");
     expect(record(f, "Base").isDependency).toBe(true);
     expect(record(f, "Base").lastUpdatedAt).toBeUndefined();
-    expect(seen).toEqual([{ name: "Base", operationId: operation.operationId, keepPreviousVersion: true, progress: true }]);
+    expect(seen).toEqual([{ name: "Base", operationId: operation.operationId, keepPreviousVersion: true }]);
   });
 
   test("channel switch: installed on the new channel, dependency flag kept", async () => {
@@ -1502,7 +1503,7 @@ describe("install intents (RF-12)", () => {
     expect(operation.status).toBe("installed");
     expect(record(f, "Chan")).toMatchObject({ isDependency: true, channelType: AddonChannelType.Beta, installedVersion: "1.1.0-beta" });
     expect(record(f, "Chan").lastUpdatedAt).toBeUndefined();
-    expect(seen).toEqual([{ name: "Chan", operationId: operation.operationId, keepPreviousVersion: true, progress: true }]);
+    expect(seen).toEqual([{ name: "Chan", operationId: operation.operationId, keepPreviousVersion: true }]);
   });
 
   test("a required dependency that can't be installed is reported, the addon still installs", async () => {
@@ -1578,9 +1579,9 @@ describe("records are written only through AddonRecords", () => {
   test("a change made while an install runs survives the install", async () => {
     const f = localFixture("records-concurrent", catalog());
     const { addon } = await f.service.install({ intent: "install", providerId: "WowUpHub", externalId: "960", installation: f.installation });
-    f.progress.length = 0;
+    f.downloads.length = 0;
     const reinstall = f.service.reinstall(addon.id);
-    while (f.progress.length === 0) {
+    while (f.downloads.length === 0) {
       await Bun.sleep(0);
     }
     const ignore = f.service.setIgnored(addon.id, true);
@@ -1595,9 +1596,9 @@ describe("records are written only through AddonRecords", () => {
     const { addon } = await f.service.install({ intent: "install", providerId: "WowUpHub", externalId: "960", installation: f.installation });
     Object.assign(f.provider.catalog[0]!, { version: "2.0.0", releaseId: "s2", prereleases: [] });
     f.versions["960"] = "2.0.0";
-    f.progress.length = 0;
+    f.downloads.length = 0;
     const update = f.service.updateAddon(addon.id);
-    while (f.progress.length === 0) {
+    while (f.downloads.length === 0) {
       await Bun.sleep(0);
     }
     const pause = f.service.setAutoUpdatePaused(addon.id, true);
@@ -1662,7 +1663,7 @@ describe("adopting an unmanaged folder (WF-23)", () => {
       store,
       registry,
       new DownloadService(makeNetwork(localProvider.catalog, {}), join(localRoot, "dl")),
-      { addonsChanged: () => {}, operationProgress: () => {}, operationResult: () => {} },
+      { addonsChanged: () => {}, operationResult: () => {} },
     );
     return { localService, localInstallation, addonsPath, store };
   }
@@ -1757,7 +1758,7 @@ describe("changing an addon's source (WF-12)", () => {
       store,
       registry,
       new DownloadService(makeNetwork([...hub.catalog, ...tuk.catalog], {}), join(localRoot, "dl")),
-      { addonsChanged: () => {}, operationProgress: () => {}, operationResult: () => {} },
+      { addonsChanged: () => {}, operationResult: () => {} },
     );
     const install = async (externalId: string) =>
       (await localService.install({ intent: "install", providerId: "WowUpHub", externalId, installation: localInstallation })).addon;

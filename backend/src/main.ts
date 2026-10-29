@@ -8,7 +8,7 @@
 import { tmpdir } from "node:os";
 import { version } from "../package.json";
 import { join } from "node:path";
-import type { OperationProgress, OperationResult } from "./api/contracts";
+import type { OperationResult } from "./api/contracts";
 import { JsonlServer } from "./bridge/jsonl";
 import { createStateStore } from "./wow/storage/StateStore";
 import { NetworkClient } from "./wow/net/network";
@@ -107,7 +107,6 @@ const service = new AddonService(
       // always the cheap path, never the network-refreshing one.
       void companionCoordinator.regenerate();
     },
-    operationProgress: (progress: OperationProgress) => server.emit("operation.progress", { progress }),
     autoUpdated: (result) => server.emit("addons.autoUpdated", { result }),
     operationResult: (result: OperationResult) => {
       server.emit(result.status === "failed" ? "operation.failed" : "operation.completed", { result });

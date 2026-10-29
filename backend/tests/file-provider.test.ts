@@ -91,7 +91,6 @@ function fixture(dir: string, files: Record<string, Uint8Array>) {
     new DownloadService(net, join(root, "dl")),
     {
       addonsChanged: () => {},
-      operationProgress: () => {},
       operationResult: () => {},
     },
     undefined,

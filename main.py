@@ -10,7 +10,7 @@ Protocol (see backend/src/api/contracts.ts):
   request  -> {"id": 1, "method": "addons.list", "params": {...}}\\n
   response <- {"id": 1, "result": {...}}\\n
              {"id": 1, "error": {"code": "...", "message": "..."}}\\n
-  event    <- {"event": "operation.progress", "params": {...}}\\n
+  event    <- {"event": "operation.completed", "params": {...}}\\n
 
 Events are relayed to the frontend via decky.emit("backend_event", payload).
 """

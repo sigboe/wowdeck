@@ -365,7 +365,6 @@ describe("AddonListPortability.apply (end-to-end)", () => {
     store.setInstallations([installation]);
     const service = new AddonService(store, registry, new DownloadService(makeNetwork(provider.catalog), join(root, "dl")), {
       addonsChanged: () => {},
-      operationProgress: () => {},
       operationResult: () => {},
     });
     return { service, store, installation };

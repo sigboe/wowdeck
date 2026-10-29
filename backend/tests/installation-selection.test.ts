@@ -19,7 +19,6 @@ function makeService(dataDir: string): { service: AddonService; store: ReturnTyp
   const store = createStateStore(dataDir);
   const service = new AddonService(store, new ProviderRegistry(), new DownloadService(new NetworkClient(), join(dataDir, "dl")), {
     addonsChanged: () => {},
-    operationProgress: () => {},
     operationResult: () => {},
   });
   return { service, store };

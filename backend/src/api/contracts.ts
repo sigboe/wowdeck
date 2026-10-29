@@ -253,15 +253,6 @@ export interface ProviderCategory {
   name: string;
 }
 
-export interface OperationProgress {
-  operationId: string;
-  addonId: string | null;
-  phase: "resolve" | "download" | "extract" | "validate" | "install" | "rescan";
-  /** 0..1, or null when indeterminate. */
-  progress: number | null;
-  message: string | null;
-}
-
 export interface OperationResult {
   operationId: string;
   addonId: string | null;
@@ -1195,7 +1186,6 @@ export interface AutoUpdateResult {
 export interface EventMap {
   /** An automatic update ran and updated or failed something (WF-02). */
   "addons.autoUpdated": { result: AutoUpdateResult };
-  "operation.progress": { progress: OperationProgress };
   "operation.completed": { result: OperationResult };
   "operation.failed": { result: OperationResult };
   "addons.changed": { addonIds: string[] };

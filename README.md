@@ -82,7 +82,7 @@ shows a toast and a row in Options → Updates with the link.
 - Settings backup and restore of the WTF folder (keybinds, macros, UI
   layout) — see `docs/wtf-backup.md`
 - Transactional installs (a failed install leaves the previous state
-  intact), progress events, diagnostics with one-tap copy
+  intact), diagnostics with one-tap copy
 
 ## Troubleshooting
 
