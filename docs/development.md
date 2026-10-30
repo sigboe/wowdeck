@@ -3,6 +3,7 @@
 ## Contents
 
 - [Pinned references](#pinned-references)
+- [Third-party code](#third-party-code)
 - [Toolchain](#toolchain)
 - [Common tasks](#common-tasks)
 - [Testing on a real Steam Deck](#testing-on-a-real-steam-deck)
@@ -24,6 +25,45 @@
 | Bun (engine build)    | 1.4.2 (nixpkgs)                                               |
 | Python (host)         | 3.14.7                                                        |
 | Python (SteamOS)      | 3.13.5 — `main.py` must stay 3.11+ compatible                  |
+
+## Third-party code
+
+`THIRD_PARTY_NOTICES.md` is written for players: the plugin zip ships it
+and Options › About shows it. Keep repository paths, commits and make
+targets out of it. They go here.
+
+- **WowUp.** `wowup/` is a read-only reference checkout, untracked.
+  `make wowup` recreates it at the commit in the table above. Code adapted
+  from it lives in `backend/src/wow/`, and `docs/wowup-provenance.md`
+  records where each part came from.
+- **Decky plugin template.** The project started from the commit in the
+  table above. These files come from it: the `plugin.json` structure,
+  `rollup.config.js`, the `tsconfig.json` base, `src/types.d.ts`,
+  `decky.pyi`, the Deck Debug settings in `deck-debug/`, and the
+  `backend/out` build convention. Its BSD-3-Clause text is appended to
+  `LICENSE`.
+- **fflate.** The npm package, 0.8.x. `backend/src/wow/archives/ArchiveExtractor.ts`
+  checks every entry for path traversal before it extracts.
+- **xclip.** `backend/vendor/xclip` is a prebuilt, unmodified binary,
+  copied from the installed Decktation plugin, which bundles the same
+  upstream binary. Its license is `backend/vendor/xclip-LICENSE.txt`.
+  `tools/package.py` copies it into the zip's `bin/`, and `main.py` runs it
+  as a subprocess for Copy diagnostics.
+- **The `unslop` skill.** `.claude/skills/unslop/SKILL.md` is
+  `pstack/skills/unslop/SKILL.md` from commit
+  `c742dd61706fbacc1b95f1a20b7b988cf096ce6c`. Only the frontmatter
+  changed: the description names this repo's docs, and
+  `disable-model-invocation` is gone so agents load it themselves. Its
+  license is `.claude/skills/unslop/LICENSE`.
+- **README glyphs (`docs/glyphs/`).** These are the paths the UI draws,
+  recoloured grey so they read on light and dark GitHub themes.
+  `button-x.svg`, `button-y.svg` and `button-qam.svg` are Steam's
+  `ABXYButton` X and Y cases and its `Dots` icon, copied from `steamui/sp.js`
+  of the Steam Deck stable client, version `1792618285`.
+  `decky-settings.svg` is the gear on Decky Loader's settings button
+  (Decky v3.3.1), which is `BsGearFill` from Bootstrap Icons.
+  `wowdeck-box.svg`, `ellipsis.svg` and `options.svg` are `FaBoxOpen`,
+  `FaEllipsisH` and `FaCog` from `react-icons` 5.7.0.
 
 ## Toolchain
 
