@@ -69,11 +69,23 @@ export function rememberAboutInfo(info: AboutInfo): void {
  * the fetched data, so FUNDING.yml on `next` can only ever add links.
  */
 export const SUPPORT_NOTE =
-  "I build WoWDeck in my spare time. Your support pays for the WoW subscription I test it with and the coding agent I write it with, and maybe later for access to the wago.io API. Thank you for helping.";
+  "WoWDeck is an open source project I build in my spare time. Your donations support me and its ongoing development. Thank you!";
 
 /** How to use the links, under the note. A on a Bitcoin address opens nothing. */
 export const SUPPORT_HINT =
   "Scan a code with your phone, or press A on a page to open it in Steam's browser.";
+
+/**
+ * The Funding links two to a row, the Support modal's grid: six links take
+ * three rows of scrolling, not six. An odd last link sits alone in its row.
+ */
+export function inPairs<T>(items: T[]): T[][] {
+  const rows: T[][] = [];
+  for (let i = 0; i < items.length; i += 2) {
+    rows.push(items.slice(i, i + 2));
+  }
+  return rows;
+}
 
 /**
  * The text under a Funding link's QR code: a web link's short URL, or a

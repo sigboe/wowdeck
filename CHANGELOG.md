@@ -8,8 +8,8 @@ What's new in each version of WoWDeck Addon Manager. The format follows
 
 ### Added
 
-- A new About section at the end of Options shows the third-party notices
-  and the Supporters list.
+- A new About section at the end of Options shows ways to support WoWDeck,
+  the Supporters list and the third-party notices.
 
 ## [1.0.0] - 2026-10-29
 

@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   aboutRows,
   fundingText,
+  inPairs,
   lastAboutInfo,
   noticesText,
   rememberAboutInfo,
@@ -76,6 +77,21 @@ describe("aboutRows: Support WoWDeck", () => {
     const row = aboutRows(info({ funding: [link] }))[0]!;
     expect(row.label).toBe("Support WoWDeck");
     expect(row.description).toBe("Scan a code with your phone to fund WoWDeck");
+  });
+});
+
+describe("inPairs", () => {
+  test("the Support modal shows its Funding links two to a row", () => {
+    expect(inPairs([1, 2, 3, 4, 5, 6])).toEqual([
+      [1, 2],
+      [3, 4],
+      [5, 6],
+    ]);
+  });
+
+  test("an odd last link gets a row of its own, and no links make no rows", () => {
+    expect(inPairs([1, 2, 3])).toEqual([[1, 2], [3]]);
+    expect(inPairs([])).toEqual([]);
   });
 });
 
