@@ -97,25 +97,32 @@ make clean
 
 ## Releases
 
-`main` always equals the newest published release; a release is the act of
-merging `next` into `main` (`AGENTS.md` "Branching and merging"). One
-version lives in `package.json`, `plugin.json` and `backend/package.json`,
-written and checked by `tools/version.py`:
+`main` always equals the newest published release. Merging `next` into
+`main` publishes the release and creates its tag. Nothing needs to run
+after the merge. One version lives in `package.json`, `plugin.json` and
+`backend/package.json`, written and checked by `tools/version.py`.
 
-```bash
-# on next — CHANGELOG.md: [Unreleased] becomes [1.0.0] - <date>, a fresh
-# empty [Unreleased] goes above it, link refs updated; then bump, commit,
-# PR next → main, merge:
-make version-set VERSION=1.0.0
-# on main, after the merge:
-make release-tag                 # refuse dirty/mismatched tree, create v1.0.0
-git push origin main v1.0.0      # .github/workflows/release.yml publishes
-```
+On `next`, before opening the PR into `main`:
 
-The tag-triggered workflow reruns the CI checks, packages the zip (with the
-bundled CurseForge key) and attaches it to a GitHub Release whose notes are
-the version's `CHANGELOG.md` section (`tools/release-notes.ts`; no section,
-no release). Those notes are what players read in the update panel, so the
+1. In `CHANGELOG.md`, rename `[Unreleased]` to `[X.Y.Z] - <date>`, put a
+   fresh empty `[Unreleased]` above it and update the link references.
+2. Run `make version-set VERSION=X.Y.Z` and commit both.
+3. Open the PR `next` → `main`.
+
+The PR's "Release gate" check (`ci.yml`, `tools/release-check.ts`) fails
+while the version is already tagged, its changelog section is missing, or
+anything is left under `[Unreleased]`. Work that lands on `next` after
+step 1 adds to `[Unreleased]` and fails the gate again, so fold it into
+the version's section before merging. Never merge with the gate red.
+
+The merge pushes to `main`, which starts `.github/workflows/release.yml`.
+It repeats the gate and reruns the CI checks. Then it packages the zip
+with the bundled CurseForge key and creates GitHub Release `vX.Y.Z`,
+with its tag on the merge commit. The release notes are the version's `CHANGELOG.md` section
+(`tools/release-notes.ts`). A push whose version is already released
+publishes nothing. If the run fails, fix the cause on `next` and merge
+into `main` again, or rerun the workflow on `main` (`workflow_dispatch`). Those notes
+are what players read in the update panel, so the
 changelog follows `docs/changelog.md`. The asset keeps
 the zip's plugin-name filename on purpose — Decky's install-from-URL derives
 the plugin name from the last URL segment (`tools/package.py` documents the

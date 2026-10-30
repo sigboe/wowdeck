@@ -197,10 +197,9 @@ make setup
 make lint typecheck test build
 ```
 
-A pushed tag starts each release. Run `make version-set VERSION=X.Y.Z`,
-commit, run `make release-tag` and push the tag. `docs/development.md`
-describes the whole release flow, and `AGENTS.md` holds the project
-policy.
+Merging `next` into `main` publishes a release, tag included.
+`docs/development.md` describes the whole release flow, and `AGENTS.md`
+holds the project policy.
 
 ## Testing on a Steam Deck
 

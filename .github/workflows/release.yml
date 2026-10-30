@@ -1,27 +1,65 @@
 name: Release
 
-# A tag is the release: `make version-set VERSION=X.Y.Z` → commit →
-# `make release-tag` → `git push origin vX.Y.Z`. This workflow then runs the
-# same checks as CI, packages the zip and publishes it as the GitHub Release
-# that Decky's "install from URL", Direct Updater and the README link all
-# resolve against (releases/latest/download/<asset>).
+# Merging `next` into `main` is the release: every push to main publishes
+# the version in package.json as GitHub Release v<version>, tag included,
+# with no manual step. It runs the same checks as CI, packages the zip and
+# publishes it as the release that Decky's "install from URL", Direct
+# Updater and the README link all resolve against
+# (releases/latest/download/<asset>).
 #
-# Beta tags (v*-beta.*) belong to beta.yml, which publishes them as
-# pre-releases itself; this workflow never runs for them.
+# A push whose version is already released (a rerun, or main moving without
+# a bump) publishes nothing; ci.yml's "Release gate" stops the second case
+# at the PR. Beta tags (v*-beta.*) belong to beta.yml.
 on:
   push:
-    tags: ["v*", "!v*-beta.*"]
+    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release
   cancel-in-progress: false
 
 jobs:
+  plan:
+    name: Release plan
+    # A manual run from another branch must never publish.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.plan.outputs.version }}
+      publish: ${{ steps.plan.outputs.publish }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      # Full history so every release tag is present.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - id: plan
+        run: |
+          set -euo pipefail
+          python3 tools/version.py check
+          version="$(python3 tools/version.py show)"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          if gh release view "v${version}" >/dev/null 2>&1; then
+            echo "::notice::v${version} is already released; nothing to publish"
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Same gate as the PR into main (tools/release-check.ts).
+          git tag -l 'v*' | bun tools/release-check.ts "$version"
+          echo "publish=true" >> "$GITHUB_OUTPUT"
+
   frontend:
     name: Frontend
+    needs: plan
+    if: needs.plan.outputs.publish == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -45,6 +83,8 @@ jobs:
 
   backend:
     name: Backend engine
+    needs: plan
+    if: needs.plan.outputs.publish == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -71,8 +111,10 @@ jobs:
 
   release:
     name: Publish GitHub Release
-    needs: [frontend, backend]
+    needs: [plan, frontend, backend]
     runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.plan.outputs.version }}
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -81,7 +123,7 @@ jobs:
       # The version's CHANGELOG.md section, written for players
       # (tools/release-notes.ts); a missing section fails the release here.
       - name: Release notes
-        run: bun tools/release-notes.ts "${GITHUB_REF_NAME#v}" > "$RUNNER_TEMP/notes.md"
+        run: bun tools/release-notes.ts "$VERSION" > "$RUNNER_TEMP/notes.md"
       - uses: actions/download-artifact@v4
         with:
           name: frontend-dist
@@ -91,15 +133,14 @@ jobs:
           name: backend-binary
           path: backend/out/
 
-      # The tag, the three versioned files and the zip inside the release must
-      # all say the same number; nothing downstream can notice a mismatch.
-      - name: Check the tag matches the tree's version
+      # The three versioned files and the zip inside the release must all say
+      # the planned number; nothing downstream can notice a mismatch.
+      - name: Check the tree's version
         run: |
           set -euo pipefail
           python3 tools/version.py check
-          version="$(python3 tools/version.py show)"
-          if [ "v${version}" != "${GITHUB_REF_NAME}" ]; then
-            echo "tag ${GITHUB_REF_NAME} does not match version ${version}" >&2
+          if [ "$(python3 tools/version.py show)" != "$VERSION" ]; then
+            echo "tree version differs from the planned ${VERSION}" >&2
             exit 1
           fi
 
@@ -123,7 +164,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" build/*.zip \
-            --title "$GITHUB_REF_NAME" \
-            --notes-file "$RUNNER_TEMP/notes.md" \
-            --verify-tag
+          gh release create "v${VERSION}" build/*.zip \
+            --target "$GITHUB_SHA" \
+            --title "v${VERSION}" \
+            --notes-file "$RUNNER_TEMP/notes.md"
