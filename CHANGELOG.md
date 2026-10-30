@@ -6,12 +6,7 @@ What's new in each version of WoWDeck Addon Manager. The format follows
 
 ## [Unreleased]
 
-### Added
-
-- A new About section at the end of Options shows ways to support WoWDeck,
-  the Supporters list and the third-party notices.
-
-## [1.0.0] - 2026-10-29
+## [1.0.0] - 2026-10-30
 
 First public release.
 
@@ -33,6 +28,8 @@ First public release.
   read what's new. Press X there to check for a newer version right away.
 - Pick the Beta channel (Options → Updates → ⋯) to get new features early,
   or switch back to Stable at any time.
+- Options → About lists ways to support WoWDeck, the Supporters and the
+  third-party notices.
 
 ## [0.2.0] - 2026-10-25
 
