@@ -36,6 +36,9 @@ export function recordFolders(record: Pick<AddonRecord, "installedFolderList" | 
 /** Fields to change on a record: a shallow merge, `undefined` clears a field. */
 export type AddonPatch = Partial<Omit<WowAddon, "id" | "installationId">>;
 
+/** The lookups alone: what a holder that must not write gets. */
+export type AddonRecordReader = Pick<AddonRecords, "all" | "get" | "require" | "forInstallation" | "find">;
+
 export class AddonRecords {
   constructor(
     private state: () => { addons: WowAddon[] },

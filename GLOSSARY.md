@@ -4,6 +4,7 @@
 
 - [Language](#language)
 - [Get Addons rework](#get-addons-rework)
+- [WoW clients](#wow-clients)
 
 A Decky plugin that manages World of Warcraft addons on the Steam Deck. This
 glossary fixes the language used across UI, engine and docs.
@@ -33,6 +34,15 @@ _Avoid_: tab row, pill row, browse nav bar
 **Destination**:
 One of the four Get Addons lists: Search, Latest, Popular, Manual Install.
 _Avoid_: browse tab, sub-tab, category
+
+**Catalogue**:
+What the addon sources offer, as opposed to what is installed: search, the
+Latest and Popular lists, an addon's details and categories, resolving a
+pasted link, and finding a source for a folder. Read-only: asking the
+catalogue never changes an installed addon. When several sources are asked
+at once, one failing never stops the others; its failure is reported beside
+their results.
+_Avoid_: browse service, store
 
 **Manual Install**:
 The fourth destination: installing by hand instead of searching a catalogue.
@@ -93,6 +103,36 @@ _Retired_ (2026-10-18): the plugin no longer renders one — Get Addons became
 the widened QAM tab (ADR-0001, `docs/adr/0001-get-addons-widened-qam.md`);
 the word stays for Steam-surface talk.
 
+**Update dot**:
+A 10 px dot pinned to the top-right corner of a tab pill or button, saying
+"news here" in a semantic colour (`UpdateDot`, `updateDot.ts`). Orange, Decky's
+own notification-badge colour, marks a WoWDeck update: on the Options tab and
+the panel's Update button. No counts.
+_Avoid_: badge (that is the Steam library tile's).
+
+**Update channel**:
+Which WoWDeck builds the owner is offered: **Stable** (releases from `main`,
+"Recommended for most users.") or **Beta** (builds of every change merged into
+`next`, "Built from every merged change. Newer features, may have bugs.").
+Beta also offers a stable release when it is newer than the latest beta build;
+leaving Beta offers the latest stable even when it is older ("Switch to
+stable"). Set under Options › Updates › WoWDeck.
+_Avoid_: release channel (that is an addon's Stable/Beta/Alpha).
+
+**Release notes**:
+What the offered WoWDeck build brings, written for players from our
+`CHANGELOG.md`. Y on the Update button, or on the WoWDeck row under
+Options › Updates, opens them in a modal that also offers Update. Neither
+shows them inline.
+_Avoid_: changelog (that is an addon's, in its Details modal).
+
+**Check again**:
+A WoWDeck update check the owner starts by hand (X on the Update button or
+on the WoWDeck row under Options › Updates). Unlike the automatic checks, it
+asks GitHub right away, even when the daily check already ran or a failed
+check is waiting to retry.
+_Avoid_: refresh, force check (in the UI).
+
 **Status tag**:
 A small uppercase chip on an addon row stating its state at a glance
 (`wowdeck-status-tag`). My Addons rows show Ignored, Unmanaged, Library,
@@ -101,6 +141,17 @@ modal show Installed or Update available, and Updated, on their own line under
 the name. A result counts as installed when My Addons has an addon with the
 same provider and id in the active installation.
 _Avoid_: badge, pill, label
+
+**Funding link**:
+One platform where players can fund WoWDeck (Ko-fi, Patreon, PayPal, …): its
+URL and the QR code a phone scans to open it. A Bitcoin address is a Funding
+link too, with a QR code for wallet apps. Shown under Options › About.
+_Avoid_: donation link, sponsor link
+
+**Supporter**:
+Someone who funded WoWDeck and asked to be credited by name. Credit is
+opt-in only: a name with no link, amount or tier.
+_Avoid_: donor, backer, patron, sponsor
 
 ## Get Addons rework
 
@@ -121,3 +172,20 @@ The plugin restores where you were on each plugin tab. One exception: entering
 Get Addons always lands collapsed on the nav bar and never restores the
 slid-out state; widened mode is entered only by focusing a destination.
 _Avoid_: state restore
+
+## WoW clients
+
+**Forever**:
+The live World of Warcraft: Forever client, installed in `_forever_`. It runs
+the Retail game binary; only its folder tells it apart from Retail.
+_Avoid_: Forever Live, WoW Forever (in the UI)
+
+**Forever Beta**:
+The World of Warcraft: Forever beta client, installed in `_classic_beta_`.
+Called plain "Forever" before Forever launched (until 2026-10).
+_Avoid_: Forever (beta), Classic Beta
+
+**Settings copy**:
+Restoring one WoW version's WTF (its current settings or one of its backups)
+into another version's installation. The source is only read; nothing moves.
+_Avoid_: migrate, transfer, cross-flavor restore

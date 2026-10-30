@@ -3,6 +3,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import {
   cancelScrollTween,
   createDirectScroll,
+  directScrollHandles,
   directScrollDurationMs,
   directScrollStepPx,
   easeSine,
@@ -313,5 +314,33 @@ describe("registerDirectScroll (SteamClient wiring, codes from shoulderNav.ts)",
     expect(scrollTweenTarget(box)).toBe(0);
     off();
     expect(unregistered).toBe(true);
+  });
+});
+
+describe("directScrollHandles", () => {
+  test("Up/Down are ours while the box can scroll that way", () => {
+    const box = { scrollTop: 100, scrollHeight: 1000, clientHeight: 500 };
+    expect(directScrollHandles("up", false, box)).toBe(true);
+    expect(directScrollHandles("down", false, box)).toBe(true);
+  });
+
+  test("at an edge the first press is Steam's (its bell), held repeats are swallowed", () => {
+    const top = { scrollTop: 0, scrollHeight: 1000, clientHeight: 500 };
+    expect(directScrollHandles("up", false, top)).toBe(false);
+    expect(directScrollHandles("up", true, top)).toBe(true);
+    expect(directScrollHandles("down", false, top)).toBe(true);
+  });
+
+  test("the edge is read from the tween's target, not the frame drawn", () => {
+    fakeRuntime();
+    const box = fakeScroller(1000, 500);
+    tweenScrollTop(box, 500);
+    expect(box.scrollTop).toBe(0);
+    expect(directScrollHandles("down", false, box)).toBe(false);
+  });
+
+  test("another direction, or no box, is Steam's", () => {
+    expect(directScrollHandles(null, false, fakeScroller())).toBe(false);
+    expect(directScrollHandles("down", false, null)).toBe(false);
   });
 });

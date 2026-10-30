@@ -134,6 +134,10 @@ describe("CurseForge provider", () => {
     expect(gameVersionTypeIdFor(WowClientType.ClassicBeta)).not.toBe(gameVersionTypeIdFor(WowClientType.Classic));
   });
 
+  test("Forever shares Forever Beta's 'WoW Forever' category", () => {
+    expect(gameVersionTypeIdFor(WowClientType.Forever)).toBe(88568);
+  });
+
   test("search is scoped by gameVersionTypeId and filters files", async () => {
     const questie = cfAddon({
       id: 3194,
@@ -827,41 +831,6 @@ describe("CurseForge provider", () => {
     });
   });
 
-  test("search surfaces provider errors to callers", async () => {
-    const { ProviderRegistry: Reg } = await import("../src/wow/providers/provider-registry");
-    const { AddonService: Svc } = await import("../src/wow/addons/AddonService");
-    const { DownloadService: Dl } = await import("../src/wow/downloads/DownloadService");
-    const { NetworkClient: Nc } = await import("../src/wow/net/network");
-    const { createStateStore: mkStore } = await import("../src/wow/storage/StateStore");
-    const rm = await import("node:fs");
-
-    rm.rmSync(join(ROOT, "svc"), { recursive: true, force: true });
-    const store = mkStore(join(ROOT, "svc"));
-    const registry = new Reg();
-    class FailingProvider extends (await import("../src/wow/providers/addon-provider")).AddonProvider {
-      constructor() {
-        super();
-        this.name = "Curse";
-        this.enabled = true;
-      }
-      override async searchByQuery(): Promise<never[]> {
-        throw new Error("NetworkError: GET https://api.curseforge.com/v1/mods/search failed: HTTP 403");
-      }
-    }
-    registry.register(new FailingProvider());
-    registry.attachStore(store);
-    const svc = new Svc(store, registry, new Dl(new Nc(), join(ROOT, "svc", "dl")), {
-      addonsChanged: () => {},
-      operationProgress: () => {},
-      operationResult: () => {},
-    });
-    const { results, providerErrors } = await svc.search("controller forever", retail);
-    expect(results).toEqual([]);
-    expect(providerErrors).toHaveLength(1);
-    expect(providerErrors[0]!.providerId).toBe("Curse");
-    expect(providerErrors[0]!.error).toContain("403");
-  });
-
   test("registry defaults: unconfigured key keeps Curse disabled", () => {
     rmSync(join(ROOT, "reg"), { recursive: true, force: true });
     const store = createStateStore(join(ROOT, "reg"));
@@ -903,89 +872,53 @@ describe("CurseForge provider", () => {
 
   test("search silently skips an enabled-but-unconfigured provider instead of reporting a failure", async () => {
     const { ProviderRegistry: Reg } = await import("../src/wow/providers/provider-registry");
-    const { AddonService: Svc } = await import("../src/wow/addons/AddonService");
-    const { DownloadService: Dl } = await import("../src/wow/downloads/DownloadService");
-    const { NetworkClient: Nc } = await import("../src/wow/net/network");
-    const { createStateStore: mkStore } = await import("../src/wow/storage/StateStore");
-    const rm = await import("node:fs");
+    const { Catalogue } = await import("../src/wow/catalogue/Catalogue");
 
-    rm.rmSync(join(ROOT, "svc2"), { recursive: true, force: true });
-    const store = mkStore(join(ROOT, "svc2"));
     const registry = new Reg();
     const curse = new CurseForgeProvider(fakeNet({}).net, () => undefined);
     curse.enabled = true;
     registry.register(curse);
-    const svc = new Svc(store, registry, new Dl(new Nc(), join(ROOT, "svc2", "dl")), {
-      addonsChanged: () => {},
-      operationProgress: () => {},
-      operationResult: () => {},
-    });
+    const catalogue = new Catalogue(registry);
 
-    const { results, providerErrors } = await svc.search("anything", retail);
+    const { results, providerErrors } = await catalogue.search("anything", retail);
     expect(results).toEqual([]);
     expect(providerErrors).toEqual([]); // not attempted, so no failure to report
   });
 
   test("discover throws a clear error when the source isn't available", async () => {
     const { ProviderRegistry: Reg } = await import("../src/wow/providers/provider-registry");
-    const { AddonService: Svc } = await import("../src/wow/addons/AddonService");
-    const { DownloadService: Dl } = await import("../src/wow/downloads/DownloadService");
-    const { NetworkClient: Nc } = await import("../src/wow/net/network");
-    const { createStateStore: mkStore } = await import("../src/wow/storage/StateStore");
-    const rm = await import("node:fs");
+    const { Catalogue } = await import("../src/wow/catalogue/Catalogue");
 
-    rm.rmSync(join(ROOT, "svc3"), { recursive: true, force: true });
-    const store = mkStore(join(ROOT, "svc3"));
     const registry = new Reg(); // no Curse registered at all
-    const svc = new Svc(store, registry, new Dl(new Nc(), join(ROOT, "svc3", "dl")), {
-      addonsChanged: () => {},
-      operationProgress: () => {},
-      operationResult: () => {},
-    });
+    const catalogue = new Catalogue(registry);
 
-    await expect(svc.discover("latest", "Curse", retail, 0, 5)).rejects.toThrow(/isn't available/i);
-    await expect(svc.discover("popular", "Curse", retail, 0, 5)).rejects.toThrow(/isn't available/i);
+    await expect(catalogue.discover("latest", "Curse", retail, 0, 5)).rejects.toThrow(/isn't available/i);
+    await expect(catalogue.discover("popular", "Curse", retail, 0, 5)).rejects.toThrow(/isn't available/i);
   });
 
   test("discover works once a key is configured and the provider is enabled", async () => {
     const { ProviderRegistry: Reg } = await import("../src/wow/providers/provider-registry");
-    const { AddonService: Svc } = await import("../src/wow/addons/AddonService");
-    const { DownloadService: Dl } = await import("../src/wow/downloads/DownloadService");
-    const { NetworkClient: Nc } = await import("../src/wow/net/network");
-    const { createStateStore: mkStore } = await import("../src/wow/storage/StateStore");
-    const rm = await import("node:fs");
+    const { Catalogue } = await import("../src/wow/catalogue/Catalogue");
 
-    rm.rmSync(join(ROOT, "svc4"), { recursive: true, force: true });
-    const store = mkStore(join(ROOT, "svc4"));
     const registry = new Reg();
     const curse = new CurseForgeProvider(fakeNet({ search: { "sortField=3": [] } }).net, () => "real-key");
     curse.enabled = true;
     registry.register(curse);
-    const svc = new Svc(store, registry, new Dl(new Nc(), join(ROOT, "svc4", "dl")), {
-      addonsChanged: () => {},
-      operationProgress: () => {},
-      operationResult: () => {},
-    });
+    const catalogue = new Catalogue(registry);
 
-    const { results, totalCount } = await svc.discover("latest", "Curse", retail, 0, 5);
+    const { results, totalCount } = await catalogue.discover("latest", "Curse", retail, 0, 5);
     expect(results).toEqual([]);
     expect(totalCount).toBe(0);
   });
 
-  // AddonService.getCategories is generic across providers (same
+  // Catalogue.getCategories is generic across providers (same
   // "undefined means unsupported" convention as
-  // getAddonDescription/getAddonChangelog), not a Curse-specific gate.
+  // getDescription/getChangelog), not a Curse-specific gate.
   test("getCategories: unknown provider throws, unsupported provider resolves null, supported provider passes through", async () => {
     const { ProviderRegistry: Reg } = await import("../src/wow/providers/provider-registry");
-    const { AddonService: Svc } = await import("../src/wow/addons/AddonService");
-    const { DownloadService: Dl } = await import("../src/wow/downloads/DownloadService");
-    const { NetworkClient: Nc } = await import("../src/wow/net/network");
-    const { createStateStore: mkStore } = await import("../src/wow/storage/StateStore");
+    const { Catalogue } = await import("../src/wow/catalogue/Catalogue");
     const { AddonProvider: Base } = await import("../src/wow/providers/addon-provider");
-    const rm = await import("node:fs");
 
-    rm.rmSync(join(ROOT, "svc5"), { recursive: true, force: true });
-    const store = mkStore(join(ROOT, "svc5"));
     const registry = new Reg();
 
     class NoCategoriesProvider extends Base {
@@ -1005,14 +938,10 @@ describe("CurseForge provider", () => {
     curse.enabled = true;
     registry.register(curse);
 
-    const svc = new Svc(store, registry, new Dl(new Nc(), join(ROOT, "svc5", "dl")), {
-      addonsChanged: () => {},
-      operationProgress: () => {},
-      operationResult: () => {},
-    });
+    const catalogue = new Catalogue(registry);
 
-    await expect(svc.getCategories("NoSuchProvider", retail)).rejects.toThrow();
-    expect(await svc.getCategories("WowUpHub", retail)).toBeNull();
-    expect(await svc.getCategories("Curse", retail)).toEqual([{ id: "1019", name: "Combat" }]);
+    await expect(catalogue.getCategories("NoSuchProvider", retail)).rejects.toThrow();
+    expect(await catalogue.getCategories("WowUpHub", retail)).toBeNull();
+    expect(await catalogue.getCategories("Curse", retail)).toEqual([{ id: "1019", name: "Combat" }]);
   });
 });

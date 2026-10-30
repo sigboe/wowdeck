@@ -70,6 +70,7 @@ const CLASSIC_FLAVOR_SUFFIXES: Array<{ flavor: string; re: RegExp }> = [
   { flavor: "wrath", re: /[-_](wrath|wotlkc)\.zip$/i },
   { flavor: "cata", re: /[-_]cata\.zip$/i },
   { flavor: "mists", re: /[-_]mists\.zip$/i },
+  { flavor: "forever", re: /[-_](forever|camelot)\.zip$/i },
 ];
 
 /** Which known classic-flavor suffix (if any) a filename carries. `null` = no classic suffix matched (mainline candidate). */
@@ -83,14 +84,11 @@ function flavorForFilename(filename: string): string | null {
 }
 
 /**
- * release.json / filename flavor strings this client type accepts.
- *
- * Deliberately diverges from upstream's own mapping (which puts
- * ClassicBeta under "mists") — reuses this project's own already-
- * corrected CurseForgeProvider.GAME_TYPE_LISTS mapping instead: the
- * ClassicBeta slot is a rotating "whatever's currently testing" slot with
- * no stable release.json flavor of its own, and "wrath"/"cata" currently
- * match no installable client type at all. See investigation finding #5.
+ * release.json / filename flavor strings this client type accepts — the
+ * same mapping as upstream v2.24.1's: Forever and Forever Beta take the
+ * `forever` flavor (BigWigs' packager names the beta that too). "wrath"
+ * and "cata" currently match no installable client type at all. See
+ * investigation finding #5.
  */
 function flavorsForClientType(clientType: WowClientType): string[] {
   switch (clientType) {
@@ -102,6 +100,9 @@ function flavorsForClientType(clientType: WowClientType): string[] {
     case WowClientType.Classic:
     case WowClientType.ClassicPtr:
       return ["mists"];
+    case WowClientType.Forever:
+    case WowClientType.ClassicBeta:
+      return ["forever"];
     case WowClientType.Retail:
     case WowClientType.RetailPtr:
     case WowClientType.Beta:
@@ -214,7 +215,7 @@ export class GitHubProvider extends AddonProvider {
   // dispatched from the generic name-search box, and never a
   // settings toggle (see allowEdit below), and never a scan participant
   // (AddonService's SCAN_ORDER). URL import calls this provider directly
-  // (see AddonService.resolveUrlImport).
+  // (see Catalogue.resolveUrlImport).
   override allowReinstall = true;
   override allowChannelChange = false;
   // Matches upstream exactly (github-addon-provider.ts: allowEdit = false)
@@ -222,9 +223,6 @@ export class GitHubProvider extends AddonProvider {
   // provider-toggle list. Enforced defensively in ProviderRegistry too,
   // not just hidden in the UI.
   override allowEdit = false;
-  // No meaningful searchByQuery for catalog text search — only URL
-  // resolution, used by the Install from URL dispatcher directly.
-  override catalogSearch = false;
   override authRequired = false;
 
   constructor(
@@ -280,13 +278,9 @@ export class GitHubProvider extends AddonProvider {
     }
   }
 
-  override async searchByQuery(query: string, installation: WowInstallation): Promise<AddonSearchResult[]> {
-    const parsed = parseGitHubRepoQuery(query);
-    if (!parsed) {
-      return [];
-    }
-    const result = await this.getById(`${parsed.owner}/${parsed.repo}`, installation);
-    return result ? [result] : [];
+  override async resolveUrl(url: string, installation: WowInstallation): Promise<AddonSearchResult | undefined> {
+    const parsed = parseGitHubRepoQuery(url);
+    return parsed ? this.getById(`${parsed.owner}/${parsed.repo}`, installation) : undefined;
   }
 
   override async getById(addonId: string, installation: WowInstallation): Promise<AddonSearchResult | undefined> {

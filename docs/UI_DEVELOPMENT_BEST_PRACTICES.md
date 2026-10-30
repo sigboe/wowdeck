@@ -524,10 +524,12 @@ The former `docs/ui-guidelines.md` (removed 2026-10-22) is superseded by
   remount looks like a tab switch to React**.
 - Therefore, state that must survive a modal round-trip lives in module scope:
   - `persistedTab` in `index.tsx`;
-  - `searchState`, `latestState`, `popularState` and `pageState` in
-    `browseSessionState.ts` for the Get Addons tab, reset by
-    `resetBrowseSessionState()` when the selected installation changes
-    (results depend on its game version).
+  - the Get Addons destinations in `browseDestinations.ts` and `pageState`
+    in `browseSessionState.ts`, reset by `resetBrowseSessionState()` when
+    the selected installation changes (results depend on its game version);
+  - `sourcesStore` in `sourcesStore.ts`: the addon sources and their
+    categories, shared by Get Addons and Options and kept across that reset
+    (reference data, not per installation).
 - `Content()` fetches status/installations/addons on every mount, so a modal
   round-trip triggers backend calls again (INFERRED from source, not measured;
   backlog U-6).
@@ -636,6 +638,7 @@ picks its category with a `DropdownItem`, so no modal is involved.
 | `InstalledView` / `AddonRow` | My Addons rows with context menu | Pattern for any list of owned items (S14) |
 | `AddonResultRow` | One search/latest/popular/URL result, a Steam `Field` row | MUST reuse for any addon-result list |
 | `GetAddonsTab` / `browseTabs.tsx` | The widened QAM tab (ADR-0001): destination list, browse pane beside | Pattern for browsing UI |
+| `UpdateDot`, `updateDot.ts` | Decky's notification-badge dot on a positioned anchor, one semantic colour per kind of news | MUST use for any "news here" marker on a tab pill or button; add a colour to `DotColor`, never a second dot |
 | `steamTheme.ts` | Steam colour and type tokens | MUST use instead of literals (S20) |
 | `pluginToast` | Toast with the plugin icon | MUST use instead of `toaster.toast` (S17) |
 | `addonRow.ts`, `loadMore.ts`, `addonActions.ts` | Pure row text and actions, paging, every addon action with its toast | Extend these; keep them tested |
@@ -722,7 +725,9 @@ spacing, type and focus colours are right. The old `.wowdeck-root` Field
 override (removed, S3) took away the 12 px row padding and made the label touch
 the edge of the lighter row (found on the Restore
 dialog, owner, 2026-10-15). Hand-rolled `<div>` headings with `em` sizes are the
-other symptom: use the components.
+other symptom: use the components. The owner set one exception. The Copy
+settings modal colours its "Copying from <version>" section header
+`STEAM.primary` so that the source of a copy stands out.
 
 **S9 [PROJECT] MUST** present an action in a modal or list as a whole-row
 `Field` (label, description, `onClick`, `focusable`), not as a free-standing
@@ -1653,6 +1658,9 @@ needs a human on a controller to confirm.
 | Details modal | LB/RB cycle Description/Changelog/Gallery (disabled Gallery skipped); Up/Down scroll text; Install and View-on-source reachable; B closes. Gallery thumbnail A opens viewer; viewer Left/Right changes image; B closes viewer only. (Viewer behavior LIVE per `AddonDetailsModal.tsx` comment.) |
 | Details modal, news-style carousel (DEVICE-verified by the owner, 2026-10-13; see 6.4) | LB/RB and D-pad Left/Right switch page, clamped, Gallery present only with screenshots; Up/Down scroll the active page the way Valve's gamepad-scroll regions do (30 % viewport per press, 300–500 ms sine tween, 400→50 ms repeats retargeting linearly; `valveScroll.ts`); Y = View on <Provider> (only when `websiteUrl`), X = Install (disabled while installing), B closes; in the stacked Gallery viewer B closes only the viewer and LB/RB/Left/Right belong to the viewer (`galleryOpenRef`). Links and video are pointer-only (U-18). The footer legend does render for a `showModal` modal when the page is a `Field focusable` (6.1) |
 | Options | Steam settings rows, every control reachable by Up/Down. TextFields open the platform keyboard on activation. |
+| WoWDeck update, Options (#20; DEVICE-verified 2026-10-28, PU-25 to PU-27) | The floating panel's **Update** button: A = Update, X = Check again, Y = Release notes when the offer has notes. While a check runs, the button reads "Checking…" and is disabled. The WoWDeck row's **⋯** under Options › Updates: A = the update channel modal, X = Check again at any time, Y = Release notes while the panel offers an update with notes. That modal offers Update, as it does from the panel. While a check runs, the row's description reads "Checking…". Check again ends in one toast: "WoWDeck is up to date", "WoWDeck <version> is available" or "Couldn't check for updates". |
+| Manage backups (Settings backup; device verification pending) | Up/Down over the action rows (Back up now or Cancel, Import from file…, Copy settings from another version…) and then one focus stop per backup, newest first. A row that can't act is unfocusable; **Copy settings from another version…** is hidden, never disabled, when no other version has anything to copy (#12). With no backups listed, focus starts on the first action that can run (#12). Backup row: A = Restore (Details when it can't run), X = Delete; B closes. |
+| Copy settings modal (Settings copy; device verification pending) | Focus starts on **Copy from**; A opens its dropdown (B closes the dropdown only). Under it, the section header reads "Copying from <version>" in Steam blue. Down reaches **<version> · Current settings** (installed versions only), then every backup of that version, newest first, labelled **<version> · <when> · <size>**; switching **Copy from** renames the header and every row. A on a row opens the Restore dialog worded for a copy; its A label reads Details while the copy can't run (WoW running, another job, damaged backup). B closes the modal; once a copy starts the modal closes itself and Manage backups shows progress and Cancel. |
 
 Acceptance criteria for any change that touches focus:
 
@@ -1723,8 +1731,9 @@ in front of any action that deletes data from disk, and say in the text what is
 deleted and whether it can be undone. Source (adapted, not mandated): Xbox
 Accessibility Guideline 115, "Offer players a mechanism to review, confirm, and
 undo permanent or destructive actions". Because opening the modal remounts the
-panel (G4), the action must not depend on the opener's React state; the
-backend `addons.changed` event refreshes the remounted list. Accepted by the owner after
+panel (G4), the action must not depend on the opener's React state; it runs
+through the module-scope addon session, which reads the list again when it
+ends, so the remounted list is current. Accepted by the owner after
 on-device use (2026-10-13). Known limitation: the left stick did not move
 focus in this Steam-owned dialog, only the D-pad (not investigated; not our
 code).

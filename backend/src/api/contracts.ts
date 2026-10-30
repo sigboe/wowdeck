@@ -26,6 +26,15 @@ export interface RpcError {
   error: { code: string; message: string };
 }
 
+/**
+ * The answer of a method that never throws for an expected failure: the
+ * result, or the error a thrown RPC would carry (code from errorCodeFor).
+ */
+export interface Settled<T> {
+  result: T | null;
+  error: { code: string; message: string } | null;
+}
+
 /** Engine-initiated event, relayed to the frontend by the bridge. */
 export interface RpcEvent {
   event: string;
@@ -47,10 +56,16 @@ export function isRpcEvent(msg: RpcMessage): msg is RpcEvent {
 // subtree, only wire-visible shapes here)
 // ---------------------------------------------------------------------------
 
-export type GameType = "retail" | "classic" | "classic_era" | "classic_beta" | "ptr" | "beta";
+export type GameType = "retail" | "classic" | "classic_era" | "forever" | "classic_beta" | "ptr" | "beta";
 
 /** How an installation entered the installation list. */
 export type InstallationSource = "detected" | "manual";
+
+/** An installation a folder holds, before it is added (installations.inspect). */
+export interface FoundInstallation {
+  gameType: GameType;
+  displayName: string;
+}
 
 /** A World of Warcraft installation (one per game flavor). */
 export interface Installation {
@@ -61,9 +76,9 @@ export interface Installation {
   /** Absolute path of the Interface/AddOns directory. */
   addonsPath: string;
   displayName: string;
-  /** Short client name, e.g. "Forever" (CLIENT_DISPLAY_NAMES). */
+  /** Short client name, e.g. "Forever Beta" (CLIENT_DISPLAY_NAMES). */
   clientName: string;
-  /** WowUp's full client name, e.g. "World of Warcraft: Forever". */
+  /** WowUp's full client name, e.g. "World of Warcraft: Forever Beta". */
   clientFullName: string;
   /** "manual" when the user added/confirmed this installation, "detected" otherwise. */
   source: InstallationSource;
@@ -151,6 +166,12 @@ export interface Addon {
   thumbnailUrl: string | null;
 }
 
+/** An addon change's answer: the addon as it is now, and how the operation went. */
+export interface AddonOperation {
+  addon: Addon;
+  operation: OperationResult;
+}
+
 /** An addon release channel (WowUp's Stable / Beta / Alpha). */
 export type ReleaseChannel = "stable" | "beta" | "alpha";
 
@@ -200,6 +221,12 @@ export interface SearchResult {
   screenshots: SearchResultScreenshot[];
 }
 
+/**
+ * The providers that failed in a lookup across several (a search, finding
+ * sources), so the UI can tell a failure from an empty result.
+ */
+export type ProviderErrors = Array<{ providerId: string; error: string }>;
+
 export interface ProviderInfo {
   id: string;
   name: string;
@@ -226,15 +253,6 @@ export interface ProviderCategory {
   name: string;
 }
 
-export interface OperationProgress {
-  operationId: string;
-  addonId: string | null;
-  phase: "resolve" | "download" | "extract" | "validate" | "install" | "rescan";
-  /** 0..1, or null when indeterminate. */
-  progress: number | null;
-  message: string | null;
-}
-
 export interface OperationResult {
   operationId: string;
   addonId: string | null;
@@ -257,7 +275,10 @@ export interface ImportComparison {
   state: ImportState;
   /** Human-readable reason, set for every state except "new". */
   reason: string | null;
-  /** The list marks it a library (installed only as a dependency); imported as one (WF-21). */
+  /**
+   * The list marks it a library, installed only as another addon's required
+   * dependency (the export's own `dependency` key); imported as one (WF-21).
+   */
   dependency: boolean;
 }
 
@@ -333,7 +354,36 @@ export interface WtfBackupInfo {
   invalidReason: string | null;
 }
 
-export type WtfJobKind = "create" | "restore";
+/**
+ * Another WoW version a Settings copy can bring settings from (wtf.copySources).
+ * Ordered related first, then newest settings first.
+ */
+export interface WtfCopySource {
+  /** Flavor key (`_classic_beta_`, …), as recorded in its backups and named back to wtf.copy. */
+  flavor: string;
+  /** The client's display name (Forever Beta, Retail PTR …), never the folder name. A version this build can't name isn't listed. */
+  displayName: string;
+  installed: boolean;
+  /** An installation of this version, when installed. */
+  installationId: string | null;
+  /** In the same version family as the target installation (the engine alone decides). */
+  related: boolean;
+  /**
+   * This version's current settings (its WTF folder), copyable as "Current settings". Null when it isn't
+   * installed or has no WTF folder yet.
+   */
+  current: {
+    /** Last time the settings changed: Config.wtf's mtime (WoW rewrites it on every logout), else the folder's (ms). */
+    modifiedAt: number;
+    hasConfig: boolean;
+  } | null;
+  /** This version's backups, newest first, as in wtf.list. */
+  backups: WtfBackupInfo[];
+  /** The source the copy dialog opens on: the related version with the newest settings, else the newest of any kind. */
+  isDefault: boolean;
+}
+
+export type WtfJobKind = "create" | "restore" | "copy";
 export type WtfPhase = "scan" | "compress" | "snapshot" | "extract" | "verify" | "swap" | "cleanup";
 /** "unknown" = /proc couldn't be read; never treated as "not running". */
 export type GameRunning = "running" | "not_running" | "unknown";
@@ -366,23 +416,101 @@ export interface MethodMap {
   "system.updateCheck": {
     /**
      * Whether a newer WoWDeck release exists on GitHub — the plugin's own
-     * update notice. One call to GitHub's releases/latest API, at most
-     * once per engine session: the first caller runs it, everyone else
-     * gets the memoized result. Authenticated with the optional GitHub
-     * token when GitHub accepts it, so a still-private repo answers too.
-     * "unknown" — never an RPC error — when the check cannot run (offline,
-     * rate limited, nothing reachable). "available" carries the release
-     * page and the packaged WoWDeck.zip asset URL (what system.updateStage
-     * downloads); null when the release has no such asset.
+     * update notice, on the owner's update channel (Stable: GitHub's
+     * releases/latest; Beta: the releases list, newest stable or beta). At
+     * most one call to GitHub per 24 hours, following the same cadence
+     * rule as the addon check behind the SteamOS toast (CheckCadence):
+     * each check keeps its own stored timestamp, so a sleeping Deck re-checks on wake instead of trusting a
+     * session that may be weeks old. Inside the interval the stored answer
+     * is returned (recomputed against the running version) and `checked` is
+     * false. A failed check never advances the interval — instead it backs
+     * off: consecutive failures space the next network attempt 1h, 2h, then
+     * 4h (capped), and any success clears the backoff and re-arms the daily
+     * cadence; within a backoff window the stored answer serves without a
+     * request, exactly like the daily cap. Authenticated with the optional
+     * GitHub token when GitHub accepts it, so a still-private repo answers
+     * too. "unknown" — never an RPC error, never a toast — when the check
+     * cannot run (offline, rate limited, nothing reachable); background
+     * failures are visible only in the engine's structured stderr log.
+     * "available" carries the `offer`; whether it is installable says
+     * whether the release has the WoWDeck.zip system.updateStage downloads.
      */
-    params: Record<string, never>;
+    params: {
+      /**
+       * A toast trigger (plugin load, wake from suspend): only such a call
+       * may report — and so spend — the version's once-only toast. Options
+       * and staging leave it unset; they show the update panel instead.
+       */
+      notify?: boolean;
+      /**
+       * Check again (GLOSSARY): ask GitHub at once, past the daily interval
+       * and any failure backoff. Its answer is stored and clears the
+       * backoff like any success, so the daily cadence restarts; a failure
+       * counts toward the backoff like any other.
+       */
+      force?: boolean;
+    };
     result: {
       status: "current" | "available" | "unknown";
       currentVersion: string;
-      latestVersion: string | null;
-      releaseUrl: string | null;
-      downloadUrl: string | null;
+      /**
+       * The one release on offer, ready to render: the toast, the update
+       * panel, its dot and the Options → Updates row all read it, so they
+       * cannot disagree. Non-null exactly on "available".
+       */
+      offer: PluginUpdateOffer | null;
+      /**
+       * True when a network attempt just ran (a failed one still serves the
+       * stored answer); false when the interval or a failure-backoff window
+       * served it without one. No surface keys on it: it makes the cadence
+       * observable over the RPC.
+       */
+      checked: boolean;
+      /**
+       * True when this call's network attempt failed, so the answer is the
+       * stored one (or "unknown"): Check again says "Couldn't check for
+       * updates" instead of reporting a stale answer as fresh.
+       */
+      failed: boolean;
+      /**
+       * Whether the update toast should fire now: computed engine-side,
+       * true only for a `notify` call's first answer whose `offer` is
+       * installable *and* not already toast-shown. At-most-once
+       * per release version: the engine marks the version shown
+       * (PluginSettings.pluginUpdateToastShownFor) the moment it reports
+       * pending, so re-checks, plugin reloads, QAM churn and engine
+       * restarts can never re-toast it; a genuinely newer version is a new
+       * key and earns its own single toast. A cached answer (no network
+       * run) recomputes this without touching the network.
+       */
+      toastPending: boolean;
     };
+  };
+  "about.get": {
+    /**
+     * Options › About's data (GLOSSARY: Funding link, Supporter). Local
+     * only: it never asks the network, so opening About is instant. The
+     * fetched files behind it refresh only when the WoWDeck update check
+     * asks GitHub (ADR-0005).
+     */
+    params: Record<string, never>;
+    result: AboutInfo;
+  };
+  "system.getUpdateChannel": {
+    /** Which WoWDeck builds the update check offers (GLOSSARY: Update channel). Stable until the owner picks another. */
+    params: Record<string, never>;
+    result: { channel: UpdateChannel };
+  };
+  "system.setUpdateChannel": {
+    /**
+     * Store the update channel and check it at once: this check ignores the
+     * daily interval and any failure-backoff window, so the owner sees what
+     * the new channel offers right away. Answers like system.updateCheck
+     * (never spending the toast); "unknown" when the channel's source could
+     * not be asked. The channel is stored even then.
+     */
+    params: { channel: UpdateChannel };
+    result: MethodMap["system.updateCheck"]["result"];
   };
   "system.updateStage": {
     /**
@@ -433,7 +561,7 @@ export interface MethodMap {
    */
   "installations.inspect": {
     params: { path: string };
-    result: { found: Array<{ gameType: GameType; displayName: string }> };
+    result: { found: FoundInstallation[] };
   };
   "installations.remove": {
     params: { installationId: string };
@@ -448,12 +576,9 @@ export interface MethodMap {
     result: { addons: Addon[]; updated: number; failed: number };
   };
   "addons.search": {
+    /** providerId: one source with `ProviderInfo.catalogSearch`; any other answers no results. */
     params: { query: string; providerId?: string };
-    result: {
-      results: SearchResult[];
-      /** Providers that failed, so the UI can distinguish errors from empty results. */
-      providerErrors: Array<{ providerId: string; error: string }>;
-    };
+    result: { results: SearchResult[]; providerErrors: ProviderErrors };
   };
   "addons.resolveUrlImport": {
     /**
@@ -471,7 +596,7 @@ export interface MethodMap {
      * (errorCodeFor); the UI maps known codes to a sentence and otherwise
      * shows `message`.
      */
-    result: { result: SearchResult | null; error: { code: string; message: string } | null };
+    result: Settled<SearchResult>;
   };
   /**
    * Install from file (Manual Install's From a file): inspect an archive
@@ -490,7 +615,7 @@ export interface MethodMap {
    */
   "addons.inspectArchive": {
     params: { path: string };
-    result: { result: ArchivePreview | null; error: { code: string; message: string } | null };
+    result: Settled<ArchivePreview>;
   };
   "discover.latest": {
     /** providerId: a source with `ProviderInfo.discovers` (the list's Source menu). */
@@ -521,7 +646,7 @@ export interface MethodMap {
   "addons.install": {
     /** `channel`: install from that release channel and follow it (providers with channels only). */
     params: { providerId: string; externalId: string; channel?: ReleaseChannel };
-    result: { addon: Addon; operation: OperationResult };
+    result: AddonOperation;
   };
   /**
    * Put the kept previous version back (BEYOND-02); the current one becomes
@@ -530,7 +655,7 @@ export interface MethodMap {
    */
   "addons.rollback": {
     params: { addonId: string };
-    result: { addon: Addon; operation: OperationResult };
+    result: AddonOperation;
   };
   /** Pause or resume automatic updates for one addon (WF-02). */
   "addons.setAutoUpdatePaused": {
@@ -563,7 +688,7 @@ export interface MethodMap {
    */
   "addons.setChannel": {
     params: { addonId: string; channel: ReleaseChannel };
-    result: { addon: Addon; operation: OperationResult };
+    result: AddonOperation;
   };
   /**
    * An addon's folders in the selected installation's AddOns (WF-20, the
@@ -603,10 +728,7 @@ export interface MethodMap {
    */
   "addons.findSources": {
     params: { folderName: string } | { addonId: string };
-    result: {
-      results: SearchResult[];
-      providerErrors: Array<{ providerId: string; error: string }>;
-    };
+    result: { results: SearchResult[]; providerErrors: ProviderErrors };
   };
   /**
    * Make an unmanaged folder managed (WF-23): installs the chosen source's
@@ -615,7 +737,7 @@ export interface MethodMap {
    */
   "addons.adopt": {
     params: { folderName: string; providerId: string; externalId: string };
-    result: { addon: Addon; operation: OperationResult };
+    result: AddonOperation;
   };
   /**
    * Switch a managed addon to another source (WF-12; upstream's "Provider"
@@ -627,7 +749,7 @@ export interface MethodMap {
    */
   "addons.changeSource": {
     params: { addonId: string; providerId: string; externalId: string };
-    result: { addon: Addon; operation: OperationResult };
+    result: AddonOperation;
   };
   "addons.setIgnored": {
     params: { addonId: string; ignored: boolean };
@@ -635,12 +757,12 @@ export interface MethodMap {
   };
   "addons.update": {
     params: { addonId: string };
-    result: { addon: Addon; operation: OperationResult };
+    result: AddonOperation;
   };
   /** Install the addon's current release again (repair). Status "installed" on success. */
   "addons.reinstall": {
     params: { addonId: string };
-    result: { addon: Addon; operation: OperationResult };
+    result: AddonOperation;
   };
   "addons.updateAll": {
     /**
@@ -745,10 +867,6 @@ export interface MethodMap {
       job: WtfJobSnapshot | null;
     };
   };
-  "wtf.measure": {
-    params: { installationId?: string };
-    result: { exists: boolean; fileCount: number; totalBytes: number; freeBytes: number | null };
-  };
   "wtf.create": {
     /** Returns at once; progress arrives as `wtf.progress`, the outcome as `wtf.completed`. */
     params: { installationId?: string };
@@ -761,9 +879,53 @@ export interface MethodMap {
       fileName: string;
       /** Required for backups that don't record their game flavor (made by desktop WowUp). */
       acceptUnknownFlavor?: boolean;
-      /** Keep this device's Config.wtf (graphics/display settings). */
+      /** Keep this device's Config.wtf (graphics/display settings). Default false: the backup's own is restored. */
       keepCurrentConfig?: boolean;
     };
+    result: { jobId: string };
+  };
+  "wtf.copySources": {
+    /** Other versions with something to copy; empty when there is none (or the backup folder is unavailable). */
+    params: { installationId?: string };
+    result: {
+      dirAvailable: boolean;
+      /**
+       * Whether WoW is running. One state for every version: the process scan can't tell installations
+       * apart, so WoW running blocks every copy, whichever version it is.
+       */
+      gameRunning: GameRunning;
+      sources: WtfCopySource[];
+    };
+  };
+  "wtf.copy": {
+    /**
+     * Settings copy: restore another version's backup into this installation (a job, see wtf.restore,
+     * with the same safety backup, verification and swap). Plain wtf.restore keeps refusing other versions.
+     * With `sourceInstallationId` instead it copies that installation's current settings: one job first backs
+     * up its WTF into its own list (kept, as the record of what was copied), then restores it.
+     * Refused with game_running while WoW runs at all, the source's WoW included.
+     */
+    params: {
+      installationId?: string;
+      /** Flavor key of the version the settings belong to (WtfCopySource.flavor). */
+      sourceFlavor: string;
+      /**
+       * Keep this device's Config.wtf (graphics/display settings). Default true when sourceFlavor is another
+       * version (its Config.wtf describes another client); false when it is this installation's own, as for wtf.restore.
+       */
+      keepCurrentConfig?: boolean;
+    } & (
+      | {
+          /** A backup of that version. */
+          fileName: string;
+          /** Required to copy a backup that doesn't record its game version (desktop WowUp), as for wtf.restore. */
+          acceptUnknownFlavor?: boolean;
+        }
+      | {
+          /** Copy the current settings of this installation of that version (WtfCopySource.installationId). */
+          sourceInstallationId: string;
+        }
+    );
     result: { jobId: string };
   };
   "wtf.delete": {
@@ -771,9 +933,18 @@ export interface MethodMap {
     result: { fileName: string };
   };
   "wtf.import": {
-    /** Add a backup zip from anywhere (copied into this flavor's backup folder after validation). */
+    /**
+     * Add a backup zip from anywhere (copied into a backup folder after validation). A zip that records
+     * another flavor goes into that flavor's folder, never this one's: it is then a Settings copy source.
+     * Zips that record no flavor (desktop WowUp) go into this flavor's folder.
+     */
     params: { installationId?: string; path: string };
-    result: { fileName: string; alreadyPresent: boolean };
+    result: {
+      fileName: string;
+      alreadyPresent: boolean;
+      /** The other version the zip was filed under; null when it went into this installation's list. */
+      otherVersion: { flavor: string; displayName: string } | null;
+    };
   };
   "wtf.cancel": {
     /** Create can be cancelled any time; a restore only until it starts swapping folders (`too_late_to_cancel`). */
@@ -785,13 +956,14 @@ export interface MethodMap {
      * Called once when the plugin loads and once each time the Deck
      * wakes from sleep (src/index.tsx). Internally
      * rate-limited to at most once per real day and gated by
-     * `updateToastEnabled` — most calls return `shouldToast: false`
+     * `updateToastEnabled` — most calls return `toast: null`
      * immediately without doing any provider/network work at all. When
      * it does run, it refreshes every known installation (not just the
-     * selected one) via the normal update-check pipeline.
+     * selected one) via the normal update-check pipeline. `toast` comes
+     * worded (UpdateToastText): the frontend shows it as is.
      */
     params: Record<string, never>;
-    result: { shouldToast: boolean; updateCount: number; installationCount: number };
+    result: { toast: { title: string; body: string } | null };
   };
 }
 
@@ -837,6 +1009,36 @@ export interface PluginSettings {
    * the first check ever runs.
    */
   lastUpdateCheckAt: number | null;
+  /**
+   * The last completed look for a newer WoWDeck release (system.updateCheck):
+   * what it answered and when it ran. Persisted like `lastUpdateCheckAt`, for
+   * the at-most-daily cap — inside the interval this answers without a
+   * network call. Null before the first successful check.
+   */
+  lastPluginUpdate: PluginUpdateSnapshot | null;
+  /**
+   * The WoWDeck release version the update toast was already shown for
+   * (system.updateCheck's toastPending): exactly one toast per release
+   * version, surviving restarts. Engine-written only — the engine marks
+   * the version the moment it reports the toast pending; never a user
+   * preference. Null before any toast fired.
+   */
+  pluginUpdateToastShownFor: string | null;
+  /**
+   * The failure backoff for system.updateCheck: how many consecutive
+   * checks failed and when the last one ran. After a failure the next
+   * network attempt waits 1h, 2h, then 4h (capped); any success clears
+   * this and restores the daily cadence. Engine-written only, never a
+   * user preference. Null while the last check succeeded (or none failed
+   * yet).
+   */
+  pluginUpdateBackoff: PluginUpdateBackoff | null;
+  /**
+   * Which WoWDeck builds the update check offers, set through
+   * system.setUpdateChannel (never settings.set, so a switch always runs its
+   * check). Missing or unknown in the stored file means Stable.
+   */
+  pluginUpdateChannel: UpdateChannel;
   /** User-chosen folder for WTF backups (e.g. on an SD card); null = the plugin's own data folder. */
   wtfBackupDir: string | null;
   /** How many automatic pre-restore safety backups to keep per game version (1-10). */
@@ -906,9 +1108,123 @@ export interface Diagnostics {
   githubTokenConfigured: boolean;
 }
 
+/**
+ * Everything Options › About shows, in one answer (about.get). The
+ * frontend decides which About rows appear from it (src/about.ts).
+ */
+export interface AboutInfo {
+  /**
+   * THIRD_PARTY_NOTICES.md from the installed plugin, as Markdown the
+   * project wrote (rendered with the frontend's Markdown renderer). Null
+   * when the file can't be read (a development run without a plugin dir,
+   * a damaged install); the Third-party notices row still shows.
+   */
+  notices: string | null;
+  /**
+   * The Funding links (GLOSSARY), in FUNDING.yml's order. From
+   * .github/FUNDING.yml on `next` (ADR-0005), the last copy fetched or else
+   * the snapshot in the zip. Every url is `https://` or, for a Bitcoin
+   * link, `bitcoin:<address>`; every name is plain text the engine picked,
+   * and the engine caps the count. Empty hides the Support WoWDeck row.
+   */
+  funding: FundingLink[];
+  /**
+   * The Supporters (GLOSSARY) to credit, in display order (alphabetical),
+   * as plain text: never Markdown or HTML. From SUPPORTERS.md on `next`
+   * (ADR-0005), the last copy fetched or else the snapshot in the zip. The
+   * engine caps the count and each name's length. Empty hides the row.
+   */
+  supporters: string[];
+}
+
+/** One way to fund WoWDeck (GLOSSARY: Funding link), shown as a QR code. */
+export interface FundingLink {
+  /**
+   * `web`: a page A opens in Steam's browser. `bitcoin`: an address for a
+   * wallet app to scan, with nothing to open.
+   */
+  kind: "web" | "bitcoin";
+  /** The platform's display name ("Ko-fi", "PayPal", "Bitcoin"), else the link's bare hostname. */
+  name: string;
+  /**
+   * `web`: an `https://` URL. `bitcoin`: `bitcoin:<address>` with no
+   * parameters, the address's checksum verified.
+   */
+  url: string;
+}
+
 // ---------------------------------------------------------------------------
 // Events emitted by the engine
 // ---------------------------------------------------------------------------
+
+/**
+ * The WoWDeck update channels (GLOSSARY): which builds the owner is offered.
+ * String ids, so a later build source (PR builds, say) is one more id here —
+ * no other contract or stored-setting change.
+ */
+export const UPDATE_CHANNELS = ["stable", "beta"] as const;
+export type UpdateChannel = (typeof UPDATE_CHANNELS)[number];
+
+/**
+ * A WoWDeck release offered by system.updateCheck, with its text decided
+ * engine-side. "update" offers a newer build; "switchToStable" offers the
+ * latest stable, older than the running beta, to an owner who left Beta.
+ */
+export interface PluginUpdateOffer {
+  kind: "update" | "switchToStable";
+  /** X.Y.Z or X.Y.Z-beta.N, without a leading v. */
+  version: string;
+  /** The toast's and the update panel's line: "WoWDeck X available" or "Switch to stable X". */
+  headline: string;
+  /** The panel's button: "Update" or "Switch to stable X". */
+  buttonLabel: string;
+  /** The toast's second line, saying where to go: "Update in Options" or "Install it in Options". */
+  toastBody: string;
+  /** The Options → Updates row's label: "WoWDeck update available" or "Switch to stable X". */
+  rowLabel: string;
+  /**
+   * The release notes as plain text (ADR-0004: trusted CHANGELOG text, so
+   * the engine strips the Markdown); still shown as a text node, never
+   * HTML. Null when the release has none.
+   */
+  releaseNotes: string | null;
+  /** The release page; the releases page when GitHub named none. */
+  releaseUrl: string;
+  /**
+   * The release has its WoWDeck.zip, so Update can install it. Without it
+   * the Updates row still names the release, but there is no panel, dot or
+   * toast (the engine re-asks hourly until the zip is attached).
+   */
+  installable: boolean;
+}
+
+/** The last completed WoWDeck release check, as persisted (see PluginSettings.lastPluginUpdate). */
+export interface PluginUpdateSnapshot {
+  /** Epoch ms of the check that produced this answer. */
+  checkedAt: number;
+  /** The update channel that answered; absent in answers stored before channels, which were Stable's. */
+  channel?: UpdateChannel;
+  /** The offered build's version (X.Y.Z or X.Y.Z-beta.N), without a leading v. */
+  latestVersion: string;
+  /** The release page to point the user at. */
+  releaseUrl: string | null;
+  /** The release's WoWDeck.zip asset, when the release published one. */
+  downloadUrl: string | null;
+  /** The release notes (the GitHub release body, Markdown); absent when it has none. */
+  releaseNotes?: string;
+}
+
+/**
+ * The WoWDeck release check's failure backoff, as persisted (see
+ * PluginSettings.pluginUpdateBackoff): after consecutive failures, the
+ * spacing the next network attempt waits out.
+ */
+export interface PluginUpdateBackoff {
+  /** Epoch ms of the most recent failed attempt. */
+  failedAt: number;
+  /** How many consecutive attempts have failed (1 = the first backoff step). */
+  failures: number;
+}
 
 /** One automatic update run (WF-02). */
 export interface AutoUpdateResult {
@@ -925,7 +1241,6 @@ export interface AutoUpdateResult {
 export interface EventMap {
   /** An automatic update ran and updated or failed something (WF-02). */
   "addons.autoUpdated": { result: AutoUpdateResult };
-  "operation.progress": { progress: OperationProgress };
   "operation.completed": { result: OperationResult };
   "operation.failed": { result: OperationResult };
   "addons.changed": { addonIds: string[] };
@@ -934,10 +1249,12 @@ export interface EventMap {
     jobId: string;
     kind: WtfJobKind;
     installationId: string;
-    /** create: the new backup; restore: the backup that was restored. */
+    /** create: the new backup; restore/copy: the backup that was restored (for current settings, the source's new backup). */
     fileName: string | null;
-    /** restore only: the automatic safety backup of the settings that were replaced. */
+    /** restore/copy: the automatic safety backup of the settings that were replaced. */
     snapshotFileName: string | null;
+    /** copy only: the display name of the version the settings came from. */
+    sourceName: string | null;
     error: { code: string; message: string } | null;
   };
 }

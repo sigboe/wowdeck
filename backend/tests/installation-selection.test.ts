@@ -19,7 +19,6 @@ function makeService(dataDir: string): { service: AddonService; store: ReturnTyp
   const store = createStateStore(dataDir);
   const service = new AddonService(store, new ProviderRegistry(), new DownloadService(new NetworkClient(), join(dataDir, "dl")), {
     addonsChanged: () => {},
-    operationProgress: () => {},
     operationResult: () => {},
   });
   return { service, store };
@@ -85,8 +84,8 @@ afterAll(() => {
 
 describe("installation selection", () => {
   test("detect adds both flavors and persists first-installation fallback", async () => {
-    const found = await service.installations.detect(join(ROOT, "home"));
-    expect(found).toHaveLength(2);
+    expect(await service.installations.detect(join(ROOT, "home"))).toHaveLength(2);
+    const found = service.installations.list();
     retail = found.find((i) => i.label === "_retail_")!;
     era = found.find((i) => i.label === "_classic_era_")!;
 
@@ -116,8 +115,8 @@ describe("installation selection", () => {
   test("re-detection never drops installations and keeps the selection", async () => {
     // flavor dir temporarily unavailable (unmounted SD card etc.)
     rmSync(join(ROOT, "wow", "_classic_era_"), { recursive: true, force: true });
-    const after = await service.installations.detect(join(ROOT, "home"));
-    expect(after.map((i) => i.label).sort()).toEqual(["_classic_era_", "_retail_"]);
+    await service.installations.detect(join(ROOT, "home"));
+    expect(service.installations.list().map((i) => i.label).sort()).toEqual(["_classic_era_", "_retail_"]);
     expect(service.installations.selectedId()).toBe(era.id);
 
     // and it recovers once the directory is back
@@ -135,11 +134,12 @@ describe("installation selection", () => {
   });
 
   test("listInstallations refreshes a legacy auto-generated displayName, never a custom one", async () => {
-    const beta = (await service.installations.detect(join(ROOT, "home"))).find((i) => i.label === "_classic_beta_")!;
+    await service.installations.detect(join(ROOT, "home"));
+    const beta = service.installations.list().find((i) => i.label === "_classic_beta_")!;
 
     // Simulate installations persisted before the naming fix (the old
     // `World of Warcraft (${label})` composition, and the brief
-    // intermediate "World of Warcraft: Forever" scheme) and a genuinely
+    // intermediate "World of Warcraft: Forever" full-name scheme) and a genuinely
     // user-customized name — fixed on *read*, not only re-detection,
     // since My Addons' own Refresh button never calls
     // detectInstallations() at all (it only re-scans addon/provider
@@ -156,7 +156,7 @@ describe("installation selection", () => {
     );
 
     const after = service.installations.list();
-    expect(after.find((i) => i.id === beta.id)!.displayName).toBe("Forever");
+    expect(after.find((i) => i.id === beta.id)!.displayName).toBe("Forever Beta");
     // a custom name must survive the read untouched
     expect(after.find((i) => i.id === era.id)!.displayName).toBe("My Era Copy");
   });

@@ -1,7 +1,7 @@
 /**
  * Extracted and adapted from WowUp (GPL-3.0).
  * Upstream: wowup-lib/src/addon-providers/tukui-addon-provider.ts
- * Commit: 4fdae600d94ad7dd187a6bc93b517e657100b01a
+ * Commit: 89a0981ad00290d40368bf2a9f60209a40198502
  * Modified: yes —
  *   - NetworkInterface -> project NetworkClient (fetch) with TTL cache
  *   - string-similarity dependency replaced by internal Dice implementation
@@ -43,7 +43,11 @@ export class TukUiAddonProvider extends AddonProvider {
 
   #catalog: { addons: TukUiAddon[]; fetchedAt: number } | null = null;
 
-  constructor(private network: NetworkClient) {
+  constructor(
+    private network: NetworkClient,
+    /** The catalogue's address; tests point it at a mock. */
+    private apiUrl: string = API_URL,
+  ) {
     super();
   }
 
@@ -145,7 +149,7 @@ export class TukUiAddonProvider extends AddonProvider {
     if (this.#catalog && Date.now() - this.#catalog.fetchedAt < CATALOG_TTL_MS) {
       return this.#catalog.addons;
     }
-    const addons = await this.network.getJson<TukUiAddon[]>(API_URL, { timeoutMs: 30_000 });
+    const addons = await this.network.getJson<TukUiAddon[]>(this.apiUrl, { timeoutMs: 30_000 });
     this.#catalog = { addons, fetchedAt: Date.now() };
     return addons;
   }
@@ -179,7 +183,8 @@ export class TukUiAddonProvider extends AddonProvider {
 
   /** Whether the catalog entry supports the installation flavor (patch tokens). */
   private supportsClientType(addon: TukUiAddon, clientType: WowClientType): boolean {
-    const classicToken = "1.";
+    const classicToken = "1.1";
+    const foreverToken = "1.6";
     const burningCrusadeToken = "2.";
     const wrathToken = "3.";
     const cataToken = "4.";
@@ -188,11 +193,13 @@ export class TukUiAddonProvider extends AddonProvider {
     switch (clientType) {
       case WowClientType.Classic:
       case WowClientType.ClassicPtr:
-      case WowClientType.ClassicBeta:
         return addon.patch.some((p) => p.startsWith(mistsToken));
       case WowClientType.ClassicEra:
       case WowClientType.ClassicEraPtr:
         return addon.patch.some((p) => p.startsWith(classicToken));
+      case WowClientType.Forever:
+      case WowClientType.ClassicBeta:
+        return addon.patch.some((p) => p.startsWith(foreverToken));
       case WowClientType.Anniversary:
         return addon.patch.some((p) => p.startsWith(burningCrusadeToken));
       default:
@@ -202,7 +209,8 @@ export class TukUiAddonProvider extends AddonProvider {
             !p.startsWith(burningCrusadeToken) &&
             !p.startsWith(wrathToken) &&
             !p.startsWith(cataToken) &&
-            !p.startsWith(mistsToken),
+            !p.startsWith(mistsToken) &&
+            !p.startsWith(foreverToken),
         );
     }
   }

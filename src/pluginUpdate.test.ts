@@ -1,58 +1,148 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import {
   closeStalePanel,
+  panelOffer,
+  pluginUpdateDot,
   pluginUpdateRow,
   pluginUpdateToast,
+  releaseNotesAction,
   requestPluginUpdate,
+  UPDATE_CHANNEL_ROWS,
   type PluginUpdateInfo,
 } from "./pluginUpdate";
+import { UPDATE_CHANNELS } from "../backend/src/api/contracts";
 
 const info = (over: Partial<PluginUpdateInfo>): PluginUpdateInfo => ({
   status: "current",
   currentVersion: "0.1.1",
-  latestVersion: null,
-  releaseUrl: null,
-  downloadUrl: null,
+  offer: null,
+  checked: true,
+  failed: false,
+  toastPending: false,
   ...over,
 });
 
-describe("pluginUpdateToast", () => {
-  test("no toast when up to date", () => {
-    expect(pluginUpdateToast(info({ status: "current" }))).toBeNull();
-  });
+/** The engine's offer of 0.2.0, as system.updateCheck words it. */
+const UPDATE = info({
+  status: "available",
+  offer: {
+    kind: "update",
+    version: "0.2.0",
+    headline: "WoWDeck 0.2.0 available",
+    buttonLabel: "Update",
+    toastBody: "Update in Options",
+    rowLabel: "WoWDeck update available",
+    releaseNotes: null,
+    releaseUrl: "https://github.com/sigboe/wowdeck/releases/tag/v0.2.0",
+    installable: true,
+  },
+});
 
-  test("no toast when the check couldn't run (private repo, offline)", () => {
+/** A beta build on Stable, offered the older latest stable. */
+const SWITCH = info({
+  status: "available",
+  currentVersion: "0.3.1-beta.57",
+  offer: {
+    kind: "switchToStable",
+    version: "0.3.0",
+    headline: "Switch to stable 0.3.0",
+    buttonLabel: "Switch to stable 0.3.0",
+    toastBody: "Install it in Options",
+    rowLabel: "Switch to stable 0.3.0",
+    releaseNotes: null,
+    releaseUrl: "https://x",
+    installable: true,
+  },
+});
+
+/** An offer whose WoWDeck.zip is not attached yet. */
+const NO_ZIP = info({ ...UPDATE, offer: { ...UPDATE.offer!, installable: false } });
+
+describe("pluginUpdateToast", () => {
+  test("no toast without an offer", () => {
+    expect(pluginUpdateToast(info({ status: "current" }))).toBeNull();
     expect(pluginUpdateToast(info({ status: "unknown" }))).toBeNull();
   });
 
-  test("the toast names the new version", () => {
-    expect(
-      pluginUpdateToast(
-        info({ status: "available", latestVersion: "0.2.0", releaseUrl: "https://x" }),
-      ),
-    ).toEqual({ title: "WoWDeck 0.2.0 available", body: "Link in Options → Updates" });
+  test("no toast when the engine's gate is not pending (already shown)", () => {
+    expect(pluginUpdateToast(UPDATE)).toBeNull();
+  });
+
+  test("the toast is the offer's headline and says where to go", () => {
+    expect(pluginUpdateToast({ ...UPDATE, toastPending: true })).toEqual({
+      title: "WoWDeck 0.2.0 available",
+      body: "Update in Options",
+    });
+    expect(pluginUpdateToast({ ...SWITCH, toastPending: true })).toEqual({
+      title: "Switch to stable 0.3.0",
+      body: "Install it in Options",
+    });
+  });
+});
+
+describe("the update panel and its dot", () => {
+  test("show an installable offer", () => {
+    expect(panelOffer(UPDATE)).toBe(UPDATE.offer);
+    expect(panelOffer(SWITCH)).toBe(SWITCH.offer);
+    expect(pluginUpdateDot(UPDATE)).toBe("update");
+    expect(pluginUpdateDot(SWITCH)).toBe("update");
+  });
+
+  test("absent while the offer has no WoWDeck.zip: Update could only fail", () => {
+    expect(panelOffer(NO_ZIP)).toBeNull();
+    expect(pluginUpdateDot(NO_ZIP)).toBeNull();
+  });
+
+  test("absent before the first answer, when current (cleared after the update installs) or unknown", () => {
+    for (const answer of [null, info({ status: "current" }), info({ status: "unknown" })]) {
+      expect(panelOffer(answer)).toBeNull();
+      expect(pluginUpdateDot(answer)).toBeNull();
+    }
+  });
+});
+
+describe("releaseNotesAction: Y on the panel's Update button", () => {
+  test("an offer with notes: Y opens the release notes modal, titled with the version", () => {
+    const offer = {
+      ...UPDATE.offer!,
+      version: "0.2.1-beta.4",
+      releaseNotes: "Added\n• Beta updates",
+    };
+    expect(releaseNotesAction(offer)).toEqual({
+      label: "Release notes",
+      title: "WoWDeck 0.2.1-beta.4 release notes",
+      notes: "Added\n• Beta updates",
+    });
+  });
+
+  test("an offer without notes, or only whitespace, has no Y action and no hint", () => {
+    expect(releaseNotesAction(UPDATE.offer)).toBeNull();
+    expect(releaseNotesAction({ ...UPDATE.offer!, releaseNotes: "" })).toBeNull();
+    expect(releaseNotesAction({ ...UPDATE.offer!, releaseNotes: " \n " })).toBeNull();
+  });
+
+  test("no offer, no action", () => {
+    expect(releaseNotesAction(null)).toBeNull();
   });
 });
 
 describe("pluginUpdateRow", () => {
-  test("available: current → latest with the release link", () => {
-    expect(
-      pluginUpdateRow(
-        info({
-          status: "available",
-          latestVersion: "0.2.0",
-          releaseUrl: "https://github.com/sigboe/wowdeck/releases/tag/v0.2.0",
-        }),
-      ),
-    ).toEqual({
+  test("an offer: current → offered with the release link", () => {
+    expect(pluginUpdateRow(UPDATE)).toEqual({
       label: "WoWDeck update available",
       description: "0.1.1 → 0.2.0 · https://github.com/sigboe/wowdeck/releases/tag/v0.2.0",
     });
   });
 
-  test("available without a link: falls back to the releases page", () => {
-    const row = pluginUpdateRow(info({ status: "available", latestVersion: "0.2.0" }));
-    expect(row.description).toContain("github.com/sigboe/wowdeck/releases");
+  test("names an offer without its zip too", () => {
+    expect(pluginUpdateRow(NO_ZIP).label).toBe("WoWDeck update available");
+  });
+
+  test("a switch says Switch to stable X", () => {
+    expect(pluginUpdateRow(SWITCH)).toEqual({
+      label: "Switch to stable 0.3.0",
+      description: "0.3.1-beta.57 → 0.3.0 · https://x",
+    });
   });
 
   test("current: states the version", () => {
@@ -82,6 +172,20 @@ describe("requestPluginUpdate", () => {
     delete g.window;
   });
 
+  /** A loader bridge that accepts every call and records its arguments. */
+  function recordingLoader(): unknown[][] {
+    const calls: unknown[][] = [];
+    g.window = {
+      DeckyBackend: {
+        call: async (...args: unknown[]) => {
+          calls.push(args);
+          return true;
+        },
+      },
+    };
+    return calls;
+  }
+
   test("no loader bridge (older loaders, tests): unavailable, never a throw", async () => {
     delete g.window;
     const result = await requestPluginUpdate(staged);
@@ -90,15 +194,7 @@ describe("requestPluginUpdate", () => {
   });
 
   test("calls Decky's installer with the staged file, version, hash, UPDATE", async () => {
-    const calls: unknown[][] = [];
-    g.window = {
-      DeckyBackend: {
-        call: async (...args: unknown[]) => {
-          calls.push(args);
-          return true;
-        },
-      },
-    };
+    const calls = recordingLoader();
     const result = await requestPluginUpdate(staged);
     expect(result.success).toBe(true);
     expect(calls).toEqual([
@@ -106,21 +202,51 @@ describe("requestPluginUpdate", () => {
     ]);
   });
 
+  test("a staged beta reaches Decky's installer (#10)", async () => {
+    const calls = recordingLoader();
+    const result = await requestPluginUpdate({
+      artifact: "file:///tmp/wowdeck-update-0.2.1-beta.4.zip",
+      version: "0.2.1-beta.4",
+      sha256: "deadbeef",
+    });
+    expect(result.success).toBe(true);
+    expect(calls).toEqual([
+      [
+        "utilities/install_plugin",
+        "file:///tmp/wowdeck-update-0.2.1-beta.4.zip",
+        "WoWDeck",
+        "0.2.1-beta.4",
+        "deadbeef",
+        2,
+      ],
+    ]);
+  });
+
   test("a remote artifact is refused outright (decky-loader #984)", async () => {
-    const calls: unknown[][] = [];
-    g.window = {
-      DeckyBackend: {
-        call: async (...args: unknown[]) => {
-          calls.push(args);
-          return true;
-        },
-      },
-    };
+    const calls = recordingLoader();
     const result = await requestPluginUpdate({
       ...staged,
       artifact: "https://github.com/sigboe/wowdeck/releases/download/v0.2.0/WoWDeck.zip",
     });
     expect(result.success).toBe(false);
+    expect(calls).toEqual([]);
+  });
+
+  test.each([
+    ["an http URL", "http://localhost/wowdeck-update-0.2.0.zip"],
+    ["a non-file scheme", "ftp:///tmp/wowdeck-update-0.2.0.zip"],
+    ["a file URL with a host", "file://host/tmp/wowdeck-update-0.2.0.zip"],
+    ["a .. segment", "file:///tmp/../home/wowdeck-update-0.2.0.zip"],
+    ["a . segment", "file:///tmp/./wowdeck-update-0.2.0.zip"],
+    ["a .. file segment", "file:///tmp/.."],
+    ["a directory, not a file", "file:///tmp/"],
+  ])("%s is refused before the installer", async (_, artifact) => {
+    const calls = recordingLoader();
+    const result = await requestPluginUpdate({ ...staged, artifact });
+    expect(result).toEqual({
+      success: false,
+      error: "The update could not be verified, so it was not installed.",
+    });
     expect(calls).toEqual([]);
   });
 
@@ -155,5 +281,22 @@ describe("requestPluginUpdate", () => {
     };
     expect(closeStalePanel()).toBe(false);
     expect(closed).toBe(1);
+  });
+});
+
+describe("update channel rows (the WoWDeck Update Channel modal)", () => {
+  test("one row per engine channel, in the engine's order", () => {
+    expect(UPDATE_CHANNEL_ROWS.map((r) => r.channel)).toEqual([...UPDATE_CHANNELS]);
+  });
+
+  test("Stable and Beta carry the GLOSSARY's names and descriptions", () => {
+    expect(UPDATE_CHANNEL_ROWS).toEqual([
+      { channel: "stable", name: "Stable", description: "Recommended for most users." },
+      {
+        channel: "beta",
+        name: "Beta",
+        description: "Built from every merged change. Newer features, may have bugs.",
+      },
+    ]);
   });
 });

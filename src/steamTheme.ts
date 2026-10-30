@@ -5,6 +5,8 @@
  * a SteamOS update; the values are Valve's to change.
  */
 export const STEAM = {
+  /** Dialog header text (DialogHeader's own colour). */
+  header: "#ffffff",
   /** Row label text. */
   text: "#dcdedf",
   /** Row description and secondary text. */
@@ -21,6 +23,15 @@ export const STEAM = {
   warning: "#e0b54c",
   /** Row background in dialogs. */
   row: "#23262e",
+} as const;
+
+/**
+ * Decky Loader's own colours, read from its source (decky-loader
+ * frontend/src/components/NotificationBadge.tsx).
+ */
+export const DECKY = {
+  /** Decky's notification badge: CSS `orange`, the dot on a plugin with an update. */
+  notification: "#ffa500",
 } as const;
 
 /** Steam's type scale in CSS px (labels 16, descriptions 12). */

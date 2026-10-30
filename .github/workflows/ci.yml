@@ -1,10 +1,20 @@
 name: CI
 
+# Pushes to `next` run these jobs through beta.yml, which calls this
+# workflow with the beta version to stamp and publishes only if every job
+# passes; listing `next` here as well would run each gate twice.
 on:
   push:
-    branches: [main, next]
+    branches: [main]
   pull_request:
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      version:
+        description: A beta version (X.Y.Z-beta.N) to stamp into the build; never committed.
+        type: string
+        required: false
+        default: ""
 
 jobs:
   frontend:
@@ -12,6 +22,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # A beta build carries its own version: the engine bundles
+      # backend/package.json's at build time and the zip ships package.json
+      # and plugin.json, so every job stamps before it builds.
+      - if: inputs.version != ''
+        run: python3 tools/version.py stamp "$VERSION"
+        env:
+          VERSION: ${{ inputs.version }}
       - uses: pnpm/action-setup@v4
         with:
           version: 9
@@ -19,10 +36,16 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+      # The frontend suite runs on bun (package.json "test"); keep the
+      # version in step with the backend job's nix-locked bun.
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
       - run: pnpm install --frozen-lockfile
       - run: pnpm run lint
       - run: pnpm run format:check
       - run: pnpm run typecheck
+      - run: pnpm test
       - run: pnpm run build
       - uses: actions/upload-artifact@v4
         with:
@@ -56,6 +79,19 @@ jobs:
         working-directory: backend
       - run: bun test
         working-directory: backend
+      # The beta workflow's version and prune decisions (tools/beta-release.ts).
+      - run: bun test ./tools
+      # The tests run the engine at its committed version: they mock that
+      # version as the latest stable release, which a beta version can never
+      # be. A beta build then stamps its version and rebuilds the engine
+      # it ships, which differs from the tested one only in that string.
+      - if: inputs.version != ''
+        run: python3 tools/version.py stamp "$VERSION"
+        env:
+          VERSION: ${{ inputs.version }}
+      - if: inputs.version != ''
+        run: bun run build
+        working-directory: backend
       - uses: actions/upload-artifact@v4
         with:
           name: backend-binary
@@ -68,6 +104,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - if: inputs.version != ''
+        run: python3 tools/version.py stamp "$VERSION"
+        env:
+          VERSION: ${{ inputs.version }}
       - uses: actions/download-artifact@v4
         with:
           name: frontend-dist
@@ -80,6 +120,9 @@ jobs:
       # package.json, plugin.json and backend/package.json must agree; the
       # tag-triggered release workflow refuses to publish otherwise.
       - run: python3 tools/test_version.py -v
+      # main.py must forward every contract method unchanged (AGENTS.md
+      # "Contracts first").
+      - run: python3 tools/test_main_bridge.py
       # tools/package.py reads CURSEFORGE_API_KEY and bundles it into the
       # generated bin/bundled-curseforge-key resource — a repository
       # secret, never checked into source. GitHub Actions itself withholds

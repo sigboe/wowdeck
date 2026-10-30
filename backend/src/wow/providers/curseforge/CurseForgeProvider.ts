@@ -1,6 +1,6 @@
 /**
  * CurseForge provider, ported from WowUp's curse-addon-provider.ts
- * (GPL-3.0, commit 4fdae600). See docs/wowup-provenance.md.
+ * (GPL-3.0, commit 89a0981a). See docs/wowup-provenance.md.
  *
  * Upstream parity:
  * - GAME_TYPE_LISTS client-type → gameVersionTypeId mapping (verbatim).
@@ -96,20 +96,13 @@ function websiteDownloadUrl(modId: number, fileId: number): string {
 }
 
 /**
- * Base: upstream GAME_TYPE_LISTS (curse-addon-provider.ts L58-94).
- *
- * Deviation: upstream lumps WowClientType.ClassicBeta in with Classic/ClassicPtr under
- * "WoW Mists of Pandaria Classic" (79434). That was correct while the beta
- * slot (`_classic_beta_`) was testing Mists — but Blizzard reuses that slot
- * for whatever Classic-flavor beta is *currently* running, and it has since
- * moved on. Verified via `GET /v1/games/1/version-types`: CurseForge now
- * exposes a distinct "WoW Forever" category (88568, slug "wow-forever"),
- * and the reference Deck's `_classic_beta_` row in the shared `.build.info`
- * (Product=wow_classic_beta, Version=1.60.1.70245) does not correspond to
- * Mists (5.4.8-era). Mists has its own promoted flavor now: plain Classic.
- * See docs/wow-client-identity.md for the full trace and re-verification
- * steps — this table WILL go stale again the next time Blizzard rotates
- * the beta slot, and upstream has the identical staleness mode.
+ * Upstream GAME_TYPE_LISTS (curse-addon-provider.ts L58-99, v2.24.1),
+ * verbatim. Forever (`_forever_`) and Forever Beta (`_classic_beta_`) share
+ * CurseForge's "WoW Forever" category (88568, slug "wow-forever"); the beta
+ * slot was Mists until WowUp v2.24.0. Blizzard reuses that slot for whatever
+ * Classic-flavor beta is currently running, so the beta's row can go stale
+ * again: docs/wow-client-identity.md has the trace and the re-verification
+ * steps (`GET /v1/games/1/version-types`).
  */
 const GAME_TYPE_LISTS: Array<{ flavor: string; typeId: number; matches: WowClientType[] }> = [
   {
@@ -135,8 +128,7 @@ const GAME_TYPE_LISTS: Array<{ flavor: string; typeId: number; matches: WowClien
     matches: [WowClientType.Classic, WowClientType.ClassicPtr],
   },
   { flavor: "wow-wrath-titan", typeId: 81212, matches: [] },
-  // CurseForge's actual current category for the rotating beta slot.
-  { flavor: "wow-forever", typeId: 88568, matches: [WowClientType.ClassicBeta] },
+  { flavor: "wow-forever", typeId: 88568, matches: [WowClientType.Forever, WowClientType.ClassicBeta] },
 ];
 
 /** CurseForge FileRelationType → the dependency kinds we keep. */
@@ -173,7 +165,6 @@ export class CurseForgeProvider extends AddonProvider {
   override allowChannelChange = true;
   override allowEdit = true;
   override authRequired = true;
-  override discovers = true;
 
   /** Per-instance cache — see getCategories' doc comment for scope reasoning. */
   private categoriesCache: ProviderCategory[] | null = null;
@@ -411,7 +402,7 @@ export class CurseForgeProvider extends AddonProvider {
    * nowhere else in this plugin's UI, so there's no consistency
    * argument for keeping it.
    */
-  override async getCategories(_installation: WowInstallation): Promise<ProviderCategory[] | undefined> {
+  override async getCategories(_installation: WowInstallation): Promise<ProviderCategory[]> {
     if (this.categoriesCache) {
       return this.categoriesCache;
     }

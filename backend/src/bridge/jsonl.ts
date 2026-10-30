@@ -7,6 +7,7 @@ import type {
   RpcMessage,
   RpcRequest,
   RpcResult,
+  Settled,
 } from "../api/contracts";
 import { InstallError, NotFoundError, ProviderError, ValidationError } from "../wow/errors";
 import { PathEscapeError } from "../wow/fs/safe-fs";
@@ -46,6 +47,20 @@ export function errorCodeFor(err: unknown): string {
     return "install_failed";
   }
   return "internal_error";
+}
+
+/**
+ * Run work that never throws for an expected failure (contracts.ts
+ * `Settled`): whatever it throws, even before its first await, comes back
+ * as the error a thrown RPC would carry.
+ */
+export async function settle<T>(work: () => T | Promise<T>): Promise<Settled<T>> {
+  try {
+    return { result: await work(), error: null };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { result: null, error: { code: errorCodeFor(err), message } };
+  }
 }
 
 type Handler<K extends MethodName> = (params: MethodMap[K]["params"]) => Promise<MethodMap[K]["result"]>;

@@ -1,7 +1,7 @@
 /**
  * Extracted and adapted from WowUp (GPL-3.0).
  * Upstream: wowup/wowup-lib/src/utils/toc.utils.ts
- * Commit: 4fdae600d94ad7dd187a6bc93b517e657100b01a
+ * Commit: 89a0981ad00290d40368bf2a9f60209a40198502
  * Modified: no (getTocForGameType/getTocForGameType2); removeExtension
  *   inlined.
  * See docs/wowup-provenance.md.
@@ -31,11 +31,14 @@ export function getTocForGameType(tocFileNames: string[], clientType: WowClientT
       break;
     case WowClientType.Classic:
     case WowClientType.ClassicPtr:
-    case WowClientType.ClassicBeta:
       matchedToc = tocFileNames.find((tfn) => /.*[-_](mists)\.toc$/gi.test(tfn)) || "";
       break;
     case WowClientType.Anniversary:
       matchedToc = tocFileNames.find((tfn) => /.*[-_](tbc|bcc)\.toc$/gi.test(tfn)) || "";
+      break;
+    case WowClientType.Forever:
+    case WowClientType.ClassicBeta:
+      matchedToc = tocFileNames.find((tfn) => /.*[-_](forever|camelot)\.toc$/gi.test(tfn)) || "";
       break;
     default:
       break;
@@ -44,7 +47,7 @@ export function getTocForGameType(tocFileNames: string[], clientType: WowClientT
   return (
     matchedToc ||
     tocFileNames.find((tfn) =>
-      /.*(?<![-_](classic|vanilla|bcc|tbc|mainline|wrath|wotlkc|cata|mists))\.toc$/gi.test(tfn),
+      /.*(?<![-_](classic|vanilla|bcc|tbc|mainline|wrath|wotlkc|cata|mists|forever|camelot))\.toc$/gi.test(tfn),
     ) ||
     ""
   );

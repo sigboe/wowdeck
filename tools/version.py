@@ -15,13 +15,20 @@ Usage:
     python3 tools/version.py show            # print the version
     python3 tools/version.py check           # fail unless all three agree
     python3 tools/version.py set 1.0.0       # write it to all three
+    python3 tools/version.py stamp 0.3.1-beta.57
+                                             # a beta build's version, CI only
     python3 tools/version.py tag             # create the v<version> tag
 
-`make version-set`, `make version-check` and `make release-tag` wrap the
-last three.  `check` also runs in the packaging tests and in the release
+`make version-set`, `make version-check` and `make release-tag` wrap
+`set`, `check` and `tag`.  `check` also runs in the packaging tests and in the release
 workflow, so a tree whose files disagree can never produce a release: the
 tag, the GitHub Release, the zip inside it and the version Decky displays
 all come from the same number.
+
+`stamp` is `set` restricted to the X.Y.Z-beta.N form: the beta workflow
+(.github/workflows/beta.yml) stamps the build's version into its checkout
+before building and never commits it, so `next` keeps claiming the last
+stable version and `set`/`tag` stay the only way a release is made.
 """
 
 from __future__ import annotations
@@ -40,6 +47,9 @@ VERSIONED_FILES = ("package.json", "plugin.json", "backend/package.json")
 # Full semver (pre-release and build metadata allowed) so a release
 # candidate can exercise the whole pipeline before the real launch.
 SEMVER = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$")
+
+# The only form `stamp` writes: tools/beta-release.ts's next-version output.
+BETA = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)-beta\.(0|[1-9]\d*)$")
 
 TAG_PREFIX = "v"
 
@@ -135,6 +145,12 @@ def set_version(version: str, root: Path | None = None) -> None:
         print(f"{path.relative_to(root)}: version {version}")
 
 
+def stamp_beta(version: str, root: Path | None = None) -> None:
+    """Write a beta build's version into the checkout being built; never committed."""
+    if not BETA.match(version):
+        raise VersionError(f"{version!r} is not a beta version (expected X.Y.Z-beta.N)")
+    set_version(version, root)
+
 
 def git(args: list[str], root: Path | None = None) -> str:
     root = ROOT if root is None else root
@@ -181,7 +197,7 @@ def make_tag(root: Path | None = None) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
-    commands = ("show", "check", "set", "tag")
+    commands = ("show", "check", "set", "stamp", "tag")
     if not argv:
         print(__doc__.strip(), file=sys.stderr)
         return 1
@@ -206,6 +222,10 @@ def main(argv: list[str] | None = None) -> int:
         if len(args) != 1:
             raise VersionError("set takes exactly one version, e.g. `version.py set 1.0.0`")
         set_version(args[0])
+    elif command == "stamp":
+        if len(args) != 1:
+            raise VersionError("stamp takes exactly one version, e.g. `version.py stamp 0.3.1-beta.57`")
+        stamp_beta(args[0])
     else:
         if args:
             raise VersionError("tag takes no arguments")

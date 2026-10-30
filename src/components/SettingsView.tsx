@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState } from "react";
-import type { CurseForgeAuthStatus, Diagnostics, Installation, ProviderInfo } from "../types";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import type { CurseForgeAuthStatus, Diagnostics, Installation } from "../types";
 import * as api from "../services/backend";
 import { settingsStore } from "../settings";
+import { loadSources, sourcesStore } from "../sourcesStore";
 import { useRestoreFocus } from "./FocusSlot";
 import { WtfBackupSection } from "./WtfBackupSection";
 import { VIEW } from "./settings/common";
@@ -15,6 +16,7 @@ import { UpdatesSection } from "./settings/UpdatesSection";
 import { SteamLibrarySection } from "./settings/SteamLibrarySection";
 import { NotificationsSection } from "./settings/NotificationsSection";
 import { DiagnosticsSection } from "./settings/DiagnosticsSection";
+import { AboutSection } from "./settings/AboutSection";
 
 interface Props {
   installations: Installation[];
@@ -28,10 +30,11 @@ interface Props {
 
 /**
  * Options: one component per section (./settings/). Sections own their state;
- * what two sections share is loaded here: the providers and the CurseForge
- * auth status (the key section changes both, Addon sources shows both) and
- * the diagnostics (Notifications reads the companion status from them). The
- * section order is the focus order (FocusRow ids, guide S21).
+ * what two sections share is loaded here: the providers (the sources store,
+ * shared with Get Addons) and the CurseForge auth status (the key section
+ * changes both, Addon sources shows both) and the diagnostics (Notifications
+ * reads the companion status from them). The section order is the focus
+ * order (FocusRow ids, guide S21).
  */
 export function SettingsView({
   installations,
@@ -41,7 +44,7 @@ export function SettingsView({
   restoreRows,
 }: Props) {
   useRestoreFocus(VIEW, restoreRows);
-  const [providers, setProviders] = useState<ProviderInfo[] | null>(null);
+  const { providers } = useSyncExternalStore(sourcesStore.subscribe, sourcesStore.get);
   // Not `providers[…].configured`: that is true for either key, and the
   // CurseForge section must tell the bundled key from the user's own
   // (curseForgeAuthUi.ts).
@@ -77,14 +80,7 @@ export function SettingsView({
     void reloadCurseForgeAuth();
   }, [reloadCurseForgeAuth]);
 
-  const reloadProviders = useCallback(async () => {
-    try {
-      const { providers } = await api.rpc("providers.list");
-      setProviders(providers);
-    } catch {
-      // engine not ready
-    }
-  }, []);
+  const reloadProviders = useCallback(() => loadSources(api.rpc), []);
 
   useEffect(() => {
     void reloadProviders();
@@ -120,7 +116,6 @@ export function SettingsView({
       <GitHubSection />
       <SourcesSection
         providers={providers}
-        setProviders={setProviders}
         reloadProviders={reloadProviders}
         curseForgeAuth={curseForgeAuth}
       />
@@ -128,6 +123,7 @@ export function SettingsView({
       <SteamLibrarySection />
       <NotificationsSection diagnostics={diagnostics} />
       <DiagnosticsSection diagnostics={diagnostics} setDiagnostics={setDiagnostics} />
+      <AboutSection />
     </>
   );
 }

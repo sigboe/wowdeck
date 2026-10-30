@@ -5,7 +5,9 @@ import { friendlyUrlImportError } from "./urlImportErrors";
 import { errorText } from "./errors";
 import { resetFileImport } from "./fileImportState";
 import { defaultDiscoverSource, validDiscoverSources } from "./sourceAccess";
-import type { ProviderCategory, ProviderInfo, SearchResult } from "./types";
+import { sourcesStore } from "./sourcesStore";
+import type { Rpc } from "./services/envelope";
+import type { SearchResult } from "./types";
 import { providerDisplayName } from "../backend/src/api/providers";
 
 /**
@@ -15,8 +17,9 @@ import { providerDisplayName } from "../backend/src/api/providers";
  * destination owns its requests: only the latest one's answer is applied,
  * also when it lands after a remount, and a reset (another installation, see
  * resetBrowseSessionState) drops the answers still on the way, which belong
- * to the old one. The tabs (components/browseTabs.tsx) only render and call
- * the actions here.
+ * to the old one. The actions here make the engine requests, through the rpc
+ * they are handed; the tabs (components/browseTabs.tsx) only render and call
+ * them.
  */
 export interface Destination<S> extends Pick<Store<S>, "get" | "subscribe" | "patch"> {
   /** Back to the initial state; answers still on the way are dropped. */
@@ -87,19 +90,15 @@ export const searchDestination = createDestination<SearchView>(() => ({
 }));
 
 /** Search for the current query (ignored while one runs, or when it is blank). */
-export function runSearch(
-  search: (query: string) => Promise<{
-    results: SearchResult[];
-    providerErrors: Array<{ providerId: string; error: string }>;
-  }>,
-): Promise<void> {
+export function runSearch(rpc: Rpc): Promise<void> {
   const { query, searching } = searchDestination.get();
   const trimmed = query.trim();
   if (!trimmed || searching) {
     return Promise.resolve();
   }
   return searchDestination.request(
-    () => withTimeout(search(trimmed), SEARCH_TIMEOUT_MS, "search timed out"),
+    () =>
+      withTimeout(rpc("addons.search", { query: trimmed }), SEARCH_TIMEOUT_MS, "search timed out"),
     { searching: true, outcome: { kind: "none", text: "" } },
     ({ results, providerErrors }) => ({
       searching: false,
@@ -149,34 +148,45 @@ export const popularDestination = createDestination<PopularView>(() => ({
   categoryId: null,
 }));
 
-/**
- * The addon sources as last loaded (applySources keeps this cache), so a
- * remount (every dropdown menu, G4) renders the Source menu and its list at
- * once instead of an empty pane that focus falls out of. Get Addons loads
- * them again on every mount.
- */
-export const knownSources: { list: ProviderInfo[] | null } = { list: null };
+/** The list destinations, which pick a source. */
+export type ListDestinationId = "latest" | "popular";
+
+const LISTS: Record<ListDestinationId, Destination<ListView>> = {
+  latest: latestDestination,
+  popular: popularDestination,
+};
+
+/** A list destination's state, by id. */
+export const listDestination = (id: ListDestinationId): Destination<ListView> => LISTS[id];
 
 /**
- * The sources' categories as last fetched (`addons.getCategories`), kept by
- * source id: reference data, kept across resets like knownSources. A source
- * that answered with none — unsupported (null) or an empty list — is kept as
- * `[]`: it is not category-capable, and Popular's Category segment stays
- * away from the browse bar.
+ * A list's page request. Before the sources have picked one the source id is
+ * empty, which the engine answers with nothing; Popular's All categories
+ * (null) is no category at all.
  */
-export const sourceCategories: { bySource: Record<string, ProviderCategory[]> } = { bySource: {} };
+function requestPage(rpc: Rpc, id: ListDestinationId, index: number, pageSize: number) {
+  if (id === "latest") {
+    const { sourceId } = latestDestination.get();
+    return rpc("discover.latest", { providerId: sourceId ?? "", index, pageSize });
+  }
+  const { sourceId, categoryId } = popularDestination.get();
+  return rpc("discover.popular", {
+    providerId: sourceId ?? "",
+    index,
+    pageSize,
+    categoryId: categoryId || undefined,
+  });
+}
 
 /** Fetch the next page (ignored while one is loading). */
-export function loadMore(
-  list: Destination<ListView>,
-  load: (offset: number, count: number) => Promise<{ results: SearchResult[]; totalCount: number }>,
-): Promise<void> {
+export function loadMore(id: ListDestinationId, rpc: Rpc): Promise<void> {
+  const list = LISTS[id];
   const { loading, results: shown } = list.get();
   if (loading) {
     return Promise.resolve();
   }
   return list.request(
-    () => load(shown.length, LOAD_MORE_PAGE_SIZE),
+    () => requestPage(rpc, id, shown.length, LOAD_MORE_PAGE_SIZE),
     { loading: true, error: null },
     ({ results, totalCount }) => ({
       loading: false,
@@ -193,7 +203,8 @@ export function loadMore(
 }
 
 /** Show another source: the list starts over (and its category, which was the old source's). */
-export function setSource(list: Destination<ListView>, sourceId: string): void {
+export function setSource(id: ListDestinationId, sourceId: string): void {
+  const list = LISTS[id];
   if (sourceId === list.get().sourceId) {
     return;
   }
@@ -212,27 +223,29 @@ export function setCategory(categoryId: string | null): void {
 }
 
 /**
- * The sources as last loaded, applied to the lists. Each list keeps its own
- * remembered pick while that source still works, and a pick that no longer
- * does — turned off, not set up, gone — falls back silently to the default
- * discover source: the first one in use, else CurseForge, which the
- * zero-capability screen then speaks for. A fallback starts the list over, so
- * its category (the old source's) is back at "all". With no source to fall
- * back to the picks are left alone. Get Addons calls this on every sources
- * load and with the cached list on every mount, so a reset (another
- * installation) reopens on the default source.
+ * The sources as last loaded (sourcesStore), applied to the lists. Each list
+ * keeps its own remembered pick while that source still works, and a pick
+ * that no longer does — turned off, not set up, gone — falls back silently to
+ * the default discover source: the first one in use, else CurseForge, which
+ * the zero-capability screen then speaks for. A fallback starts the list
+ * over, so its category (the old source's) is back at "all". With no source
+ * to fall back to the picks are left alone. Runs on every change of the
+ * sources and after a reset, so another installation reopens on the default
+ * source at once.
  */
-export function applySources(providers: ProviderInfo[]): void {
-  knownSources.list = providers;
+function applySources(): void {
+  const providers = sourcesStore.get().providers ?? [];
   const fallback = defaultDiscoverSource(providers);
   const ids = validDiscoverSources(providers).map((p) => p.id);
-  for (const list of [latestDestination, popularDestination]) {
-    const current = list.get().sourceId;
+  for (const id of ["latest", "popular"] as const) {
+    const current = LISTS[id].get().sourceId;
     if (fallback && (current === null || !ids.includes(current))) {
-      setSource(list, fallback);
+      setSource(id, fallback);
     }
   }
 }
+
+sourcesStore.subscribe(applySources);
 
 // ---- From URL ----
 
@@ -257,18 +270,14 @@ export function setUrl(url: string): void {
 }
 
 /** Look up the current address (ignored while a lookup runs, or when it is blank). */
-export function resolveUrl(
-  resolve: (
-    url: string,
-  ) => Promise<{ result: SearchResult | null; error: { code: string; message: string } | null }>,
-): Promise<void> {
+export function resolveUrl(rpc: Rpc): Promise<void> {
   const { url, resolving } = urlDestination.get();
   const trimmed = url.trim();
   if (!trimmed || resolving) {
     return Promise.resolve();
   }
   return urlDestination.request(
-    () => resolve(trimmed),
+    () => rpc("addons.resolveUrlImport", { url: trimmed }),
     { resolving: true, resolved: null, error: null },
     ({ result, error }) =>
       error
@@ -285,6 +294,7 @@ export function resetDestinations(): void {
   popularDestination.reset();
   urlDestination.reset();
   resetFileImport();
+  applySources();
 }
 
 function withTimeout<T>(work: Promise<T>, ms: number, message: string): Promise<T> {

@@ -1,38 +1,110 @@
 /**
- * WoWDeck's own update notice (the plugin, not addons): the text behind
- * the once-per-session toast and the Options → Updates row, plus the
- * adapter that hands an engine-staged update to Decky's own installer.
- * The engine's system.updateCheck owns the check; system.updateStage
- * owns the download and verification.
+ * WoWDeck's own update notice (the plugin, not addons): the update toast,
+ * the Options update panel and its update dot, and the Options → Updates
+ * row, all rendered from the engine's one ready offer (system.updateCheck's
+ * `offer`: version, headline, button label, plain-text notes, installable),
+ * plus the adapter that hands an engine-staged update to Decky's own
+ * installer. The engine's system.updateCheck owns the check, its
+ * once-a-day cap, the failure backoff that spaces unreachable checks
+ * (1h/2h/4h, silent), the offer's wording and the once-per-release-version
+ * toast gate (toastPending); system.updateStage owns the download and
+ * verification.
  */
 
-import type { MethodMap } from "../backend/src/api/contracts";
+import type { MethodMap, PluginUpdateOffer } from "../backend/src/api/contracts";
+import type { UpdateChannel } from "./types";
+import type { DotColor } from "./updateDot";
 
 export type PluginUpdateInfo = MethodMap["system.updateCheck"]["result"];
 
-const RELEASES_PAGE = "https://github.com/sigboe/wowdeck/releases";
+/**
+ * The "WoWDeck Update Channel" modal's rows (GLOSSARY: Update channel),
+ * after Valve's Steam Client Update Channel: a name and one line each.
+ */
+export const UPDATE_CHANNEL_ROWS: ReadonlyArray<{
+  channel: UpdateChannel;
+  name: string;
+  description: string;
+}> = [
+  { channel: "stable", name: "Stable", description: "Recommended for most users." },
+  {
+    channel: "beta",
+    name: "Beta",
+    description: "Built from every merged change. Newer features, may have bugs.",
+  },
+];
 
-/** The session toast: only when a newer release actually exists. */
+/**
+ * The update toast, gated engine-side: system.updateCheck's toastPending is
+ * true only for the first answer (fresh or cached) whose offer is
+ * installable and not yet toasted — one toast per release version,
+ * surviving restarts and QAM churn. Informative only: it names the version
+ * and says where to go (the QAM toast has no action surface).
+ */
 export function pluginUpdateToast(info: PluginUpdateInfo): { title: string; body: string } | null {
-  if (info.status !== "available" || !info.latestVersion) {
+  if (!info.toastPending || !info.offer) {
+    return null;
+  }
+  return { title: info.offer.headline, body: info.offer.toastBody };
+}
+
+/**
+ * The offer the Options update panel shows, and with it the update dot:
+ * only an installable one (without the WoWDeck.zip Update could only fail;
+ * the engine re-asks hourly until it is attached). The Updates row still
+ * names any offer.
+ */
+export function panelOffer(info: PluginUpdateInfo | null): PluginUpdateOffer | null {
+  return info?.offer?.installable ? info.offer : null;
+}
+
+/** What Y on the panel's Update button opens (ReleaseNotesModal). */
+export interface ReleaseNotesAction {
+  /** The footer hint beside Y. */
+  label: string;
+  /** The modal's title. */
+  title: string;
+  /** The engine's plain text (ADR-0004). */
+  notes: string;
+}
+
+/**
+ * Y on the panel's Update button (GLOSSARY: Release notes): the footer hint,
+ * the modal's title and the notes it shows. Null, so no Y action and no
+ * hint, when the offer has no notes.
+ */
+export function releaseNotesAction(offer: PluginUpdateOffer | null): ReleaseNotesAction | null {
+  if (!offer?.releaseNotes?.trim()) {
     return null;
   }
   return {
-    title: `WoWDeck ${info.latestVersion} available`,
-    body: "Link in Options → Updates",
+    label: "Release notes",
+    title: `WoWDeck ${offer.version} release notes`,
+    notes: offer.releaseNotes,
   };
 }
 
 /**
- * The Options → Updates row: WoWDeck's own version state. "unknown"
- * (repo unreachable — private beyond the token's reach, offline, rate
- * limited) reads as "couldn't check", never as a failure.
+ * The update dot on the Options tab and the panel's Update button: orange
+ * while the update panel shows, off otherwise — so it clears once the
+ * update installs and the reloaded plugin reads itself up to date.
+ */
+export function pluginUpdateDot(info: PluginUpdateInfo | null): DotColor | null {
+  return panelOffer(info) ? "update" : null;
+}
+
+/**
+ * The Options → Updates row, informational only (the panel holds the
+ * button): WoWDeck's own version state. "unknown" (repo unreachable —
+ * private beyond the token's reach, offline, rate limited) reads as
+ * "couldn't check", never as a failure.
  */
 export function pluginUpdateRow(info: PluginUpdateInfo): { label: string; description: string } {
-  if (info.status === "available" && info.latestVersion) {
+  const { offer } = info;
+  if (offer) {
     return {
-      label: "WoWDeck update available",
-      description: `${info.currentVersion} → ${info.latestVersion} · ${info.releaseUrl ?? RELEASES_PAGE}`,
+      label: offer.rowLabel,
+      description: `${info.currentVersion} → ${offer.version} · ${offer.releaseUrl}`,
     };
   }
   if (info.status === "current") {
@@ -58,6 +130,20 @@ const LOADER_UNAVAILABLE =
   "Decky's plugin installer is not available in this version. Update manually from the releases page.";
 
 /**
+ * Whether the artifact can go to the loader at all: a local
+ * file:///<dirs>/<file> path with no "." or ".." segment, never a remote
+ * URL (decky-loader #984; #985 installs before its hash check). This is
+ * the loader's transport, not the package: the engine names the staged
+ * file and verifies it (manifest name and exact version) in UpdateStager
+ * before it hands the path over.
+ */
+function isLocalArtifact(staged: StagedUpdate): boolean {
+  const m = /^file:\/\/\/((?:[^/]+\/)*)([^/]+)$/.exec(staged.artifact);
+  if (!m) return false;
+  return ![...m[1]!.split("/"), m[2]].some((s) => s === "." || s === "..");
+}
+
+/**
  * Hand a staged update to Decky's own installer
  * (utilities/install_plugin, install type UPDATE): the loader shows its
  * native confirmation, installs from the local file and reloads the
@@ -77,7 +163,7 @@ export async function requestPluginUpdate(staged: StagedUpdate): Promise<UpdateR
     if (typeof loader?.call !== "function") {
       return { success: false, error: LOADER_UNAVAILABLE };
     }
-    if (!/^file:\/\/\/(?:[^/]+\/)*wowdeck-update-[0-9.]+\.zip$/.test(staged.artifact)) {
+    if (!isLocalArtifact(staged)) {
       return {
         success: false,
         error: "The update could not be verified, so it was not installed.",

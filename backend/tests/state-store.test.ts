@@ -46,6 +46,25 @@ describe("StateStore with a state file from an older build", () => {
 });
 
 describe("StateStore normalizes stored settings (RF-07)", () => {
+  test("the update channel: missing or unknown is Stable, Beta is kept", () => {
+    const path = join(mkdtempSync(join(tmpdir(), "state-store-")), "state.json");
+    writeFileSync(path, JSON.stringify({ settings: {} }));
+    expect(new StateStore(path).load().settings.pluginUpdateChannel).toBe("stable");
+    writeFileSync(path, JSON.stringify({ settings: { pluginUpdateChannel: "beta" } }));
+    expect(new StateStore(path).load().settings.pluginUpdateChannel).toBe("beta");
+    writeFileSync(path, JSON.stringify({ settings: { pluginUpdateChannel: "nightly" } }));
+    expect(new StateStore(path).load().settings.pluginUpdateChannel).toBe("stable");
+  });
+
+  test("a stored answer keeps its channel; one from before channels has none", () => {
+    const path = join(mkdtempSync(join(tmpdir(), "state-store-")), "state.json");
+    const answer = { checkedAt: 123, latestVersion: "0.2.1-beta.3", releaseUrl: null, downloadUrl: null };
+    writeFileSync(path, JSON.stringify({ settings: { lastPluginUpdate: { ...answer, channel: "beta" } } }));
+    expect(new StateStore(path).load().settings.lastPluginUpdate).toEqual({ ...answer, channel: "beta" });
+    writeFileSync(path, JSON.stringify({ settings: { lastPluginUpdate: answer } }));
+    expect(new StateStore(path).load().settings.lastPluginUpdate).toEqual(answer);
+  });
+
   test("garbage values fall back to their defaults; good ones are kept", () => {
     const path = join(mkdtempSync(join(tmpdir(), "state-store-")), "state.json");
     writeFileSync(
@@ -61,6 +80,7 @@ describe("StateStore normalizes stored settings (RF-07)", () => {
           newlyUpdatedHours: -5,
           wtfBackupDir: 42,
           selectedInstallationId: "retail-0",
+          pluginUpdateToastShownFor: "tomorrow",
           somethingOld: true,
         },
       }),
@@ -73,5 +93,111 @@ describe("StateStore normalizes stored settings (RF-07)", () => {
       selectedInstallationId: "retail-0",
     });
     expect(settings).not.toHaveProperty("somethingOld");
+  });
+
+  test("the stored release-check answer survives a reload; a broken one costs one extra check, not a wrong answer", () => {
+    const good = {
+      checkedAt: 1_800_000_000_000,
+      latestVersion: "v0.2.0",
+      releaseUrl: "https://github.com/sigboe/wowdeck/releases/tag/v0.2.0",
+      downloadUrl: null,
+    };
+    const path = join(mkdtempSync(join(tmpdir(), "state-store-")), "state.json");
+    writeFileSync(
+      path,
+      JSON.stringify({
+        settings: {
+          lastPluginUpdate: good,
+        },
+      }),
+    );
+    const { settings } = new StateStore(path).load();
+    // The v is stripped by the normalizer — versions compare without it.
+    expect(settings.lastPluginUpdate).toEqual({ ...good, latestVersion: "0.2.0" });
+
+    for (const broken of [
+      null,
+      "yesterday",
+      { checkedAt: "soon", latestVersion: "0.2.0" },
+      { checkedAt: 123 },
+      { checkedAt: Number.NaN, latestVersion: "0.2.0" },
+      { checkedAt: 123, latestVersion: "1.2.3.4" },
+    ]) {
+      writeFileSync(path, JSON.stringify({ settings: { lastPluginUpdate: broken } }));
+      expect(new StateStore(path).load().settings.lastPluginUpdate).toBeNull();
+    }
+
+    // URLs are coerced, not fatal: a lost link costs nothing, a guessed
+    // version would.
+    writeFileSync(
+      path,
+      JSON.stringify({ settings: { lastPluginUpdate: { checkedAt: 123, latestVersion: "0.2.0", releaseUrl: 7, downloadUrl: [] } } }),
+    );
+    expect(new StateStore(path).load().settings.lastPluginUpdate).toEqual({
+      checkedAt: 123,
+      latestVersion: "0.2.0",
+      releaseUrl: null,
+      downloadUrl: null,
+    });
+  });
+
+  test("a beta answer and its release notes survive a reload; notes that are not text are dropped", () => {
+    const path = join(mkdtempSync(join(tmpdir(), "state-store-")), "state.json");
+    const beta = {
+      checkedAt: 123,
+      latestVersion: "v0.3.1-beta.40",
+      releaseUrl: null,
+      downloadUrl: null,
+      releaseNotes: "## What's changed\n- Get Addons: faster search",
+    };
+    writeFileSync(path, JSON.stringify({ settings: { lastPluginUpdate: beta, pluginUpdateToastShownFor: "v0.3.1-beta.40" } }));
+    const { settings } = new StateStore(path).load();
+    expect(settings.lastPluginUpdate).toEqual({ ...beta, latestVersion: "0.3.1-beta.40" });
+    expect(settings.pluginUpdateToastShownFor).toBe("0.3.1-beta.40");
+
+    writeFileSync(path, JSON.stringify({ settings: { lastPluginUpdate: { ...beta, releaseNotes: 7 } } }));
+    expect(new StateStore(path).load().settings.lastPluginUpdate).not.toHaveProperty("releaseNotes");
+    writeFileSync(path, JSON.stringify({ settings: { lastPluginUpdate: { ...beta, latestVersion: "0.3.1-rc.1" } } }));
+    expect(new StateStore(path).load().settings.lastPluginUpdate).toBeNull();
+  });
+
+  test("the toast gate's shown-version mark survives a reload; anything but a version costs one toast, not a wrong one", () => {
+    const path = join(mkdtempSync(join(tmpdir(), "state-store-")), "state.json");
+    writeFileSync(path, JSON.stringify({ settings: { pluginUpdateToastShownFor: "v0.2.0" } }));
+    // The v is stripped by the normalizer — versions compare without it.
+    expect(new StateStore(path).load().settings.pluginUpdateToastShownFor).toBe("0.2.0");
+
+    for (const broken of [null, "banana", "1.2.3.4", 42, "", { version: "0.2.0" }]) {
+      writeFileSync(path, JSON.stringify({ settings: { pluginUpdateToastShownFor: broken } }));
+      expect(new StateStore(path).load().settings.pluginUpdateToastShownFor).toBeNull();
+    }
+  });
+
+  test("the release check's failure backoff survives a reload; a broken one costs one early retry, not a silenced check", () => {
+    const path = join(mkdtempSync(join(tmpdir(), "state-store-")), "state.json");
+    writeFileSync(
+      path,
+      JSON.stringify({ settings: { pluginUpdateBackoff: { failedAt: 1_800_000_000_000, failures: 2 } } }),
+    );
+    expect(new StateStore(path).load().settings.pluginUpdateBackoff).toEqual({
+      failedAt: 1_800_000_000_000,
+      failures: 2,
+    });
+
+    // A missing count, a zero count, a broken time: dropped whole rather
+    // than half-trusted — the check runs once more instead of never.
+    for (const broken of [
+      null,
+      "soon",
+      { failedAt: 123 },
+      { failures: 1 },
+      { failedAt: Number.NaN, failures: 1 },
+      { failedAt: 123, failures: 0 },
+      { failedAt: 123, failures: 1.5 },
+      { failedAt: 123, failures: "2" },
+    ]) {
+      writeFileSync(path, JSON.stringify({ settings: { pluginUpdateBackoff: broken } }));
+      expect(new StateStore(path).load().settings.pluginUpdateBackoff).toBeNull();
+    }
   });
 });

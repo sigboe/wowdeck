@@ -1,7 +1,7 @@
 /**
  * The SteamOS update-toast decision — on/off setting, at-most-once-a-
- * day rate limiting, checking every installation, and the actual
- * update count returned to the frontend.
+ * day rate limiting, checking every installation, and the worded
+ * toast returned to the frontend.
  */
 
 import { beforeEach, afterAll, describe, expect, test } from "bun:test";
@@ -72,7 +72,6 @@ function setup(): { service: AddonService; store: StateStore; gate: UpdateToastG
   registry.attachStore(store);
   const service = new AddonService(store, registry, new DownloadService(new NetworkClient(), join(dataDir, "dl")), {
     addonsChanged: () => {},
-    operationProgress: () => {},
     operationResult: () => {},
   });
   const gate = new UpdateToastGate(service, store, new UpdateCheck(service, new CompanionSyncCoordinator(service)));
@@ -106,7 +105,7 @@ describe("UpdateToastGate", () => {
     );
 
     const result = await gate.checkNow();
-    expect(result).toEqual({ shouldToast: true, updateCount: 1, installationCount: 1 });
+    expect(result).toEqual({ toast: { title: "1 addon update available", body: "Open WoWDeck Manager to update" } });
     expect(store.settings.lastUpdateCheckAt).not.toBeNull();
   });
 
@@ -116,7 +115,7 @@ describe("UpdateToastGate", () => {
     store.setInstallations([retail]);
 
     const result = await gate.checkNow();
-    expect(result).toEqual({ shouldToast: false, updateCount: 0, installationCount: 0 });
+    expect(result).toEqual({ toast: null });
     expect(store.settings.lastUpdateCheckAt).not.toBeNull();
   });
 
@@ -141,7 +140,7 @@ describe("UpdateToastGate", () => {
 
     // simulated second trigger (e.g. a resume-from-suspend minutes later)
     const second = await gate.checkNow();
-    expect(second).toEqual({ shouldToast: false, updateCount: 0, installationCount: 0 });
+    expect(second).toEqual({ toast: null });
     expect(provider.getAllCalls).toBe(1); // no second network pass
   });
 
@@ -166,8 +165,27 @@ describe("UpdateToastGate", () => {
 
     store.updateSettings({ lastUpdateCheckAt: Date.now() - ONE_DAY_MS - 1000 });
     const second = await gate.checkNow();
-    expect(second.shouldToast).toBe(true);
+    expect(second.toast).not.toBeNull();
     expect(provider.getAllCalls).toBe(2);
+  });
+
+  test("a stamp in the future (the clock moved back) runs one check, then the day holds again", async () => {
+    const { store, gate, provider } = setup();
+    store.setInstallations([makeInstallation("retail", "11.0.2")]);
+    store.addons.create(
+      makeAddon({ id: "a1", name: "Bagnon", installationId: "retail", providerName: "TukUI", externalId: "1" }),
+    );
+    store.updateSettings({ lastUpdateCheckAt: Date.now() + ONE_DAY_MS * 30 });
+
+    // Trusting the stamp would silence the check for a month; it runs once
+    // and replaces the stamp with now…
+    await gate.checkNow();
+    expect(provider.getAllCalls).toBe(1);
+    expect(store.settings.lastUpdateCheckAt!).toBeLessThanOrEqual(Date.now());
+
+    // …so the next trigger is inside the day, not another run.
+    await gate.checkNow();
+    expect(provider.getAllCalls).toBe(1);
   });
 
   test("disabled: never checks, never touches lastUpdateCheckAt, no network", async () => {
@@ -177,9 +195,31 @@ describe("UpdateToastGate", () => {
     store.updateSettings({ updateToastEnabled: false });
 
     const result = await gate.checkNow();
-    expect(result).toEqual({ shouldToast: false, updateCount: 0, installationCount: 0 });
+    expect(result).toEqual({ toast: null });
     expect(store.settings.lastUpdateCheckAt).toBeNull();
     expect(provider.getAllCalls).toBe(0);
+  });
+
+  test("toast off but auto-update on: the check runs and is stamped, no toast", async () => {
+    const { store, gate, provider } = setup();
+    store.setInstallations([makeInstallation("retail", "11.0.2")]);
+    store.addons.create(
+      makeAddon({
+        id: "a1",
+        name: "Bagnon",
+        installationId: "retail",
+        providerName: "TukUI",
+        externalId: "1",
+        installedVersion: "1.0.0",
+        latestVersion: "1.1.0",
+      }),
+    );
+    store.updateSettings({ updateToastEnabled: false, autoUpdate: true });
+
+    const result = await gate.checkNow();
+    expect(result).toEqual({ toast: null });
+    expect(store.settings.lastUpdateCheckAt).not.toBeNull();
+    expect(provider.getAllCalls).toBe(1);
   });
 
   test("ignored addons never count toward the toast", async () => {
@@ -200,7 +240,7 @@ describe("UpdateToastGate", () => {
     );
 
     const result = await gate.checkNow();
-    expect(result).toEqual({ shouldToast: false, updateCount: 0, installationCount: 0 });
+    expect(result).toEqual({ toast: null });
   });
 
   test("sums eligible updates across multiple installations independently", async () => {
@@ -243,7 +283,7 @@ describe("UpdateToastGate", () => {
     );
 
     const result = await gate.checkNow();
-    expect(result).toEqual({ shouldToast: true, updateCount: 3, installationCount: 2 });
+    expect(result).toEqual({ toast: { title: "3 addon updates available", body: "In retail and era" } });
   });
 
   test("concurrent checkNow calls never duplicate the network refresh", async () => {
@@ -263,7 +303,7 @@ describe("UpdateToastGate", () => {
     );
 
     const [first, second] = [gate.checkNow(), gate.checkNow()];
-    await Promise.all([first, second]);
+    expect(await Promise.all([first, second])).toEqual([{ toast: null }, { toast: null }]);
     expect(provider.getAllCalls).toBe(1);
   });
 });

@@ -36,10 +36,11 @@ compares display strings.
 | `Beta` | `_beta_` | "Retail Beta" | `beta` |
 | `Classic` | `_classic_` | "Classic" | `classic` |
 | `ClassicPtr` | `_classic_ptr_` | "Classic PTR" | *(not exposed)* |
-| `ClassicBeta` | `_classic_beta_` | "Classic Beta" | `classic_beta` |
+| `ClassicBeta` | `_classic_beta_` | "Forever Beta" | `classic_beta` |
 | `ClassicEra` | `_classic_era_` | "Classic Era" | `classic_era` |
 | `ClassicEraPtr` | `_classic_era_ptr_` | "Classic Era PTR" | *(not exposed)* |
 | `Anniversary` | `_anniversary_` | "Anniversary" | *(not exposed)* |
+| `Forever` | `_forever_` | "Forever" | `forever` |
 | `None` | *(no match)* | "Unknown" | — |
 
 ### Where each column lives
@@ -53,7 +54,7 @@ compares display strings.
   on the backend.
 - **Wire `GameType` (manual-add dropdown)**: `backend/src/api/contracts.ts`
   (`export type GameType = "retail" | "classic" | "classic_era" |
-  "classic_beta" | "ptr" | "beta"`), converted to `WowClientType` by
+  "forever" | "classic_beta" | "ptr" | "beta"`), converted to `WowClientType` by
   `getClientTypeForGameType` (same file as the label). The frontend mirrors
   this list by hand in `src/components/SettingsView.tsx`
   (`CLIENT_TYPE_OPTIONS`) because the JSONL bridge means frontend and
@@ -180,11 +181,16 @@ bug should never be "fixed" without evidence it's actually wrong here
 too, so it was left alone and is recorded as a known re-verification
 candidate.
 
+Upstream has since made the same change: WowUp v2.24.0 (`a2d38e2e`) moved
+`ClassicBeta` to `wow-forever`, and v2.24.1 (`41352f97`) added the live
+Forever client (`_forever_`) to that entry too. Our table is verbatim
+upstream again as of the v2.24.1 pin.
+
 ### Fix
 
 `GAME_TYPE_LISTS` now has a dedicated entry:
-`{ flavor: "wow-forever", typeId: 88568, matches: [WowClientType.ClassicBeta] }`,
-removed from the Mists entry. `Classic`/`ClassicPtr` keep the Mists mapping
+`{ flavor: "wow-forever", typeId: 88568, matches: [WowClientType.Forever, WowClientType.ClassicBeta] }`,
+removed from the Mists entry (Forever joined it with the v2.24.1 port). `Classic`/`ClassicPtr` keep the Mists mapping
 (correct — that's the released, non-beta track). See the code comment at
 the top of `GAME_TYPE_LISTS` for the full citation.
 
@@ -203,8 +209,9 @@ the top of `GAME_TYPE_LISTS` for the full citation.
 ### Tests
 
 `backend/tests/curseforge-provider.test.ts`: `gameVersionTypeIdFor` is
-asserted for every matched `WowClientType`, plus a dedicated assertion that
-`ClassicBeta` maps to `88568` and is distinct from `Classic`'s `79434`.
+asserted for every matched `WowClientType`, plus dedicated assertions that
+`ClassicBeta` maps to `88568`, distinct from `Classic`'s `79434`, and that
+`Forever` shares it.
 
 ## 4. P0-2 audit: no display strings used as identity
 

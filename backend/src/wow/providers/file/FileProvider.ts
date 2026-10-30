@@ -25,8 +25,6 @@ export class FileProvider extends AddonProvider {
   // Never a settings toggle, never in the name search: a picked file is
   // its only way in.
   override allowEdit = false;
-  override catalogSearch = false;
-  override checksForUpdates = false;
 
   override isValidAddonId(addonId: string): boolean {
     return isSupportedArchivePath(addonId);

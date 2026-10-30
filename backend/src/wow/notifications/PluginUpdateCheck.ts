@@ -1,142 +1,380 @@
 /**
  * Whether a newer WoWDeck release exists on GitHub — for the plugin
  * itself, not addons: the plugin is not in the official Decky store, so
- * nothing else tells the user an update exists. The check surfaces the
- * release page and the packaged zip; staging that zip for Decky's own
- * installer is system.updateStage's job (UpdateStager).
+ * nothing else tells the user an update exists. The check answers with one
+ * ready offer (version, every surface's wording, plain-text notes, whether
+ * it is installable); the packaged zip's URL stays in the engine, for
+ * system.updateStage (UpdateStager, through forStaging) to stage for
+ * Decky's own installer.
  *
- * Asks GitHub's `releases/latest` REST API once per engine session — far
- * below the 60 req/h unauthenticated per-IP limit, so this works with zero
- * configuration. The optional GitHub token setting (owned by the addon
- * source, GitHubProvider) is reused opportunistically: when GitHub accepts
- * it — the owner's own token while the repo is still private, say — the
- * check answers through it; when it is unset or rejected, the same call
- * goes out unauthenticated, so a configured token can never make the
- * answer worse than none. `releases/latest` never returns drafts or
- * prereleases, so its tag is the newest stable release.
+ * Asks the channel's build source **at most once a day**, following the
+ * same cadence rule as the addon check behind the SteamOS toast
+ * (CheckCadence, own timestamp and interval): an engine session on a Deck
+ * that sleeps can last weeks, so "once per session" would mean "possibly
+ * never". The answer and the time it ran are persisted, which also lets a
+ * restart inside the interval answer without a call — and lets the status be
+ * recomputed against the running version, so a plugin that was just updated
+ * reads "current" immediately instead of waiting out the day.
+ *
+ * The interval only advances on an answer. A failed check (offline, HTTP
+ * 404, rate limited, a rejected token) is not a timestamp: it never
+ * advances the daily stamp, and — since the check runs on natural triggers
+ * only (plugin load, opening Options → Updates, waking the Deck) — the
+ * retries back off instead, spaced 1h after the first failure, 2h after
+ * the second, 4h after the third and every later one (capped), so an
+ * unreachable GitHub is not re-asked by every trigger while still hearing
+ * from the Deck several times a day. Any success resets the backoff and
+ * re-arms the daily cadence. Failed checks stay completely silent: no
+ * toast, no error, one structured stderr line (below).
+ *
+ * Check again (system.updateCheck's `force`) asks at once, past both
+ * gates; so does system.updateStage (forStaging's `refresh`) when
+ * the stored answer's zip is gone, so Update stages the release that
+ * replaced it instead of failing until the next day's check.
+ *
+ * The builds come from the update channel's build source (BuildSource):
+ * Stable asks GitHub's `releases/latest`, Beta lists the releases. Of the
+ * candidates it returns, the newest is the answer. The stored answer
+ * remembers its channel and serves only that channel, so a beta answered
+ * yesterday is never offered on Stable today. Switching channel
+ * (setChannel) checks at once, past the daily interval and any backoff.
+ *
+ * Each ask of GitHub also calls onGitHubAsk, which refreshes Options ›
+ * About's fetched files (ADR-0005). That refresh keeps no part of this
+ * check's stamp or backoff, and neither side's failure fails the other.
  *
  * "unknown", never an error: the repo can be private beyond the token's
  * reach (the API answers 404), the Deck can be offline, GitHub can
  * rate-limit, the configured token can be rejected — none of that may
- * surface as a user-facing failure. A session whose check failed stays
- * silent; the next engine session tries again.
+ * surface as a user-facing failure.
  */
 
 import type { NetworkClient } from "../net/network";
+import type {
+  MethodMap,
+  PluginUpdateBackoff,
+  PluginUpdateSnapshot,
+  UpdateChannel,
+} from "../../api/contracts";
+import { type BuildSource, buildSources, type CandidateBuild, RELEASES_PAGE } from "../plugin/BuildSource";
+import { compareVersions, isBetaVersion } from "../plugin/PluginVersion";
+import { releaseNotesText } from "../plugin/ReleaseNotesText";
+import { backoffIntervalMs, DAY_MS, HOUR_MS, isDue, SingleFlight } from "./CheckCadence";
 
-const RELEASES_PAGE = "https://github.com/sigboe/wowdeck/releases";
-/** tools/package.py names the zip after plugin.json's name, never a version. */
-const ZIP_ASSET_NAME = "WoWDeck.zip";
-const GH_HEADERS = { Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" };
+export { compareVersions };
 
-export interface PluginUpdateStatus {
-  status: "current" | "available" | "unknown";
-  currentVersion: string;
-  latestVersion: string | null;
-  releaseUrl: string | null;
-  /** The release's WoWDeck.zip asset (what updateStage downloads), on "available" only. */
-  downloadUrl: string | null;
+/** system.updateCheck's answer: the check's status and the one release on offer. */
+export type PluginUpdateStatus = MethodMap["system.updateCheck"]["result"];
+
+/** An answer before the per-caller toast gate. */
+type GatelessStatus = Omit<PluginUpdateStatus, "toastPending">;
+
+/** One run's answer: the wire answer plus the offered WoWDeck.zip's URL, which stays in the engine. */
+type Answer = GatelessStatus & { downloadUrl: string | null };
+
+/** What system.updateStage stages from. */
+export type StagingAnswer = Pick<Answer, "status" | "offer" | "downloadUrl">;
+
+/** Where the last answer is persisted: the engine's settings, an object in tests. */
+export interface PluginUpdateStore {
+  read(): PluginUpdateSnapshot | null;
+  write(snapshot: PluginUpdateSnapshot): void;
+  /** The failure backoff: consecutive failures and when the last one ran. */
+  readBackoff(): PluginUpdateBackoff | null;
+  /** Record the n-th consecutive failure, or clear the backoff on a success. */
+  writeBackoff(backoff: PluginUpdateBackoff | null): void;
+  /** The release version the toast was already shown for, when it was. */
+  readToastShown(): string | null;
+  /** Marks the version shown — called the moment a check reports it pending. */
+  writeToastShown(version: string): void;
+  /** The owner's update channel; Stable when none was ever picked. */
+  readChannel(): UpdateChannel;
+  writeChannel(channel: UpdateChannel): void;
 }
 
-/**
- * Compare dotted numeric versions ("1.2.3", "v0.1", "0.1.1"); null when
- * either side is not one ("banana", "1.2.3.4") — the caller treats
- * "can't tell" as unknown rather than guessing an order.
- */
-export function compareVersions(a: string, b: string): number | null {
-  const pa = parseDotted(a);
-  const pb = parseDotted(b);
-  if (!pa || !pb) return null;
-  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
-    const d = (pa[i] ?? 0) - (pb[i] ?? 0);
-    if (d !== 0) return Math.sign(d);
-  }
-  return 0;
+function memoryStore(): PluginUpdateStore {
+  let stamp: PluginUpdateSnapshot | null = null;
+  let backoff: PluginUpdateBackoff | null = null;
+  let toastShownFor: string | null = null;
+  let channel: UpdateChannel = "stable";
+  return {
+    read: () => stamp,
+    write: (snapshot) => {
+      stamp = snapshot;
+    },
+    readBackoff: () => backoff,
+    writeBackoff: (value) => {
+      backoff = value;
+    },
+    readToastShown: () => toastShownFor,
+    writeToastShown: (version) => {
+      toastShownFor = version;
+    },
+    readChannel: () => channel,
+    writeChannel: (value) => {
+      channel = value;
+    },
+  };
 }
 
-function parseDotted(v: string): number[] | null {
-  const m = /^v?(\d+(?:\.\d+){0,2})$/.exec(v.trim());
-  return m ? m[1]!.split(".").map(Number) : null;
-}
-
-interface GithubLatestRelease {
-  tag_name?: string;
-  html_url?: string;
-  assets?: { name?: string; url?: string; browser_download_url?: string }[];
+export interface PluginUpdateCheckOptions {
+  /** The clock; tests pass their own. */
+  now?: () => number;
+  /**
+   * Called each time this check is about to ask GitHub (a due check,
+   * Check again, a channel switch, a staging refresh), never when the
+   * stored answer or the backoff answers. Options › About refreshes its
+   * fetched files here (ADR-0005). Fire and forget: the check neither
+   * waits for it nor lets it fail the check.
+   */
+  onGitHubAsk?: () => void;
 }
 
 export class PluginUpdateCheck {
-  #done: Promise<PluginUpdateStatus> | null = null;
+  #flight = new SingleFlight<Answer>();
+  readonly #sources: Record<UpdateChannel, BuildSource>;
+  readonly #now: () => number;
+  readonly #onGitHubAsk: () => void;
 
   constructor(
-    private net: Pick<NetworkClient, "getJson">,
+    net: Pick<NetworkClient, "getJson">,
     private currentVersion: string,
     /** Overridable like HUB_URL, so the integration test points it at its mock. */
-    private releasesUrl = "https://api.github.com/repos/sigboe/wowdeck/releases/latest",
+    releasesUrl = "https://api.github.com/repos/sigboe/wowdeck/releases/latest",
     /** The addon source's optional GitHub token, reused when it can read this repo. */
-    private tokenProvider: () => string | undefined = () => undefined,
-  ) {}
-
-  /** At most once per engine session: every caller shares the first result. */
-  checkOnce(): Promise<PluginUpdateStatus> {
-    this.#done ??= this.#run();
-    return this.#done;
+    tokenProvider: () => string | undefined = () => undefined,
+    /** The persisted answer and timestamp: this is the once-a-day cap. */
+    private store: PluginUpdateStore = memoryStore(),
+    { now = Date.now, onGitHubAsk = () => {} }: PluginUpdateCheckOptions = {},
+  ) {
+    this.#sources = buildSources(net, releasesUrl, tokenProvider);
+    this.#now = now;
+    this.#onGitHubAsk = onGitHubAsk;
   }
 
-  async #run(): Promise<PluginUpdateStatus> {
-    const unknown: PluginUpdateStatus = {
+  channel(): UpdateChannel {
+    return this.store.readChannel();
+  }
+
+  /**
+   * Store the channel and check it at once, past the daily interval and any
+   * failure backoff, so the owner sees what the switch offers. Never spends
+   * the toast: the owner is looking at Options already.
+   */
+  async setChannel(channel: UpdateChannel): Promise<PluginUpdateStatus> {
+    this.store.writeChannel(channel);
+    // A check in flight asked the old channel; the switch waits it out
+    // instead of joining it.
+    const answer = await this.#flight.runAfterPending(() => this.#run({ force: true }));
+    return { ...toWire(answer), toastPending: false };
+  }
+
+  /**
+   * The stored answer when the last check is inside the interval, otherwise
+   * one network check (concurrent callers share it). Never throws.
+   *
+   * Only a toast trigger (plugin load, wake — `notify`) may report and spend
+   * the version's toast; Options' refresh and system.updateStage show the
+   * panel instead, so they must not use it up. The gate runs per caller,
+   * after the shared run, so a toast caller joining a quiet one still gets it.
+   *
+   * `force` is Check again: it asks at once, past the daily interval and
+   * any failure backoff, and its answer (or failure) counts like any other
+   * check's. Like setChannel, it waits out a check in flight instead of
+   * joining it, since that one may have been served from the stored answer.
+   */
+  async check(opts: { notify?: boolean; force?: boolean } = {}): Promise<PluginUpdateStatus> {
+    const answer = toWire(
+      await (opts.force
+        ? this.#flight.runAfterPending(() => this.#run({ force: true }))
+        : this.#flight.run(() => this.#run())),
+    );
+    return opts.notify ? this.#toastGate(answer) : { ...answer, toastPending: false };
+  }
+
+  /**
+   * check()'s answer for system.updateStage, with the offered WoWDeck.zip's
+   * URL. Never spends the toast: staging shows the panel already.
+   *
+   * `refresh` checks at once, past the daily interval and any failure
+   * backoff, and its answer replaces the stored one: the stored zip
+   * answered 404 (CI prunes older betas whenever a new one publishes). Like
+   * setChannel, it waits out a check in flight instead of joining it, since
+   * that one may still hand back the gone zip.
+   */
+  async forStaging({ refresh = false }: { refresh?: boolean } = {}): Promise<StagingAnswer> {
+    const { status, offer, downloadUrl } = refresh
+      ? await this.#flight.runAfterPending(() => this.#run({ force: true }))
+      : await this.#flight.run(() => this.#run());
+    return { status, offer, downloadUrl };
+  }
+
+  async #run({ force = false } = {}): Promise<Answer> {
+    const channel = this.store.readChannel();
+    const stored = this.store.read();
+    // Only this channel's answer serves.
+    const stamp = stored !== null && stampChannel(stored) === channel ? stored : null;
+    const now = this.#now();
+    if (!force && !isDue(stamp?.checkedAt ?? null, now, this.#interval(stamp))) {
+      return this.#fromStamp(stamp!);
+    }
+    // The day's check is due, but failures back off: within the window the
+    // stored answer serves — no request, `checked` false — exactly like the
+    // daily cap's cached answer, so a Deck that cannot reach GitHub is not
+    // re-asked by every trigger (plugin load, wake, Options visit).
+    const backoff = this.store.readBackoff();
+    if (!force && backoff !== null && !isDue(backoff.failedAt, now, backoffIntervalMs(backoff.failures))) {
+      return stamp !== null ? this.#fromStamp(stamp) : this.#unknown(false);
+    }
+    try {
+      this.#onGitHubAsk();
+    } catch (err) {
+      console.error(`[plugin-update] onGitHubAsk failed: ${String(err)}`);
+    }
+    const fresh = await this.#fetch(channel);
+    if (fresh !== null) {
+      const snapshot = { ...fresh, checkedAt: this.#now() };
+      this.store.write(snapshot);
+      // A success re-arms the plain daily cadence.
+      this.store.writeBackoff(null);
+      return { ...this.#fromStamp(snapshot), checked: true };
+    }
+    const failures = (backoff?.failures ?? 0) + 1;
+    this.store.writeBackoff({ failedAt: this.#now(), failures });
+    // A failure keeps serving the stored answer, as inside the backoff
+    // window: otherwise the panel would vanish on the failed attempt and
+    // come back on the next trigger.
+    return stamp !== null ? { ...this.#fromStamp(stamp), checked: true, failed: true } : this.#unknown(true);
+  }
+
+  /**
+   * How long the stored answer holds: a day, except an available release
+   * whose WoWDeck.zip was not attached yet (CI uploads it after creating the
+   * release) — that one is re-asked hourly, so Update does not wait a day.
+   */
+  #interval(stamp: PluginUpdateSnapshot | null): number {
+    if (stamp === null) return DAY_MS;
+    const answer = this.#fromStamp(stamp);
+    return answer.offer !== null && answer.downloadUrl === null ? HOUR_MS : DAY_MS;
+  }
+
+  /**
+   * The once-per-release-version toast gate. True only when this answer
+   * offers a newer release, with its WoWDeck.zip (the toast says "Update in
+   * Options"; without the zip there is no Update), the toast was not yet
+   * shown for — and the moment
+   * that is reported, the version is marked shown, so no later re-check
+   * (cached inside the day, fresh the next day, a restarted engine) can
+   * ever re-toast it. A genuinely newer version is a new key and earns its
+   * own single toast. Everything else — "current", "unknown" — never toasts.
+   *
+   * At-most-once by design: marking happens when pending is *reported*, so
+   * a caller that drops the answer spends the toast — one lost toast beats
+   * a nagging one.
+   */
+  #toastGate(result: GatelessStatus): PluginUpdateStatus {
+    const candidate = result.offer?.installable ? result.offer.version : null;
+    if (candidate === null) {
+      return { ...result, toastPending: false };
+    }
+    const pending = this.store.readToastShown() !== candidate;
+    if (pending) {
+      this.store.writeToastShown(candidate);
+    }
+    return { ...result, toastPending: pending };
+  }
+
+  /** The stored answer, compared against the version running right now. */
+  #fromStamp(stamp: PluginUpdateSnapshot): Answer {
+    const cmp = compareVersions(stamp.latestVersion, this.currentVersion);
+    if (cmp === null) {
+      return this.#unknown(false);
+    }
+    // Stable never offers an older build — except to a running beta, which
+    // is on the wrong channel: leaving Beta offers the latest stable.
+    const betaOnStable = stampChannel(stamp) === "stable" && isBetaVersion(this.currentVersion);
+    const switchToStable = cmp < 0 && betaOnStable;
+    if (cmp <= 0 && !switchToStable) {
+      return {
+        status: "current",
+        currentVersion: this.currentVersion,
+        offer: null,
+        downloadUrl: null,
+        checked: false,
+        failed: false,
+      };
+    }
+    const version = stamp.latestVersion;
+    const switchLabel = `Switch to stable ${version}`;
+    return {
+      status: "available",
+      currentVersion: this.currentVersion,
+      offer: {
+        kind: switchToStable ? "switchToStable" : "update",
+        version,
+        headline: switchToStable ? switchLabel : `WoWDeck ${version} available`,
+        buttonLabel: switchToStable ? switchLabel : "Update",
+        toastBody: switchToStable ? "Install it in Options" : "Update in Options",
+        rowLabel: switchToStable ? switchLabel : "WoWDeck update available",
+        releaseNotes: stamp.releaseNotes ? releaseNotesText(stamp.releaseNotes) : null,
+        releaseUrl: stamp.releaseUrl ?? RELEASES_PAGE,
+        installable: stamp.downloadUrl !== null,
+      },
+      downloadUrl: stamp.downloadUrl,
+      checked: false,
+      failed: false,
+    };
+  }
+
+  /**
+   * "unknown"; `failed` marks a network attempt that just failed. Only a
+   * failure reports "unknown" after a network attempt, so `checked` follows it.
+   */
+  #unknown(failed: boolean): Answer {
+    return {
       status: "unknown",
       currentVersion: this.currentVersion,
-      latestVersion: null,
-      releaseUrl: null,
+      offer: null,
       downloadUrl: null,
+      checked: failed,
+      failed,
     };
-    const token = this.tokenProvider()?.trim();
-    // With a token configured, one authenticated attempt and — only if it
-    // fails — one unauthenticated retry (the token may be expired, or have
-    // no read access to this repo). Without a token, a single attempt.
-    let release: GithubLatestRelease | null = null;
-    let failure: unknown;
-    for (const headers of token
-      ? [{ ...GH_HEADERS, Authorization: `Bearer ${token}` }, GH_HEADERS]
-      : [GH_HEADERS]) {
-      try {
-        release = await this.net.getJson<GithubLatestRelease>(this.releasesUrl, { headers });
-        break;
-      } catch (err) {
-        failure = err;
-      }
+  }
+
+  /**
+   * One ask of the channel's build source: its newest candidate as a
+   * snapshot to store (checkedAt still unset), or null when the check could
+   * not run or found no build with a parseable version.
+   */
+  async #fetch(channel: UpdateChannel): Promise<PluginUpdateSnapshot | null> {
+    const builds = await this.#sources[channel].candidates();
+    let newest: CandidateBuild | null = null;
+    for (const build of builds ?? []) {
+      // Sources only return parseable versions, so the comparison never
+      // answers "can't tell" here.
+      if (newest === null || (compareVersions(build.version, newest.version) ?? 0) > 0) newest = build;
     }
-    if (release === null) {
-      // Expected states, not failures (private repo 404, offline, rate
-      // limited, a rejected token). The message is the network layer's own,
-      // already redacted; the token itself is never logged.
-      console.error(
-        `[plugin-update] check unavailable: ${failure instanceof Error ? failure.message : String(failure)}`,
-      );
-      return unknown;
-    }
-    const tag = release.tag_name?.trim();
-    if (!tag) return unknown;
-    const latest = tag.replace(/^v/, "");
-    const cmp = compareVersions(latest, this.currentVersion);
-    if (cmp === null) return unknown;
+    if (newest === null || compareVersions(newest.version, this.currentVersion) === null) return null;
+    // The zip is stored whatever the running version: a same-day rollback
+    // below this release then still finds it (#fromStamp exposes it only
+    // while the release is newer, or a switch to stable).
     return {
-      status: cmp > 0 ? "available" : "current",
-      currentVersion: this.currentVersion,
-      latestVersion: latest,
-      releaseUrl: release.html_url ?? RELEASES_PAGE,
-      downloadUrl: cmp > 0 ? zipAssetUrl(release) : null,
+      checkedAt: 0,
+      channel,
+      latestVersion: newest.version,
+      releaseUrl: newest.releaseUrl,
+      downloadUrl: newest.downloadUrl,
+      ...(newest.releaseNotes !== null && { releaseNotes: newest.releaseNotes }),
     };
   }
 }
 
-/**
- * The zip's API asset URL (fetched with Accept: application/octet-stream),
- * else its browser_download_url. Only the API URL serves a private repo's
- * asset to a token; github.com/…/releases/download answers 404 to one.
- */
-function zipAssetUrl(release: GithubLatestRelease): string | null {
-  const asset = release.assets?.find((a) => a.name === ZIP_ASSET_NAME);
-  return asset?.url ?? asset?.browser_download_url ?? null;
+/** An answer as system.updateCheck sends it: the zip's URL stays in the engine. */
+function toWire({ downloadUrl: _, ...answer }: Answer): GatelessStatus {
+  return answer;
+}
+
+/** The channel a stored answer came from; one from before channels was Stable's. */
+function stampChannel(stamp: PluginUpdateSnapshot): UpdateChannel {
+  return stamp.channel ?? "stable";
 }

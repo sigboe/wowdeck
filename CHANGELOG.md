@@ -1,63 +1,70 @@
 # Changelog
 
-Notable changes to WoWDeck Addon Manager. The format follows
+What's new in each version of WoWDeck Addon Manager. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-10-30
+
+First public release.
+
+### Added
+
+- Manage your WoW addons from Game Mode: update one or all, remove, roll
+  back, and turn on automatic updates.
+- Find and install addons from CurseForge, WowUp Hub, TukUI, GitHub and
+  WoWInterface, or from a link or a zip file.
+- Finds your WoW installation on its own, whether it runs through Steam,
+  Lutris or a custom folder. Forever and Forever Beta both get Forever addons.
+- Back up and restore your WoW settings.
+- Copy addon settings, keybinds and layout from another WoW version, such as
+  Forever Beta into Forever.
+- Import and export addon lists that WowUp understands.
+- Update WoWDeck from the panel at the top of the plugin. An orange dot on the
+  Options tab tells you when a new version is out.
+- Press Y on the Update button, or on WoWDeck under Options → Updates, to
+  read what's new. Press X there to check for a newer version right away.
+- Pick the Beta channel (Options → Updates → ⋯) to get new features early,
+  or switch back to Stable at any time.
+- Options → About lists ways to support WoWDeck, the Supporters and the
+  third-party notices.
+
 ## [0.2.0] - 2026-10-25
 
 ### Added
 
-- WoWDeck's own update notice: once per session the engine asks GitHub for
-  the latest release and the UI shows a toast and an Options → Updates row
-  when a newer version is out. A configured GitHub token is used when it
-  can read the repo (the private pre-release state), with an
-  unauthenticated fallback so it never makes the answer worse.
-- Update WoWDeck from Options → Updates: the engine downloads the release's
-  WoWDeck.zip, verifies its hash and package (name and version), and hands
-  the local file to Decky's own installer, whose prompt installs it and
-  reloads the plugin. Nothing is staged when any check fails.
+- WoWDeck tells you when a new version of itself is out.
+- Update WoWDeck in one tap from Options → Updates.
 
 ## [0.1.1] - 2026-10-25
 
 ### Fixed
 
-- Plugin name is `WoWDeck`: GitHub turns spaces in release-asset names into
-  dots, and Decky matches install-from-URL updates by the asset's file name
-  — a spaced name could install but never update.
-- Release builds match local builds again: CI builds the engine with the
-  Bun version pinned in `flake.lock` (1.4.2).
+- WoWDeck installed from a URL in Decky can now update itself.
 
 ### Added
 
-- Plugin screenshot in the README and plugin metadata.
+- Screenshot in the plugin's description.
 
 ## [0.1.0] - 2026-10-25
 
-First tagged release.
+First release.
 
 ### Added
 
-- Addon management from Game Mode: installed list including unmanaged
-  folders, provider matching via TOC ids and WowUp fingerprints, update
-  detection and update-all with failure isolation, remove, ignore,
-  filtering, roll back (previous versions kept), optional automatic updates
-  (never while WoW runs), release channels per addon.
-- Get Addons: search and install via CurseForge (bundled API key, user-key
-  fallback), WowUp Hub, TukUI, GitHub and WoWInterface; popular and
-  category listings; install from a provider URL, a direct link to a
-  zip/rar/7z, or a local file.
-- WoW installation detection (Steam Proton, Lutris, `~/Applications`, SD
-  cards, custom paths) with flavor selection.
-- WTF (settings) backup and restore; WowUp-compatible addon-list
-  import/export; diagnostics with one-tap copy; Steam game-page link with
-  pending-update count.
-- Transactional installs: a failed install leaves the previous state
-  intact.
+- Manage your WoW addons from Game Mode: update one or all, remove, roll
+  back, and turn on automatic updates.
+- Find and install addons from CurseForge, WowUp Hub, TukUI, GitHub and
+  WoWInterface, or from a link or a zip file.
+- Finds your WoW installation on its own, whether it runs through Steam,
+  Lutris or a custom folder.
+- Back up and restore your WoW settings.
+- Import and export addon lists that WowUp understands.
 
-[Unreleased]: https://github.com/sigboe/wowdeck/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/sigboe/wowdeck/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/sigboe/wowdeck/compare/v0.2.0...v1.0.0
 [0.2.0]: https://github.com/sigboe/wowdeck/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/sigboe/wowdeck/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/sigboe/wowdeck/releases/tag/v0.1.0

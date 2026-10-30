@@ -127,6 +127,17 @@ describe("computeImportSummary: client compatibility", () => {
     expect(isImportSummaryError(result) && result.code).toBe("incompatible_client");
   });
 
+  test("Forever and Forever Beta lists import into each other, never into Mists Classic", () => {
+    const listFor = (client_type: string) => ({ client_type, addons: [{ name: "A", provider_name: "WowUpHub", id: "1" }] });
+    const imports = (client_type: string, clientType: WowClientType) =>
+      !isImportSummaryError(computeImportSummary(listFor(client_type), [], installationFor(clientType), registry));
+    expect(imports("ClassicBeta", WowClientType.Forever)).toBe(true);
+    expect(imports("Forever", WowClientType.ClassicBeta)).toBe(true);
+    expect(imports("Forever", WowClientType.Classic)).toBe(false);
+    expect(imports("ClassicBeta", WowClientType.Classic)).toBe(false);
+    expect(imports("Classic", WowClientType.Forever)).toBe(false);
+  });
+
   test("Anniversary (Burning Crusade group) is distinct from Classic and from ClassicEra — the reported TBC Anniversary mislabeling never recurs here", () => {
     const anniversaryImport = { client_type: "Anniversary", addons: [{ name: "A", provider_name: "WowUpHub", id: "1" }] };
     expect(isImportSummaryError(computeImportSummary(anniversaryImport, [], installationFor(WowClientType.Classic), registry))).toBe(true);
@@ -354,7 +365,6 @@ describe("AddonListPortability.apply (end-to-end)", () => {
     store.setInstallations([installation]);
     const service = new AddonService(store, registry, new DownloadService(makeNetwork(provider.catalog), join(root, "dl")), {
       addonsChanged: () => {},
-      operationProgress: () => {},
       operationResult: () => {},
     });
     return { service, store, installation };

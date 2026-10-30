@@ -14,7 +14,7 @@ is read-only.
 | [../CLAUDE.md](../CLAUDE.md) | Pointer to `AGENTS.md` with a short summary. |
 | [../GLOSSARY.md](../GLOSSARY.md) | The project's fixed vocabulary (QAM, destination, focus memory, …). |
 | [../CHANGELOG.md](../CHANGELOG.md) | What shipped in each release. |
-| [../THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md) | Third-party licenses and what is derived from where. |
+| [../THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md) | Third-party licenses, written for players. The plugin ships it and shows it in Options › About. |
 
 ## Architecture and engine
 
@@ -44,9 +44,11 @@ is read-only.
 | File | Purpose |
 | --- | --- |
 | [wowup-provenance.md](wowup-provenance.md) | Which WowUp components were extracted where, commit by commit. |
-| [../THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md) | License posture for extraction and dependencies. |
+| [development.md](development.md#third-party-code) | Third-party code in the repo: where it lives, its commit and what changed. |
 | [adr/0001-get-addons-widened-qam.md](adr/0001-get-addons-widened-qam.md) | Decision record: Get Addons moves into a widened QAM (Steam Friends pattern). |
 | [adr/0002-get-addons-browse-bar.md](adr/0002-get-addons-browse-bar.md) | Decision record: the browse bar — one picker row above the results, enablement lives in Options. |
+| [adr/0003-release-notes-from-changelog.md](adr/0003-release-notes-from-changelog.md) | Decision record: release notes come from `CHANGELOG.md`, written for players. |
+| [adr/0004-release-notes-are-plain-text-from-the-engine.md](adr/0004-release-notes-are-plain-text-from-the-engine.md) | Decision record: release notes are plain text, made in the engine. |
 
 ## Upstream contributions (WowUp)
 

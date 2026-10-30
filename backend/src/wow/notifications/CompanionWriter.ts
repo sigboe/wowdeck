@@ -7,7 +7,7 @@
  */
 
 import { join } from "node:path";
-import { createDirectory, renameSafe } from "../fs/safe-fs";
+import { createDirectory, writeFileAtomic } from "../fs/safe-fs";
 import { WOWUP_DATA_ADDON_FOLDER_NAME } from "./constants";
 import { buildCompanionToc, buildDataLua, type CompanionUpdateEntry } from "./companion-data";
 
@@ -15,18 +15,6 @@ export interface CompanionWritePayload {
   updates: CompanionUpdateEntry[];
   interfaceVersion: string;
   dataVersion: string;
-}
-
-/**
- * Temp-write + rename: a crash or kill mid-write leaves either the
- * previous file or the fully-written new one, never a
- * truncated one. The temp file lives next to its target, so the rename
- * is same-directory and never crosses a filesystem boundary.
- */
-async function writeFileAtomic(targetPath: string, contents: string): Promise<void> {
-  const tmpPath = `${targetPath}.tmp-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  await Bun.write(tmpPath, contents);
-  await renameSafe(tmpPath, targetPath);
 }
 
 /** Absolute path of the manager-generated companion-data folder for one installation's AddOns dir. */

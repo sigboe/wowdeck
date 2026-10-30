@@ -1,4 +1,4 @@
-.PHONY: setup wowup build build-frontend build-backend test typecheck lint format clean package version-set version-check release-tag
+.PHONY: setup wowup build build-frontend build-backend test typecheck lint format clean package version-set version-check release-tag record-provider-fixtures
 
 # GNU Make uses this shell for recipes. This is independent of the interactive shell.
 SHELL := /usr/bin/env bash
@@ -37,7 +37,7 @@ setup: wowup
 # pinned commit on demand. Keep WOWUP_COMMIT in step with
 # docs/development.md's pinned-references table.
 WOWUP_REPO   ?= https://github.com/WowUp/WowUp.git
-WOWUP_COMMIT ?= 4fdae600d94ad7dd187a6bc93b517e657100b01a
+WOWUP_COMMIT ?= 89a0981ad00290d40368bf2a9f60209a40198502
 
 wowup:
 	@if [ -f wowup/wowup-lib/src/types.ts ]; then \
@@ -60,12 +60,21 @@ build-frontend:
 build-backend:
 	$(TOOL_RUN) 'set -euo pipefail; cd backend && bun run build'
 
-# Frontend (G-2), engine (G-4) and packaging (G-5) suites.
-test:
+# Frontend (G-2) and beta-release script, engine (G-4) and packaging (G-5) suites.
+# The engine's integration tests run the compiled engine, so it is built first:
+# a binary left from another branch would test that branch instead.
+test: build-backend
 	$(TOOL_RUN) 'set -euo pipefail; pnpm test && (cd backend && bun test) && python3 tools/test_package.py && python3 tools/test_version.py && python3 tools/test_main_bridge.py'
 
 typecheck:
 	$(TOOL_RUN) 'set -euo pipefail; pnpm run typecheck && (cd backend && bun run typecheck)'
+
+# Re-record the provider cassettes the contract suite replays. Needs the
+# network and, for CurseForge, CURSEFORGE_API_KEY or CURSEFORGE_API_KEY_FILE
+# (see backend/tests/providers/record.ts). PROVIDERS limits it, e.g. "github".
+PROVIDERS ?=
+record-provider-fixtures:
+	$(TOOL_RUN) 'set -euo pipefail; cd backend && bun tests/providers/record.ts $(PROVIDERS)'
 
 lint:
 	$(TOOL_RUN) 'set -euo pipefail; pnpm run lint && pnpm run format:check'

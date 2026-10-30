@@ -36,7 +36,6 @@ function recordingStack() {
   store.updateSettings({ autoUpdate: true, updateToastEnabled: true });
   const service = new AddonService(store, new ProviderRegistry(), new DownloadService(new NetworkClient(), join(dir, "dl")), {
     addonsChanged: () => {},
-    operationProgress: () => {},
     operationResult: () => {},
   });
   const calls: string[] = [];
@@ -44,15 +43,19 @@ function recordingStack() {
   service.refresh = async (i) => (calls.push(`refresh ${i.id}`), { updated: 0, failed: 0 });
   service.autoUpdate = async () => (calls.push("autoUpdate"), null);
   service.updateAll = async (i) => (calls.push(`updateAll ${i.id}`), []);
+  service.listAddons = async (i) => (calls.push(`list ${i.id}`), []);
   const companion = new CompanionSyncCoordinator(service);
-  companion.regenerate = async () => {
-    calls.push("regenerate");
+  companion.regenerate = async (ids) => {
+    calls.push(`regenerate ${ids?.join(",") ?? "all"}`);
   };
   const check = new UpdateCheck(service, companion);
   return { store, service, check, calls };
 }
 
-const FULL_CHECK = ["scan A", "refresh A", "scan B", "refresh B", "regenerate", "autoUpdate"];
+/** Checking one installation: rescan, ask the providers, rewrite its companion data. */
+const CHECK_A = ["scan A", "refresh A", "regenerate A"];
+const CHECK_B = ["scan B", "refresh B", "regenerate B"];
+const FULL_CHECK = [...CHECK_A, ...CHECK_B, "autoUpdate"];
 
 // One flow for every entry point (owner decision 2026-10-20). Before RF-11
 // discovery skipped auto-update, the Steam page check skipped the scan and
@@ -71,17 +74,42 @@ describe("checking every installation (RF-11)", () => {
   });
 
   test("the Steam page check runs the full check, then counts", async () => {
-    const { service, check, calls } = recordingStack();
-    await check.checkAll();
-    service.updateSummary();
+    const { check, calls } = recordingStack();
+    const summary = await check.updateSummary(true);
     expect(calls).toEqual(FULL_CHECK);
+    expect(summary).toEqual([
+      { installationId: "A", displayName: "A", updates: 0 },
+      { installationId: "B", displayName: "B", updates: 0 },
+    ]);
+  });
+
+  test("the Steam page count without a refresh checks nothing", async () => {
+    const { check, calls } = recordingStack();
+    await check.updateSummary(false);
+    expect(calls).toEqual([]);
   });
 
   test("Update all installations: the check without auto-update, then updates each", async () => {
+    const { check, calls } = recordingStack();
+    await check.updateAllInstallations();
+    expect(calls).toEqual([...CHECK_A, ...CHECK_B, "updateAll A", "updateAll B"]);
+  });
+
+  test("My Addons' refresh checks only that installation, then lists it", async () => {
     const { service, check, calls } = recordingStack();
-    await check.checkAll({ autoUpdate: false });
-    await service.updateAllInstallations();
-    expect(calls).toEqual(["scan A", "refresh A", "scan B", "refresh B", "regenerate", "updateAll A", "updateAll B"]);
+    service.refresh = async (i) => (calls.push(`refresh ${i.id}`), { updated: 3, failed: 1 });
+    const result = await check.refresh(service.installations.require("B"));
+    expect(calls).toEqual([...CHECK_B, "list B"]);
+    expect(result).toEqual({ addons: [], updated: 3, failed: 1 });
+  });
+
+  test("My Addons' refresh reports a failed check, after rewriting the companion data", async () => {
+    const { service, check, calls } = recordingStack();
+    service.refresh = async () => {
+      throw new Error("SD card removed");
+    };
+    await expect(check.refresh(service.installations.require("A"))).rejects.toThrow("SD card removed");
+    expect(calls).toEqual(["scan A", "regenerate A"]);
   });
 
   test("concurrent checks share one pass; each still asks for auto-update", async () => {
@@ -100,6 +128,6 @@ describe("checking every installation (RF-11)", () => {
       return scan(i);
     };
     await check.checkAll();
-    expect(calls).toEqual(["scan B", "refresh B", "regenerate", "autoUpdate"]);
+    expect(calls).toEqual(["regenerate A", ...CHECK_B, "autoUpdate"]);
   });
 });

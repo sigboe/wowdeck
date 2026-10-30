@@ -258,7 +258,7 @@ describe("pickAssetForRelease flavor mapping", () => {
     expect(pickAssetForRelease(release, releaseJson, WowClientType.Anniversary)?.name).toBe("Addon-BCC.zip");
   });
 
-  test("release.json: mists flavor maps to Classic/ClassicPtr but NOT ClassicBeta (diverges from upstream)", () => {
+  test("release.json: mists flavor maps to Classic/ClassicPtr but not Forever Beta", () => {
     const asset = ghAsset({ id: 1, name: "Addon-Mists.zip" });
     const release = ghRelease({ id: 1, assets: [asset] });
     const releaseJson: GhReleaseJson = {
@@ -267,6 +267,18 @@ describe("pickAssetForRelease flavor mapping", () => {
     expect(pickAssetForRelease(release, releaseJson, WowClientType.Classic)?.name).toBe("Addon-Mists.zip");
     expect(pickAssetForRelease(release, releaseJson, WowClientType.ClassicPtr)?.name).toBe("Addon-Mists.zip");
     expect(pickAssetForRelease(release, releaseJson, WowClientType.ClassicBeta)).toBeUndefined();
+  });
+
+  test("release.json: forever flavor maps to Forever and Forever Beta, never Retail", () => {
+    const asset = ghAsset({ id: 1, name: "Addon-Forever.zip" });
+    const release = ghRelease({ id: 1, assets: [asset] });
+    const releaseJson: GhReleaseJson = {
+      releases: [{ filename: "Addon-Forever.zip", metadata: [{ flavor: "forever", interface: 11600 }] }],
+    };
+    expect(pickAssetForRelease(release, releaseJson, WowClientType.Forever)?.name).toBe("Addon-Forever.zip");
+    expect(pickAssetForRelease(release, releaseJson, WowClientType.ClassicBeta)?.name).toBe("Addon-Forever.zip");
+    expect(pickAssetForRelease(release, releaseJson, WowClientType.Retail)).toBeUndefined();
+    expect(pickAssetForRelease(release, releaseJson, WowClientType.Classic)).toBeUndefined();
   });
 
   test("release.json: wrath/cata flavors map to nothing currently installable (honest, not invented)", () => {
@@ -319,6 +331,17 @@ describe("pickAssetForRelease flavor mapping", () => {
     const assets = [ghAsset({ id: 1, name: "Addon_mists.zip" }), ghAsset({ id: 2, name: "Addon_classic.zip" })];
     const release = ghRelease({ id: 1, assets });
     expect(pickAssetForRelease(release, undefined, WowClientType.Retail)).toBeUndefined();
+  });
+
+  test("filename heuristic: -forever and -camelot files go to Forever and Forever Beta, never Retail", () => {
+    for (const name of ["Addon-forever.zip", "Addon_Camelot.zip"]) {
+      const release = ghRelease({ id: 1, assets: [ghAsset({ id: 1, name }), ghAsset({ id: 2, name: "Addon.zip" })] });
+      expect(pickAssetForRelease(release, undefined, WowClientType.Forever)?.name).toBe(name);
+      expect(pickAssetForRelease(release, undefined, WowClientType.ClassicBeta)?.name).toBe(name);
+      expect(pickAssetForRelease(release, undefined, WowClientType.Retail)?.name).toBe("Addon.zip");
+    }
+    const foreverOnly = ghRelease({ id: 1, assets: [ghAsset({ id: 1, name: "Addon-Forever.zip" })] });
+    expect(pickAssetForRelease(foreverOnly, undefined, WowClientType.Retail)).toBeUndefined();
   });
 
   test("filename heuristic: nolib filenames are excluded even for an otherwise-matching flavor", () => {
@@ -534,21 +557,11 @@ describe("GitHubProvider rate limiting and errors", () => {
   });
 });
 
-describe("GitHubProvider.searchByQuery / isValidAddonId / getAll", () => {
-  test("searchByQuery returns [] for a plain-text query (leaves catalog search to other providers)", async () => {
+describe("GitHubProvider.resolveUrl / isValidAddonId / getAll", () => {
+  test("resolveUrl answers nothing for a plain-text query (leaves catalog search to other providers)", async () => {
     const { net } = fakeNet({});
     const provider = new GitHubProvider(net);
-    expect(await provider.searchByQuery("questie", retail)).toEqual([]);
-  });
-
-  test("searchByQuery resolves a pasted GitHub URL to a single result", async () => {
-    const asset = ghAsset({ id: 1, name: "Addon.zip" });
-    const release = ghRelease({ id: 1, assets: [asset] });
-    const { net } = fakeNet({ releases: [release] });
-    const provider = new GitHubProvider(net);
-    const results = await provider.searchByQuery("https://github.com/mockauthor/MockAddon", retail);
-    expect(results).toHaveLength(1);
-    expect(results[0]!.name).toBe("MockAddon");
+    expect(await provider.resolveUrl("questie", retail)).toBeUndefined();
   });
 
   test("isValidAddonId accepts owner/repo, rejects everything else", () => {

@@ -1,10 +1,10 @@
 import { rawErrorText } from "./errors";
-import type { Installation, ProviderInfo } from "./types";
+import type { Installation, ProviderErrors, ProviderInfo } from "./types";
 import { providerLabel } from "./addonRow";
 
 /**
  * What the UI calls an installation's game (the search helper, the export
- * file name): the engine's short client name, e.g. "Forever", the same name
+ * file name): the engine's short client name, e.g. "Forever Beta", the same name
  * My Addons and Installation details show.
  */
 export function installationLabel(installation: Installation | null | undefined): string | null {
@@ -88,7 +88,7 @@ export function friendlySearchError(rawInput: string): string {
 export function searchOutcome(
   query: string,
   resultCount: number,
-  providerErrors: Array<{ providerId: string; error: string }>,
+  providerErrors: ProviderErrors,
 ): { kind: "none" | "empty" | "error"; text: string } {
   if (resultCount > 0) {
     return { kind: "none", text: "" };

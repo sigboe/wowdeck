@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { EngineError, JsonlServer } from "../src/bridge/jsonl";
+import { EngineError, JsonlServer, settle } from "../src/bridge/jsonl";
+import { ProviderError, ValidationError } from "../src/wow/errors";
 
 function makeServer() {
   const lines: string[] = [];
@@ -57,18 +58,16 @@ describe("JsonlServer", () => {
 
   test("ignores non-request messages", async () => {
     const { server, lines } = makeServer();
-    await server.handleLine('{"event":"operation.progress","params":{}}');
+    await server.handleLine('{"event":"addons.changed","params":{}}');
     expect(lines).toEqual([]);
   });
 
   test("emits events as JSONL lines", () => {
     const { server, lines } = makeServer();
-    server.emit("operation.progress", {
-      progress: { operationId: "a", addonId: null, phase: "download", progress: 0.5, message: null },
-    });
+    server.emit("addons.changed", { addonIds: ["a"] });
     expect(lines).toHaveLength(1);
     const msg = JSON.parse(lines[0]!);
-    expect(msg.event).toBe("operation.progress");
+    expect(msg.event).toBe("addons.changed");
   });
 
   test("missing params default to empty object", async () => {
@@ -111,5 +110,33 @@ describe("JsonlServer", () => {
     }
     await server.run(input());
     expect(lines.map((l) => JSON.parse(l).id)).toEqual([7, 8]);
+  });
+});
+
+// The never-throws methods (addons.resolveUrlImport, addons.inspectArchive):
+// an expected failure is part of the answer, not an RPC error.
+describe("settle", () => {
+  test("a result comes back with no error", async () => {
+    expect(await settle(async () => 42)).toEqual({ result: 42, error: null });
+  });
+
+  test("a provider failure comes back as its own code and message", async () => {
+    const failing = async () => {
+      throw new ProviderError("GitHub", "No release for this game version", "github_no_compatible_release");
+    };
+    expect(await settle(failing)).toEqual({
+      result: null,
+      error: { code: "github_no_compatible_release", message: "No release for this game version" },
+    });
+  });
+
+  test("a failure before the work starts is settled too", async () => {
+    const failing = () => {
+      throw new ValidationError("No installation selected");
+    };
+    expect(await settle(failing)).toEqual({
+      result: null,
+      error: { code: "invalid_request", message: "No installation selected" },
+    });
   });
 });

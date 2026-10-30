@@ -8,41 +8,41 @@
  * See docs/wowup-provenance.md.
  */
 
-import type { Addon, AutoUpdateResult, OperationResult, SearchResult } from "../../api/contracts";
+import type { Addon, AddonOperation, AutoUpdateResult, OperationResult } from "../../api/contracts";
 import type { ArchivePreview } from "../../api/contracts";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { detectGameRunning } from "../wtf/GameProcessGuard";
 import type { GameRunning } from "../wtf/GameProcessGuard";
-import type { AddonFolder, AddonSearchResult, AddonSearchResultFile, ProviderCategory, WowAddon, WowInstallation } from "../models";
+import type { AddonFolder, AddonSearchResult, AddonSearchResultFile, WowAddon, WowInstallation } from "../models";
 import { newAddonRecord } from "../models";
 import { AddonChannelType, AddonDependencyType, type AddonProviderType } from "../types";
 import type { Toc } from "../toc/toc";
-import type { AddonProvider, DiscoverList, ScanMatch } from "../providers/addon-provider";
-import { NotFoundError, ProviderError, ValidationError } from "../errors";
+import type { ScanMatch } from "../providers/addon-provider";
+import type { SourceRequest } from "../catalogue/Catalogue";
+import { NotFoundError, ValidationError } from "../errors";
 import type { ProviderRegistry } from "../providers/provider-registry";
 import type { StateStore } from "../storage/StateStore";
-import { recordFolders, type AddonPatch, type AddonRecord } from "./AddonRecords";
+import { recordFolders, type AddonPatch, type AddonRecord, type AddonRecordReader, type AddonRecords } from "./AddonRecords";
 import { isDirectory, joinWithin } from "../fs/safe-fs";
 import { getAddonsPath } from "../installation/InstallationDetector";
 import { InstallationService } from "../installation/InstallationService";
 import { scanAddons } from "./AddonScanner";
 import { computeWowUpFingerprints } from "./FingerprintScanner";
 import { AddonInstaller, AddonRemover } from "./AddonInstaller";
-import { hasNewerPrerelease, latestFile, updateCandidate } from "./releaseChannel";
-import { cacheUsage, clearAll, dropPrevious, swapWithPrevious } from "./RollbackCache";
+import { hasNewerPrerelease, installsFolder, latestFile, updateCandidate } from "./releaseChannel";
+import { cacheUsage, clearAll, dropPrevious, readPrevious, swapWithPrevious } from "./RollbackCache";
 import { AddonListPortability } from "./AddonPortability";
 import { dependantsIndex, libraryFlagsAfterImport, orphanedLibraries } from "./libraries";
 import type { DownloadService } from "../downloads/DownloadService";
-import { identifyUrlImportProvider } from "../providers/url-import";
 import { canonicalLocalArchive } from "../archives/localArchive";
 import { inspectAddonArchive } from "../archives/ArchiveInspector";
 import { getTocForGameType2 } from "../utils/toc";
 import { getClientTypeLabel } from "../utils/gametype";
 import { gameVersionForInstallation } from "../utils/gameversion";
 import { WOWUP_DATA_ADDON_FOLDER_NAME } from "../notifications/constants";
-import { PROVIDER_ID, providerDisplayName } from "../../api/providers";
-import { autoUpdateCandidate, needsUpdate } from "./addonStatus";
+import { PROVIDER_ID } from "../../api/providers";
+import { needsUpdate, updateStatus } from "./addonStatus";
 import {
   WARNING_FOLDERS_MISSING,
   WARNING_NOT_ON_PROVIDER,
@@ -50,33 +50,36 @@ import {
   missingDependencies,
   listedIgnoreReason,
   toWireAddon,
-  toWireSearchResult,
   toWireUnmanaged,
 } from "./wire";
 
 export interface ServiceEvents {
   addonsChanged: (addonIds: string[]) => void;
-  operationProgress: (progress: import("../../api/contracts").OperationProgress) => void;
   operationResult: (result: OperationResult) => void;
   /** An automatic update ran (WF-02). */
   autoUpdated?: (result: AutoUpdateResult) => void;
 }
 
 
-/** Serialized mutation queue (replaces WowUp's rxjs install queue). */
+/**
+ * Serialized mutation queue (replaces WowUp's rxjs install queue), and the
+ * only holder of the writable records: a change gets them by running a
+ * turn, so no record changes outside one.
+ */
 class Gate {
   #chain: Promise<unknown> = Promise.resolve();
 
-  run<T>(fn: () => Promise<T>): Promise<T> {
-    const next = this.#chain.then(fn, fn);
+  constructor(private records: AddonRecords) {}
+
+  run<T>(fn: (records: AddonRecords) => T | Promise<T>): Promise<T> {
+    const turn = () => fn(this.records);
+    const next = this.#chain.then(turn, turn);
     this.#chain = next.catch(() => {});
     return next;
   }
 }
 
 
-/** Results kept from each provider for one search. */
-const SEARCH_RESULTS_PER_PROVIDER = 10;
 /** Ids looked up in one addons.lookup call (a dependency list, the Relationships page). */
 const LOOKUP_MAX_IDS = 50;
 
@@ -138,15 +141,6 @@ const INSTALL_INTENTS: Record<
   adopt: { status: "installed", dependencyFlag: "clear", stampUpdate: false, broadcast: true, withDependencies: true, keepPrevious: "always" },
   source: { status: "installed", dependencyFlag: "keep", stampUpdate: false, broadcast: true, withDependencies: true, keepPrevious: "existing" },
 };
-
-/**
- * Whether a release installs the folder, as far as its listing tells: a
- * release that lists no folders (WoWInterface's) may, and the installer
- * checks its archive (InstallOptions.requiredFolder).
- */
-function installsFolder(file: AddonSearchResultFile | undefined, folder: string): boolean {
-  return !!file && (file.folders.length === 0 || file.folders.includes(folder));
-}
 
 /** A failed operation's result (not broadcast; see AddonService#fail). */
 function failedOperation(operationId: string, addonId: string | null, err: unknown): OperationResult {
@@ -233,7 +227,12 @@ export function unmanagedFolders(folders: AddonFolder[], records: AddonRecord[])
 export class AddonService {
   #installer: AddonInstaller;
   #remover = new AddonRemover();
-  #gate = new Gate();
+  /** Record changes run here, one at a time (Gate). */
+  readonly #gate: Gate;
+  /** Record lookups; writes go through the gate. */
+  readonly #records: AddonRecordReader;
+  /** Settings and installations; the records are not reachable from here. */
+  private store: Omit<StateStore, "addons">;
   #opCounter = 0;
   /**
    * Scratch root for archive previews (addons.inspectArchive): on the
@@ -248,16 +247,25 @@ export class AddonService {
   readonly portability: AddonListPortability;
 
   constructor(
-    private store: StateStore,
+    store: StateStore,
     private registry: ProviderRegistry,
     downloads: DownloadService,
     private events: ServiceEvents,
     installations?: InstallationService,
     inspectRoot: string = join(tmpdir(), "wowdeck-inspect"),
   ) {
+    this.store = store;
+    this.#records = store.addons;
+    this.#gate = new Gate(store.addons);
     this.#installer = new AddonInstaller(downloads);
     this.#inspectRoot = inspectRoot;
-    this.installations = installations ?? new InstallationService(store, () => events.addonsChanged([]));
+    this.installations =
+      installations ??
+      new InstallationService(
+        store,
+        (installationId) => this.#gate.run((records) => records.removeForInstallation(installationId)),
+        () => events.addonsChanged([]),
+      );
     this.portability = new AddonListPortability((installationId) => this.addonsFor(installationId), registry);
   }
 
@@ -265,7 +273,7 @@ export class AddonService {
 
   /** Full scan: folders, fingerprints, provider matching; reconciles records. */
   async scanInstallation(installation: WowInstallation): Promise<AddonRecord[]> {
-    return this.#gate.run(async () => {
+    return this.#gate.run(async (records) => {
       const folders = await scanAddons(installation);
       await computeWowUpFingerprints(folders);
 
@@ -286,14 +294,19 @@ export class AddonService {
         }
       }
 
-      this.reconcileRecords(installation, folders, matches);
+      this.reconcileRecords(records, installation, folders, matches);
       return this.addonsFor(installation.id);
     });
   }
 
   /** Merge provider matches into persisted records. */
-  private reconcileRecords(installation: WowInstallation, folders: AddonFolder[], matches: Map<string, ScanMatch>): void {
-    const records = this.store.addons.forInstallation(installation.id);
+  private reconcileRecords(
+    records: AddonRecords,
+    installation: WowInstallation,
+    folders: AddonFolder[],
+    matches: Map<string, ScanMatch>,
+  ): void {
+    const installed = records.forInstallation(installation.id);
     // Two groups can land on the same record (folder overlap): each sees the
     // other's changes, and all of them are written once at the end.
     const pending = new Map<string, AddonPatch>();
@@ -328,7 +341,7 @@ export class AddonService {
       const release = group.match.installedFile ?? group.match.latestFile;
       for (const name of release.folders) {
         const folder = folderByName.get(name);
-        const ownedByOther = records.some(
+        const ownedByOther = installed.some(
           (r) => `${r.providerName}:${r.externalId}` !== key && r.installedFolderList?.includes(name),
         );
         if (folder && !claimed.has(name) && !ownedByOther && folder.ignoreReason === undefined) {
@@ -341,8 +354,8 @@ export class AddonService {
     for (const [key, { folders: groupFolders, match }] of groups) {
       const folderNames = groupFolders.map((f) => f.name);
       const found =
-        records.find((r) => `${r.providerName}:${r.externalId}` === key) ??
-        records.find((r) => current(r).installedFolderList?.some((f) => folderNames.includes(f)));
+        installed.find((r) => `${r.providerName}:${r.externalId}` === key) ??
+        installed.find((r) => current(r).installedFolderList?.some((f) => folderNames.includes(f)));
 
       const toc = this.pickToc(installation, groupFolders);
 
@@ -365,14 +378,14 @@ export class AddonService {
     }
 
     const present = new Set(folders.map((f) => f.name));
-    for (const record of records) {
+    for (const record of installed) {
       const patch = folderStatePatch(current(record), present);
       if (patch) {
         change(record.id, patch);
       }
     }
-    this.store.addons.patchMany([...pending].map(([id, patch]) => ({ id, patch })));
-    this.store.addons.createMany(created);
+    records.patchMany([...pending].map(([id, patch]) => ({ id, patch })));
+    records.createMany(created);
   }
 
   private pickToc(installation: WowInstallation, folders: AddonFolder[]) {
@@ -394,26 +407,27 @@ export class AddonService {
    * are handled concurrently, see JsonlServer.run).
    */
   listAddons(installation: WowInstallation): Promise<Addon[]> {
-    return this.#gate.run(() => this.#listAddons(installation));
+    return this.#gate.run((records) => this.#listAddons(records, installation));
   }
 
-  async #listAddons(installation: WowInstallation): Promise<Addon[]> {
+  async #listAddons(records: AddonRecords, installation: WowInstallation): Promise<Addon[]> {
     const folders = await scanAddons(installation);
     const present = new Set(folders.map((f) => f.name));
-    this.store.addons.patchMany(
-      this.addonsFor(installation.id).flatMap((record) => {
+    records.patchMany([
+      ...records.forInstallation(installation.id).flatMap((record) => {
         const patch = folderStatePatch(record, present);
         return patch ? [{ id: record.id, patch }] : [];
       }),
-    );
-    const records = this.addonsFor(installation.id);
-    const unmanaged = unmanagedFolders(folders, records).map((f) => toWireUnmanaged(f, installation, present));
+      ...await this.#staleRollbackPatches(records, installation),
+    ]);
+    const listed = records.forInstallation(installation.id);
+    const unmanaged = unmanagedFolders(folders, listed).map((f) => toWireUnmanaged(f, installation, present));
 
     const folderByName = new Map(folders.map((f) => [f.name, f]));
     // WF-22: who requires whom, from the dependencies recorded at install.
-    const dependants = dependantsIndex(records);
-    const managed = records.map((record) => {
-      const wire = this.wire(record);
+    const dependants = dependantsIndex(listed);
+    const managed = listed.map((record) => {
+      const wire = this.#wire(record);
       wire.neededBy = dependants(record).map((r) => r.name);
       // The record does not keep the TOC; read the main folder's, as for
       // unmanaged rows (WF-11). Dependencies on the addon's own folders
@@ -437,6 +451,33 @@ export class AddonService {
     return [...managed, ...unmanaged];
   }
 
+  /**
+   * Rollback labels with no kept copy behind them (#33): the label lives
+   * on the record, but the cache decides whether Roll back can work.
+   * Anything that loses the kept folders without clearing the label (the
+   * cache folder moved, the dot folder deleted by hand, a keep that
+   * failed after removing the old copy) leaves an offer that cannot
+   * work; the list drops it instead of showing it — the same
+   * reconciliation folderStatePatch runs for folder warnings. Costs one
+   * small meta.json read per labelled record; records without a label
+   * (most of them) read nothing.
+   */
+  async #staleRollbackPatches(
+    records: AddonRecordReader,
+    installation: WowInstallation,
+  ): Promise<{ id: string; patch: AddonPatch }[]> {
+    const labeled = records.forInstallation(installation.id).filter((record) => record.rollbackVersion);
+    const checked = await Promise.all(
+      labeled.map(
+        async (record): Promise<{ id: string; patch: AddonPatch } | null> =>
+          (await readPrevious(installation, record.id))
+            ? null
+            : { id: record.id, patch: { rollbackVersion: undefined } },
+      ),
+    );
+    return checked.filter((entry): entry is { id: string; patch: AddonPatch } => entry !== null);
+  }
+
   /** A failed operation, broadcast like every finished one, and returned. */
   #fail(operationId: string, addonId: string | null, err: unknown): OperationResult {
     const operation = failedOperation(operationId, addonId, err);
@@ -445,122 +486,16 @@ export class AddonService {
   }
 
   addonsFor(installationId: string): AddonRecord[] {
-    return this.store.addons.forInstallation(installationId);
+    return this.#records.forInstallation(installationId);
   }
 
   /**
-   * The same "is there a real update" definition used everywhere else
-   * (`needsUpdate`, which already excludes ignored addons), narrowed by
-   * one rule the in-game notification bridge and the update toast need:
-   * an addon whose provider has since been disabled in Options must not
-   * keep presenting whatever `latestVersion` was fetched before it was
-   * disabled. Both are presentations of this eligible-update set, never
-   * a separate definition of what counts as an update.
+   * The updates on offer in an installation (updateStatus): what Update
+   * all updates and what the toast, the update summary and the in-game
+   * bridge count.
    */
   eligibleUpdatesFor(installation: WowInstallation): AddonRecord[] {
-    return this.addonsFor(installation.id).filter((addon) => {
-      if (!needsUpdate(addon)) {
-        return false;
-      }
-      if (addon.providerName && !this.registry.usable(addon.providerName)) {
-        return false;
-      }
-      return true;
-    });
-  }
-
-  // ---- search ----
-
-  async search(
-    query: string,
-    installation: WowInstallation,
-    providerId?: string,
-  ): Promise<{ results: SearchResult[]; providerErrors: Array<{ providerId: string; error: string }> }> {
-    if (!query.trim()) {
-      return { results: [], providerErrors: [] };
-    }
-    const providers = providerId
-      ? [this.registry.usable(providerId)].filter((p): p is NonNullable<typeof p> => !!p)
-      : this.#catalogProviders();
-    const { results, providerErrors } = await this.#searchProviders(
-      providers,
-      [query],
-      installation,
-      SEARCH_RESULTS_PER_PROVIDER,
-    );
-    return {
-      results: results
-        .map((r) => this.wireResult(r, installation))
-        .sort((a, b) => (b.downloadCount ?? 0) - (a.downloadCount ?? 0)),
-      providerErrors,
-    };
-  }
-
-  /** Providers in the name search (GitHub and WoWInterface only resolve URLs). */
-  #catalogProviders(): AddonProvider[] {
-    return this.registry.available().filter((p) => p.catalogSearch);
-  }
-
-  /**
-   * Every provider searched for every query, in parallel, keeping the first
-   * `perProvider` results of each answer, each addon once. A provider that
-   * fails never stops the others; it is reported in providerErrors so the UI
-   * can tell a failure from an empty result.
-   */
-  async #searchProviders(
-    providers: AddonProvider[],
-    queries: string[],
-    installation: WowInstallation,
-    perProvider = Infinity,
-  ): Promise<{ results: AddonSearchResult[]; providerErrors: Array<{ providerId: string; error: string }> }> {
-    const found = new Map<string, AddonSearchResult>();
-    const providerErrors: Array<{ providerId: string; error: string }> = [];
-    await Promise.all(
-      providers.map(async (provider) => {
-        try {
-          for (const query of queries) {
-            for (const r of (await provider.searchByQuery(query, installation)).slice(0, perProvider)) {
-              found.set(`${r.providerName}:${r.externalId}`, r);
-            }
-          }
-        } catch (err) {
-          console.error(`[service] search failed for ${provider.name}: ${String(err)}`);
-          providerErrors.push({ providerId: provider.name, error: err instanceof Error ? err.message : String(err) });
-        }
-      }),
-    );
-    return { results: [...found.values()], providerErrors };
-  }
-
-  /**
-   * Install from URL: resolves a pasted GitHub/WowInterface URL,
-   * GitHub owner/repo shorthand, Nix-style github:owner/repo reference,
-   * or a direct https link to an addon archive (WF-09), directly,
-   * independent of the normal catalog search dispatch above, through
-   * the provider's own
-   * searchByQuery. Works while the provider is turned off in Options, as
-   * upstream's dispatcher does (owner, 2026-10-21): the install goes
-   * through too (see install), and My Addons tags the addon "Source off".
-   */
-  async resolveUrlImport(url: string, installation: WowInstallation): Promise<SearchResult> {
-    const trimmed = url.trim();
-    if (!trimmed) {
-      throw new ValidationError("Enter a URL or owner/repository first");
-    }
-    const providerId = identifyUrlImportProvider(trimmed);
-    if (!providerId) {
-      throw new ValidationError("That isn't a GitHub or WoWInterface address, or an https link to a .zip, .rar or .7z file");
-    }
-    const provider = this.registry.get(providerId);
-    if (!provider) {
-      throw new NotFoundError("provider", providerId);
-    }
-    const results = await provider.searchByQuery(trimmed, installation);
-    const result = results[0];
-    if (!result) {
-      throw new NotFoundError("addon for url", trimmed);
-    }
-    return this.wireResult(result, installation);
+    return this.addonsFor(installation.id).filter((addon) => updateStatus(addon, this.registry).canUpdate);
   }
 
   // ---- install from a local file (Manual Install, From a file) ----
@@ -597,32 +532,26 @@ export class AddonService {
   // ---- unmanaged folders: find an online source (WF-23) ----
 
   /**
-   * Online sources for an unmanaged folder: the catalog providers searched
-   * by its TOC title, its folder name and the addons its TOC requires (a
-   * sub-folder such as OmniCC_Config names its main addon only there; DEVICE
-   * 2026-10-21), keeping only addons whose
-   * release (on the installation's default channel) installs that folder,
-   * so adopting one replaces it. An exact name first, then by downloads.
+   * What finding online sources for an unmanaged folder searches with
+   * (Catalogue.findSources): its TOC title, its folder name and the addons
+   * its TOC requires (a sub-folder such as OmniCC_Config names its main
+   * addon only there; DEVICE 2026-10-21).
    */
-  async findSources(
-    installation: WowInstallation,
-    folderName: string,
-  ): Promise<{ results: SearchResult[]; providerErrors: Array<{ providerId: string; error: string }> }> {
+  async sourceRequestForFolder(installation: WowInstallation, folderName: string): Promise<SourceRequest> {
     const folder = await this.#requireUnmanagedFolder(installation, folderName);
     const toc = getTocForGameType2(folder, installation.clientType);
     const required = (toc?.dependencyList ?? []).filter((d) => !/^blizzard_/i.test(d));
-    return this.#sources(installation, folderName, toc, [toc?.title, folderName, ...required]);
+    return { installation, folderName, toc, queries: [toc?.title, folderName, ...required] };
   }
 
   /**
-   * The other providers' copies of a managed addon (WF-12): as findSources,
-   * for its main folder, searched by its TOC title, its name and the folder
-   * name; its own provider left out. A missing folder leaves only the names.
+   * What finding a managed addon's copies on other providers searches with
+   * (WF-12): its main folder, searched by its TOC title, its name and the
+   * folder name; its own provider left out. A missing folder leaves only
+   * the names.
    */
-  async findOtherSources(
-    addonId: string,
-  ): Promise<{ results: SearchResult[]; providerErrors: Array<{ providerId: string; error: string }> }> {
-    const addon = this.store.addons.require(addonId);
+  async sourceRequestForAddon(addonId: string): Promise<SourceRequest> {
+    const addon = this.#records.require(addonId);
     const installation = this.installations.require(addon.installationId);
     const folderName = recordFolders(addon)[0];
     if (!folderName) {
@@ -630,82 +559,7 @@ export class AddonService {
     }
     const folder = (await scanAddons(installation)).find((f) => f.name === folderName);
     const toc = folder && getTocForGameType2(folder, installation.clientType);
-    return this.#sources(installation, folderName, toc, [toc?.title, addon.name, folderName], addon);
-  }
-
-  /**
-   * Sources whose release (on the installation's default channel) installs
-   * `folderName`, so using one replaces it: the addons the TOC's project ids
-   * name (tocSources) and the catalog search for `queries`. TOC-named
-   * first, then exactly named, then by downloads. `own`: the addon whose provider
-   * is left out.
-   */
-  async #sources(
-    installation: WowInstallation,
-    folderName: string,
-    toc: Toc | undefined,
-    queries: (string | undefined)[],
-    own?: AddonRecord,
-  ): Promise<{ results: SearchResult[]; providerErrors: Array<{ providerId: string; error: string }> }> {
-    const terms = [...new Set(queries.filter((q): q is string => !!q?.trim()))];
-    const [searched, named] = await Promise.all([
-      this.#searchProviders(this.#catalogProviders(), terms, installation),
-      this.#tocSources(installation, toc),
-    ]);
-    const key = (r: { providerName?: string; externalId?: string }) => `${r.providerName}:${r.externalId}`;
-    const byKey = new Map(
-      [...searched.results, ...named.results]
-        // A switch is to another provider's copy: on its own one, other
-        // entries are forks or other editions (DEVICE 2026-10-22: Details!'s
-        // were its Burning Crusade and Shadowlands beta projects).
-        .filter((r) => r.providerName !== own?.providerName)
-        .map((r) => [key(r), r]),
-    );
-    const names = new Set(terms.map((q) => q.toLowerCase()));
-    const tocNamed = new Set(named.results.map(key));
-    // The TOC's id is the author's own word on which addon it is; a name can be shared.
-    const first = (r: AddonSearchResult) => 2 * Number(tocNamed.has(key(r))) + Number(names.has(r.name.toLowerCase()));
-    const results = [...byKey.values()]
-      .filter((r) => installsFolder(latestFile(r.files, installation.defaultAddonChannelType), folderName))
-      .sort(
-        (a, b) =>
-          first(b) - first(a) || (b.downloadCount ?? 0) - (a.downloadCount ?? 0) || a.name.localeCompare(b.name),
-      );
-    return {
-      results: results.map((r) => this.wireResult(r, installation)),
-      providerErrors: [...searched.providerErrors, ...named.providerErrors],
-    };
-  }
-
-  /**
-   * The addons a TOC names by project id (AddonProvider.tocId), one per
-   * provider that is on, each asked by id. A provider that fails is
-   * reported, like a failed search.
-   */
-  async #tocSources(
-    installation: WowInstallation,
-    toc: Toc | undefined,
-  ): Promise<{ results: AddonSearchResult[]; providerErrors: Array<{ providerId: string; error: string }> }> {
-    const results: AddonSearchResult[] = [];
-    const providerErrors: Array<{ providerId: string; error: string }> = [];
-    await Promise.all(
-      this.registry.available().map(async (provider) => {
-        const id = toc && provider.tocId(toc);
-        if (!id || !provider.isValidAddonId(id)) {
-          return;
-        }
-        try {
-          const result = await provider.getById(id, installation);
-          if (result) {
-            results.push(result);
-          }
-        } catch (err) {
-          console.error(`[service] lookup by TOC id failed for ${provider.name}: ${String(err)}`);
-          providerErrors.push({ providerId: provider.name, error: err instanceof Error ? err.message : String(err) });
-        }
-      }),
-    );
-    return { results, providerErrors };
+    return { installation, folderName, toc, queries: [toc?.title, addon.name, folderName], ownProvider: addon.providerName };
   }
 
   /**
@@ -719,18 +573,18 @@ export class AddonService {
     folderName: string,
     providerId: string,
     externalId: string,
-  ): Promise<{ addon: AddonRecord; operation: OperationResult }> {
-    return this.#gate.run(async () => {
+  ): Promise<AddonOperation> {
+    return this.#wired(this.#gate.run(async (records) => {
       const folder = await this.#requireUnmanagedFolder(installation, folderName);
       const version = getTocForGameType2(folder, installation.clientType)?.version;
-      return this.#installUnlocked({
+      return this.#installUnlocked(records, {
         intent: "adopt",
         providerId,
         externalId,
         installation,
         adopt: { folder: folderName, version },
       });
-    });
+    }));
   }
 
   /**
@@ -744,18 +598,18 @@ export class AddonService {
     addonId: string,
     providerId: string,
     externalId: string,
-  ): Promise<{ addon: AddonRecord; operation: OperationResult }> {
-    return this.#gate.run(async () => {
-      const addon = this.store.addons.require(addonId);
+  ): Promise<AddonOperation> {
+    return this.#wired(this.#gate.run(async (records) => {
+      const addon = records.require(addonId);
       const installation = this.installations.require(addon.installationId);
-      const other = this.store.addons.find(installation.id, providerId, externalId);
+      const other = records.find(installation.id, providerId, externalId);
       if (other) {
         throw new ValidationError(
           other.id === addon.id ? `${addon.name} already updates from there` : `${other.name} from there is already installed`,
         );
       }
-      return this.#installUnlocked({ intent: "source", providerId, externalId, installation, replaces: addon });
-    });
+      return this.#installUnlocked(records, { intent: "source", providerId, externalId, installation, replaces: addon });
+    }));
   }
 
   /**
@@ -778,32 +632,7 @@ export class AddonService {
     return folder;
   }
 
-  // ---- Discover/Browse ----
-
-  /**
-   * One page of a source's Latest or Popular list (Get Addons). One source
-   * at a time, picked in the list's Source menu: upstream joins every
-   * source into one list and shows an addon two sources host twice.
-   */
-  async discover(
-    list: DiscoverList,
-    providerId: string,
-    installation: WowInstallation,
-    index: number,
-    pageSize: number,
-    categoryId?: string,
-  ): Promise<{ results: SearchResult[]; totalCount: number }> {
-    const provider = this.registry.usable(providerId);
-    if (!provider?.discovers) {
-      throw new ProviderError(
-        providerId,
-        `${providerDisplayName(providerId)} isn't available. Turn it on in Options › Addon sources`,
-        "provider_unavailable",
-      );
-    }
-    const { results, totalCount } = await provider.getDiscoverPage(list, installation, index, pageSize, categoryId);
-    return { results: results.map((r) => this.wireResult(r, installation)), totalCount };
-  }
+  // ---- Details Relationships page ----
 
   /** Names for provider ids (Details Relationships page), and whether each is installed here. */
   async lookup(
@@ -812,7 +641,7 @@ export class AddonService {
     installation: WowInstallation,
   ): Promise<{ externalId: string; name: string; thumbnailUrl: string | null; installed: boolean }[]> {
     const provider = this.registry.usable(providerId);
-    if (!provider || externalIds.length === 0) {
+    if (!provider?.getAll || externalIds.length === 0) {
       return [];
     }
     const ids = externalIds.slice(0, LOOKUP_MAX_IDS).filter((id) => provider.isValidAddonId(id));
@@ -830,53 +659,11 @@ export class AddonService {
     }));
   }
 
-  // ---- Addon Details modal ----
-  // Generic across providers (unlike Discover/Browse): every AddonProvider
-  // has a getDescription/getChangelog, defaulting to "unsupported"
-  // (undefined) on the base class, so this doesn't need a Curse-specific
-  // guard the way discoverLatest/Popular do.
-
-  async getAddonDescription(providerId: string, externalId: string): Promise<string | null> {
-    const provider = this.registry.get(providerId);
-    if (!provider) {
-      throw new NotFoundError("provider", providerId);
-    }
-    const description = await provider.getDescription(externalId);
-    return description || null;
-  }
-
-  async getAddonChangelog(
-    providerId: string,
-    externalId: string,
-    installation: WowInstallation,
-  ): Promise<string | null> {
-    const provider = this.registry.get(providerId);
-    if (!provider) {
-      throw new NotFoundError("provider", providerId);
-    }
-    const changelog = await provider.getChangelog(externalId, installation);
-    return changelog || null;
-  }
-
-  // ---- Category filtering ----
-  // Generic across providers, same reasoning as Description/Changelog
-  // above: every AddonProvider has getCategories, defaulting to
-  // "unsupported" (undefined) on the base class.
-
-  async getCategories(providerId: string, installation: WowInstallation): Promise<ProviderCategory[] | null> {
-    const provider = this.registry.get(providerId);
-    if (!provider) {
-      throw new NotFoundError("provider", providerId);
-    }
-    const categories = await provider.getCategories(installation);
-    return categories ?? null;
-  }
-
   // ---- provider metadata sync (update checks) ----
 
   async refresh(installation: WowInstallation): Promise<{ updated: number; failed: number }> {
-    return this.#gate.run(async () => {
-      const managed = this.addonsFor(installation.id).filter((a) => !!a.providerName && !a.isIgnored);
+    return this.#gate.run(async (records) => {
+      const managed = records.forInstallation(installation.id).filter((a) => !!a.providerName && !a.isIgnored);
       let failed = 0;
 
       const byProvider = new Map<string, AddonRecord[]>();
@@ -888,7 +675,7 @@ export class AddonService {
 
       for (const [providerName, addons] of byProvider) {
         const provider = this.registry.usable(providerName);
-        if (!provider?.checksForUpdates) {
+        if (!provider?.getAll) {
           continue;
         }
         try {
@@ -922,7 +709,7 @@ export class AddonService {
               },
             });
           }
-          this.store.addons.patchMany(patches);
+          records.patchMany(patches);
         } catch (err) {
           failed += addons.length;
           console.error(`[service] refresh failed for ${providerName}: ${String(err)}`);
@@ -940,12 +727,15 @@ export class AddonService {
    * INSTALL_INTENTS). One install at a time (the gate); a required
    * dependency is installed inside the same turn.
    */
-  async install(request: InstallRequest): Promise<{ addon: AddonRecord; operation: OperationResult }> {
-    return this.#gate.run(() => this.#installUnlocked(request));
+  async install(request: InstallRequest): Promise<AddonOperation> {
+    return this.#wired(this.#gate.run((records) => this.#installUnlocked(records, request)));
   }
 
   /** The install itself; callers hold the gate (`Gate.run` is not reentrant). */
-  async #installUnlocked(request: InstallRequest): Promise<{ addon: AddonRecord; operation: OperationResult }> {
+  async #installUnlocked(
+    records: AddonRecords,
+    request: InstallRequest,
+  ): Promise<{ addon: AddonRecord; operation: OperationResult }> {
     const { providerId, externalId, installation } = request;
     const intent = INSTALL_INTENTS[request.intent];
     // Configured is enough here: a source turned off still installs what the
@@ -964,7 +754,7 @@ export class AddonService {
       throw new NotFoundError("addon on provider", externalId);
     }
 
-    const existing = request.replaces ?? this.store.addons.find(installation.id, providerId, externalId);
+    const existing = request.replaces ?? records.find(installation.id, providerId, externalId);
     if (request.channel !== undefined && !provider.allowChannelChange) {
       throw new ValidationError(`${provider.name} has no release channels`);
     }
@@ -1019,7 +809,6 @@ export class AddonService {
         searchResult,
         provider,
         operationId,
-        onProgress: intent.broadcast ? (progress) => this.events.operationProgress(progress) : () => {},
         // An install over files on disk keeps the previous version
         // (BEYOND-02); the installer leaves the kept one alone for a
         // reinstall of the same release.
@@ -1043,8 +832,8 @@ export class AddonService {
       ...(intent.stampUpdate ? { lastUpdatedAt: Date.now() } : {}),
     };
     const installed = existing
-      ? this.store.addons.patch(existing.id, changes)
-      : this.store.addons.create({ ...addon, ...changes });
+      ? records.patch(existing.id, changes)
+      : records.create({ ...addon, ...changes });
 
     // Required dependencies install with it (apt/pacman-style: marked as
     // automatically installed, see removeAddon()'s autoremove), one level
@@ -1052,10 +841,10 @@ export class AddonService {
     const missingRequiredDependencies: string[] = [];
     if (intent.withDependencies) {
       for (const dep of addon.dependencies ?? []) {
-        if (this.store.addons.find(installation.id, providerId, dep.externalAddonId)) {
+        if (records.find(installation.id, providerId, dep.externalAddonId)) {
           continue;
         }
-        const installed = await this.#installUnlocked({
+        const installed = await this.#installUnlocked(records, {
           intent: "dependency",
           providerId,
           externalId: dep.externalAddonId,
@@ -1082,8 +871,31 @@ export class AddonService {
     return { addon: installed, operation };
   }
 
-  async updateAddon(addonId: string): Promise<{ addon: AddonRecord; operation: OperationResult }> {
-    const addon = this.store.addons.require(addonId);
+  /**
+   * Update one addon to its latest release. The provider read and the
+   * install are one gate turn, so nothing changes the record between them.
+   */
+  async updateAddon(addonId: string): Promise<AddonOperation> {
+    return this.#wired(this.#gate.run((records) => this.#updateUnlocked(records, addonId)));
+  }
+
+  /**
+   * Update one addon of a list picked before its turn (Update all,
+   * automatic updates), if it still qualifies when the turn comes: one
+   * ignored or paused meanwhile is left alone (null).
+   */
+  #updateIfStill(
+    addonId: string,
+    qualifies: (addon: AddonRecord) => boolean,
+  ): Promise<{ addon: AddonRecord; operation: OperationResult } | null> {
+    return this.#gate.run((records) => {
+      const addon = records.get(addonId);
+      return addon && qualifies(addon) ? this.#updateUnlocked(records, addonId) : null;
+    });
+  }
+
+  async #updateUnlocked(records: AddonRecords, addonId: string): Promise<{ addon: AddonRecord; operation: OperationResult }> {
+    const addon = records.require(addonId);
     const installation = this.installations.require(addon.installationId);
     const provider = this.registry.usable(addon.providerName);
     if (!provider) {
@@ -1103,7 +915,7 @@ export class AddonService {
       const flagged =
         addon.warningType === WARNING_FOLDERS_MISSING
           ? addon
-          : this.store.addons.patch(addonId, { warningType: WARNING_NOT_ON_PROVIDER });
+          : records.patch(addonId, { warningType: WARNING_NOT_ON_PROVIDER });
       const operation = this.#fail(this.nextOperationId(), addonId, `addon no longer available on ${provider.name}`);
       return { addon: flagged, operation };
     }
@@ -1114,7 +926,7 @@ export class AddonService {
       // Nothing to install, but what the provider said is kept, as a
       // refresh keeps it. An update writes it with the install, or not at
       // all when the install fails.
-      const current = this.store.addons.patch(addonId, metadata);
+      const current = records.patch(addonId, metadata);
       const operation: OperationResult = {
         operationId: this.nextOperationId(),
         addonId,
@@ -1125,29 +937,29 @@ export class AddonService {
       return { addon: current, operation };
     }
 
-    const { addon: updated, operation } = await this.install({
+    return this.#installUnlocked(records, {
       intent: "update",
       providerId: provider.name,
       externalId: addon.externalId!,
       installation,
     });
-    return { addon: updated, operation };
+  }
+
+  /** A change's answer in wire form, read once the change's turn is over. */
+  async #wired(change: Promise<{ addon: AddonRecord; operation: OperationResult }>): Promise<AddonOperation> {
+    const { addon, operation } = await change;
+    return { addon: this.#wire(addon), operation };
   }
 
   /** The wire form of a record, with what only the service knows (provider capabilities). */
-  wire(addon: AddonRecord): Addon {
+  #wire(addon: AddonRecord): Addon {
     return toWireAddon(addon, {
       canReinstall: this.canReinstall(addon),
       canChangeChannel: this.canChangeChannel(addon),
       sourceOff: !!addon.providerName && !this.registry.usable(addon.providerName),
+      canUpdate: updateStatus(addon, this.registry).canUpdate,
       newlyUpdatedMs: this.store.settings.newlyUpdatedHours * 3_600_000,
     });
-  }
-
-  /** A provider result in wire form, its versions picked for the installation's default channel. */
-  wireResult(result: AddonSearchResult, installation: WowInstallation): SearchResult {
-    const provider = this.registry.get(result.providerName);
-    return toWireSearchResult(result, installation.defaultAddonChannelType, !!provider?.allowChannelChange);
   }
 
   /**
@@ -1173,19 +985,21 @@ export class AddonService {
    * addon stays on its old channel (a failed install writes nothing), so the
    * record never claims a channel whose files are not on disk.
    */
-  async setChannel(addonId: string, channel: AddonChannelType): Promise<{ addon: AddonRecord; operation: OperationResult }> {
-    const addon = this.store.addons.require(addonId);
-    if (!this.canChangeChannel(addon)) {
-      throw new ValidationError(`${addon.name} has no release channels`);
-    }
-    const installation = this.installations.require(addon.installationId);
-    return this.install({
-      intent: "channel",
-      providerId: addon.providerName!,
-      externalId: addon.externalId!,
-      installation,
-      channel,
-    });
+  async setChannel(addonId: string, channel: AddonChannelType): Promise<AddonOperation> {
+    return this.#wired(this.#gate.run((records) => {
+      const addon = records.require(addonId);
+      if (!this.canChangeChannel(addon)) {
+        throw new ValidationError(`${addon.name} has no release channels`);
+      }
+      const installation = this.installations.require(addon.installationId);
+      return this.#installUnlocked(records, {
+        intent: "channel",
+        providerId: addon.providerName!,
+        externalId: addon.externalId!,
+        installation,
+        channel,
+      });
+    }));
   }
 
   /** Managed by a usable provider that allows reinstalling (upstream's canReInstall). */
@@ -1202,22 +1016,31 @@ export class AddonService {
    * when folders are missing: that is the main repair case. Keeps the
    * dependency flag, so autoremove still treats a dependency as one.
    */
-  async reinstall(addonId: string): Promise<{ addon: AddonRecord; operation: OperationResult }> {
-    const addon = this.store.addons.require(addonId);
-    if (!this.canReinstall(addon)) {
-      throw new ValidationError(`${addon.name} can't be reinstalled`);
-    }
-    const installation = this.installations.require(addon.installationId);
-    return this.install({ intent: "reinstall", providerId: addon.providerName!, externalId: addon.externalId!, installation });
+  async reinstall(addonId: string): Promise<AddonOperation> {
+    return this.#wired(this.#gate.run((records) => {
+      const addon = records.require(addonId);
+      if (!this.canReinstall(addon)) {
+        throw new ValidationError(`${addon.name} can't be reinstalled`);
+      }
+      const installation = this.installations.require(addon.installationId);
+      return this.#installUnlocked(records, {
+        intent: "reinstall",
+        providerId: addon.providerName!,
+        externalId: addon.externalId!,
+        installation,
+      });
+    }));
   }
 
   async updateAll(installation: WowInstallation): Promise<OperationResult[]> {
-    const candidates = this.addonsFor(installation.id).filter((a) => needsUpdate(a));
+    const candidates = this.eligibleUpdatesFor(installation);
     const operations: OperationResult[] = [];
     for (const candidate of candidates) {
       try {
-        const { operation } = await this.updateAddon(candidate.id);
-        operations.push(operation);
+        const updated = await this.#updateIfStill(candidate.id, (a) => updateStatus(a, this.registry).canUpdate);
+        if (updated) {
+          operations.push(updated.operation);
+        }
       } catch (err) {
         operations.push(failedOperation(this.nextOperationId(), candidate.id, err));
       }
@@ -1262,9 +1085,9 @@ export class AddonService {
    * follows the files; going back to an older version pauses automatic
    * updates for the addon, going forward to the latest resumes them.
    */
-  async rollback(addonId: string): Promise<{ addon: AddonRecord; operation: OperationResult }> {
-    return this.#gate.run(async () => {
-      const addon = this.store.addons.require(addonId);
+  async rollback(addonId: string): Promise<AddonOperation> {
+    return this.#wired(this.#gate.run(async (records) => {
+      const addon = records.require(addonId);
       const installation = this.installations.require(addon.installationId);
       const operationId = this.nextOperationId();
       try {
@@ -1275,7 +1098,7 @@ export class AddonService {
           folders: [...(addon.installedFolderList ?? [])],
         });
         const installedExternalReleaseId = previous.releaseId ?? undefined;
-        const rolled = this.store.addons.patch(addonId, {
+        const rolled = records.patch(addonId, {
           rollbackVersion: addon.installedVersion ?? "previous version",
           installedVersion: previous.version ?? addon.installedVersion,
           installedExternalReleaseId,
@@ -1296,29 +1119,35 @@ export class AddonService {
       } catch (err) {
         return { addon, operation: this.#fail(operationId, addonId, err) };
       }
-    });
+    }));
   }
 
   async rollbackStatus(): Promise<{ bytes: number; count: number }> {
     return cacheUsage(this.installations.list());
   }
 
-  /** Pause or resume automatic updates for one addon (WF-02). */
-  setAutoUpdatePaused(addonId: string, paused: boolean): AddonRecord {
-    const addon = this.store.addons.patch(addonId, { autoUpdatePaused: paused || undefined, skipReleaseId: undefined });
-    this.events.addonsChanged([addonId]);
-    return addon;
+  /**
+   * Pause or resume automatic updates for one addon (WF-02). Waits for a
+   * running install: one that cleared the pause after it would lose it.
+   */
+  async setAutoUpdatePaused(addonId: string, paused: boolean): Promise<Addon> {
+    const addon = await this.#gate.run((records) => {
+      const addon = records.patch(addonId, { autoUpdatePaused: paused || undefined, skipReleaseId: undefined });
+      this.events.addonsChanged([addonId]);
+      return addon;
+    });
+    return this.#wire(addon);
   }
 
   /** Delete every kept previous version (Options). */
   async clearRollback(): Promise<{ bytes: number; count: number }> {
-    return this.#gate.run(async () => {
+    return this.#gate.run(async (records) => {
       await clearAll(this.installations.list());
-      const changed = this.store.addons
+      const changed = records
         .all()
         .filter((a) => a.rollbackVersion)
         .map((a) => a.id);
-      this.store.addons.patchMany(changed.map((id) => ({ id, patch: { rollbackVersion: undefined } })));
+      records.patchMany(changed.map((id) => ({ id, patch: { rollbackVersion: undefined } })));
       if (changed.length) {
         this.events.addonsChanged(changed);
       }
@@ -1328,7 +1157,7 @@ export class AddonService {
 
   /**
    * Automatic update (WF-02): with the option on, update every candidate
-   * (autoUpdateCandidate) in every installation, one failure never stopping
+   * (updateStatus.canAutoUpdate) in every installation, one failure never stopping
    * the rest. Runs after a check, never on its own timer. Not while WoW is
    * running (same /proc check as the WTF restore): the files would change
    * under a running client. Records the outcome for Options and emits it
@@ -1349,9 +1178,7 @@ export class AddonService {
 
   async #runAutoUpdate(detect: () => Promise<GameRunning>): Promise<AutoUpdateResult | null> {
     const candidates = this.installations.list().flatMap((installation) =>
-      this.addonsFor(installation.id).filter((a) =>
-        autoUpdateCandidate(a, !!this.registry.usable(a.providerName)),
-      ),
+      this.addonsFor(installation.id).filter((a) => updateStatus(a, this.registry).canAutoUpdate),
     );
     if (candidates.length === 0) {
       return null;
@@ -1362,10 +1189,11 @@ export class AddonService {
     } else {
       for (const addon of candidates) {
         try {
-          const { operation } = await this.updateAddon(addon.id);
-          if (operation.status === "updated") {
+          const updated = await this.#updateIfStill(addon.id, (a) => updateStatus(a, this.registry).canAutoUpdate);
+          const operation = updated?.operation;
+          if (operation?.status === "updated") {
             result.updated.push(addon.name);
-          } else if (operation.status === "failed") {
+          } else if (operation?.status === "failed") {
             result.failed.push(addon.name);
           }
         } catch {
@@ -1397,7 +1225,7 @@ export class AddonService {
     for (const c of preview.summary!.comparisons.filter((c) => c.state === "new")) {
       // An earlier entry's install may already have pulled this one in as its
       // dependency (the preview said "new"): it is installed, no second download.
-      const pulledIn = this.store.addons.find(installation.id, c.providerId, c.externalId);
+      const pulledIn = this.#records.find(installation.id, c.providerId, c.externalId);
       const operation: OperationResult = pulledIn
         ? { operationId: this.nextOperationId(), addonId: pulledIn.id, status: "installed", error: null }
         : await this.install({ intent: "import", providerId: c.providerId, externalId: c.externalId, installation }).then(
@@ -1409,21 +1237,23 @@ export class AddonService {
       }
       operations.push({ ...operation, addonName: c.name });
     }
-    const changes = libraryFlagsAfterImport(this.addonsFor(installation.id), imported);
-    this.store.addons.patchMany(changes.map(({ id, isDependency }) => ({ id, patch: { isDependency } })));
-    if (changes.length) {
-      this.events.addonsChanged(changes.map((c) => c.id));
-    }
+    await this.#gate.run((records) => {
+      const changes = libraryFlagsAfterImport(records.forInstallation(installation.id), imported);
+      records.patchMany(changes.map(({ id, isDependency }) => ({ id, patch: { isDependency } })));
+      if (changes.length) {
+        this.events.addonsChanged(changes.map((c) => c.id));
+      }
+    });
     return { operations, error: null };
   }
 
   async removeAddon(addonId: string): Promise<OperationResult> {
-    return this.#gate.run(async () => {
-      const addon = this.store.addons.require(addonId);
+    return this.#gate.run(async (records) => {
+      const addon = records.require(addonId);
       const installation = this.installations.require(addon.installationId);
       const operationId = this.nextOperationId();
       await this.#remover.remove(installation, addon, operationId);
-      this.store.addons.remove(addonId);
+      records.remove(addonId);
       await dropPrevious(installation, addonId);
       const removedIds = [addonId];
 
@@ -1434,7 +1264,7 @@ export class AddonService {
       for (let orphans = orphanedLibraries(this.addonsFor(installation.id)); orphans.length; ) {
         for (const orphan of orphans) {
           await this.#remover.remove(installation, orphan, this.nextOperationId());
-          this.store.addons.remove(orphan.id);
+          records.remove(orphan.id);
           await dropPrevious(installation, orphan.id);
           removedIds.push(orphan.id);
         }
@@ -1451,7 +1281,7 @@ export class AddonService {
   /**
    * Remove an unmanaged addon folder directly from disk. Unmanaged
    * folders have no WowAddon record to look up, so
-   * this is a pure filesystem operation — it never touches store.addons
+   * this is a pure filesystem operation — it never touches the records
    * and never converts the folder into a managed addon. Two safety
    * checks beyond AddonRemover's own atomic trash-then-delete and
    * joinWithin path confinement: the name must be a bare folder name
@@ -1485,7 +1315,7 @@ export class AddonService {
     addonId: string,
   ): Promise<{ addonsPath: string; folders: Array<{ name: string; path: string; present: boolean }> }> {
     const addonsPath = getAddonsPath(installation);
-    const record = this.store.addons.get(addonId);
+    const record = this.#records.get(addonId);
     let names: string[];
     if (record && record.installationId === installation.id) {
       names = recordFolders(record);
@@ -1508,10 +1338,14 @@ export class AddonService {
     return { addonsPath, folders };
   }
 
-  setIgnored(addonId: string, ignored: boolean): AddonRecord {
-    const addon = this.store.addons.patch(addonId, { isIgnored: ignored });
-    this.events.addonsChanged([addonId]);
-    return addon;
+  /** Ignore or stop ignoring one addon (WF-04); waits for a running install, like every record change. */
+  async setIgnored(addonId: string, ignored: boolean): Promise<Addon> {
+    const addon = await this.#gate.run((records) => {
+      const addon = records.patch(addonId, { isIgnored: ignored });
+      this.events.addonsChanged([addonId]);
+      return addon;
+    });
+    return this.#wire(addon);
   }
 
   private nextOperationId(): string {

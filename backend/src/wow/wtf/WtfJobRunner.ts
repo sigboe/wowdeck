@@ -11,7 +11,8 @@
 
 import type { EventMap, WtfJobKind, WtfJobSnapshot, WtfPhase } from "../../api/contracts";
 import { WtfBackupError } from "./errors";
-import type { WtfBackupService, WtfTarget } from "./WtfBackupService";
+import type { RestoreResult, WtfBackupService, WtfTarget } from "./WtfBackupService";
+import { flavorDisplayName } from "./VersionFamilies";
 
 export interface WtfJobEvents {
   progress: (payload: EventMap["wtf.progress"]) => void;
@@ -63,6 +64,40 @@ export class WtfJobRunner {
     );
   }
 
+  /** Settings copy: restore another version's backup (see RestoreOptions.sourceFlavor). */
+  startCopy(
+    target: WtfJobTarget,
+    sourceFlavor: string,
+    fileName: string,
+    options: { keepCurrentConfig?: boolean; acceptUnknownFlavor?: boolean },
+  ): { jobId: string } {
+    return this.#startCopy(target, sourceFlavor, (signal, onProgress) =>
+      this.#service.restoreBackup(target, fileName, { ...options, sourceFlavor, signal, onProgress }),
+    );
+  }
+
+  /** Settings copy of another installation's current settings (see WtfBackupService.copyCurrentSettings). */
+  startCopyCurrent(target: WtfJobTarget, source: WtfTarget, options: { keepCurrentConfig?: boolean }): { jobId: string } {
+    return this.#startCopy(target, source.flavor, (signal, onProgress) =>
+      this.#service.copyCurrentSettings(target, source, { ...options, signal, onProgress }),
+    );
+  }
+
+  /** A "copy" job, completing with the display name of the version the settings came from. */
+  #startCopy(
+    target: WtfJobTarget,
+    sourceFlavor: string,
+    run: (signal: AbortSignal, onProgress: (phase: WtfPhase, done: number, total: number | null) => void) => Promise<RestoreResult>,
+  ): { jobId: string } {
+    return this.#start(
+      "copy",
+      target,
+      (signal, onProgress) =>
+        run(signal, onProgress).then((r) => ({ fileName: r.restoredFileName, snapshotFileName: r.snapshotFileName })),
+      flavorDisplayName(sourceFlavor),
+    );
+  }
+
   cancel(jobId: string): { cancelled: boolean } {
     if (!this.#job || this.#job.jobId !== jobId || !this.#abort) {
       return { cancelled: false };
@@ -81,6 +116,7 @@ export class WtfJobRunner {
       signal: AbortSignal,
       onProgress: (phase: WtfPhase, done: number, total: number | null) => void,
     ) => Promise<{ fileName: string; snapshotFileName: string | null }>,
+    sourceName: string | null = null,
   ): { jobId: string } {
     // Checked synchronously (single-threaded), so two starts can never both pass.
     if (this.#job || this.#service.busy) {
@@ -117,7 +153,7 @@ export class WtfJobRunner {
       throw err;
     }
     void promise.then(
-      (r) => this.#finish(jobId, kind, target, { ...r, error: null }),
+      (r) => this.#finish(jobId, kind, target, { ...r, sourceName, error: null }),
       (err: unknown) => {
         const error =
           err instanceof WtfBackupError
@@ -129,7 +165,7 @@ export class WtfJobRunner {
         if (error.code !== "cancelled") {
           this.#events.failed?.(error.code, error.message);
         }
-        this.#finish(jobId, kind, target, { fileName: null, snapshotFileName: null, error });
+        this.#finish(jobId, kind, target, { fileName: null, snapshotFileName: null, sourceName, error });
       },
     );
     return { jobId };
@@ -139,7 +175,12 @@ export class WtfJobRunner {
     jobId: string,
     kind: WtfJobKind,
     target: WtfJobTarget,
-    outcome: { fileName: string | null; snapshotFileName: string | null; error: { code: string; message: string } | null },
+    outcome: {
+      fileName: string | null;
+      snapshotFileName: string | null;
+      sourceName: string | null;
+      error: { code: string; message: string } | null;
+    },
   ): void {
     this.#job = null;
     this.#abort = null;

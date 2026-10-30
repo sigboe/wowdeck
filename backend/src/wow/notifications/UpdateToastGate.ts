@@ -1,11 +1,12 @@
 /**
  * Decides whether the SteamOS "updates available" toast should fire.
- * The toast itself is a frontend-only concern
+ * Showing it is a frontend-only concern
  * (`@decky/api`'s `toaster.toast`, called from src/index.tsx) — this
  * class owns the actual decision: whether the feature is on, whether
  * it's been checked too recently, and (when a check is actually due)
- * running it across every known installation and counting what's
- * eligible.
+ * running it across every known installation and wording what's
+ * eligible (UpdateToastText). The "too recently" rule and the concurrent-caller guard are
+ * shared with the plugin's own release check (CheckCadence).
  *
  * Deliberately NOT tied to My Addons' navigation lifecycle — the
  * frontend calls `checkNow()` exactly twice: once when the plugin
@@ -15,18 +16,17 @@
 
 import type { AddonService } from "../addons/AddonService";
 import type { StateStore } from "../storage/StateStore";
+import { DAY_MS, isDue, SingleFlight } from "./CheckCadence";
 import type { UpdateCheck } from "./UpdateCheck";
-
-const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+import { updateToastText, type UpdateToast } from "./UpdateToastText";
 
 export interface UpdateToastResult {
-  shouldToast: boolean;
-  updateCount: number;
-  installationCount: number;
+  /** The toast to show, or null when none is due. */
+  toast: UpdateToast | null;
 }
 
 export class UpdateToastGate {
-  #pending: Promise<UpdateToastResult> | null = null;
+  #flight = new SingleFlight<UpdateToastResult>();
 
   constructor(
     private service: AddonService,
@@ -40,16 +40,11 @@ export class UpdateToastGate {
    * instead of running the all-installations refresh twice.
    */
   async checkNow(): Promise<UpdateToastResult> {
-    if (!this.#pending) {
-      this.#pending = this.#run().finally(() => {
-        this.#pending = null;
-      });
-    }
-    return this.#pending;
+    return this.#flight.run(() => this.#run());
   }
 
   async #run(): Promise<UpdateToastResult> {
-    const none: UpdateToastResult = { shouldToast: false, updateCount: 0, installationCount: 0 };
+    const none: UpdateToastResult = { toast: null };
 
     // The daily check also drives automatic updates (WF-02): it runs when
     // either the toast or auto-update is on.
@@ -58,9 +53,8 @@ export class UpdateToastGate {
       return none;
     }
 
-    const last = this.store.settings.lastUpdateCheckAt;
     const now = Date.now();
-    if (last !== null && now - last < ONE_DAY_MS) {
+    if (!isDue(this.store.settings.lastUpdateCheckAt, now, DAY_MS)) {
       return none;
     }
 
@@ -73,16 +67,10 @@ export class UpdateToastGate {
       return none;
     }
 
-    let updateCount = 0;
-    let installationCount = 0;
-    for (const installation of this.service.installations.list()) {
-      const eligible = this.service.eligibleUpdatesFor(installation).length;
-      if (eligible > 0) {
-        updateCount += eligible;
-        installationCount += 1;
-      }
-    }
-
-    return { shouldToast: updateCount > 0, updateCount, installationCount };
+    const installations = this.service.installations.list().map((installation) => ({
+      displayName: installation.displayName,
+      updates: this.service.eligibleUpdatesFor(installation).length,
+    }));
+    return { toast: updateToastText(installations) };
   }
 }

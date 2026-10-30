@@ -10,7 +10,7 @@ Protocol (see backend/src/api/contracts.ts):
   request  -> {"id": 1, "method": "addons.list", "params": {...}}\\n
   response <- {"id": 1, "result": {...}}\\n
              {"id": 1, "error": {"code": "...", "message": "..."}}\\n
-  event    <- {"event": "operation.progress", "params": {...}}\\n
+  event    <- {"event": "operation.completed", "params": {...}}\\n
 
 Events are relayed to the frontend via decky.emit("backend_event", payload).
 """
@@ -119,6 +119,9 @@ class BackendProcess:
                 **_system_environ(),
                 "WOWDECK_CHILD": "1",
                 "WOWDECK_DATA_DIR": data_dir,
+                # The installed plugin folder: about.get reads the bundled
+                # THIRD_PARTY_NOTICES.md from it.
+                "WOWDECK_PLUGIN_DIR": decky.DECKY_PLUGIN_DIR,
                 "HOME": decky.DECKY_USER_HOME,
             }
             # Forwarded as a plain env var rather than leaving the engine to

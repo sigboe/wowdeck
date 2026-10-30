@@ -34,7 +34,7 @@ import {
 import { registerDirectScroll, scrollTweenTarget } from "../valveScroll";
 import { nextGalleryIndex } from "../gallery";
 import { holdBrowseSessionForModal } from "../browseSessionState";
-import { renderMarkdownToSafeHtml } from "../markdown";
+import { SafeMarkdown } from "./SafeMarkdown";
 import { clearModalDimming, stripModalChrome } from "../steamDom/modalChrome";
 
 type Section = "description" | "changelog" | "relationships" | "gallery";
@@ -678,19 +678,7 @@ function DetailsText({
   // Links inside the rendered HTML are pointer-only (U-18): Steam's own
   // news view has the same limit, so there is deliberately no gamepad
   // links row. No scroll container here: the whole modal page scrolls.
-  return (
-    <div
-      className="wowdeck-markdown"
-      onClick={(e) => {
-        const anchor = (e.target as HTMLElement).closest("a");
-        if (anchor?.href) {
-          e.preventDefault();
-          Navigation.NavigateToExternalWeb(anchor.href);
-        }
-      }}
-      dangerouslySetInnerHTML={{ __html: renderMarkdownToSafeHtml(text) }}
-    />
-  );
+  return <SafeMarkdown markdown={text} />;
 }
 
 /**

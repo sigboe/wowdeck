@@ -18,6 +18,12 @@
  * (silverfoxy/decktation), which stages the same way for the same
  * reasons; verified against decky-loader 3.3.0 source.
  *
+ * The stored update answer can outlive its zip: CI prunes older betas
+ * whenever a new one publishes, so the offered asset may answer 404. Only
+ * that 404 asks the update check for a forced answer and stages from it,
+ * once — which may be a different release. Every other failure (offline,
+ * 5xx, rate limited, a damaged or wrong package) is reported as is.
+ *
  * The staged file intentionally outlives the RPC — the native prompt
  * may sit unanswered, and cancelling leaves the file — so stage()
  * first removes our staging files older than a day (SteamOS clears
@@ -29,7 +35,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { unzip } from "fflate";
 import type { NetworkClient } from "../net/network";
-import type { PluginUpdateStatus } from "../notifications/PluginUpdateCheck";
+import type { PluginUpdateCheck, StagingAnswer } from "../notifications/PluginUpdateCheck";
+import { NetworkError } from "../net/network";
 import { InstallError } from "../errors";
 
 export interface StagedUpdate {
@@ -48,25 +55,49 @@ export type StageOutcome = {
 const PLUGIN_NAME = "WoWDeck";
 const STALE_AFTER_MS = 24 * 60 * 60 * 1000;
 
+/** The staged zip's file name for a release version; the stale sweep matches the same prefix. */
+export function stagedFileName(version: string): string {
+  return `wowdeck-update-${version}.zip`;
+}
+
+/** The offered zip answered 404: the stored answer is stale. */
+const GONE = Symbol("gone");
+const DOWNLOAD_FAILED = outcome("download_failed", "Couldn't download the update. Try again");
+
 export class UpdateStager {
   constructor(
     private net: Pick<NetworkClient, "downloadToFile">,
-    private check: { checkOnce(): Promise<PluginUpdateStatus> },
+    /**
+     * The update check's answer with the zip's URL; `refresh` forces a
+     * fresh check. Never spends the toast.
+     */
+    private check: Pick<PluginUpdateCheck, "forStaging">,
     private tokenProvider: () => string | undefined = () => undefined,
     private tempDir: string = tmpdir(),
   ) {}
 
   async stage(): Promise<StageOutcome> {
-    const status = await this.check.checkOnce();
-    if (status.status !== "available" || !status.latestVersion) {
-      return status.status === "current"
+    const first = await this.#stageFrom(await this.check.forStaging());
+    if (first !== GONE) {
+      return first;
+    }
+    // One forced check and one retry, never a loop: a forced answer that
+    // still names the gone zip (or a failed check serving it) fails as is.
+    const retry = await this.#stageFrom(await this.check.forStaging({ refresh: true }));
+    return retry === GONE ? DOWNLOAD_FAILED : retry;
+  }
+
+  async #stageFrom({ status, offer, downloadUrl }: StagingAnswer): Promise<StageOutcome | typeof GONE> {
+    if (offer === null) {
+      return status === "current"
         ? outcome("up_to_date", "WoWDeck is already up to date")
         : outcome("check_unavailable", "Couldn't check for a newer release");
     }
-    if (!status.downloadUrl) {
+    if (!downloadUrl) {
       return outcome("no_download", "The release has no WoWDeck.zip to install");
     }
-    const zipPath = join(this.tempDir, `wowdeck-update-${status.latestVersion}.zip`);
+    const { version } = offer;
+    const zipPath = join(this.tempDir, stagedFileName(version));
     this.#sweepStale(zipPath);
     try {
       const token = this.tokenProvider()?.trim();
@@ -79,12 +110,12 @@ export class UpdateStager {
       const headers: Record<string, string>[] = token
         ? [{ ...accept, Authorization: `Bearer ${token}` }, accept]
         : [accept];
-      const trustedHostsForHeaders = [new URL(status.downloadUrl).hostname];
+      const trustedHostsForHeaders = [new URL(downloadUrl).hostname];
       let failure: unknown;
       let downloaded = false;
       for (const header of headers) {
         try {
-          await this.net.downloadToFile(status.downloadUrl, zipPath, { headers: header, trustedHostsForHeaders });
+          await this.net.downloadToFile(downloadUrl, zipPath, { headers: header, trustedHostsForHeaders });
           downloaded = true;
           break;
         } catch (err) {
@@ -95,15 +126,15 @@ export class UpdateStager {
         console.error(
           `[self-update] download failed: ${failure instanceof Error ? failure.message : String(failure)}`,
         );
-        return outcome("download_failed", "Couldn't download the update. Try again");
+        return failure instanceof NetworkError && failure.status === 404 ? GONE : DOWNLOAD_FAILED;
       }
       const sha256 = sha256OfFile(zipPath);
-      await this.#verifyPackage(zipPath, status.latestVersion);
+      await this.#verifyPackage(zipPath, version);
       chmodSync(zipPath, 0o600);
       console.error(
-        `[self-update] staged WoWDeck ${status.latestVersion} for Decky's installer (sha256 ${sha256.slice(0, 8)}…)`,
+        `[self-update] staged WoWDeck ${version} for Decky's installer (sha256 ${sha256.slice(0, 8)}…)`,
       );
-      return { result: { artifact: `file://${zipPath}`, version: status.latestVersion, sha256 }, error: null };
+      return { result: { artifact: `file://${zipPath}`, version, sha256 }, error: null };
     } catch (err) {
       // Nothing is staged on any failure.
       rmSync(zipPath, { force: true });

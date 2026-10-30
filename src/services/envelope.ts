@@ -28,6 +28,9 @@ export type RpcParams<K extends MethodName> =
     ? [params?: MethodMap[K]["params"]]
     : [params: MethodMap[K]["params"]];
 
+/** The typed engine caller `rpcVia` builds: what a module that talks to the engine is handed. */
+export type Rpc = ReturnType<typeof rpcVia>;
+
 /**
  * A typed caller for every engine method in `MethodMap`, over a raw
  * `(method, params)` transport (main.py's `rpc`). Engine failures arrive

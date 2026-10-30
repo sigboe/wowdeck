@@ -4,7 +4,7 @@
  *       + wowup/wowup-electron/src/common/constants.ts (folder names)
  *       + wowup/wowup-electron/app/services/warcraft/warcraft-platform.service.ts
  *         (getClientTypeForFolderName)
- * Commit: 4fdae600d94ad7dd187a6bc93b517e657100b01a
+ * Commit: 89a0981ad00290d40368bf2a9f60209a40198502
  * Modified: yes — merged TOC tag constants, Toc shape, flavor folder names
  *   and folder-name -> client-type mapping into one module.
  * See docs/wowup-provenance.md.
@@ -65,6 +65,7 @@ export const WOW_RETAIL_PTR_FOLDER = "_ptr_";
 export const WOW_RETAIL_XPTR_FOLDER = "_xptr_";
 export const WOW_RETAIL_FOLDER = "_retail_";
 export const WOW_ANNIVERSARY_FOLDER = "_anniversary_";
+export const WOW_FOREVER_FOLDER = "_forever_";
 export const WOW_ADDON_FOLDER_NAME = "AddOns";
 export const WOW_INTERFACE_FOLDER_NAME = "Interface";
 
@@ -79,6 +80,7 @@ export const WOW_FLAVOR_FOLDERS = [
   WOW_CLASSIC_BETA_FOLDER,
   WOW_RETAIL_XPTR_FOLDER,
   WOW_ANNIVERSARY_FOLDER,
+  WOW_FOREVER_FOLDER,
 ] as const;
 
 export function getClientTypeForFolderName(folderName: string): WowClientType {
@@ -103,6 +105,8 @@ export function getClientTypeForFolderName(folderName: string): WowClientType {
       return WowClientType.ClassicEraPtr;
     case WOW_ANNIVERSARY_FOLDER:
       return WowClientType.Anniversary;
+    case WOW_FOREVER_FOLDER:
+      return WowClientType.Forever;
     default:
       return WowClientType.None;
   }
@@ -130,6 +134,8 @@ export function getFolderNameForClientType(clientType: WowClientType): string | 
       return WOW_CLASSIC_ERA_PTR_FOLDER;
     case WowClientType.Anniversary:
       return WOW_ANNIVERSARY_FOLDER;
+    case WowClientType.Forever:
+      return WOW_FOREVER_FOLDER;
     default:
       return null;
   }

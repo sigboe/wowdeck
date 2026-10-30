@@ -29,6 +29,11 @@ describe("renderMarkdownToSafeHtml", () => {
     expect(html).toContain("<li>one</li>");
   });
 
+  test("a single newline is a line break, unless breaks is off", () => {
+    expect(renderMarkdownToSafeHtml("one\ntwo")).toContain("<br");
+    expect(renderMarkdownToSafeHtml("one\ntwo", { breaks: false })).not.toContain("<br");
+  });
+
   test("renders a link as a real anchor", () => {
     const html = renderMarkdownToSafeHtml("[WowUp](https://wowup.io/)");
     expect(html).toContain('href="https://wowup.io/"');

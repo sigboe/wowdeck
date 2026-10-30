@@ -126,6 +126,25 @@ class VersionFileTests(unittest.TestCase):
             version.set_version("2.0.0")
         self.assertEqual(json.loads((self._tmp / "package.json").read_text())["version"], "0.1.0")
 
+    def test_stamp_writes_a_beta_version_that_check_accepts(self) -> None:
+        self.write({rel: "0.3.0" for rel in version.VERSIONED_FILES})
+        version.stamp_beta("0.3.1-beta.57")
+        self.assertEqual(version.check(), "0.3.1-beta.57")
+        for rel in version.VERSIONED_FILES:
+            self.assertEqual(version.read_version(self._tmp / rel), "0.3.1-beta.57", rel)
+
+    def test_stamp_rejects_anything_but_a_beta_and_touches_nothing(self) -> None:
+        self.write({rel: "0.3.0" for rel in version.VERSIONED_FILES})
+        for candidate in ("0.3.1", "1.0.0-rc1", "0.3.1-beta", "0.3.1-beta.x", "v0.3.1-beta.1"):
+            with self.assertRaises(SystemExit, msg=candidate):
+                version.stamp_beta(candidate)
+        self.assertEqual(version.check(), "0.3.0")
+
+    def test_stamp_is_a_command(self) -> None:
+        self.write({rel: "0.3.0" for rel in version.VERSIONED_FILES})
+        self.assertEqual(version.main(["stamp", "0.3.1-beta.2"]), 0)
+        self.assertEqual(version.check(), "0.3.1-beta.2")
+
 
 class TagTests(unittest.TestCase):
     """make_tag never pushes; these tests stand in for git so they need no repo."""

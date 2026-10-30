@@ -7,6 +7,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { AddonService } from "../src/wow/addons/AddonService";
+import { Catalogue } from "../src/wow/catalogue/Catalogue";
 import { AddonProvider } from "../src/wow/providers/addon-provider";
 import { ProviderRegistry } from "../src/wow/providers/provider-registry";
 import { createStateStore } from "../src/wow/storage/StateStore";
@@ -42,10 +43,9 @@ function makeStack(dataDir: string) {
   registry.attachStore(store);
   const service = new AddonService(store, registry, new DownloadService(new NetworkClient(), join(dataDir, "dl")), {
     addonsChanged: () => {},
-    operationProgress: () => {},
     operationResult: () => {},
   });
-  return { store, registry, service, hub, tukui };
+  return { store, registry, service, catalogue: new Catalogue(registry), hub, tukui };
 }
 
 const installation: WowInstallation = {
@@ -77,16 +77,16 @@ describe("provider enable/disable", () => {
   });
 
   test("disabling a provider removes it from search participation", async () => {
-    const { registry, service, hub, tukui } = makeStack(join(ROOT, "d2"));
+    const { registry, catalogue, hub, tukui } = makeStack(join(ROOT, "d2"));
     registry.setEnabled("TukUI", false);
 
-    await service.search("anything", installation);
+    await catalogue.search("anything", installation);
     expect(hub.searchCalls).toBe(1);
     expect(tukui.searchCalls).toBe(0);
 
     // re-enable restores participation
     registry.setEnabled("TukUI", true);
-    await service.search("anything", installation);
+    await catalogue.search("anything", installation);
     expect(tukui.searchCalls).toBe(1);
   });
 
@@ -169,14 +169,14 @@ describe("allowEdit enforcement", () => {
   test("enabled but not set up is not usable: no search, install, update or reinstall, and the wire says so", async () => {
     const dataDir = join(ROOT, "d9");
     rmSync(dataDir, { recursive: true, force: true });
-    const { store, registry, service, tukui } = makeStack(dataDir);
+    const { store, registry, service, catalogue, tukui } = makeStack(dataDir);
     tukui.isConfigured = () => false;
     tukui.allowReinstall = true;
     expect(registry.usable("TukUI")).toBeUndefined();
     expect(registry.usable("WowUpHub")?.name).toBe("WowUpHub");
     expect(registry.providerInfos().find((p) => p.id === "TukUI")).toMatchObject({ enabled: true, available: false });
 
-    await service.search("anything", installation, "TukUI");
+    await catalogue.search("anything", installation, "TukUI");
     expect(tukui.searchCalls).toBe(0);
     await expect(service.install({ intent: "install", providerId: "TukUI", externalId: "1", installation })).rejects.toThrow(
       "That addon source isn't available",
@@ -230,9 +230,49 @@ describe("allowEdit enforcement", () => {
         latestVersion: "2",
       },
     ]);
-    const record = store.addons.require("a1");
-    expect(service.wire(record)).toMatchObject({ sourceOff: true, updateAvailable: false, availableVersion: null });
+    const listed = async () => (await service.listAddons(installation)).find((a) => a.id === "a1");
+    expect(await listed()).toMatchObject({ sourceOff: true, updateAvailable: false, availableVersion: null });
     tukui.enabled = true;
-    expect(service.wire(record)).toMatchObject({ sourceOff: false, updateAvailable: true, availableVersion: "2" });
+    expect(await listed()).toMatchObject({ sourceOff: false, updateAvailable: true, availableVersion: "2" });
+  });
+
+  test("Update all leaves out an addon whose source is off, and counts what the summary and toast count", async () => {
+    const dataDir = join(ROOT, "d11");
+    rmSync(dataDir, { recursive: true, force: true });
+    const { store, registry, service } = makeStack(dataDir);
+    registry.setEnabled("TukUI", false);
+    store.setInstallations([installation]);
+    store.addons.createMany([
+      {
+        id: "off",
+        name: "From a source that is off",
+        installationId: installation.id,
+        providerName: "TukUI",
+        externalId: "1",
+        channelType: 0,
+        isIgnored: false,
+        isLoadOnDemand: false,
+        installedVersion: "1",
+        latestVersion: "2",
+      },
+      {
+        id: "on",
+        name: "From a source that is on",
+        installationId: installation.id,
+        providerName: "WowUpHub",
+        externalId: "2",
+        channelType: 0,
+        isIgnored: false,
+        isLoadOnDemand: false,
+        installedVersion: "1",
+        latestVersion: "2",
+      },
+    ]);
+
+    const operations = await service.updateAll(installation);
+
+    expect(operations.map((o) => o.addonId)).toEqual(["on"]);
+    expect(service.eligibleUpdatesFor(installation).map((a) => a.id)).toEqual(["on"]);
+    expect(service.updateSummary()[0]?.updates).toBe(1);
   });
 });

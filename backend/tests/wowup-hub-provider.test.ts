@@ -4,10 +4,14 @@ import type { NetworkClient } from "../src/wow/net/network";
 import type { WowInstallation } from "../src/wow/models";
 import { WowClientType } from "../src/wow/types";
 import type { WowUpSearchAddonsResponse } from "../src/wow/providers/wowup-hub/wowup-hub-models";
+import { loadCassette, recorded, ReplayNetwork } from "./providers/cassette";
+import { foreverInstallation } from "./providers/scenarios";
 
-const searchResponse: WowUpSearchAddonsResponse = await Bun.file(
-  import.meta.dir + "/fixtures/providers/wowup-hub/search-elvui.json",
-).json();
+const searchResponse = recorded<WowUpSearchAddonsResponse>(
+  await loadCassette("wowup-hub"),
+  "GET",
+  "https://hub.wowup.io/addons/search/retail",
+);
 
 const BASE = "https://hub.example";
 const WEB = "https://hub.example";
@@ -134,14 +138,19 @@ describe("WowUpHubProvider", () => {
     expect(match?.latestFile.externalId).toBe(String(release.id));
   });
 
-  test("getAll posts batch and reports missing ids", async () => {
-    const rep = searchResponse.addons[0]!;
-    const batchClient = fakeNetwork({
-      [`${BASE}/addons/batch/retail`]: { addons: [rep] },
+  for (const install of [foreverInstallation, { ...foreverInstallation, clientType: WowClientType.ClassicBeta }]) {
+    test(`${WowClientType[install.clientType]} asks the hub for its Forever lists`, async () => {
+      const network = new ReplayNetwork(await loadCassette("wowup-hub-forever"));
+      const hub = new WowUpHubProvider("https://hub.wowup.io", WEB, network);
+
+      const popular = await hub.getDiscoverPage("popular", install, 0, 3);
+      const found = await hub.searchByQuery("questie", install);
+      const { searchResults } = await hub.getAll(install, ["47671", "999999999"]);
+
+      expect(network.misses).toEqual([]);
+      expect(popular.results[0]?.externalId).toBe("47671"); // Questie
+      expect(found[0]?.externalId).toBe("47671");
+      expect(searchResults.map((r) => r.externalId)).toEqual(["47671"]);
     });
-    const batchProvider = new WowUpHubProvider(BASE, WEB, batchClient);
-    const { searchResults, errors } = await batchProvider.getAll(retailInstall, [String(rep.id), "42"]);
-    expect(searchResults.map((r) => r.externalId)).toContain(String(rep.id));
-    expect(errors.some((e) => e.message.includes("42"))).toBe(true);
-  });
+  }
 });

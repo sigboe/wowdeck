@@ -139,8 +139,16 @@ if (DOMPurify.isSupported) {
   });
 }
 
-export function renderMarkdownToSafeHtml(markdown: string): string {
-  const html = marked.parse(markdown, { async: false, gfm: true, breaks: true }) as string;
+/**
+ * `breaks`: a single newline is a line break. On for third-party text
+ * (READMEs and WoWInterface descriptions often rely on it); off for
+ * Markdown the project wrote with wrapped lines (the third-party notices).
+ */
+export function renderMarkdownToSafeHtml(
+  markdown: string,
+  { breaks = true }: { breaks?: boolean } = {},
+): string {
+  const html = marked.parse(markdown, { async: false, gfm: true, breaks }) as string;
   return DOMPurify.sanitize(html, {
     ADD_TAGS: ["iframe"],
     ADD_ATTR: ["allow", "allowfullscreen", "referrerpolicy"],

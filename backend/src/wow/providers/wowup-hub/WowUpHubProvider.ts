@@ -47,7 +47,6 @@ export class WowUpHubProvider extends AddonProvider {
   public readonly allowChannelChange = true;
   public readonly allowEdit = true;
   public enabled = true;
-  public override discovers = true;
 
   /** The featured lists per game type: Get Addons pages through them. */
   #featured = new Map<string, { at: number; lists: Promise<Record<DiscoverList, AddonSearchResult[]>> }>();

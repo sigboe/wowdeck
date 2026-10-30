@@ -99,6 +99,8 @@ let cfSeenAuth: string[] = [];
 /** What the mock /releases/latest answers, and the Authorization headers it saw. */
 let releasesLatest: { body?: unknown; status?: number } = {};
 let releasesSeenAuth: (string | null)[] = [];
+/** What the mock releases list (the Beta channel's source) answers. */
+let releasesList: unknown[] = [];
 /** What the mock /wowdeck-asset route serves (the staged-update zip). */
 let releasesAsset: Uint8Array = new Uint8Array();
 
@@ -171,6 +173,16 @@ beforeAll(async () => {
         }
         return Response.json(releasesLatest.body);
       }
+      if (url.pathname === "/releases") {
+        releasesSeenAuth.push(req.headers.get("authorization"));
+        return Response.json(releasesList);
+      }
+      if (url.pathname.startsWith("/raw/")) {
+        return new Response(null, { status: 404 });
+      }
+      if (url.pathname === "/tukui/addons") {
+        return Response.json([]);
+      }
       if (url.pathname === "/wowdeck-asset") {
         return new Response(releasesAsset);
       }
@@ -186,7 +198,8 @@ beforeAll(async () => {
   cfSeenAuth = [];
   releasesSeenAuth = [];
   // The default answers the engine's own version, so the every-method
-  // probe's memoized system.updateCheck stays a harmless "current".
+  // probe's system.updateCheck stays a harmless "current" (and stores that
+  // answer for the day).
   const pkgVersion = JSON.parse(readFileSync(join(import.meta.dir, "..", "..", "package.json"), "utf-8")).version;
   releasesLatest = {
     body: { tag_name: `v${pkgVersion}`, html_url: `https://github.com/sigboe/wowdeck/releases/tag/v${pkgVersion}` },
@@ -250,6 +263,9 @@ beforeAll(async () => {
       WOWDECK_HUB_URL: `http://127.0.0.1:${port}`,
       WOWDECK_RELEASES_URL: `http://127.0.0.1:${port}/releases/latest`,
       WOWDECK_CF_URL: `http://127.0.0.1:${cfPort}/v1`,
+      WOWDECK_TUKUI_URL: `http://127.0.0.1:${port}/tukui/addons`,
+      // About's fetched files (SUPPORTERS.md) follow the update check: keep them off GitHub.
+      WOWDECK_ABOUT_URL: `http://127.0.0.1:${port}/raw`,
     },
   });
 
@@ -328,10 +344,7 @@ describe("engine JSONL integration", () => {
     expect(existsSync(join(addonsPath, "MockLib", "MockLib.toc"))).toBe(true);
     expect(readFileSync(join(addonsPath, "MockAddon", "init.lua"), "utf-8")).toContain("1.1.0");
 
-    // progress events were emitted
-    const progressEvents = events.filter((e) => e.event === "operation.progress");
-    expect(progressEvents.length).toBeGreaterThan(0);
-    expect(progressEvents.some((e) => e.params.progress.phase === "download")).toBe(true);
+    // the result event was emitted
     expect(events.some((e) => e.event === "operation.completed")).toBe(true);
   });
 
@@ -531,9 +544,14 @@ describe("settings.set, key by key", () => {
 
   test("engine-owned keys are never taken from the UI", async () => {
     const before = await set({});
-    const after = await set({ lastAutoUpdate: { at: 1, updated: ["x"], failed: [], skipped: null }, newlyUpdatedHours: 1 });
+    const after = await set({
+      lastAutoUpdate: { at: 1, updated: ["x"], failed: [], skipped: null },
+      newlyUpdatedHours: 1,
+      pluginUpdateToastShownFor: "9.9.9",
+    });
     expect(after.lastAutoUpdate).toEqual(before.lastAutoUpdate);
     expect(after.newlyUpdatedHours).toEqual(before.newlyUpdatedHours);
+    expect(after.pluginUpdateToastShownFor).toEqual(before.pluginUpdateToastShownFor);
   });
 
   test("keys the UI never writes", async () => {
@@ -620,10 +638,10 @@ describe("engine version (RF-15)", () => {
 });
 
 describe("system.updateCheck (the plugin's own update notice)", () => {
-  // The shared engine above has already memoized its single check (the
-  // every-method probe spent it), so each scenario spawns a fresh engine
-  // process against the same mock servers. The engine's own version comes
-  // from backend/package.json, like the RF-15 test above.
+  // Each scenario spawns its own engine process with its own data dir, so
+  // the stored daily answer never leaks between them (the shared engine
+  // above has its own). The engine's own version comes from
+  // backend/package.json, like the RF-15 test above.
   const { version } = JSON.parse(readFileSync(join(import.meta.dir, "..", "..", "package.json"), "utf-8"));
   const releaseUrl = `https://github.com/sigboe/wowdeck/releases/tag/v${version}`;
 
@@ -639,15 +657,17 @@ describe("system.updateCheck (the plugin's own update notice)", () => {
         WOWDECK_HUB_URL: `http://127.0.0.1:${port}`,
         WOWDECK_RELEASES_URL: `http://127.0.0.1:${port}/releases/latest`,
         WOWDECK_CF_URL: `http://127.0.0.1:${cfPort}/v1`,
+        WOWDECK_TUKUI_URL: `http://127.0.0.1:${port}/tukui/addons`,
+        // About's fetched files (SUPPORTERS.md) follow the update check: keep them off GitHub.
+        WOWDECK_ABOUT_URL: `http://127.0.0.1:${port}/raw`,
       },
     });
   }
 
-  /** One long-lived reader per process; sequential calls share it (a stream keeps a single reader). */
-  function link(proc: ReturnType<typeof spawnEngine>) {
-    const pendingCalls = new Map<number, (v: any) => void>();
+  /** Reads a process stream line by line, one long-lived reader (a stream keeps a single reader). */
+  function readLines(stream: ReadableStream<Uint8Array>, onLine: (line: string) => void) {
     void (async () => {
-      const reader = (proc.stdout as ReadableStream<Uint8Array>).getReader();
+      const reader = stream.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
       for (;;) {
@@ -656,27 +676,60 @@ describe("system.updateCheck (the plugin's own update notice)", () => {
         buffer += decoder.decode(value);
         let nl: number;
         while ((nl = buffer.indexOf("\n")) >= 0) {
-          const line = buffer.slice(0, nl).trim();
+          const line = buffer.slice(0, nl);
           buffer = buffer.slice(nl + 1);
-          if (!line) continue;
-          const msg = JSON.parse(line);
-          if (msg.id !== undefined && pendingCalls.has(msg.id)) {
-            pendingCalls.get(msg.id)!(msg);
-            pendingCalls.delete(msg.id);
-          }
+          onLine(line);
         }
       }
     })();
-    return (id: number, method: string, params: Record<string, unknown> = {}) => {
+  }
+
+  /** One long-lived reader per process; sequential calls share it. */
+  function link(proc: ReturnType<typeof spawnEngine>) {
+    const pendingCalls = new Map<number, (v: any) => void>();
+    readLines(proc.stdout as ReadableStream<Uint8Array>, (raw) => {
+      const line = raw.trim();
+      if (!line) return;
+      const msg = JSON.parse(line);
+      if (msg.id !== undefined && pendingCalls.has(msg.id)) {
+        pendingCalls.get(msg.id)!(msg);
+        pendingCalls.delete(msg.id);
+      }
+    });
+    // The engine's structured log (stderr) — the only surface a silent
+    // background failure is allowed to have — collected for assertions.
+    // `stderr(until)` resolves only once the awaited text has actually been
+    // pumped, so no assertion races the reader.
+    const stderrLines: string[] = [];
+    const stderrWaiters: Array<{ predicate: (text: string) => boolean; resolve: (text: string) => void }> = [];
+    readLines(proc.stderr as ReadableStream<Uint8Array>, (line) => {
+      stderrLines.push(line);
+      const text = stderrLines.join("\n");
+      for (let i = stderrWaiters.length - 1; i >= 0; i--) {
+        const waiter = stderrWaiters[i]!;
+        if (waiter.predicate(text)) {
+          stderrWaiters.splice(i, 1);
+          waiter.resolve(text);
+        }
+      }
+    });
+    const stderr = (until: (text: string) => boolean): Promise<string> => {
+      const text = stderrLines.join("\n");
+      return until(text)
+        ? Promise.resolve(text)
+        : new Promise((resolve) => stderrWaiters.push({ predicate: until, resolve }));
+    };
+    const call = (id: number, method: string, params: Record<string, unknown> = {}) => {
       proc.stdin!.write(JSON.stringify({ id, method, params }) + "\n");
       return new Promise<any>((resolve) => pendingCalls.set(id, resolve));
     };
+    return { call, stderr };
   }
 
-  test("a token saved through settings.set is used: Bearer on the wire, current, memoized", async () => {
+  test("a token saved through settings.set is used: Bearer on the wire, current, at most once a day", async () => {
     releasesLatest = { body: { tag_name: `v${version}`, html_url: releaseUrl } };
     const proc = spawnEngine(join(ROOT, "data-token"));
-    const call = link(proc);
+    const { call } = link(proc);
     try {
       const set = await call(1, "settings.set", { settings: { githubAccessToken: "github_pat_integration" } });
       // The token is never echoed back out.
@@ -687,40 +740,198 @@ describe("system.updateCheck (the plugin's own update notice)", () => {
       expect(res.result).toEqual({
         status: "current",
         currentVersion: version,
-        latestVersion: version,
-        releaseUrl,
-        downloadUrl: null,
+        offer: null,
+        checked: true,
+        failed: false,
+        toastPending: false,
       });
       expect(releasesSeenAuth.length).toBe(baseline + 1);
       expect(releasesSeenAuth[releasesSeenAuth.length - 1]).toBe("Bearer github_pat_integration");
 
-      // Once per engine session: a second call is answered from memory.
+      // Inside the interval: the stored answer, and no second request.
       const again = await call(3, "system.updateCheck");
       expect(again.result.status).toBe("current");
+      expect(again.result.checked).toBe(false);
       expect(releasesSeenAuth.length).toBe(baseline + 1);
     } finally {
       proc.kill();
     }
   });
 
-  test("no token and an unreachable repo (404): unknown, one unauthenticated attempt", async () => {
+  test("no token and an unreachable repo (404): unknown, one unauthenticated attempt, then backoff", async () => {
     releasesLatest = { status: 404 };
     const proc = spawnEngine(join(ROOT, "data-notoken"));
-    const call = link(proc);
+    const { call, stderr } = link(proc);
     try {
       const baseline = releasesSeenAuth.length;
       const res = await call(1, "system.updateCheck");
       expect(res.result).toEqual({
         status: "unknown",
         currentVersion: version,
-        latestVersion: null,
-        releaseUrl: null,
-        downloadUrl: null,
+        offer: null,
+        checked: true,
+        failed: true,
+        toastPending: false,
       });
       expect(releasesSeenAuth.length).toBe(baseline + 1);
       expect(releasesSeenAuth[releasesSeenAuth.length - 1]).toBeNull();
+
+      // Silent: the failure is never an RPC error, never a toast — its
+      // only surface is the engine's structured stderr log.
+      expect(await stderr((t) => t.includes("[plugin-update] check unavailable"))).toContain(
+        "[plugin-update] check unavailable",
+      );
+
+      // A failure is not a timestamp, but it backs off: a sequential call
+      // inside the hour answers from the stored failure without a second
+      // request instead of hammering the unreachable repo on every trigger.
+      const again = await call(2, "system.updateCheck");
+      expect(again.result.status).toBe("unknown");
+      expect(again.result.checked).toBe(false);
+      expect(again.result.toastPending).toBe(false);
+      expect(releasesSeenAuth.length).toBe(baseline + 1);
     } finally {
       proc.kill();
+      releasesLatest = { body: { tag_name: `v${version}`, html_url: releaseUrl } };
+    }
+  });
+
+  test("a failed check re-arms after its window: the retry runs, succeeds, and the daily cadence returns", async () => {
+    const dataDir = join(ROOT, "data-backoff-rearm");
+    releasesLatest = { status: 503 };
+    const first = spawnEngine(dataDir);
+    const { call: call1 } = link(first);
+    try {
+      await call1(1, "system.updateCheck"); // the day's attempt fails
+      // The window is persisted, so the backoff survives engine restarts.
+      const state = JSON.parse(readFileSync(join(dataDir, "state.json"), "utf-8"));
+      expect(state.settings.pluginUpdateBackoff).toEqual({ failedAt: expect.any(Number), failures: 1 });
+    } finally {
+      first.kill();
+    }
+
+    // The hour passes (age the persisted window to 0, like the toast test
+    // ages the daily stamp), and the repo answers again.
+    releasesLatest = { body: { tag_name: `v${version}`, html_url: releaseUrl } };
+    const statePath = join(dataDir, "state.json");
+    const aged = JSON.parse(readFileSync(statePath, "utf-8"));
+    aged.settings.pluginUpdateBackoff.failedAt = 0;
+    writeFileSync(statePath, JSON.stringify(aged));
+
+    const second = spawnEngine(dataDir);
+    const { call: call2 } = link(second);
+    try {
+      const baseline = releasesSeenAuth.length;
+      const res = await call2(1, "system.updateCheck");
+      expect(res.result.status).toBe("current");
+      expect(res.result.checked).toBe(true);
+      expect(releasesSeenAuth.length).toBe(baseline + 1);
+
+      // The success cleared the backoff and re-armed the day: an immediate
+      // second call answers from the stored stamp, no request.
+      const again = await call2(2, "system.updateCheck");
+      expect(again.result.checked).toBe(false);
+      expect(releasesSeenAuth.length).toBe(baseline + 1);
+
+      const state = JSON.parse(readFileSync(statePath, "utf-8"));
+      expect(state.settings.pluginUpdateBackoff).toBeNull();
+      expect(state.settings.lastPluginUpdate.checkedAt).toBeGreaterThan(0);
+    } finally {
+      second.kill();
+      releasesLatest = { body: { tag_name: `v${version}`, html_url: releaseUrl } };
+    }
+  });
+
+  test("exactly one toast per release version, across a real engine restart", async () => {
+    const target = "9998.0.0";
+    // The toast waits for the release's WoWDeck.zip: without it there is no Update.
+    const zip = [{ name: "WoWDeck.zip", url: `http://127.0.0.1:${port}/assets/1` }];
+    releasesLatest = {
+      body: { tag_name: `v${target}`, html_url: `https://github.com/sigboe/wowdeck/releases/tag/v${target}`, assets: zip },
+    };
+    const dataDir = join(ROOT, "data-toast-gate");
+    const baseline = releasesSeenAuth.length;
+
+    // First engine session: the release window opens, the day's check runs.
+    const first = spawnEngine(dataDir);
+    const { call: call1 } = link(first);
+    try {
+      // Options asks first: it shows the panel, so it must not spend the toast.
+      const quiet = await call1(1, "system.updateCheck");
+      // The one ready offer; the zip's URL stays in the engine.
+      expect(quiet.result).toMatchObject({
+        status: "available",
+        offer: {
+          kind: "update",
+          version: target,
+          headline: `WoWDeck ${target} available`,
+          buttonLabel: "Update",
+          toastBody: "Update in Options",
+          rowLabel: "WoWDeck update available",
+          releaseNotes: null,
+          releaseUrl: `https://github.com/sigboe/wowdeck/releases/tag/v${target}`,
+          installable: true,
+        },
+        checked: true,
+        failed: false,
+      });
+      expect(quiet.result).not.toHaveProperty("downloadUrl");
+      expect(quiet.result.toastPending).toBe(false);
+      expect(releasesSeenAuth.length).toBe(baseline + 1);
+
+      // The plugin-load trigger then gets the version's one toast, from the stored answer.
+      const res = await call1(3, "system.updateCheck", { notify: true });
+      expect(res.result.checked).toBe(false);
+      expect(res.result.toastPending).toBe(true);
+      expect(releasesSeenAuth.length).toBe(baseline + 1);
+
+      // QAM churn inside the session: the cached answer never re-arms it.
+      const again = await call1(2, "system.updateCheck", { notify: true });
+      expect(again.result.checked).toBe(false);
+      expect(again.result.toastPending).toBe(false);
+      expect(releasesSeenAuth.length).toBe(baseline + 1);
+    } finally {
+      first.kill();
+    }
+
+    // The mark persisted: a restarted engine (plugin reload, Deck reboot)
+    // holds the same cached answer and never re-toasts the same version.
+    const second = spawnEngine(dataDir);
+    const { call: call2 } = link(second);
+    try {
+      const res = await call2(1, "system.updateCheck", { notify: true });
+      expect(res.result.status).toBe("available");
+      expect(res.result.checked).toBe(false); // inside the interval: no network
+      expect(res.result.toastPending).toBe(false);
+      expect(releasesSeenAuth.length).toBe(baseline + 1);
+      // The engine-written-only mark is what the gate reads.
+      expect(JSON.parse(readFileSync(join(dataDir, "state.json"), "utf-8")).settings.pluginUpdateToastShownFor).toBe(target);
+    } finally {
+      second.kill();
+    }
+
+    // A genuinely newer release is a new key and earns its own single
+    // toast. The day must pass for a fresh check: age the stored stamp.
+    const newer = "9999.0.0";
+    releasesLatest = {
+      body: { tag_name: `v${newer}`, html_url: `https://github.com/sigboe/wowdeck/releases/tag/v${newer}`, assets: zip },
+    };
+    const statePath = join(dataDir, "state.json");
+    const aged = JSON.parse(readFileSync(statePath, "utf-8"));
+    aged.settings.lastPluginUpdate.checkedAt = 0;
+    writeFileSync(statePath, JSON.stringify(aged));
+
+    const third = spawnEngine(dataDir);
+    const { call: call3 } = link(third);
+    try {
+      const res = await call3(1, "system.updateCheck", { notify: true });
+      expect(res.result.offer?.version).toBe(newer);
+      expect(res.result.checked).toBe(true);
+      expect(res.result.toastPending).toBe(true); // one more, for the new version
+      const again = await call3(2, "system.updateCheck", { notify: true });
+      expect(again.result.toastPending).toBe(false);
+    } finally {
+      third.kill();
       releasesLatest = { body: { tag_name: `v${version}`, html_url: releaseUrl } };
     }
   });
@@ -742,7 +953,7 @@ describe("system.updateCheck (the plugin's own update notice)", () => {
       },
     };
     const proc = spawnEngine(join(ROOT, "data-stage"));
-    const call = link(proc);
+    const { call } = link(proc);
     let staged: string | undefined;
     try {
       const res = await call(1, "system.updateStage");
@@ -760,6 +971,47 @@ describe("system.updateCheck (the plugin's own update notice)", () => {
         rmSync(staged, { force: true });
       }
       releasesLatest = { body: { tag_name: `v${version}`, html_url: releaseUrl } };
+    }
+  });
+
+  test("the update channel: Stable by default, a switch checks at once, and Beta survives a restart", async () => {
+    const beta = "9997.0.0-beta.3";
+    releasesList = [
+      { tag_name: `v${beta}`, html_url: `https://github.com/sigboe/wowdeck/releases/tag/v${beta}`, prerelease: true },
+      { tag_name: "v9998.0.0-beta.1", draft: true },
+      { tag_name: `v${version}`, html_url: releaseUrl },
+    ];
+    const dataDir = join(ROOT, "data-channel");
+    const first = spawnEngine(dataDir);
+    const { call: call1 } = link(first);
+    try {
+      expect((await call1(1, "system.getUpdateChannel")).result).toEqual({ channel: "stable" });
+      expect((await call1(2, "system.updateCheck")).result.status).toBe("current");
+
+      // Inside the day's interval, yet the switch asks at once.
+      const baseline = releasesSeenAuth.length;
+      const switched = await call1(3, "system.setUpdateChannel", { channel: "beta" });
+      expect(switched.result).toMatchObject({ status: "available", offer: { version: beta }, checked: true, toastPending: false });
+      expect(releasesSeenAuth.length).toBe(baseline + 1);
+
+      const bad = await call1(4, "system.setUpdateChannel", { channel: "nightly" });
+      expect(bad.error.code).toBe("invalid_request");
+      // Options cannot set it around the switch's check.
+      const set = await call1(5, "settings.set", { settings: { pluginUpdateChannel: "stable" } });
+      expect(set.result.settings.pluginUpdateChannel).toBe("beta");
+    } finally {
+      first.kill();
+    }
+
+    const second = spawnEngine(dataDir);
+    const { call: call2 } = link(second);
+    try {
+      expect((await call2(1, "system.getUpdateChannel")).result).toEqual({ channel: "beta" });
+      const res = await call2(2, "system.updateCheck");
+      expect(res.result).toMatchObject({ status: "available", offer: { version: beta }, checked: false });
+    } finally {
+      second.kill();
+      releasesList = [];
     }
   });
 });

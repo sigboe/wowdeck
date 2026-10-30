@@ -1,10 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { randomBytes } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { rename as fsRename } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import type { EventMap } from "../src/api/contracts";
+import type { HandlerDeps } from "../src/api/handlers/deps";
+import { register as registerWtf } from "../src/api/handlers/wtf";
 import { JsonlServer } from "../src/bridge/jsonl";
 import { WtfBackupError } from "../src/wow/wtf/errors";
 import { WtfBackupService } from "../src/wow/wtf/WtfBackupService";
@@ -88,6 +90,47 @@ describe("WtfJobRunner", () => {
     expect(result).toMatchObject({ kind: "restore", fileName: b.fileName, error: null });
     expect(result.snapshotFileName).toMatch(/^wtf_\d+\.zip$/);
     expect(completed).toHaveLength(1);
+  });
+
+  test("a copy completes as kind copy, naming the version the settings came from", async () => {
+    write("Config.wtf", "retail");
+    const { service, runner, done } = setup();
+    const ptrWtf = join(tmp, "game", "_ptr_", "WTF");
+    mkdirSync(ptrWtf, { recursive: true });
+    writeFileSync(join(ptrWtf, "Config.wtf"), "ptr");
+    const b = await service.createBackup({ wtfPath: ptrWtf, flavor: "_ptr_" }, { kind: "manual" });
+    const { jobId } = runner.startCopy(target, "_ptr_", b.fileName, { keepCurrentConfig: false });
+    expect(runner.current()).toMatchObject({ jobId, kind: "copy" });
+    const result = await done();
+    expect(result).toMatchObject({ kind: "copy", fileName: b.fileName, sourceName: "Retail PTR", error: null });
+    expect(result.snapshotFileName).toMatch(/^wtf_\d+\.zip$/);
+  });
+
+  test("a copy of a desktop WowUp backup fails with the unknown-version confirm unless it is accepted", async () => {
+    write("Config.wtf", "retail");
+    const { runner, done, completed } = setup();
+    mkdirSync(join(backupRoot, "_ptr_"), { recursive: true });
+    copyFileSync(join(import.meta.dir, "fixtures/wtf/upstream-wowup-backup.zip"), join(backupRoot, "_ptr_", "wtf_1.zip"));
+    runner.startCopy(target, "_ptr_", "wtf_1.zip", {});
+    expect((await done()).error?.code).toBe("flavor_unknown_needs_confirm");
+    completed.length = 0;
+    runner.startCopy(target, "_ptr_", "wtf_1.zip", { acceptUnknownFlavor: true });
+    expect(await done()).toMatchObject({ kind: "copy", fileName: "wtf_1.zip", error: null });
+  });
+
+  test("a copy of current settings completes as one copy job: source backed up, then restored here", async () => {
+    write("Config.wtf", "retail");
+    const { service, runner, done, progress } = setup();
+    const ptr = { wtfPath: join(tmp, "game", "_ptr_", "WTF"), flavor: "_ptr_" };
+    mkdirSync(ptr.wtfPath, { recursive: true });
+    writeFileSync(join(ptr.wtfPath, "Config.wtf"), "ptr");
+    const { jobId } = runner.startCopyCurrent(target, ptr, { keepCurrentConfig: false });
+    expect(runner.current()).toMatchObject({ jobId, kind: "copy" });
+    const result = await done();
+    const { backups } = await service.listBackups(ptr);
+    expect(result).toMatchObject({ kind: "copy", fileName: backups[0]!.fileName, sourceName: "Retail PTR", error: null });
+    expect(result.snapshotFileName).toMatch(/^wtf_\d+\.zip$/);
+    expect(progress.map((p) => p.job.phase)).toEqual(expect.arrayContaining(["compress", "snapshot", "swap"]));
   });
 
   test("only one job at a time", async () => {
@@ -214,6 +257,54 @@ describe("jobs over the JSONL server", () => {
     });
     await server.handleLine(JSON.stringify({ id: 1, method: "wtf.create", params: {} }));
     expect(JSON.parse(lines[0]!)).toMatchObject({ id: 1, error: { code: "game_running", message: "Close World of Warcraft first" } });
+  });
+});
+
+describe("wtf handlers: keepCurrentConfig omitted", () => {
+  /** The real wtf.* handlers over a JSONL server; "ptr" is a second installation to copy from. */
+  function serve() {
+    const { service, runner, done } = setup();
+    const ptr: WtfJobTarget = { installationId: "ptr", wtfPath: join(tmp, "game", "_ptr_", "WTF"), flavor: "_ptr_" };
+    mkdirSync(ptr.wtfPath, { recursive: true });
+    writeFileSync(join(ptr.wtfPath, "Config.wtf"), "ptr");
+    const server = new JsonlServer(() => {});
+    const deps = {
+      wtfService: service,
+      wtfJobs: runner,
+      wtfJobTarget: (id?: string) => (id === "ptr" ? ptr : target),
+      installationService: { list: () => [{ id: "inst1" }, { id: "ptr" }] },
+    };
+    registerWtf(server, deps as unknown as HandlerDeps);
+    const call = (method: string, params: Record<string, unknown>) => server.handleLine(JSON.stringify({ id: 1, method, params }));
+    return { service, ptr, call, done };
+  }
+  const config = () => readFileSync(join(wtf, "Config.wtf"), "utf8");
+
+  test("wtf.restore replaces Config.wtf with the backup's", async () => {
+    write("Config.wtf", "one");
+    const { service, call, done } = serve();
+    const b = await service.createBackup(target, { kind: "manual" });
+    write("Config.wtf", "two");
+    await call("wtf.restore", { fileName: b.fileName });
+    expect((await done()).error).toBeNull();
+    expect(config()).toBe("one");
+  });
+
+  test("wtf.copy of a backup keeps this device's Config.wtf", async () => {
+    write("Config.wtf", "retail");
+    const { service, ptr, call, done } = serve();
+    const b = await service.createBackup(ptr, { kind: "manual" });
+    await call("wtf.copy", { sourceFlavor: "_ptr_", fileName: b.fileName });
+    expect((await done()).error).toBeNull();
+    expect(config()).toBe("retail");
+  });
+
+  test("wtf.copy of current settings keeps this device's Config.wtf", async () => {
+    write("Config.wtf", "retail");
+    const { call, done } = serve();
+    await call("wtf.copy", { sourceFlavor: "_ptr_", sourceInstallationId: "ptr" });
+    expect((await done()).error).toBeNull();
+    expect(config()).toBe("retail");
   });
 });
 

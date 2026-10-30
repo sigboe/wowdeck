@@ -8,7 +8,7 @@
 import { tmpdir } from "node:os";
 import { version } from "../package.json";
 import { join } from "node:path";
-import type { OperationProgress, OperationResult } from "./api/contracts";
+import type { OperationResult } from "./api/contracts";
 import { JsonlServer } from "./bridge/jsonl";
 import { createStateStore } from "./wow/storage/StateStore";
 import { NetworkClient } from "./wow/net/network";
@@ -22,6 +22,7 @@ import { ZipProvider } from "./wow/providers/zip/ZipProvider";
 import { FileProvider } from "./wow/providers/file/FileProvider";
 import { DownloadService } from "./wow/downloads/DownloadService";
 import { AddonService } from "./wow/addons/AddonService";
+import { Catalogue } from "./wow/catalogue/Catalogue";
 import { getGameTypeForClientType } from "./wow/utils/gametype";
 import { RecentErrorsBuffer } from "./diagnostics/RecentErrors";
 import { CompanionSyncCoordinator } from "./wow/notifications/CompanionSync";
@@ -41,12 +42,17 @@ import { register as registerProviders } from "./api/handlers/providers";
 import { register as registerSettings } from "./api/handlers/settings";
 import { register as registerSystem } from "./api/handlers/system";
 import { register as registerWtf } from "./api/handlers/wtf";
+import { register as registerAbout } from "./api/handlers/about";
+import { About } from "./about/About";
 
 /** Bundled into the binary from backend/package.json at build time. */
 const BACKEND_VERSION = version;
 /** The WowUp Hub's API and its addon pages share one host (tests point both at a mock). */
 const HUB_URL = process.env.WOWDECK_HUB_URL ?? "https://hub.wowup.io";
-/** WoWDeck's own update check (tests point it at the mock hub too). */
+/**
+ * WoWDeck's own update check (tests point it at the mock hub too). Must end in
+ * `/releases/latest`: the Beta channel lists the releases beside it.
+ */
 const RELEASES_URL = process.env.WOWDECK_RELEASES_URL ?? "https://api.github.com/repos/sigboe/wowdeck/releases/latest";
 
 const dataDir = process.env.WOWDECK_DATA_DIR ?? join(tmpdir(), "wowdeck");
@@ -54,9 +60,16 @@ const homeDir = process.env.HOME ?? "/home/deck";
 
 const store = createStateStore(dataDir);
 const network = new NetworkClient();
+/**
+ * The optional GitHub token (Options › GitHub), read live: a token saved
+ * later in the session is picked up by the next request. The GitHub addon
+ * source, the WoWDeck update check, its staging and About all share it.
+ */
+const githubToken = (): string | undefined => store.settings.githubAccessToken ?? undefined;
 const registry = new ProviderRegistry();
 registry.register(new WowUpHubProvider(HUB_URL, HUB_URL, network));
-registry.register(new TukUiAddonProvider(network));
+// Unset: api.tukui.org's catalogue (integration tests point it at the mock hub).
+registry.register(new TukUiAddonProvider(network, process.env.WOWDECK_TUKUI_URL));
 
 /**
  * The bundled CurseForge key arrives only as this env var (main.py reads the
@@ -73,7 +86,7 @@ const curseForgeProvider = new CurseForgeProvider(
   (err) => curseForgeAuth.recordNormalOutcome(err),
 );
 registry.register(curseForgeProvider);
-registry.register(new GitHubProvider(network, () => store.settings.githubAccessToken ?? undefined));
+registry.register(new GitHubProvider(network, githubToken));
 registry.register(new WowInterfaceProvider(network));
 registry.register(new ZipProvider());
 registry.register(new FileProvider());
@@ -102,7 +115,6 @@ const service = new AddonService(
       // always the cheap path, never the network-refreshing one.
       void companionCoordinator.regenerate();
     },
-    operationProgress: (progress: OperationProgress) => server.emit("operation.progress", { progress }),
     autoUpdated: (result) => server.emit("addons.autoUpdated", { result }),
     operationResult: (result: OperationResult) => {
       server.emit(result.status === "failed" ? "operation.failed" : "operation.completed", { result });
@@ -120,20 +132,47 @@ const service = new AddonService(
   undefined,
   join(dataDir, "inspect"),
 );
+const catalogue = new Catalogue(registry);
 const installationService = service.installations;
 const companionCoordinator = new CompanionSyncCoordinator(service);
 const updateCheck = new UpdateCheck(service, companionCoordinator);
 const updateToastGate = new UpdateToastGate(service, store, updateCheck);
+// main.py passes the installed plugin's folder; unset outside Decky. The
+// fetched files (FUNDING.yml, SUPPORTERS.md) refresh only when the update
+// check below asks GitHub (ADR-0005), with the same optional token, which
+// FetchedFile sends to GitHub hosts only.
+const about = new About({
+  pluginDir: process.env.WOWDECK_PLUGIN_DIR ?? null,
+  dataDir,
+  net: network,
+  rawBaseUrl: process.env.WOWDECK_ABOUT_URL,
+  tokenProvider: githubToken,
+});
 const pluginUpdate = new PluginUpdateCheck(
   network,
   BACKEND_VERSION,
   RELEASES_URL,
-  // The addon source's token, read live: a token saved later in the session
-  // is picked up by the next engine session's check.
-  () => store.settings.githubAccessToken ?? undefined,
+  githubToken,
+  // The once-a-day cap and the failure backoff live in settings, so a
+  // restart inside the interval answers from the stored answer instead of
+  // asking GitHub again, and a restarted engine still honours a backoff
+  // window opened before it. The same store holds the toast gate's
+  // shown-version mark (toastPending), so the once-per-release-version
+  // promise survives engine restarts too.
+  {
+    read: () => store.settings.lastPluginUpdate,
+    write: (snapshot) => store.updateSettings({ lastPluginUpdate: snapshot }),
+    readBackoff: () => store.settings.pluginUpdateBackoff,
+    writeBackoff: (backoff) => store.updateSettings({ pluginUpdateBackoff: backoff }),
+    readToastShown: () => store.settings.pluginUpdateToastShownFor,
+    writeToastShown: (version) => store.updateSettings({ pluginUpdateToastShownFor: version }),
+    readChannel: () => store.settings.pluginUpdateChannel,
+    writeChannel: (channel) => store.updateSettings({ pluginUpdateChannel: channel }),
+  },
+  { onGitHubAsk: () => void about.refresh() },
 );
 
-const updateStager = new UpdateStager(network, pluginUpdate, () => store.settings.githubAccessToken ?? undefined);
+const updateStager = new UpdateStager(network, pluginUpdate, githubToken);
 
 const server = new JsonlServer();
 
@@ -167,6 +206,7 @@ const deps: HandlerDeps = {
   store,
   registry,
   service,
+  catalogue,
   installationService,
   companionCoordinator,
   updateCheck,
@@ -179,6 +219,7 @@ const deps: HandlerDeps = {
   wtfJobs,
   wtfJobTarget,
   recentErrors,
+  about,
 };
 for (const register of [
   registerSystem,
@@ -188,6 +229,7 @@ for (const register of [
   registerSettings,
   registerWtf,
   registerNotifications,
+  registerAbout,
 ]) {
   register(server, deps);
 }

@@ -6,7 +6,15 @@
  * of reaching the engine.
  */
 
-import type { AutoUpdateResult, PluginSettings } from "../../api/contracts";
+import {
+  type AutoUpdateResult,
+  type PluginSettings,
+  type PluginUpdateBackoff,
+  type PluginUpdateSnapshot,
+  UPDATE_CHANNELS,
+  type UpdateChannel,
+} from "../../api/contracts";
+import { normalizeVersion } from "../plugin/PluginVersion";
 
 interface Rule<T> {
   default: () => T;
@@ -49,6 +57,74 @@ export function normalizeSteamGame(value: unknown): PluginSettings["steamGame"] 
   return { appId, name: name.trim().slice(0, 200) };
 }
 
+/**
+ * A stored WoWDeck version (X.Y.Z or X.Y.Z-beta.N, no leading v), or
+ * null — the shape every persisted WoWDeck version must have
+ * (`pluginUpdateToastShownFor`, the snapshot's `latestVersion`): a bad value
+ * only costs one repeated toast, a guessed one could cost a missed one.
+ */
+/** An update channel id; anything else (missing, a channel this build does not know) is Stable. */
+function normalizeUpdateChannel(value: unknown): UpdateChannel {
+  return UPDATE_CHANNELS.find((channel) => channel === value) ?? "stable";
+}
+
+function normalizedVersion(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  return normalizeVersion(value);
+}
+
+/**
+ * The stored WoWDeck-release answer: a timestamp, the channel that answered
+ * (absent before channels, meaning Stable), a parseable version (no leading
+ * v), two optional URLs and the optional release notes. Anything
+ * else is dropped rather than half-trusted — a bad stamp only costs one
+ * extra check.
+ */
+export function normalizePluginUpdateSnapshot(value: unknown): PluginUpdateSnapshot | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const { checkedAt, channel, latestVersion, releaseUrl, downloadUrl, releaseNotes } = value as Record<string, unknown>;
+  if (typeof checkedAt !== "number" || !Number.isFinite(checkedAt)) {
+    return null;
+  }
+  const latest = normalizedVersion(latestVersion);
+  if (latest === null) {
+    return null;
+  }
+  const url = (candidate: unknown): string | null =>
+    typeof candidate === "string" && candidate !== "" ? candidate : null;
+  return {
+    checkedAt,
+    ...(channel !== undefined && { channel: normalizeUpdateChannel(channel) }),
+    latestVersion: latest,
+    releaseUrl: url(releaseUrl),
+    downloadUrl: url(downloadUrl),
+    ...(typeof releaseNotes === "string" && releaseNotes.trim() !== "" && { releaseNotes }),
+  };
+}
+
+/**
+ * The release check's stored failure backoff: a finite timestamp and at
+ * least one consecutive failure. Anything else is dropped — a bad backoff
+ * only costs one early retry, while a guessed one could silence the check.
+ */
+export function normalizePluginUpdateBackoff(value: unknown): PluginUpdateBackoff | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const { failedAt, failures } = value as Record<string, unknown>;
+  if (typeof failedAt !== "number" || !Number.isFinite(failedAt)) {
+    return null;
+  }
+  if (typeof failures !== "number" || !Number.isSafeInteger(failures) || failures < 1) {
+    return null;
+  }
+  return { failedAt, failures };
+}
+
 function normalizeAutoUpdateResult(value: unknown): AutoUpdateResult | null {
   if (!value || typeof value !== "object") {
     return null;
@@ -79,6 +155,30 @@ const RULES: Rules = {
     normalize: (value) => (typeof value === "number" && Number.isFinite(value) ? value : null),
     userWritable: false,
   },
+  // The once-a-day cap for the plugin's own release check (PluginUpdateCheck):
+  // engine-written, never a user preference.
+  lastPluginUpdate: {
+    default: () => null,
+    normalize: normalizePluginUpdateSnapshot,
+    userWritable: false,
+  },
+  // The once-per-release-version toast gate (system.updateCheck's
+  // toastPending): engine-written, never a user preference.
+  pluginUpdateToastShownFor: {
+    default: () => null,
+    normalize: normalizedVersion,
+    userWritable: false,
+  },
+  // The failure backoff for the same check (1h/2h/4h capped, cleared by a
+  // success): engine-written, never a user preference.
+  pluginUpdateBackoff: {
+    default: () => null,
+    normalize: normalizePluginUpdateBackoff,
+    userWritable: false,
+  },
+  // Set through system.setUpdateChannel only, so a switch always runs its
+  // check; a missing value (every install before channels) is Stable.
+  pluginUpdateChannel: { default: () => "stable", normalize: normalizeUpdateChannel, userWritable: false },
   // Only ever stored after validation (settings.set checks the folder).
   wtfBackupDir: stringOrNull(true),
   wtfKeepSnapshots: {

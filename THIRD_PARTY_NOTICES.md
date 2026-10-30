@@ -1,52 +1,69 @@
 # Third-party notices
 
-## WowUp (https://github.com/WowUp/WowUp)
+WoWDeck Addon Manager is free software under the GPL-3.0. It is built on
+other people's open-source work. This page lists that work, its license and
+what WoWDeck uses it for. The license texts named here come with WoWDeck in
+its LICENSE file, or are linked below.
 
-- License: GPL-3.0 (repository root). The `wowup-lib` package declares ISC
-  in its package.json; treat extracted `wowup-lib` code as GPL-3.0 unless a
-  per-file header says otherwise — the audited provenance lives in
-  `docs/wowup-provenance.md`.
-- Used as: read-only reference checkout at `wowup/`, untracked and recreated
-  on demand with `make wowup`; pinned at commit
-  `4fdae600d94ad7dd187a6bc93b517e657100b01a`. Selected components
-  extracted and adapted into `backend/src/wow/`.
+## WowUp
 
-## decky-plugin-template (https://github.com/SteamDeckHomebrew/decky-plugin-template)
+[WowUp](https://github.com/WowUp/WowUp) is a desktop addon manager for
+World of Warcraft, licensed under the GPL-3.0. WoWDeck's addon engine is
+adapted from WowUp's code: finding WoW installations, reading addon files,
+and talking to CurseForge, WowUp Hub, TukUI, GitHub and WoWInterface.
+WowUp's `wowup-lib` package says ISC in its package file, but WoWDeck treats
+every part it took from WowUp as GPL-3.0.
 
-- License: BSD-3-Clause; the full text is appended to `LICENSE`.
-- Used as: project bootstrap (commit `90d0780e882a17f5714fc6de044c645f22608290`).
-- Derived files: `plugin.json` structure, `rollup.config.js`, `tsconfig.json`
-  base, `src/types.d.ts`, `decky.pyi`, the Deck Debug settings kept in
-  `deck-debug/`, backend build conventions (`backend/out`).
+## Decky Loader and its plugin template
 
-## Decky ecosystem runtime
+[Decky Loader](https://github.com/SteamDeckHomebrew/decky-loader) runs
+WoWDeck inside Steam's Game Mode. WoWDeck started from Decky's
+[plugin template](https://github.com/SteamDeckHomebrew/decky-plugin-template),
+which is licensed under BSD-3-Clause; its license text is at the end of
+WoWDeck's LICENSE file. WoWDeck's screens use Decky's `@decky/ui` and
+`@decky/api` libraries, published by SteamDeckHomebrew under BSD-3-Clause
+and GPL-3.0.
 
-- `@decky/ui`, `@decky/api`, `@decky/rollup` — decky-frontend-lib / decky
-  tooling (BSD-3-Clause / GPL-3.0 as published by SteamDeckHomebrew).
-- decky-loader runs `main.py` on device (Python).
+## Bun
 
-## Bun (https://bun.sh)
+[Bun](https://bun.sh) is a JavaScript runtime, licensed under the MIT
+license. WoWDeck's engine, the program that installs and updates your
+addons, is a single file that has Bun built in.
 
-- The engine binary is compiled with Bun (`bun build --compile`).
-- Bun is MIT licensed; the compiled binary embeds the Bun runtime.
+## fflate
 
-## fflate (https://github.com/101arrowz/fflate)
+[fflate](https://github.com/101arrowz/fflate), licensed under the MIT
+license, unpacks the zip files that addons come in. WoWDeck checks every
+file in a zip before unpacking it, so an addon can't write outside its own
+folder.
 
-- License: MIT. Used for zip extraction in the engine (`fflate` npm 0.8.x);
-  archive entries are additionally validated against path traversal
-  (see `backend/src/wow/archives/ArchiveExtractor.ts`).
+## uqr
 
-## xclip (https://github.com/astrand/xclip)
+[uqr](https://github.com/unjs/uqr) by Anthony Fu, licensed under the MIT
+license, draws the QR codes under Options › About › Support WoWDeck. The
+license text is in
+[uqr's repository](https://github.com/unjs/uqr/blob/main/LICENSE).
 
-- License: GPL-2.0 — full text at `backend/vendor/xclip-LICENSE.txt`.
-- Used as: a prebuilt, unmodified binary (`backend/vendor/xclip`,
-  bundled into the packaged plugin's `bin/`) for Copy Diagnostics —
-  SteamOS does not ship `xclip` system-wide, and
-  Decky plugins have no other supported way to write plain text to the
-  system clipboard from this webview runtime. Invoked by `main.py` as a
-  subprocess, writing only the current diagnostics text; no prior
-  clipboard contents are read or restored. The exact binary already
-  proven to work in this environment — copied from the installed
-  Decktation plugin (itself bundling the same unmodified upstream
-  binary for an unrelated feature), not independently built or
-  modified.
+## xclip
+
+[xclip](https://github.com/astrand/xclip), licensed under the GPL-2.0,
+puts text on the clipboard. SteamOS doesn't include it, so WoWDeck ships an
+unchanged copy for Copy diagnostics. It only ever copies the diagnostics
+text, and never reads what was on the clipboard before. The license text
+is in
+[WoWDeck's repository](https://github.com/sigboe/wowdeck/blob/next/backend/vendor/xclip-LICENSE.txt).
+
+## In the source code only
+
+These are part of WoWDeck's source code on GitHub, but not of the plugin
+you install.
+
+- The button and icon pictures in the README. Steam's button glyphs are
+  © Valve Corporation. The gear is from
+  [Bootstrap Icons](https://github.com/twbs/icons) (MIT). The other icons
+  are Font Awesome Free 5 by Fonticons, Inc., under
+  [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), the same icons
+  WoWDeck shows on screen.
+- A writing guide for the project's coding agents, the `unslop` skill from
+  [pstack](https://github.com/cursor/plugins/tree/main/pstack), MIT,
+  © 2026 Lauren Tan.

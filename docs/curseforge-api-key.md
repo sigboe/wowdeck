@@ -92,7 +92,9 @@ a run without it produces a correct no-bundled-key package, and the zip it
 uploads to the GitHub Release carries the key only when the secret is
 configured. `ci.yml`'s `package` job — every push to `main`, every PR, and
 manual `workflow_dispatch` — remains the other pipeline that produces a
-distributable zip.
+distributable zip; the beta workflow (`.github/workflows/beta.yml`, every
+non-docs push to `next`) calls it with `secrets: inherit`, so beta
+pre-releases bundle the key the same way.
 
 ## How the key reaches the running plugin
 

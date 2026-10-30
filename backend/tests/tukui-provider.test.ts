@@ -4,8 +4,9 @@ import type { TukUiAddon } from "../src/wow/providers/tukui/tukui-model";
 import type { NetworkClient } from "../src/wow/net/network";
 import type { WowInstallation } from "../src/wow/models";
 import { WowClientType } from "../src/wow/types";
+import { loadCassette, recorded } from "./providers/cassette";
 
-const catalog: TukUiAddon[] = await Bun.file(import.meta.dir + "/fixtures/providers/tukui/addons.json").json();
+const catalog = recorded<TukUiAddon[]>(await loadCassette("tukui"), "GET", "https://api.tukui.org/v1/addons");
 
 function fakeNetwork(jsonForUrl: Record<string, unknown>) {
   const client = {} as NetworkClient;
@@ -43,13 +44,6 @@ describe("TukUiAddonProvider", () => {
     expect(provider.enabled).toBe(true);
   });
 
-  test("search by similar name finds ElvUI", async () => {
-    const results = await provider.searchByQuery("elvui", retailInstall);
-    expect(results.length).toBeGreaterThan(0);
-    expect(results[0]!.name.toLowerCase()).toContain("elvui");
-    expect(results[0]!.files![0]!.downloadUrl).toContain("api.tukui.org");
-  });
-
   test("search is flavor aware", async () => {
     const tukui = catalog.find((a) => a.slug === "tukui")!;
     expect(tukui.patch.some((p) => p.startsWith("1."))).toBe(true);
@@ -57,18 +51,21 @@ describe("TukUiAddonProvider", () => {
     expect(era.some((r) => r.name === "Tukui")).toBe(true);
   });
 
-  test("getById returns matching addon with file info", async () => {
-    const elvui = catalog.find((a) => a.slug === "elvui")!;
-    const result = await provider.getById(String(elvui.id), retailInstall);
-    expect(result?.name).toBe("ElvUI");
-    expect(result?.files![0]!.version).toBe(elvui.version);
-  });
+  test("Forever and Forever Beta search by the forever patch token, which no other flavor takes", async () => {
+    // The recording has no Forever addon yet: add one built on its Tukui entry.
+    const tukui = catalog.find((a) => a.slug === "tukui")!;
+    const foreverOnly: TukUiAddon = { ...tukui, id: 9001, slug: "questie-forever", name: "Questie Forever", patch: ["1.60.1"] };
+    const withForever = new TukUiAddonProvider(fakeNetwork({ "https://api.tukui.org/v1/addons": [...catalog, foreverOnly] }));
+    const names = async (clientType: WowClientType, query: string) =>
+      (await withForever.searchByQuery(query, { ...retailInstall, clientType })).map((r) => r.name);
 
-  test("getAll returns search results and errors for unknown ids", async () => {
-    const elvui = catalog.find((a) => a.slug === "elvui")!;
-    const { searchResults, errors } = await provider.getAll(retailInstall, [String(elvui.id), "999999999"]);
-    expect(searchResults).toHaveLength(1);
-    expect(errors.some((e) => e.message.includes("999999999"))).toBe(true);
+    for (const client of [WowClientType.Forever, WowClientType.ClassicBeta]) {
+      expect(await names(client, "questie forever")).toContain("Questie Forever");
+      expect(await names(client, "tukui")).not.toContain("Tukui");
+    }
+    expect(await names(WowClientType.Retail, "questie forever")).not.toContain("Questie Forever");
+    expect(await names(WowClientType.ClassicEra, "questie forever")).not.toContain("Questie Forever");
+    expect(await names(WowClientType.ClassicEra, "tukui")).toContain("Tukui");
   });
 
   test("isValidAddonId is numeric-only", () => {

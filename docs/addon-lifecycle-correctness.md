@@ -189,6 +189,12 @@ saved its fresh metadata only by that same accident. Covered by
 `addon-service.test.ts`, "records are written only through AddonRecords",
 which reads each result back from the state file.
 
+Every write also runs in the gate (`docs/architecture.md`). Before, Ignore,
+Pause, an import's library flags and Update's provider read ran outside it:
+Pause set while an update installed was cleared by the install. The same
+suite covers Pause and Ignore set during an update, and an addon paused or
+ignored while Update all or an automatic run is busy with another.
+
 ## Ignored and "needs attention" states (WF-04, 2026-10-15)
 
 The `Addon` wire type says *why* an addon is ignored or needs attention,
