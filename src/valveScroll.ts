@@ -289,6 +289,24 @@ function canRepeat(el: ScrollerBox & object, direction: -1 | 1): boolean {
 }
 
 /**
+ * Whether a gamepad Up/Down press on the focus target beside a directly
+ * scrolled box is ours (true: handled, no bell): while the box can still
+ * scroll that way, measured from the tween's target so the edge is known at
+ * once. Held repeats at an edge are swallowed too, so a held press rings
+ * Steam's bell once. Any other direction, or no box, is Steam's.
+ */
+export function directScrollHandles(
+  direction: "up" | "down" | null,
+  isRepeat: boolean,
+  box: (ScrollerBox & object) | null,
+): boolean {
+  if (!box || !direction) {
+    return false;
+  }
+  return canRepeat(box, direction === "up" ? -1 : 1) || isRepeat;
+}
+
+/**
  * Gamepad Up/Down over a scroller WE own (the Details modal's pages): wires
  * D-pad Up/Down (SteamClient input, codes from shoulderNav.ts) to a
  * DirectScrollMachine on the element `getEl` returns. Wheel and touch never

@@ -1,20 +1,17 @@
-import { useEffect, useRef, useSyncExternalStore } from "react";
+import { useSyncExternalStore } from "react";
 import {
   DialogBody,
   DialogButton,
   DialogFooter,
   DialogHeader,
-  GamepadButton,
   ModalRoot,
   showModal,
-  type GamepadEvent,
 } from "@decky/ui";
 import type { ReleaseNotesAction } from "../pluginUpdate";
-import { canScroll } from "../scrollEdge";
 import { selfUpdateStore } from "../selfUpdate";
 import { wowupModalStyleCss } from "../sharedStyles";
 import { descriptionStyle } from "../steamTheme";
-import { registerDirectScroll, scrollTweenTarget } from "../valveScroll";
+import { useDirectScroll } from "../useDirectScroll";
 
 /** The notes box's height cap: the modal keeps its header and Update button on screen. */
 const NOTES_MAX_HEIGHT = "50vh";
@@ -41,27 +38,7 @@ function ReleaseNotesModal({
   closeModal?: () => void;
 }) {
   const { staging } = useSyncExternalStore(selfUpdateStore.subscribe, selfUpdateStore.get);
-  const boxRef = useRef<HTMLDivElement | null>(null);
-
-  // Armed at once: Y opened the modal, so no D-pad press is in flight.
-  useEffect(() => registerDirectScroll(() => boxRef.current), []);
-
-  // Handled (true, no bell) while the notes can still scroll that way; held
-  // repeats at an edge are swallowed, one bell per press (as the Details
-  // modal, reading the tween's target so the edge is known at once).
-  const onGamepadDirection = (evt: GamepadEvent): boolean => {
-    const { button, is_repeat } = evt.detail;
-    const box = boxRef.current;
-    if (!box || (button !== GamepadButton.DIR_UP && button !== GamepadButton.DIR_DOWN)) {
-      return false;
-    }
-    const room = canScroll(button === GamepadButton.DIR_UP ? "up" : "down", {
-      scrollTop: scrollTweenTarget(box),
-      scrollHeight: box.scrollHeight,
-      clientHeight: box.clientHeight,
-    });
-    return room || !!is_repeat;
-  };
+  const { boxRef, onGamepadDirection } = useDirectScroll();
 
   const update = () => {
     closeModal?.();
@@ -91,7 +68,7 @@ function ReleaseNotesModal({
           disabled={staging}
           onClick={update}
           onOKActionDescription={buttonLabel}
-          onGamepadDirection={onGamepadDirection as (evt: GamepadEvent) => void}
+          onGamepadDirection={onGamepadDirection}
         >
           {staging ? "Preparing…" : buttonLabel}
         </DialogButton>

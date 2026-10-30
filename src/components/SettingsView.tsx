@@ -16,6 +16,7 @@ import { UpdatesSection } from "./settings/UpdatesSection";
 import { SteamLibrarySection } from "./settings/SteamLibrarySection";
 import { NotificationsSection } from "./settings/NotificationsSection";
 import { DiagnosticsSection } from "./settings/DiagnosticsSection";
+import { AboutSection } from "./settings/AboutSection";
 
 interface Props {
   installations: Installation[];
@@ -122,6 +123,7 @@ export function SettingsView({
       <SteamLibrarySection />
       <NotificationsSection diagnostics={diagnostics} />
       <DiagnosticsSection diagnostics={diagnostics} setDiagnostics={setDiagnostics} />
+      <AboutSection />
     </>
   );
 }
