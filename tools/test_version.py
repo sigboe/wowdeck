@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Tests for tools/version.py — the single version shared by package.json,
-plugin.json and backend/package.json, and the release tag built from it.
+plugin.json and backend/package.json.
 
 Standard library only, like tools/test_package.py. Every test works in a
 temporary directory (ROOT redirected for its duration), so the real tree's
@@ -146,67 +146,8 @@ class VersionFileTests(unittest.TestCase):
         self.assertEqual(version.check(), "0.3.1-beta.2")
 
 
-class TagTests(unittest.TestCase):
-    """make_tag never pushes; these tests stand in for git so they need no repo."""
-
-    def setUp(self) -> None:
-        self._tmp = Path(tempfile.mkdtemp(prefix="wowdeck-tag-"))
-        self.addCleanup(shutil.rmtree, self._tmp, True)
-        self._real_root = version.ROOT
-        version.ROOT = self._tmp
-        for rel in version.VERSIONED_FILES:
-            write_json(self._tmp / rel, {"name": "wowdeck", "version": "1.0.0"})
-        self.calls: list[list[str]] = []
-        self.dirty = ""
-        self.existing: set[str] = set()
-        self._real_git = version.git
-        self._real_tag_exists = version.tag_exists
-        version.git = self._fake_git
-        version.tag_exists = lambda tag, root=None: tag in self.existing
-
-    def tearDown(self) -> None:
-        version.ROOT = self._real_root
-        version.git = self._real_git
-        version.tag_exists = self._real_tag_exists
-
-    def _fake_git(self, args: list[str], root: Path | None = None) -> str:
-        self.calls.append(args)
-        if args[:2] == ["status", "--porcelain"]:
-            return self.dirty
-        if args[0] == "rev-parse" and "--short" in args:
-            return "abc1234"
-        return ""
-
-    def test_creates_an_annotated_tag_named_after_the_version(self) -> None:
-        self.assertEqual(version.make_tag(), "v1.0.0")
-        self.assertIn(["tag", "-a", "v1.0.0", "-m", "v1.0.0"], self.calls)
-
-    def test_refuses_a_dirty_tree(self) -> None:
-        self.dirty = " M src/index.tsx\n"
-        with self.assertRaises(SystemExit) as ctx:
-            version.make_tag()
-        self.assertIn("uncommitted changes", str(ctx.exception))
-        self.assertNotIn(["tag", "-a", "v1.0.0", "-m", "v1.0.0"], self.calls)
-
-    def test_refuses_a_version_mismatch(self) -> None:
-        write_json(self._tmp / "plugin.json", {"name": "wowdeck", "version": "0.9.0"})
-        with self.assertRaises(SystemExit) as ctx:
-            version.make_tag()
-        self.assertIn("disagree", str(ctx.exception))
-
-    def test_refuses_an_existing_tag(self) -> None:
-        self.existing.add("v1.0.0")
-        with self.assertRaises(SystemExit) as ctx:
-            version.make_tag()
-        self.assertIn("already exists", str(ctx.exception))
-
-    def test_ignores_untracked_files_when_deciding_cleanliness(self) -> None:
-        self.assertEqual(version.make_tag(), "v1.0.0")
-        self.assertIn(["status", "--porcelain", "--untracked-files=no"], self.calls)
-
-
 class RealTreeTests(unittest.TestCase):
-    """The real tree must declare exactly one version, and it must be taggable."""
+    """The real tree must declare exactly one version."""
 
     def test_the_real_tree_is_version_consistent(self) -> None:
         self.assertEqual(version.check(), version.read_version(version.ROOT / "package.json"))

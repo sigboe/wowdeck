@@ -84,7 +84,11 @@ Work flows feature branch → `next` → `main`:
   it and PR back into it; `main` receives only releases.
 - A branch carries its own tickets' work. Anything else (docs, tooling,
   the release flow) goes on its own branch off `next`.
-- Releasing: `docs/development.md` "Releases".
+- Merging into `main` publishes the release: `release.yml` tags and
+  publishes it with no further step. Before merging a PR into `main`,
+  its "Release gate" check must pass: version bumped, changelog section
+  written, `[Unreleased]` empty. Never merge it with a red or missing
+  check. Full flow: `docs/development.md` "Releases".
 
 Merge PRs with a merge commit, not squash-merge. Before merging, squash
 the branch down to a few meaningful commits with imperative subjects
