@@ -6,6 +6,11 @@ What's new in each version of WoWDeck Addon Manager. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- A new About section at the end of Options shows the third-party notices
+  and the Supporters list.
+
 ## [1.0.0] - 2026-10-29
 
 First public release.

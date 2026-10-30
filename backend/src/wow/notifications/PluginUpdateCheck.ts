@@ -39,6 +39,10 @@
  * yesterday is never offered on Stable today. Switching channel
  * (setChannel) checks at once, past the daily interval and any backoff.
  *
+ * Each ask of GitHub also calls onGitHubAsk, which refreshes Options ›
+ * About's fetched files (ADR-0005). That refresh keeps no part of this
+ * check's stamp or backoff, and neither side's failure fails the other.
+ *
  * "unknown", never an error: the repo can be private beyond the token's
  * reach (the API answers 404), the Deck can be offline, GitHub can
  * rate-limit, the configured token can be rejected — none of that may
@@ -113,9 +117,24 @@ function memoryStore(): PluginUpdateStore {
   };
 }
 
+export interface PluginUpdateCheckOptions {
+  /** The clock; tests pass their own. */
+  now?: () => number;
+  /**
+   * Called each time this check is about to ask GitHub (a due check,
+   * Check again, a channel switch, a staging refresh), never when the
+   * stored answer or the backoff answers. Options › About refreshes its
+   * fetched files here (ADR-0005). Fire and forget: the check neither
+   * waits for it nor lets it fail the check.
+   */
+  onGitHubAsk?: () => void;
+}
+
 export class PluginUpdateCheck {
   #flight = new SingleFlight<Answer>();
   readonly #sources: Record<UpdateChannel, BuildSource>;
+  readonly #now: () => number;
+  readonly #onGitHubAsk: () => void;
 
   constructor(
     net: Pick<NetworkClient, "getJson">,
@@ -126,9 +145,11 @@ export class PluginUpdateCheck {
     tokenProvider: () => string | undefined = () => undefined,
     /** The persisted answer and timestamp: this is the once-a-day cap. */
     private store: PluginUpdateStore = memoryStore(),
-    private now: () => number = Date.now,
+    { now = Date.now, onGitHubAsk = () => {} }: PluginUpdateCheckOptions = {},
   ) {
     this.#sources = buildSources(net, releasesUrl, tokenProvider);
+    this.#now = now;
+    this.#onGitHubAsk = onGitHubAsk;
   }
 
   channel(): UpdateChannel {
@@ -193,7 +214,7 @@ export class PluginUpdateCheck {
     const stored = this.store.read();
     // Only this channel's answer serves.
     const stamp = stored !== null && stampChannel(stored) === channel ? stored : null;
-    const now = this.now();
+    const now = this.#now();
     if (!force && !isDue(stamp?.checkedAt ?? null, now, this.#interval(stamp))) {
       return this.#fromStamp(stamp!);
     }
@@ -205,16 +226,21 @@ export class PluginUpdateCheck {
     if (!force && backoff !== null && !isDue(backoff.failedAt, now, backoffIntervalMs(backoff.failures))) {
       return stamp !== null ? this.#fromStamp(stamp) : this.#unknown(false);
     }
+    try {
+      this.#onGitHubAsk();
+    } catch (err) {
+      console.error(`[plugin-update] onGitHubAsk failed: ${String(err)}`);
+    }
     const fresh = await this.#fetch(channel);
     if (fresh !== null) {
-      const snapshot = { ...fresh, checkedAt: this.now() };
+      const snapshot = { ...fresh, checkedAt: this.#now() };
       this.store.write(snapshot);
       // A success re-arms the plain daily cadence.
       this.store.writeBackoff(null);
       return { ...this.#fromStamp(snapshot), checked: true };
     }
     const failures = (backoff?.failures ?? 0) + 1;
-    this.store.writeBackoff({ failedAt: this.now(), failures });
+    this.store.writeBackoff({ failedAt: this.#now(), failures });
     // A failure keeps serving the stored answer, as inside the backoff
     // window: otherwise the panel would vanish on the failed attempt and
     // come back on the next trigger.

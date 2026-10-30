@@ -15,6 +15,7 @@ import type { StateStore } from "../../wow/storage/StateStore";
 import type { WtfBackupService } from "../../wow/wtf/WtfBackupService";
 import type { WtfJobRunner, WtfJobTarget } from "../../wow/wtf/WtfJobRunner";
 import type { RecentErrorsBuffer } from "../../diagnostics/RecentErrors";
+import type { About } from "../../about/About";
 
 export interface HandlerDeps {
   backendVersion: string;
@@ -39,4 +40,6 @@ export interface HandlerDeps {
   /** The WTF job target for an installation (the active one when no id). */
   wtfJobTarget: (installationId?: string) => WtfJobTarget;
   recentErrors: RecentErrorsBuffer;
+  /** Options › About (about.get). */
+  about: About;
 }

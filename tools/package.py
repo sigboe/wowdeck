@@ -12,6 +12,11 @@ Layout produced (matches decky-loader expectations):
                                 frontend load path)
             main.py
             decky.pyi          (for reference; harmless)
+            README.md, LICENSE, THIRD_PARTY_NOTICES.md
+                               (the notices are shown in Options › About)
+            about-snapshot/SUPPORTERS.md, about-snapshot/FUNDING.yml
+                               (About's fallback for the files it fetches
+                                from `next`; see ABOUT_SNAPSHOT_FILES)
             defaults/...       (if present)
             py_modules/...     (if present)
             dist/index.js      (frontend bundle; the sourcemap next to it is
@@ -53,6 +58,25 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 STAGE = ROOT / "build" / "wowdeck"
+
+# Repo-root files copied into the plugin folder as they are. The third-party
+# notices travel with the code that uses them, and Options › About reads them
+# from the installed plugin (about.get).
+ROOT_FILES = (
+    "plugin.json",
+    "package.json",
+    "main.py",
+    "decky.pyi",
+    "README.md",
+    "LICENSE",
+    "THIRD_PARTY_NOTICES.md",
+)
+
+# Repo files Options › About fetches live from `next` (ADR-0005). The zip
+# carries a snapshot of each in about-snapshot/<file name>, the fallback on a
+# first run with no network (backend/src/about/FetchedFile.ts).
+ABOUT_SNAPSHOT_DIR = "about-snapshot"
+ABOUT_SNAPSHOT_FILES = ("SUPPORTERS.md", ".github/FUNDING.yml")
 
 # Standard Linux x86_64 dynamic loader. NixOS-built binaries reference the
 # Nix store loader instead, which does not exist on SteamOS; rewriting the
@@ -195,6 +219,18 @@ def copy_frontend_dist(src: Path, dst: Path) -> None:
     shutil.copytree(src, dst, ignore=shutil.ignore_patterns(*FRONTEND_IGNORE))
 
 
+def copy_about_snapshot(root: Path, stage: Path, files: tuple[str, ...] = ABOUT_SNAPSHOT_FILES) -> None:
+    """Stage each fetched file's snapshot under its own name. A missing file
+    fails the build: without it a first run offline would show nothing."""
+    dst = stage / ABOUT_SNAPSHOT_DIR
+    dst.mkdir(parents=True, exist_ok=True)
+    for name in files:
+        src = root / name
+        if not src.is_file():
+            raise FileNotFoundError(f"{name} is missing; the zip's About snapshot needs it")
+        shutil.copy2(src, dst / Path(name).name)
+
+
 def zip_path() -> Path:
     """The one zip: named exactly after plugin.json's `name`. Decky Loader's
     "install plugin from local zip" flow (the sideload path for a plugin not
@@ -233,7 +269,7 @@ def main(argv: list[str] | None = None) -> int:
         shutil.rmtree(STAGE)
     STAGE.mkdir(parents=True)
 
-    for item in ("plugin.json", "package.json", "main.py", "decky.pyi", "README.md", "LICENSE"):
+    for item in ROOT_FILES:
         src = ROOT / item
         if src.exists():
             shutil.copy2(src, STAGE / item)
@@ -242,6 +278,7 @@ def main(argv: list[str] | None = None) -> int:
         if src.is_dir() and any(src.iterdir()):
             shutil.copytree(src, STAGE / folder)
     copy_frontend_dist(ROOT / "dist", STAGE / "dist")
+    copy_about_snapshot(ROOT, STAGE)
     bin_dir = STAGE / "bin"
     bin_dir.mkdir()
     shutil.copy2(ROOT / "backend" / "out" / "wowdeck", bin_dir / "wowdeck")

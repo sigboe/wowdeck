@@ -1,0 +1,19 @@
+# Funding links: GitHub's Sponsor button and Options › About › Support
+# WoWDeck both read this file. Installed copies of WoWDeck read it from the
+# `next` branch, so keep its name and path. ADR-0005 explains why.
+#
+# The plugin reads these keys and ignores GitHub's others:
+#   github, ko_fi, patreon, liberapay, buy_me_a_coffee: a username, or a
+#     list of them
+#   custom: an https:// URL, or a list of them. An entry may also be a
+#     Bitcoin address as bitcoin:<address>; the plugin shows its QR code
+#     for wallet apps and drops it if the address's checksum fails.
+# It shows at most 6 links, in this file's order. With no keys set, the
+# Support WoWDeck row stays hidden.
+#
+# github: [username]
+ko_fi: sigboe
+patreon: sigboe
+liberapay: sigboe
+buy_me_a_coffee: sigboe
+# custom: ["https://paypal.me/username", "bitcoin:bc1q…"]

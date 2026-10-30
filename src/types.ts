@@ -6,11 +6,13 @@
 import type { EventMap, EventName, MethodMap, SearchResult } from "../backend/src/api/contracts";
 
 export type {
+  AboutInfo,
   Addon,
   ArchivePreview,
   AutoUpdateResult,
   CurseForgeAuthStatus,
   Diagnostics,
+  FundingLink,
   GameRunning,
   GameType,
   ImportComparison,

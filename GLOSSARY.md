@@ -142,6 +142,17 @@ the name. A result counts as installed when My Addons has an addon with the
 same provider and id in the active installation.
 _Avoid_: badge, pill, label
 
+**Funding link**:
+One platform where players can fund WoWDeck (Ko-fi, Patreon, PayPal, …): its
+URL and the QR code a phone scans to open it. A Bitcoin address is a Funding
+link too, with a QR code for wallet apps. Shown under Options › About.
+_Avoid_: donation link, sponsor link
+
+**Supporter**:
+Someone who funded WoWDeck and asked to be credited by name. Credit is
+opt-in only: a name with no link, amount or tier.
+_Avoid_: donor, backer, patron, sponsor
+
 ## Get Addons rework
 
 **Title bar**:

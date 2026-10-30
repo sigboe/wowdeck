@@ -34,10 +34,17 @@ export interface RequestOptions {
    * unchanged) for requests that carry no credential worth protecting.
    */
   trustedHostsForHeaders?: string[];
+  /**
+   * The largest body accepted, in bytes. A bigger Content-Length fails
+   * before the body is read; without one, reading stops and the request is
+   * aborted at the first chunk past the cap. Either way the request fails
+   * with ResponseTooLargeError, which is not retried. Not with `streamBody`.
+   */
+  maxBytes?: number;
 }
 
 /** Exact or dot-suffix hostname match (`forgecdn.net` matches `edge.forgecdn.net` too). */
-function isHostTrusted(hostname: string, trustedHosts: string[]): boolean {
+export function isHostTrusted(hostname: string, trustedHosts: string[]): boolean {
   const target = hostname.toLowerCase();
   return trustedHosts.some((host) => {
     const h = host.toLowerCase();
@@ -55,6 +62,14 @@ export class NetworkError extends Error {
   ) {
     super(message);
     this.name = "NetworkError";
+  }
+}
+
+/** A body past RequestOptions.maxBytes: the same answer on every retry, so none is made. */
+export class ResponseTooLargeError extends NetworkError {
+  constructor(maxBytes: number, url: string) {
+    super(`response from ${redactUrl(url)} is larger than ${maxBytes} bytes`, undefined, url);
+    this.name = "ResponseTooLargeError";
   }
 }
 
@@ -190,7 +205,10 @@ export class NetworkClient {
         }
         lastError = new NetworkError(`${method} ${redactUrl(url)} transient HTTP ${res.status}`, res.status, url);
       } catch (err) {
-        if (err instanceof NetworkError && err.status !== undefined && err.status < 500 && err.status !== 429) {
+        if (
+          err instanceof ResponseTooLargeError ||
+          (err instanceof NetworkError && err.status !== undefined && err.status < 500 && err.status !== 429)
+        ) {
           throw err;
         }
         lastError = err;
@@ -223,9 +241,14 @@ export class NetworkClient {
       }
       // Read the body while the timeout still runs (see `streamBody`).
       const noBody = method === "HEAD" || [101, 204, 205, 304].includes(res.status);
-      const buffer = noBody ? null : await res.arrayBuffer();
+      const buffer = noBody
+        ? null
+        : options.maxBytes === undefined
+          ? await res.arrayBuffer()
+          : await readCapped(res, options.maxBytes, url, controller);
       return new Response(buffer, { status: res.status, statusText: res.statusText, headers: res.headers });
     } catch (err) {
+      if (err instanceof ResponseTooLargeError) throw err;
       throw new NetworkError(`request to ${redactUrl(url)} failed: ${String(err)}`, undefined, url);
     } finally {
       clearTimeout(timeout);
@@ -273,6 +296,41 @@ export class NetworkClient {
     }
     throw new NetworkError(`too many redirects for ${redactUrl(initialUrl)}`, undefined, initialUrl);
   }
+}
+
+/**
+ * The body, read chunk by chunk and given up at the first chunk past
+ * `maxBytes` (the request is aborted, so the rest is never downloaded).
+ */
+async function readCapped(
+  res: Response,
+  maxBytes: number,
+  url: string,
+  controller: AbortController,
+): Promise<Uint8Array> {
+  const tooLarge = () => {
+    controller.abort();
+    return new ResponseTooLargeError(maxBytes, url);
+  };
+  const declared = Number(res.headers.get("content-length"));
+  if (Number.isFinite(declared) && declared > maxBytes) {
+    throw tooLarge();
+  }
+  const reader = res.body?.getReader();
+  if (!reader) return new Uint8Array();
+  const chunks: Uint8Array[] = [];
+  let received = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    received += value.byteLength;
+    if (received > maxBytes) {
+      void reader.cancel().catch(() => {});
+      throw tooLarge();
+    }
+    chunks.push(value);
+  }
+  return new Uint8Array(await new Blob(chunks).arrayBuffer());
 }
 
 /** Minimal helper providers use to wrap network failures. */
