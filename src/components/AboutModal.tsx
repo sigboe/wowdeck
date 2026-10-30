@@ -7,11 +7,13 @@ import {
   DialogFooter,
   DialogHeader,
   Field,
+  Focusable,
   ModalRoot,
+  NavEntryPositionPreferences,
   Navigation,
   showModal,
 } from "@decky/ui";
-import { fundingText, SUPPORT_HINT, SUPPORT_NOTE } from "../about";
+import { fundingText, inPairs, SUPPORT_HINT, SUPPORT_NOTE } from "../about";
 import type { FundingLink } from "../types";
 import { QrCode } from "./QrCode";
 import { SafeMarkdown } from "./SafeMarkdown";
@@ -134,12 +136,59 @@ export function AboutMarkdown({
 }
 
 /**
- * The Support WoWDeck body (a "focus" modal): the owner's note, then one
- * Steam row per Funding link, its name and short URL beside its QR code.
- * Each row is one focus stop (S9): the D-pad moves between them (and down
- * to Close), A on a web link closes the modal and opens the link in
- * Steam's browser. A Bitcoin row shows the full address instead, its code
- * is the `bitcoin:` URI a wallet scans, and A does nothing there. Names and URLs are React text, never HTML.
+ * A web link's short URL stays on one line, cut with Valve's ellipsis in
+ * the rare case it is wider than the tile (the QR code holds the full
+ * link). A Bitcoin address wraps, since the player checks all of it.
+ */
+const webUrlStyle = {
+  ...descriptionStyle,
+  display: "block",
+  whiteSpace: "nowrap",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+} as const;
+const bitcoinAddressStyle = { ...descriptionStyle, overflowWrap: "anywhere" } as const;
+
+/** Space between Funding tiles, both ways: above Steam's 6 px between rows (S10). */
+const TILE_GAP = "8px";
+
+/**
+ * One Funding link in the Support grid, one focus stop (S9): its name and
+ * short URL, its QR code below them, so the URL gets the tile's full width
+ * and never breaks mid-word. A on a web link closes the modal and opens
+ * the link in Steam's browser. A Bitcoin tile shows the full address
+ * instead, its code is the `bitcoin:` URI a wallet scans, and A does
+ * nothing there. Names and URLs are React text, never HTML.
+ */
+function FundingTile({ link, closeModal }: { link: FundingLink; closeModal: () => void }) {
+  return (
+    <Field
+      focusable
+      childrenLayout="below"
+      label={link.name}
+      description={
+        <span style={link.kind === "web" ? webUrlStyle : bitcoinAddressStyle}>
+          {fundingText(link)}
+        </span>
+      }
+      {...(link.kind === "web" && {
+        onClick: () => openInBrowser(link.url, closeModal),
+        onOKActionDescription: "Open in browser",
+      })}
+    >
+      <QrCode value={link.url} />
+    </Field>
+  );
+}
+
+/**
+ * The Support WoWDeck body (a "focus" modal): the owner's note, then the
+ * Funding links two to a row (inPairs), so six links scroll three rows
+ * instead of six. Each row is a `flow-children="row"` group (F7): Left/Right
+ * move within it, and MAINTAIN_X keeps the column on Up/Down (F6). Each
+ * tile sits in its own column div, so Steam's 6 px between sibling rows
+ * never applies: TILE_GAP spaces them instead. An odd last link keeps the
+ * left column's width.
  */
 export function AboutFunding({
   links,
@@ -153,24 +202,25 @@ export function AboutFunding({
       <DialogBodyText>{SUPPORT_NOTE}</DialogBodyText>
       <DialogBodyText style={{ color: STEAM.textMuted }}>{SUPPORT_HINT}</DialogBodyText>
       <DialogControlsSection>
-        {links.map((link) => (
-          <Field
-            key={link.url}
-            focusable
-            label={link.name}
-            description={
-              <span style={{ ...descriptionStyle, overflowWrap: "anywhere" }}>
-                {fundingText(link)}
-              </span>
-            }
-            {...(link.kind === "web" && {
-              onClick: () => openInBrowser(link.url, closeModal),
-              onOKActionDescription: "Open in browser",
-            })}
-          >
-            <QrCode value={link.url} />
-          </Field>
-        ))}
+        <div style={{ display: "flex", flexDirection: "column", gap: TILE_GAP }}>
+          {inPairs(links).map((row) => (
+            <Focusable
+              key={row[0]!.url}
+              flow-children="row"
+              navEntryPreferPosition={NavEntryPositionPreferences.MAINTAIN_X}
+              style={{ display: "flex", gap: TILE_GAP }}
+            >
+              {[0, 1].map((column) => {
+                const link = row[column];
+                return (
+                  <div key={link?.url ?? column} style={{ flex: "1 1 0", minWidth: 0 }}>
+                    {link && <FundingTile link={link} closeModal={closeModal} />}
+                  </div>
+                );
+              })}
+            </Focusable>
+          ))}
+        </div>
       </DialogControlsSection>
     </>
   );
