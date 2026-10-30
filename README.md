@@ -1,5 +1,7 @@
 # WoWDeck Addon Manager
 
+[![CI](https://github.com/sigboe/wowdeck/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/sigboe/wowdeck/actions/workflows/ci.yml) [![Beta](https://github.com/sigboe/wowdeck/actions/workflows/beta.yml/badge.svg?branch=next)](https://github.com/sigboe/wowdeck/actions/workflows/beta.yml) [![Latest release](https://img.shields.io/github/v/release/sigboe/wowdeck)](https://github.com/sigboe/wowdeck/releases/latest) [![License: GPL-3.0](https://img.shields.io/github/license/sigboe/wowdeck)](LICENSE)
+
 A [Decky Loader](https://github.com/SteamDeckHomebrew/decky-loader) plugin
 to discover, install and update World of Warcraft addons on a Steam
 Deck. You do it all from Game Mode, in the Quick Access Menu, without a
