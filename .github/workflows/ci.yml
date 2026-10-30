@@ -79,7 +79,8 @@ jobs:
         working-directory: backend
       - run: bun test
         working-directory: backend
-      # The beta workflow's version and prune decisions (tools/beta-release.ts).
+      # The beta workflow's version and prune decisions (tools/beta-release.ts)
+      # and the release gate (tools/release-check.ts).
       - run: bun test ./tools
       # The tests run the engine at its committed version: they mock that
       # version as the latest stable release, which a beta version can never
@@ -118,7 +119,7 @@ jobs:
           path: backend/out/
       - run: python3 tools/test_package.py -v
       # package.json, plugin.json and backend/package.json must agree; the
-      # tag-triggered release workflow refuses to publish otherwise.
+      # release workflow refuses to publish otherwise.
       - run: python3 tools/test_version.py -v
       # main.py must forward every contract method unchanged (AGENTS.md
       # "Contracts first").
@@ -138,3 +139,23 @@ jobs:
         with:
           name: plugin-zip
           path: build/*.zip
+
+  # Merging into main publishes a release (release.yml), so a PR into main
+  # must already be releasable: a new X.Y.Z, its CHANGELOG.md section
+  # written and nothing left under [Unreleased] (tools/release-check.ts).
+  release-gate:
+    name: Release gate
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
+    runs-on: ubuntu-latest
+    steps:
+      # Full history so every release tag is present.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - run: |
+          set -euo pipefail
+          python3 tools/version.py check
+          git tag -l 'v*' | bun tools/release-check.ts "$(python3 tools/version.py show)"
