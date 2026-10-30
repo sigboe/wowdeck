@@ -105,7 +105,7 @@ function makeCheck(options: {
           persisted.channel = channel;
         },
       },
-      () => nowMs,
+      { now: () => nowMs },
     );
   }
   return {

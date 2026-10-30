@@ -486,6 +486,16 @@ export interface MethodMap {
       toastPending: boolean;
     };
   };
+  "about.get": {
+    /**
+     * Options › About's data (GLOSSARY: Funding link, Supporter). Local
+     * only: it never asks the network, so opening About is instant. The
+     * fetched files behind it refresh only when the WoWDeck update check
+     * asks GitHub (ADR-0005).
+     */
+    params: Record<string, never>;
+    result: AboutInfo;
+  };
   "system.getUpdateChannel": {
     /** Which WoWDeck builds the update check offers (GLOSSARY: Update channel). Stable until the owner picks another. */
     params: Record<string, never>;
@@ -1096,6 +1106,51 @@ export interface Diagnostics {
    * bundled/user distinction. Never the token value itself.
    */
   githubTokenConfigured: boolean;
+}
+
+/**
+ * Everything Options › About shows, in one answer (about.get). The
+ * frontend decides which About rows appear from it (src/about.ts).
+ */
+export interface AboutInfo {
+  /**
+   * THIRD_PARTY_NOTICES.md from the installed plugin, as Markdown the
+   * project wrote (rendered with the frontend's Markdown renderer). Null
+   * when the file can't be read (a development run without a plugin dir,
+   * a damaged install); the Third-party notices row still shows.
+   */
+  notices: string | null;
+  /**
+   * The Funding links (GLOSSARY), in FUNDING.yml's order. From
+   * .github/FUNDING.yml on `next` (ADR-0005), the last copy fetched or else
+   * the snapshot in the zip. Every url is `https://` or, for a Bitcoin
+   * link, `bitcoin:<address>`; every name is plain text the engine picked,
+   * and the engine caps the count. Empty hides the Support WoWDeck row.
+   */
+  funding: FundingLink[];
+  /**
+   * The Supporters (GLOSSARY) to credit, in display order (alphabetical),
+   * as plain text: never Markdown or HTML. From SUPPORTERS.md on `next`
+   * (ADR-0005), the last copy fetched or else the snapshot in the zip. The
+   * engine caps the count and each name's length. Empty hides the row.
+   */
+  supporters: string[];
+}
+
+/** One way to fund WoWDeck (GLOSSARY: Funding link), shown as a QR code. */
+export interface FundingLink {
+  /**
+   * `web`: a page A opens in Steam's browser. `bitcoin`: an address for a
+   * wallet app to scan, with nothing to open.
+   */
+  kind: "web" | "bitcoin";
+  /** The platform's display name ("Ko-fi", "PayPal", "Bitcoin"), else the link's bare hostname. */
+  name: string;
+  /**
+   * `web`: an `https://` URL. `bitcoin`: `bitcoin:<address>` with no
+   * parameters, the address's checksum verified.
+   */
+  url: string;
 }
 
 // ---------------------------------------------------------------------------

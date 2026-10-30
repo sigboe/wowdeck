@@ -42,6 +42,8 @@ import { register as registerProviders } from "./api/handlers/providers";
 import { register as registerSettings } from "./api/handlers/settings";
 import { register as registerSystem } from "./api/handlers/system";
 import { register as registerWtf } from "./api/handlers/wtf";
+import { register as registerAbout } from "./api/handlers/about";
+import { About } from "./about/About";
 
 /** Bundled into the binary from backend/package.json at build time. */
 const BACKEND_VERSION = version;
@@ -58,6 +60,12 @@ const homeDir = process.env.HOME ?? "/home/deck";
 
 const store = createStateStore(dataDir);
 const network = new NetworkClient();
+/**
+ * The optional GitHub token (Options › GitHub), read live: a token saved
+ * later in the session is picked up by the next request. The GitHub addon
+ * source, the WoWDeck update check, its staging and About all share it.
+ */
+const githubToken = (): string | undefined => store.settings.githubAccessToken ?? undefined;
 const registry = new ProviderRegistry();
 registry.register(new WowUpHubProvider(HUB_URL, HUB_URL, network));
 // Unset: api.tukui.org's catalogue (integration tests point it at the mock hub).
@@ -78,7 +86,7 @@ const curseForgeProvider = new CurseForgeProvider(
   (err) => curseForgeAuth.recordNormalOutcome(err),
 );
 registry.register(curseForgeProvider);
-registry.register(new GitHubProvider(network, () => store.settings.githubAccessToken ?? undefined));
+registry.register(new GitHubProvider(network, githubToken));
 registry.register(new WowInterfaceProvider(network));
 registry.register(new ZipProvider());
 registry.register(new FileProvider());
@@ -129,13 +137,22 @@ const installationService = service.installations;
 const companionCoordinator = new CompanionSyncCoordinator(service);
 const updateCheck = new UpdateCheck(service, companionCoordinator);
 const updateToastGate = new UpdateToastGate(service, store, updateCheck);
+// main.py passes the installed plugin's folder; unset outside Decky. The
+// fetched files (FUNDING.yml, SUPPORTERS.md) refresh only when the update
+// check below asks GitHub (ADR-0005), with the same optional token, which
+// FetchedFile sends to GitHub hosts only.
+const about = new About({
+  pluginDir: process.env.WOWDECK_PLUGIN_DIR ?? null,
+  dataDir,
+  net: network,
+  rawBaseUrl: process.env.WOWDECK_ABOUT_URL,
+  tokenProvider: githubToken,
+});
 const pluginUpdate = new PluginUpdateCheck(
   network,
   BACKEND_VERSION,
   RELEASES_URL,
-  // The addon source's token, read live: a token saved later in the session
-  // is picked up by the next daily check.
-  () => store.settings.githubAccessToken ?? undefined,
+  githubToken,
   // The once-a-day cap and the failure backoff live in settings, so a
   // restart inside the interval answers from the stored answer instead of
   // asking GitHub again, and a restarted engine still honours a backoff
@@ -152,9 +169,10 @@ const pluginUpdate = new PluginUpdateCheck(
     readChannel: () => store.settings.pluginUpdateChannel,
     writeChannel: (channel) => store.updateSettings({ pluginUpdateChannel: channel }),
   },
+  { onGitHubAsk: () => void about.refresh() },
 );
 
-const updateStager = new UpdateStager(network, pluginUpdate, () => store.settings.githubAccessToken ?? undefined);
+const updateStager = new UpdateStager(network, pluginUpdate, githubToken);
 
 const server = new JsonlServer();
 
@@ -201,6 +219,7 @@ const deps: HandlerDeps = {
   wtfJobs,
   wtfJobTarget,
   recentErrors,
+  about,
 };
 for (const register of [
   registerSystem,
@@ -210,6 +229,7 @@ for (const register of [
   registerSettings,
   registerWtf,
   registerNotifications,
+  registerAbout,
 ]) {
   register(server, deps);
 }

@@ -284,7 +284,7 @@ describe("UpdateStager.stage after the offered zip is gone", () => {
         readChannel: () => "beta",
         writeChannel: () => {},
       },
-      () => NOW,
+      { now: () => NOW },
     );
     return { stager: new UpdateStager(net, check, undefined, ROOT), persisted, checks, downloads };
   }

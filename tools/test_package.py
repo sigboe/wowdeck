@@ -153,6 +153,53 @@ class FrontendDistCopyTests(unittest.TestCase):
         self.assertTrue((self._tmp / "stage" / "other.js").exists())
 
 
+class RootFilesTests(unittest.TestCase):
+    """The licenses travel with the code that uses them: about.get reads
+    THIRD_PARTY_NOTICES.md from the installed plugin folder."""
+
+    def test_the_notices_ship_next_to_the_license(self) -> None:
+        self.assertIn("LICENSE", package.ROOT_FILES)
+        self.assertIn("THIRD_PARTY_NOTICES.md", package.ROOT_FILES)
+
+
+class AboutSnapshotTests(unittest.TestCase):
+    """The zip carries a snapshot of each file About fetches from `next`
+    (ADR-0005): the fallback on a first run with no network. The engine
+    reads it from about-snapshot/ (backend/src/about/FetchedFile.ts)."""
+
+    def setUp(self) -> None:
+        self._tmp = Path(tempfile.mkdtemp(prefix="wowdeck-pkgtest-"))
+        self.root = self._tmp / "repo"
+        self.root.mkdir()
+        self.stage = self._tmp / "stage"
+        self.stage.mkdir()
+
+    def tearDown(self) -> None:
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def test_supporters_are_snapshotted(self) -> None:
+        self.assertIn("SUPPORTERS.md", package.ABOUT_SNAPSHOT_FILES)
+
+    def test_funding_is_snapshotted(self) -> None:
+        self.assertIn(".github/FUNDING.yml", package.ABOUT_SNAPSHOT_FILES)
+
+    def test_the_repo_has_every_snapshotted_file(self) -> None:
+        for name in package.ABOUT_SNAPSHOT_FILES:
+            self.assertTrue((package.ROOT / name).is_file(), name)
+
+    def test_each_file_lands_in_about_snapshot_under_its_own_name(self) -> None:
+        (self.root / "SUPPORTERS.md").write_text("- Ada\n", encoding="utf-8")
+        (self.root / ".github").mkdir()
+        (self.root / ".github" / "FUNDING.yml").write_text("ko_fi: x\n", encoding="utf-8")
+        package.copy_about_snapshot(self.root, self.stage, ("SUPPORTERS.md", ".github/FUNDING.yml"))
+        self.assertEqual((self.stage / "about-snapshot" / "SUPPORTERS.md").read_text(encoding="utf-8"), "- Ada\n")
+        self.assertTrue((self.stage / "about-snapshot" / "FUNDING.yml").is_file())
+
+    def test_a_missing_file_fails_the_build(self) -> None:
+        with self.assertRaises(FileNotFoundError):
+            package.copy_about_snapshot(self.root, self.stage, ("SUPPORTERS.md",))
+
+
 class PluginDisplayNameTests(unittest.TestCase):
     """plugin_display_name() names the one zip so Decky Loader's local-zip
     install flow (which checks "is this already installed?" against the

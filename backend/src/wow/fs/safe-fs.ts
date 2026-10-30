@@ -113,6 +113,20 @@ export async function renameSafe(source: string, target: string): Promise<void> 
   await rename(source, target);
 }
 
+/**
+ * Temp-write + rename: a crash or kill mid-write leaves either the
+ * previous file or the fully-written new one, never a
+ * truncated one. The temp file lives next to its target, so the rename
+ * is same-directory and never crosses a filesystem boundary. Creates the
+ * parent directory.
+ */
+export async function writeFileAtomic(targetPath: string, contents: string): Promise<void> {
+  const tmpPath = `${targetPath}.tmp-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  await mkdir(dirname(targetPath), { recursive: true });
+  await Bun.write(tmpPath, contents);
+  await renameSafe(tmpPath, targetPath);
+}
+
 export async function removeDirectory(target: string): Promise<void> {
   await rm(target, { recursive: true, force: true });
 }

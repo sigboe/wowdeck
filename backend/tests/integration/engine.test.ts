@@ -177,6 +177,9 @@ beforeAll(async () => {
         releasesSeenAuth.push(req.headers.get("authorization"));
         return Response.json(releasesList);
       }
+      if (url.pathname.startsWith("/raw/")) {
+        return new Response(null, { status: 404 });
+      }
       if (url.pathname === "/tukui/addons") {
         return Response.json([]);
       }
@@ -261,6 +264,8 @@ beforeAll(async () => {
       WOWDECK_RELEASES_URL: `http://127.0.0.1:${port}/releases/latest`,
       WOWDECK_CF_URL: `http://127.0.0.1:${cfPort}/v1`,
       WOWDECK_TUKUI_URL: `http://127.0.0.1:${port}/tukui/addons`,
+      // About's fetched files (SUPPORTERS.md) follow the update check: keep them off GitHub.
+      WOWDECK_ABOUT_URL: `http://127.0.0.1:${port}/raw`,
     },
   });
 
@@ -653,6 +658,8 @@ describe("system.updateCheck (the plugin's own update notice)", () => {
         WOWDECK_RELEASES_URL: `http://127.0.0.1:${port}/releases/latest`,
         WOWDECK_CF_URL: `http://127.0.0.1:${cfPort}/v1`,
         WOWDECK_TUKUI_URL: `http://127.0.0.1:${port}/tukui/addons`,
+        // About's fetched files (SUPPORTERS.md) follow the update check: keep them off GitHub.
+        WOWDECK_ABOUT_URL: `http://127.0.0.1:${port}/raw`,
       },
     });
   }

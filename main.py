@@ -119,6 +119,9 @@ class BackendProcess:
                 **_system_environ(),
                 "WOWDECK_CHILD": "1",
                 "WOWDECK_DATA_DIR": data_dir,
+                # The installed plugin folder: about.get reads the bundled
+                # THIRD_PARTY_NOTICES.md from it.
+                "WOWDECK_PLUGIN_DIR": decky.DECKY_PLUGIN_DIR,
                 "HOME": decky.DECKY_USER_HOME,
             }
             # Forwarded as a plain env var rather than leaving the engine to
