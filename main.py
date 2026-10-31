@@ -39,9 +39,7 @@ ENGINE_BINARIES = {
     "aarch64": "wowdeck-aarch64",
     "arm64": "wowdeck-aarch64",
 }
-# Until unsupported machines get their own handling, any other machine starts
-# the x86_64 engine, as every build before the per-architecture names did.
-FALLBACK_ENGINE_BINARY = ENGINE_BINARIES["x86_64"]
+UNSUPPORTED_ARCHITECTURE = "unsupported_architecture"
 START_TIMEOUT = 10.0
 REQUEST_TIMEOUT = 120.0
 RESTART_MIN_DELAY = 1.0
@@ -294,6 +292,9 @@ MAX_TEXT_FILE_BYTES = 2 * 1024 * 1024
 
 class Plugin:
     backend: BackendProcess | None = None
+    # The machine name seen at load when it matched no engine binary; the
+    # unsupported-architecture error names it.
+    unsupported_machine: str | None = None
 
     async def _main(self):
         # Self-heal a reload that skipped `_unload` (seen with some
@@ -308,9 +309,20 @@ class Plugin:
         if self.backend is not None:
             await self.backend.stop()
         machine = platform.machine()
-        binary_name = ENGINE_BINARIES.get(machine, FALLBACK_ENGINE_BINARY)
+        binary_name = ENGINE_BINARIES.get(machine)
+        if binary_name is None:
+            # A machine with no engine binary. `backend` stays None: every
+            # call then answers unsupported_architecture (see _rpc and
+            # get_status), and no process is ever spawned to fail weirdly.
+            self.backend = None
+            self.unsupported_machine = machine
+            decky.logger.warning(
+                "Machine %s has no engine binary; WoWDeck will not start here", machine
+            )
+            return
         binary = os.path.join(decky.DECKY_PLUGIN_DIR, "bin", binary_name)
         self.backend = BackendProcess(binary)
+        self.unsupported_machine = None
         decky.logger.info("Machine %s: engine binary %s", machine, binary_name)
         decky.logger.info("WoWDeck Addon Manager loaded (plugin dir: %s)", decky.DECKY_PLUGIN_DIR)
 
@@ -325,6 +337,23 @@ class Plugin:
 
     # ---- RPC surface (called from the frontend via @decky/api) ----
 
+    def _unsupported_architecture_error(self) -> BackendError:
+        machine = self.unsupported_machine or platform.machine()
+        return BackendError(
+            UNSUPPORTED_ARCHITECTURE,
+            f"WoWDeck doesn't run on {machine} devices.",
+        )
+
+    def _require_backend(self) -> BackendProcess:
+        """The engine supervisor, or the unsupported-machine error.
+
+        A machine with no engine binary leaves `backend` None for the
+        plugin's whole lifetime; every engine call reports that instead.
+        """
+        if self.backend is None:
+            raise self._unsupported_architecture_error()
+        return self.backend
+
     async def _rpc(self, method: str, params: dict[str, Any] | None = None) -> Any:
         """Engine call whose failure is returned, not raised.
 
@@ -334,7 +363,7 @@ class Plugin:
         {"__error": {"code", "message"}} and rethrown by src/services/backend.ts.
         """
         try:
-            return await self.backend.request(method, params)
+            return await self._require_backend().request(method, params)
         except BackendError as exc:
             return {"__error": {"code": exc.code, "message": exc.message}}
 
@@ -352,7 +381,7 @@ class Plugin:
     async def get_status(self) -> dict[str, Any]:
         """Backend health probe. Never raises for a dead engine."""
         try:
-            result = await self.backend.request("system.getStatus")
+            result = await self._require_backend().request("system.getStatus")
             return {"ok": True, **result}
         except BackendError as exc:
             return {"ok": False, "code": exc.code, "message": exc.message}

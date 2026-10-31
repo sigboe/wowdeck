@@ -43,6 +43,7 @@ import { QamExpandHook } from "./steamDom/qamExpandHook";
 import { registerShoulderNav } from "./shoulderNav";
 // Decky's plugin name (plugin.json); Decky's state identifies the active plugin by it.
 import { name as PLUGIN_NAME } from "../plugin.json";
+import type { StatusInfo } from "./types";
 
 type Tab = QamTab;
 
@@ -85,9 +86,12 @@ function Content() {
     addonSession.get,
   );
   const [engineOk, setEngineOk] = useState<boolean | null>(null);
+  // Set when the bridge reports this machine has no engine at all: no
+  // amount of retrying helps, so the panel says so instead (no Retry).
+  const [unsupported, setUnsupported] = useState<string | null>(null);
   useEffect(() => {
     (async () => {
-      let status: { ok: boolean };
+      let status: StatusInfo;
       try {
         // A panel opened while Decky reloads the plugin asks the old Python
         // side, which never answers (askUntilAnswered.ts).
@@ -97,10 +101,18 @@ function Content() {
         setEngineOk(false);
         return;
       }
-      setEngineOk(status.ok);
       if (status.ok) {
+        setEngineOk(true);
         await addonSession.reloadAll();
+        return;
       }
+      if (status.code === "unsupported_architecture") {
+        // The bridge's message already names the machine (e.g. "WoWDeck
+        // doesn't run on riscv64 devices.").
+        setUnsupported(status.message || "WoWDeck doesn't run on this device.");
+        return;
+      }
+      setEngineOk(false);
     })();
   }, []);
 
@@ -171,6 +183,18 @@ function Content() {
     { id: "browse", label: "Get Addons", icon: <FaSearch /> },
     { id: "settings", label: "Options", icon: <FaCog />, dot: pluginUpdateDot(selfUpdate.info) },
   ];
+
+  if (unsupported !== null) {
+    // A device WoWDeck has no engine for: retrying cannot help, so there is
+    // no Retry button — just the message naming why (the architecture).
+    return (
+      <PanelSection>
+        <PanelSectionRow>
+          <Field label="This device isn't supported" description={unsupported} />
+        </PanelSectionRow>
+      </PanelSection>
+    );
+  }
 
   if (engineOk === false) {
     return (
