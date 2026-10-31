@@ -252,8 +252,6 @@ class BackendProcess:
         self.proc = None
 
 
-XCLIP_BIN_NAME = "xclip"
-CLIPBOARD_TIMEOUT = 3.0
 # Plenty for an addon list export string (CurseForge ids + names for a
 # very large addon list); guards read_text_file/save_text_file against
 # an unrelated huge file.
@@ -322,45 +320,11 @@ class Plugin:
         except BackendError as exc:
             return {"ok": False, "code": exc.code, "message": exc.message}
 
-    async def copy_text_to_clipboard(self, text: str) -> dict[str, Any]:
-        """Write `text` to the system clipboard.
-
-        Neither `navigator.clipboard` nor any SteamClient API is available
-        for plain-text clipboard writes from a Decky plugin's webview, and
-        SteamOS does not ship a clipboard CLI tool system-wide — xclip is
-        bundled (backend/vendor/xclip, GPL-2.0, see THIRD_PARTY_NOTICES.md)
-        the same way the installed Decktation plugin already does for an
-        unrelated feature. Writes only; never reads or restores prior
-        clipboard contents.
-        """
-        xclip = os.path.join(decky.DECKY_PLUGIN_DIR, "bin", XCLIP_BIN_NAME)
-        if not os.path.isfile(xclip):
-            return {"ok": False, "message": "clipboard helper not available on this install"}
-        try:
-            proc = await asyncio.create_subprocess_exec(
-                xclip,
-                "-selection",
-                "clipboard",
-                "-in",
-                stdin=asyncio.subprocess.PIPE,
-                stdout=asyncio.subprocess.DEVNULL,
-                stderr=asyncio.subprocess.PIPE,
-                env={**os.environ, "DISPLAY": os.environ.get("DISPLAY") or ":0"},
-            )
-            _, stderr = await asyncio.wait_for(
-                proc.communicate(text.encode("utf-8")), timeout=CLIPBOARD_TIMEOUT
-            )
-        except (TimeoutError, OSError) as exc:
-            return {"ok": False, "message": f"clipboard write failed: {exc}"}
-        if proc.returncode != 0:
-            return {"ok": False, "message": (stderr or b"").decode(errors="replace").strip() or "clipboard write failed"}
-        return {"ok": True, "message": ""}
-
     async def read_text_file(self, path: str) -> dict[str, Any]:
         """Reads a small text file the user explicitly picked via Decky's
         own openFilePicker — Import Addon List's "load from file" option.
         Pure filesystem I/O, so this lives here rather than round-
-        tripping through the engine, same as copy_text_to_clipboard above."""
+        tripping through the engine."""
         try:
             if not os.path.isfile(path):
                 return {"ok": False, "content": None, "message": "not a file"}

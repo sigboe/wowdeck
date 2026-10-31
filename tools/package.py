@@ -22,8 +22,6 @@ Layout produced (matches decky-loader expectations):
             dist/index.js      (frontend bundle; the sourcemap next to it is
                                 build-time only and is never packaged)
             bin/wowdeck    (engine binary)
-            bin/xclip          (vendored, for Copy Diagnostics;
-                                see THIRD_PARTY_NOTICES.md)
             bin/bundled-curseforge-key  (only when a key is available; see
                                 write_curseforge_key_resource. main.py reads
                                 this and injects it into the engine's
@@ -284,13 +282,6 @@ def main(argv: list[str] | None = None) -> int:
     shutil.copy2(ROOT / "backend" / "out" / "wowdeck", bin_dir / "wowdeck")
     patch_interpreter(bin_dir / "wowdeck")
     bin_dir.joinpath("wowdeck").chmod(0o755)
-
-    xclip_src = ROOT / "backend" / "vendor" / "xclip"
-    if xclip_src.exists():
-        shutil.copy2(xclip_src, bin_dir / "xclip")
-        bin_dir.joinpath("xclip").chmod(0o755)
-    else:
-        print("note: backend/vendor/xclip not found; Copy Diagnostics will be unavailable")
 
     write_curseforge_key_resource(bin_dir)
 

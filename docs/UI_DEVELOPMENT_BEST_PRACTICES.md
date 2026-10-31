@@ -207,8 +207,20 @@ from `onGamepadFocus` never ran; event nodes come from another JS realm so
 
 **G8 [GENERAL] MUST NOT** use `navigator.clipboard`, `window.open`, or the
 browser keyboard-focus model as if this were a normal web page.
-Evidence: project uses a bundled `xclip` via a backend RPC for clipboard;
-`Navigation.NavigateToExternalWeb` for URLs (`AddonDetailsModal.tsx`).
+`navigator.clipboard` is unavailable in Steam's webview. Copy to clipboard
+with `copyText` in `src/services/clipboard.ts`. It copies the same way Steam's
+own UI does in the Steam client's `library.js`. It puts the text in an
+off-screen `<textarea>` in the top window's document, because the QAM and
+modals render in Steam's window and not the plugin's. It selects the text,
+calls `SteamClient.Browser.NotifyUserActivation` when that exists, and then
+calls `execCommand("copy")`. A textarea keeps newlines, and an input would
+drop them. Never read the clipboard. Open URLs with
+`Navigation.NavigateToExternalWeb` (`AddonDetailsModal.tsx`).
+Evidence: DEVICE (2026-10-31, regression plan O-13b): copies from the QAM
+(Diagnostics) and from full-screen dialogs (Folders…, Export) worked with A
+and with touch. The pasted text matched the source byte for byte, newlines
+included, and no textarea stayed in either document. The method matches
+the copy code in the Steam client's `library.js`.
 
 **G9 [GENERAL] SHOULD** prefer `Navigation` over deprecated `Router.*` and
 `@decky/api` over deprecated `@decky/ui` re-exports (the installed type
@@ -2220,7 +2232,10 @@ verification are those recorded by the committers, not re-observed.
 
 ### Case 10 — Other platform limits recorded
 
-- `navigator.clipboard` unavailable → bundled `xclip` RPC.
+- `navigator.clipboard` is unavailable, so `copyText` copies through a
+  top-window textarea and `execCommand("copy")`, as Steam's UI does (G8).
+  DEVICE (2026-10-31): it works from the QAM and from full-screen dialogs, with
+  A and with touch.
 - Anchors in injected HTML invisible to gamepad → ButtonItems (F5).
 - Bare `div`/`pre` invisible to gamepad → wrap in `Focusable` (G3).
 - `Spinner` and others may be missing after Steam updates (G6).

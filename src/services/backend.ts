@@ -23,9 +23,6 @@ const call = <A extends unknown[], R>(method: string) => {
 export const rpc = rpcVia(callable<[method: string, params?: object], unknown>("rpc"));
 
 export const getStatus = call<[], StatusInfo>("get_status");
-export const copyTextToClipboard = call<[text: string], { ok: boolean; message: string }>(
-  "copy_text_to_clipboard",
-);
 export const readTextFile = call<
   [path: string],
   { ok: boolean; content: string | null; message: string }

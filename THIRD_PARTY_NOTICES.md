@@ -44,15 +44,6 @@ license, draws the QR codes under Options › About › Support WoWDeck. The
 license text is in
 [uqr's repository](https://github.com/unjs/uqr/blob/main/LICENSE).
 
-## xclip
-
-[xclip](https://github.com/astrand/xclip), licensed under the GPL-2.0,
-puts text on the clipboard. SteamOS doesn't include it, so WoWDeck ships an
-unchanged copy for Copy diagnostics. It only ever copies the diagnostics
-text, and never reads what was on the clipboard before. The license text
-is in
-[WoWDeck's repository](https://github.com/sigboe/wowdeck/blob/next/backend/vendor/xclip-LICENSE.txt).
-
 ## In the source code only
 
 These are part of WoWDeck's source code on GitHub, but not of the plugin
