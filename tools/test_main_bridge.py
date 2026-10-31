@@ -129,9 +129,17 @@ class EngineSelectionTests(unittest.TestCase):
         plugin, _ = self.load_on("x86_64")
         self.assertEqual(plugin.backend.binary_path, "/nonexistent/bin/wowdeck-x86_64")
 
+    def test_aarch64_selects_the_aarch64_engine(self) -> None:
+        plugin, _ = self.load_on("aarch64")
+        self.assertEqual(plugin.backend.binary_path, "/nonexistent/bin/wowdeck-aarch64")
+
+    def test_arm64_selects_the_aarch64_engine(self) -> None:
+        plugin, _ = self.load_on("arm64")
+        self.assertEqual(plugin.backend.binary_path, "/nonexistent/bin/wowdeck-aarch64")
+
     def test_the_log_names_the_machine_and_the_engine(self) -> None:
-        _, logs = self.load_on("x86_64")
-        self.assertIn(f"INFO:{_decky.logger.name}:Machine x86_64: engine binary wowdeck-x86_64", logs)
+        _, logs = self.load_on("aarch64")
+        self.assertIn(f"INFO:{_decky.logger.name}:Machine aarch64: engine binary wowdeck-aarch64", logs)
 
 
 class SystemEnvironTest(unittest.TestCase):
