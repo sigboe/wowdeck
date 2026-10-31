@@ -6,6 +6,11 @@ What's new in each version of WoWDeck Addon Manager. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- WoWDeck now installs and runs on arm64 SteamOS devices, from the same zip
+  as everyone else.
+
 ### Fixed
 
 - Get Addons opens wide again on newer Steam versions, where Latest, Popular

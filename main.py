@@ -34,6 +34,10 @@ import decky
 # (tools/package.py ENGINES).
 ENGINE_BINARIES = {
     "x86_64": "wowdeck-x86_64",
+    # `uname -m` says aarch64 on arm64 Linux; arm64 is platform.machine()'s
+    # name elsewhere. Both start the same engine.
+    "aarch64": "wowdeck-aarch64",
+    "arm64": "wowdeck-aarch64",
 }
 # Until unsupported machines get their own handling, any other machine starts
 # the x86_64 engine, as every build before the per-architecture names did.
