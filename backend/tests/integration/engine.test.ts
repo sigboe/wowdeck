@@ -13,7 +13,7 @@ import { mkdirSync, rmSync, writeFileSync, existsSync, readFileSync, realpathSyn
 import { join } from "node:path";
 import { zipSync } from "fflate";
 
-const BIN = join(import.meta.dir, "..", "..", "out", "wowdeck");
+const BIN = join(import.meta.dir, "..", "..", "out", "wowdeck-x86_64");
 const ROOT = "/tmp/opencode/wowdeck-tests/integration";
 
 interface Release {
@@ -943,7 +943,7 @@ describe("system.updateCheck (the plugin's own update notice)", () => {
       "wowdeck/package.json": new TextEncoder().encode(JSON.stringify({ name: "wowdeck", version: target })),
       "wowdeck/main.py": new TextEncoder().encode("# entry"),
       "wowdeck/dist/index.js": new TextEncoder().encode("// bundle"),
-      "wowdeck/bin/wowdeck": new TextEncoder().encode("#!/bin/bun"),
+      "wowdeck/bin/wowdeck-x86_64": new TextEncoder().encode("#!/bin/bun"),
     });
     releasesLatest = {
       body: {

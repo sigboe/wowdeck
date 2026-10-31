@@ -32,15 +32,17 @@ engine → electron
 ## Process model
 
 The Decky loader runs `main.py` (Python 3.13 on current SteamOS). The plugin
-spawns `bin/wowdeck`, a self-contained executable produced by
+spawns the engine built for its machine, `bin/wowdeck-<uname -m>` (today only
+`bin/wowdeck-x86_64`), a self-contained executable produced by
 `bun build --compile` (SteamOS ships no Node/Bun runtime, so the engine must
-be self-contained; glibc x86_64 target matches SteamOS).
+be self-contained; glibc x86_64 target matches SteamOS). The plugin log names
+the machine and the engine it chose.
 
 ```
 Decky React plugin
       │ decky RPC (@decky/api)
       ▼
-main.py ── spawn/supervise ──► bin/wowdeck
+main.py ── spawn/supervise ──► bin/wowdeck-x86_64
       │        JSONL stdin/stdout
       ▼
 addon engine (installations, scanner, TOC, providers, downloads, installer)

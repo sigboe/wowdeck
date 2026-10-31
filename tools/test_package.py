@@ -229,43 +229,93 @@ class PluginDisplayNameTests(unittest.TestCase):
         self.assertEqual(package.zip_path(), package.ROOT / "build" / "WoWDeck.zip")
 
 
+ELF_MACHINE_X86_64 = 62
+ELF_MACHINE_AARCH64 = 183
+X86_64_LOADER = "/lib64/ld-linux-x86-64.so.2"
+
+
+def make_elf(interp: str, machine: int = ELF_MACHINE_X86_64) -> bytes:
+    """A minimal 64-bit little-endian ELF header with one PT_INTERP program header."""
+    data = interp.encode() + b"\0"
+    phoff, off = 64, 64 + 56
+    header = bytearray(64)
+    header[0:4] = b"\x7fELF"
+    header[4], header[5] = 2, 1
+    header[18:20] = machine.to_bytes(2, "little")
+    header[32:40] = phoff.to_bytes(8, "little")
+    header[54:56] = (56).to_bytes(2, "little")
+    header[56:58] = (1).to_bytes(2, "little")
+    ph = bytearray(56)
+    ph[0:4] = (3).to_bytes(4, "little")
+    ph[8:16] = off.to_bytes(8, "little")
+    ph[32:40] = len(data).to_bytes(8, "little")
+    return bytes(header) + bytes(ph) + data
+
+
+class EngineStagingTests(unittest.TestCase):
+    """bin/ holds one engine per architecture, named after `uname -m`, each
+    an ELF for that machine pointing at its standard loader."""
+
+    def setUp(self) -> None:
+        self._tmp = Path(tempfile.mkdtemp(prefix="wowdeck-engines-"))
+        self.addCleanup(shutil.rmtree, self._tmp, True)
+        self.out = self._tmp / "out"
+        self.out.mkdir()
+        self.bin = self._tmp / "stage" / "bin"
+        self.bin.mkdir(parents=True)
+
+    def _build(self, name: str, machine: int, interp: str = X86_64_LOADER) -> Path:
+        path = self.out / name
+        path.write_bytes(make_elf(interp, machine))
+        path.chmod(0o644)
+        return path
+
+    def test_stages_the_x86_64_engine_executable_with_the_standard_loader(self) -> None:
+        self._build("wowdeck-x86_64", ELF_MACHINE_X86_64)
+        package.stage_engines(self.out, self.bin)
+        engine = self.bin / "wowdeck-x86_64"
+        self.assertTrue(engine.is_file())
+        self.assertTrue(os.access(engine, os.X_OK))
+        self.assertEqual(package.read_interpreter(engine), X86_64_LOADER)
+
+    def test_there_is_no_plain_bin_wowdeck(self) -> None:
+        self._build("wowdeck-x86_64", ELF_MACHINE_X86_64)
+        package.stage_engines(self.out, self.bin)
+        self.assertFalse((self.bin / "wowdeck").exists())
+
+    def test_a_missing_engine_fails_the_build_naming_the_file(self) -> None:
+        with self.assertRaises(SystemExit) as ctx:
+            package.stage_engines(self.out, self.bin)
+        self.assertIn("wowdeck-x86_64", str(ctx.exception))
+
+    def test_an_engine_built_for_another_machine_fails_the_build_naming_the_file(self) -> None:
+        self._build("wowdeck-x86_64", ELF_MACHINE_AARCH64, "/lib/ld-linux-aarch64.so.1")
+        with self.assertRaises(SystemExit) as ctx:
+            package.stage_engines(self.out, self.bin)
+        self.assertIn("wowdeck-x86_64", str(ctx.exception))
+        self.assertFalse((self.bin / "wowdeck-x86_64").exists())
+
+
 class InterpreterCheckTests(unittest.TestCase):
     """The packager must never ship an engine whose ELF loader is missing on SteamOS."""
-
-    @staticmethod
-    def _elf(interp: str) -> bytes:
-        """A minimal 64-bit little-endian ELF header with one PT_INTERP program header."""
-        data = interp.encode() + b"\0"
-        phoff, off = 64, 64 + 56
-        header = bytearray(64)
-        header[0:4] = b"\x7fELF"
-        header[4], header[5] = 2, 1
-        header[32:40] = phoff.to_bytes(8, "little")
-        header[54:56] = (56).to_bytes(2, "little")
-        header[56:58] = (1).to_bytes(2, "little")
-        ph = bytearray(56)
-        ph[0:4] = (3).to_bytes(4, "little")
-        ph[8:16] = off.to_bytes(8, "little")
-        ph[32:40] = len(data).to_bytes(8, "little")
-        return bytes(header) + bytes(ph) + data
 
     def _write(self, interp: str) -> Path:
         tmp = Path(tempfile.mkdtemp(prefix="wowdeck-elf-"))
         self.addCleanup(shutil.rmtree, tmp, True)
         path = tmp / "engine"
-        path.write_bytes(self._elf(interp))
+        path.write_bytes(make_elf(interp))
         return path
 
     def test_reads_the_interpreter(self) -> None:
-        path = self._write(package.TARGET_INTERPRETER)
-        self.assertEqual(package.read_interpreter(path), package.TARGET_INTERPRETER)
+        path = self._write(X86_64_LOADER)
+        self.assertEqual(package.read_interpreter(path), X86_64_LOADER)
 
     def test_standard_loader_passes_without_patchelf(self) -> None:
-        path = self._write(package.TARGET_INTERPRETER)
+        path = self._write(X86_64_LOADER)
         real_which = package.shutil.which
         package.shutil.which = lambda _name: None
         try:
-            package.patch_interpreter(path)
+            package.patch_interpreter(path, X86_64_LOADER)
         finally:
             package.shutil.which = real_which
 
@@ -275,7 +325,7 @@ class InterpreterCheckTests(unittest.TestCase):
         package.shutil.which = lambda _name: None
         try:
             with self.assertRaises(SystemExit) as ctx:
-                package.patch_interpreter(path)
+                package.patch_interpreter(path, X86_64_LOADER)
         finally:
             package.shutil.which = real_which
         self.assertIn("patchelf", str(ctx.exception))

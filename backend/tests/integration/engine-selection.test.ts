@@ -7,7 +7,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-const BIN = join(import.meta.dir, "..", "..", "out", "wowdeck");
+const BIN = join(import.meta.dir, "..", "..", "out", "wowdeck-x86_64");
 const ROOT = "/tmp/opencode/wowdeck-tests/engine-selection";
 
 let engine: Bun.Subprocess<"pipe"> | undefined;

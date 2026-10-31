@@ -110,6 +110,29 @@ class RpcForwarderTests(unittest.TestCase):
         self.assertEqual(backend.calls, [])
 
 
+class EngineSelectionTests(unittest.TestCase):
+    """At load the bridge picks the engine binary from the machine name
+    (`uname -m`) and logs both."""
+
+    def load_on(self, machine: str) -> tuple[Any, list[str]]:
+        real_machine = main.platform.machine
+        main.platform.machine = lambda: machine
+        try:
+            plugin = main.Plugin()
+            with self.assertLogs(_decky.logger, level="INFO") as logs:
+                asyncio.run(plugin._main())
+            return plugin, logs.output
+        finally:
+            main.platform.machine = real_machine
+
+    def test_x86_64_selects_the_x86_64_engine(self) -> None:
+        plugin, _ = self.load_on("x86_64")
+        self.assertEqual(plugin.backend.binary_path, "/nonexistent/bin/wowdeck-x86_64")
+
+    def test_the_log_names_the_machine_and_the_engine(self) -> None:
+        _, logs = self.load_on("x86_64")
+        self.assertIn(f"INFO:{_decky.logger.name}:Machine x86_64: engine binary wowdeck-x86_64", logs)
+
 
 class SystemEnvironTest(unittest.TestCase):
     """The engine gets the system's library path, not PyInstaller's."""

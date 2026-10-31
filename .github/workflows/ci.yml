@@ -73,7 +73,7 @@ jobs:
         working-directory: backend
       - run: bun run typecheck
         working-directory: backend
-      # The integration tests spawn backend/out/wowdeck, so the engine must
+      # The integration tests spawn backend/out/wowdeck-x86_64, so the engine must
       # exist before the suite runs on a fresh checkout.
       - run: bun run build
         working-directory: backend
@@ -96,7 +96,8 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: backend-binary
-          path: backend/out/wowdeck
+          # One engine per architecture (tools/package.py ENGINES).
+          path: backend/out/wowdeck-*
           retention-days: 7
 
   package:
@@ -132,7 +133,8 @@ jobs:
       # all — correctly produce a no-bundled-key package; the plugin's own
       # user-key fallback (Options) covers that case. See
       # docs/curseforge-api-key.md for how to configure the secret.
-      - run: chmod +x backend/out/wowdeck && python3 tools/package.py
+      # Artifacts lose the executable bit; the packager sets it on bin/.
+      - run: python3 tools/package.py
         env:
           CURSEFORGE_API_KEY: ${{ secrets.CURSEFORGE_API_KEY }}
       - uses: actions/upload-artifact@v4

@@ -36,7 +36,7 @@ Leave Steam, Decky, other plugins and the system as they were.
    CEF Debugging". No `deck-cef` tools → set it up per `docs/remote-browser.md`.
    Done when `list_pages` returns the Steam windows.
 3. **Build.** `make build`. For an engine change, patch a copy of
-   `backend/out/wowdeck`:
+   `backend/out/wowdeck-x86_64`:
    `nix shell nixpkgs#patchelf -c patchelf --set-interpreter /lib64/ld-linux-x86-64.so.2 <copy>`
    (the Nix loader path does not exist on SteamOS: the plugin dies).
    Smoke-test the copy on the Deck from `/tmp` with a throwaway
@@ -50,7 +50,8 @@ Leave Steam, Decky, other plugins and the system as they were.
 6. **Deploy in place**, over SSH:
    `ssh $DECK "cat > /home/deck/homebrew/plugins/wowdeck/dist/index.js" < dist/index.js`
    (scp mangles the path). `main.py` the same way. The engine binary goes to a
-   temp name in `bin/`, then `mv` (it is running).
+   temp name in `bin/`, then `mv` to `bin/wowdeck-x86_64` (it is running).
+   `main.py` starts only that name: deploy it with a `main.py` that does.
 7. **Reload.** On `SharedJSContext`: `DFL.Navigation.CloseSideMenus()`, then
    `DeckyBackend.call("loader/reload_plugin","WoWDeck")`. An open or
    reopened QAM keeps rendering the old bundle: in the QAM, click Decky's back

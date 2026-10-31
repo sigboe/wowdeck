@@ -81,6 +81,8 @@ was `/nix/store/...ld-linux`. On the Deck the plugin loaded, but the engine neve
 started and the UI showed "Engine is not running" with a useless Retry; the
 plugin log only said "Starting engine binary" because Decky sets the log level
 to critical once the UI connects. `tools/package.py` now reads the ELF loader
-itself and **fails the build** unless it is `/lib64/ld-linux-x86-64.so.2` (or
-`patchelf` can set it). Build with `make package` (the dev shell carries
-`patchelf`).
+itself and **fails the build** unless each engine's loader is its
+architecture's standard one, `/lib64/ld-linux-x86-64.so.2` for
+`bin/wowdeck-x86_64` (or `patchelf` can set it). It also fails when an engine
+is missing or its ELF machine type doesn't match its name. Build with
+`make package` (the dev shell carries `patchelf`).
