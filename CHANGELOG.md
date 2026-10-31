@@ -10,6 +10,8 @@ What's new in each version of WoWDeck Addon Manager. The format follows
 
 - Get Addons opens wide again on newer Steam versions, where Latest, Popular
   and Search stayed out of sight.
+- Latest, Popular and Search say what to fix when no WoW installation is set
+  up, instead of blaming the addon source.
 
 ## [1.0.1] - 2026-10-31
 
