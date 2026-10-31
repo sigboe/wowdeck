@@ -44,11 +44,6 @@ targets out of it. They go here.
   `LICENSE`.
 - **fflate.** The npm package, 0.8.x. `backend/src/wow/archives/ArchiveExtractor.ts`
   checks every entry for path traversal before it extracts.
-- **xclip.** `backend/vendor/xclip` is a prebuilt, unmodified binary,
-  copied from the installed Decktation plugin, which bundles the same
-  upstream binary. Its license is `backend/vendor/xclip-LICENSE.txt`.
-  `tools/package.py` copies it into the zip's `bin/`, and `main.py` runs it
-  as a subprocess for Copy diagnostics.
 - **The `unslop` skill.** `.claude/skills/unslop/SKILL.md` is
   `pstack/skills/unslop/SKILL.md` from commit
   `c742dd61706fbacc1b95f1a20b7b988cf096ce6c`. Only the frontmatter

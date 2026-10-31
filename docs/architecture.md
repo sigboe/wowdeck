@@ -50,7 +50,7 @@ Protocol: newline-delimited JSON requests/responses plus engine-initiated
 events (see `backend/src/api/contracts.ts`). The frontend calls every engine
 method through one typed `rpc(method, params)` (`src/services/backend.ts`),
 which `main.py` forwards unchanged; `main.py` keeps only its own methods
-(`get_status`, clipboard, text files). Events are relayed to the frontend as
+(`get_status`, `read_text_file`, `save_text_file`). Events are relayed to the frontend as
 `backend_event` via `decky.emit`.
 
 ## Engine layout
