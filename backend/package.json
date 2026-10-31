@@ -7,8 +7,8 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "bun run build && bun test",
-    "build": "bun run build:binary",
-    "build:binary": "mkdir -p out && bun build --compile --target=bun-linux-x64 src/main.ts --outfile out/wowdeck-x86_64",
+    "build": "bun run build:binaries",
+    "build:binaries": "mkdir -p out && bun build --compile --target=bun-linux-x64 src/main.ts --outfile out/wowdeck-x86_64 && bun build --compile --target=bun-linux-arm64 src/main.ts --outfile out/wowdeck-aarch64",
     "run:dev": "bun run src/main.ts"
   },
   "devDependencies": {
