@@ -17,13 +17,14 @@ import { PluginUpdateCheck, type StagingAnswer } from "../src/wow/notifications/
 
 const ROOT = "/tmp/opencode/wowdeck-tests/update-stager";
 
-function pluginZip(version: string, omit?: string): Uint8Array {
+/** `engine` is where the zip carries the engine: bin/wowdeck up to 1.0.1, bin/wowdeck-<uname -m> after. */
+function pluginZip(version: string, omit?: string, engine = "wowdeck/bin/wowdeck"): Uint8Array {
   const entries: Record<string, Uint8Array> = {
     "wowdeck/plugin.json": new TextEncoder().encode(JSON.stringify({ name: "WoWDeck", version, api_version: 1 })),
     "wowdeck/package.json": new TextEncoder().encode(JSON.stringify({ name: "wowdeck", version })),
     "wowdeck/main.py": new TextEncoder().encode("# entry"),
     "wowdeck/dist/index.js": new TextEncoder().encode("// bundle"),
-    "wowdeck/bin/wowdeck": new TextEncoder().encode("#!/bin/bun"),
+    [engine]: new TextEncoder().encode("#!/bin/bun"),
   };
   if (omit) {
     delete entries[omit];
@@ -107,6 +108,15 @@ describe("UpdateStager.stage", () => {
     expect(existsSync(staged)).toBe(true);
     expect(statSync(staged).mode & 0o777).toBe(0o600);
     rmSync(staged, { force: true });
+  });
+
+  test("stages a release that names its engine per architecture, with no bin/wowdeck", async () => {
+    mkdirSync(ROOT, { recursive: true });
+    const { stager } = makeStager(() => pluginZip("0.2.0", undefined, "wowdeck/bin/wowdeck-x86_64"));
+    const outcome = await stager.stage();
+    expect(outcome.error).toBeNull();
+    expect(outcome.result?.version).toBe("0.2.0");
+    rmSync(join(ROOT, "wowdeck-update-0.2.0.zip"), { force: true });
   });
 
   test("stages an older stable offered as a switch from a beta build", async () => {

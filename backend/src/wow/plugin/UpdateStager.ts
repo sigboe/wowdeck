@@ -55,6 +55,13 @@ export type StageOutcome = {
 const PLUGIN_NAME = "WoWDeck";
 const STALE_AFTER_MS = 24 * 60 * 60 * 1000;
 
+/**
+ * Where a release carries its engine: bin/wowdeck up to 1.0.1, then one
+ * binary per architecture named after `uname -m` (#54). Accepting the new
+ * name is what lets this version update to those releases.
+ */
+const ENGINE_ENTRIES = ["wowdeck/bin/wowdeck", "wowdeck/bin/wowdeck-x86_64"];
+
 /** The staged zip's file name for a release version; the stale sweep matches the same prefix. */
 export function stagedFileName(version: string): string {
   return `wowdeck-update-${version}.zip`;
@@ -200,11 +207,13 @@ export class UpdateStager {
       "wowdeck/package.json",
       "wowdeck/main.py",
       "wowdeck/dist/index.js",
-      "wowdeck/bin/wowdeck",
     ]) {
       if (!entries.has(required)) {
         throw new InstallError("The downloaded update isn't a complete WoWDeck package");
       }
+    }
+    if (!ENGINE_ENTRIES.some((engine) => entries.has(engine))) {
+      throw new InstallError("The downloaded update isn't a complete WoWDeck package");
     }
     let manifest: { name?: string; version?: string };
     try {
