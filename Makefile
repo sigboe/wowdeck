@@ -1,4 +1,4 @@
-.PHONY: setup wowup build build-frontend build-backend test typecheck lint format clean package version-set version-check release-tag record-provider-fixtures
+.PHONY: setup wowup build build-frontend build-backend test typecheck lint format clean package version-set version-check record-provider-fixtures
 
 # GNU Make uses this shell for recipes. This is independent of the interactive shell.
 SHELL := /usr/bin/env bash
@@ -94,10 +94,6 @@ version-set:
 version-check:
 	$(TOOL_RUN) 'set -euo pipefail; python3 tools/version.py check'
 
-# Creates the annotated v<version> tag (dirty tree and version mismatch
-# refused) and prints the push command; it never pushes for you.
-release-tag:
-	$(TOOL_RUN) 'set -euo pipefail; python3 tools/version.py tag'
 
 clean:
 	rm -rf dist build backend/out

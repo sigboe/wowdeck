@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""One version, three files, one tag.
+"""One version, three files.
 
 The plugin's version lives in three JSON files that must always agree:
 
@@ -17,10 +17,9 @@ Usage:
     python3 tools/version.py set 1.0.0       # write it to all three
     python3 tools/version.py stamp 0.3.1-beta.57
                                              # a beta build's version, CI only
-    python3 tools/version.py tag             # create the v<version> tag
 
-`make version-set`, `make version-check` and `make release-tag` wrap
-`set`, `check` and `tag`.  `check` also runs in the packaging tests and in the release
+`make version-set` and `make version-check` wrap `set` and `check`.
+`check` also runs in the packaging tests and in the release
 workflow, so a tree whose files disagree can never produce a release: the
 tag, the GitHub Release, the zip inside it and the version Decky displays
 all come from the same number.
@@ -28,14 +27,14 @@ all come from the same number.
 `stamp` is `set` restricted to the X.Y.Z-beta.N form: the beta workflow
 (.github/workflows/beta.yml) stamps the build's version into its checkout
 before building and never commits it, so `next` keeps claiming the last
-stable version and `set`/`tag` stay the only way a release is made.
+stable version and `set` plus a merge into `main` stay the only way a
+release is made (.github/workflows/release.yml).
 """
 
 from __future__ import annotations
 
 import json
 import re
-import subprocess
 import sys
 from pathlib import Path
 
@@ -50,8 +49,6 @@ SEMVER = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]
 
 # The only form `stamp` writes: tools/beta-release.ts's next-version output.
 BETA = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)-beta\.(0|[1-9]\d*)$")
-
-TAG_PREFIX = "v"
 
 
 class VersionError(SystemExit):
@@ -152,52 +149,9 @@ def stamp_beta(version: str, root: Path | None = None) -> None:
     set_version(version, root)
 
 
-def git(args: list[str], root: Path | None = None) -> str:
-    root = ROOT if root is None else root
-    result = subprocess.run(
-        ["git", *args], cwd=root, check=False, capture_output=True, text=True
-    )
-    if result.returncode != 0:
-        raise VersionError(f"git {' '.join(args)} failed: {result.stderr.strip()}")
-    return result.stdout
-
-
-def tag_exists(tag: str, root: Path | None = None) -> bool:
-    root = ROOT if root is None else root
-    result = subprocess.run(
-        ["git", "rev-parse", "-q", "--verify", f"refs/tags/{tag}"],
-        cwd=root,
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    return result.returncode == 0
-
-
-def make_tag(root: Path | None = None) -> str:
-    """Create the release tag after proving the tree is taggable. Never
-    pushes: printing the command keeps the push a deliberate act."""
-    root = ROOT if root is None else root
-    version = check(root)
-    tag = f"{TAG_PREFIX}{version}"
-
-    dirty = git(["status", "--porcelain", "--untracked-files=no"], root).strip()
-    if dirty:
-        raise VersionError(
-            "the working tree has uncommitted changes; commit them first so the tag "
-            "points at the release commit:\n" + dirty
-        )
-    if tag_exists(tag, root):
-        raise VersionError(f"tag {tag} already exists")
-    git(["tag", "-a", tag, "-m", tag], root)
-    print(f"created tag {tag} on {git(['rev-parse', '--short', 'HEAD'], root).strip()}")
-    print(f"push it to publish the release:  git push origin {tag}")
-    return tag
-
-
 def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
-    commands = ("show", "check", "set", "stamp", "tag")
+    commands = ("show", "check", "set", "stamp")
     if not argv:
         print(__doc__.strip(), file=sys.stderr)
         return 1
@@ -222,14 +176,10 @@ def main(argv: list[str] | None = None) -> int:
         if len(args) != 1:
             raise VersionError("set takes exactly one version, e.g. `version.py set 1.0.0`")
         set_version(args[0])
-    elif command == "stamp":
+    else:
         if len(args) != 1:
             raise VersionError("stamp takes exactly one version, e.g. `version.py stamp 0.3.1-beta.57`")
         stamp_beta(args[0])
-    else:
-        if args:
-            raise VersionError("tag takes no arguments")
-        make_tag()
     return 0
 
 

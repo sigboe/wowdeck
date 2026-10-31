@@ -19,6 +19,9 @@ on:
       - "skills-lock.json"
       - "deck-debug/**"
       - "tools/deck-ui/**"
+      # The local dev shell. CI installs its own toolchain, so this never
+      # changes what ships.
+      - "flake.nix"
 
 permissions:
   contents: read

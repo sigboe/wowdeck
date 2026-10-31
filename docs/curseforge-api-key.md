@@ -85,7 +85,7 @@ repository secrets from a `pull_request` run triggered by a fork, so
 those runs automatically produce a no-bundled-key package too — this
 is a platform guarantee, not something this project implements.
 
-The tag-triggered release workflow (`.github/workflows/release.yml`,
+The release workflow (`.github/workflows/release.yml`,
 documented in `docs/development.md` → Releases) wires `CURSEFORGE_API_KEY`
 into its own packaging step exactly the same way: the env var is optional,
 a run without it produces a correct no-bundled-key package, and the zip it
