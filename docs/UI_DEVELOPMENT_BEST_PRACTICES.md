@@ -294,16 +294,21 @@ all in-memory trials were reverted, nothing persistent was changed):
   placeholder element `._2orc8…`, inside the readable `#MainNavMenu-Rest`,
   carries that `browser` object as a React fiber prop
   (`props.browser.SetBounds/GetBounds`). Nothing in the QAM window can move
-  it. Steam moves it itself while its Friends UI store flag
-  `qamFriendsExpanded` is set (`SetQAMFriendsChatExpanded(bool)`, sp.js): the
-  placeholder gets the CSS-module class `Expanded` and Steam's hook slides the
-  view (animateIn 300 ms, animateOut 200 ms). The plugin sets that flag
-  (DEVICE 2026-10-21). An earlier `executeInTab` script that called
-  `SetBounds` itself lost every Steam re-layout: the on-screen keyboard and a
-  closing modal put the view back at its collapsed x until the script slid it
-  out again. With the flag those re-layouts keep x 0, exactly like Friends. In
-  Big Picture the flag does NOT add `QAMFriendExpanded` inside the QAM window,
-  so lever 1 below is still ours.
+  it. The placeholder measures its own box on every render and calls
+  `SetBounds` to match, with Steam's slides (animateIn 300 ms, animateOut
+  200 ms). Its CSS-module class `Expanded` moves it, from `translateX(506px)` to
+  `0`. Steam adds that class while its Friends UI store flag
+  `qamFriendsExpanded` is set, and newer Steam only while the Friends tab is
+  active as well (DEVICE 2026-10-31, arm64 Steam on DroidDeck: the flag alone
+  left the view where it was). The plugin gives the placeholder `Expanded`
+  itself through `QamExpandHook` (steamDom/qamExpandHook.tsx, ADR 0001
+  revision 7). An earlier `executeInTab` script that called `SetBounds`
+  itself lost every Steam re-layout: the on-screen keyboard and a closing
+  modal put the view back at its collapsed x until the script slid it out
+  again. With the class in the placeholder's own render those re-layouts keep
+  the view wide, exactly like Friends. In Big Picture Steam does NOT add
+  `QAMFriendExpanded` inside the QAM window for us, so lever 1 below is still
+  ours.
 - Every QAM re-show replays the entrance (DEVICE 2026-10-24, PC-20, capture.mjs:
   per-frame bounds + SetBounds stacks). A context-menu popup (any @decky/ui
   Dropdown/showContextMenu) or a modal hides the QAM BrowserView entirely
