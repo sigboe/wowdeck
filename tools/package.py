@@ -95,9 +95,13 @@ class Engine(NamedTuple):
 # loader instead, which does not exist on SteamOS; rewriting the interpreter
 # makes the binary portable. On conventional distros this is a no-op rewrite.
 ELF_MACHINE_X86_64 = 62  # EM_X86_64
+ELF_MACHINE_AARCH64 = 183  # EM_AARCH64
 
 ENGINES = {
     "x86_64": Engine("wowdeck-x86_64", ELF_MACHINE_X86_64, "/lib64/ld-linux-x86-64.so.2"),
+    # The loader Decky's own PluginLoader-arm64 is linked against, so glibc is
+    # present wherever Decky runs (SteamOS and Android containers alike).
+    "aarch64": Engine("wowdeck-aarch64", ELF_MACHINE_AARCH64, "/lib/ld-linux-aarch64.so.1"),
 }
 
 # The key the project is authorized to ship is resolved from exactly one

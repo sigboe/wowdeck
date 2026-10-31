@@ -232,6 +232,12 @@ class PluginDisplayNameTests(unittest.TestCase):
 ELF_MACHINE_X86_64 = 62
 ELF_MACHINE_AARCH64 = 183
 X86_64_LOADER = "/lib64/ld-linux-x86-64.so.2"
+AARCH64_LOADER = "/lib/ld-linux-aarch64.so.1"
+
+STANDARD_LOADERS = {
+    ELF_MACHINE_X86_64: X86_64_LOADER,
+    ELF_MACHINE_AARCH64: AARCH64_LOADER,
+}
 
 
 def make_elf(interp: str, machine: int = ELF_MACHINE_X86_64) -> bytes:
@@ -264,32 +270,53 @@ class EngineStagingTests(unittest.TestCase):
         self.bin = self._tmp / "stage" / "bin"
         self.bin.mkdir(parents=True)
 
-    def _build(self, name: str, machine: int, interp: str = X86_64_LOADER) -> Path:
+    def _build(self, name: str, machine: int, interp: str | None = None) -> Path:
         path = self.out / name
-        path.write_bytes(make_elf(interp, machine))
+        loader = interp if interp is not None else STANDARD_LOADERS[machine]
+        path.write_bytes(make_elf(loader, machine))
         path.chmod(0o644)
         return path
 
-    def test_stages_the_x86_64_engine_executable_with_the_standard_loader(self) -> None:
+    def _build_all(self) -> None:
         self._build("wowdeck-x86_64", ELF_MACHINE_X86_64)
+        self._build("wowdeck-aarch64", ELF_MACHINE_AARCH64)
+
+    def test_stages_each_engine_executable_with_its_own_standard_loader(self) -> None:
+        self._build_all()
         package.stage_engines(self.out, self.bin)
-        engine = self.bin / "wowdeck-x86_64"
-        self.assertTrue(engine.is_file())
-        self.assertTrue(os.access(engine, os.X_OK))
-        self.assertEqual(package.read_interpreter(engine), X86_64_LOADER)
+        for name, loader in ((e.binary, e.loader) for e in package.ENGINES.values()):
+            engine = self.bin / name
+            self.assertTrue(engine.is_file(), name)
+            self.assertTrue(os.access(engine, os.X_OK), name)
+            self.assertEqual(package.read_interpreter(engine), loader, name)
 
     def test_there_is_no_plain_bin_wowdeck(self) -> None:
-        self._build("wowdeck-x86_64", ELF_MACHINE_X86_64)
+        self._build_all()
         package.stage_engines(self.out, self.bin)
         self.assertFalse((self.bin / "wowdeck").exists())
 
-    def test_a_missing_engine_fails_the_build_naming_the_file(self) -> None:
+    def test_no_engines_at_all_fails_the_build_naming_the_first_missing_file(self) -> None:
         with self.assertRaises(SystemExit) as ctx:
             package.stage_engines(self.out, self.bin)
         self.assertIn("wowdeck-x86_64", str(ctx.exception))
 
-    def test_an_engine_built_for_another_machine_fails_the_build_naming_the_file(self) -> None:
-        self._build("wowdeck-x86_64", ELF_MACHINE_AARCH64, "/lib/ld-linux-aarch64.so.1")
+    def test_a_missing_aarch64_engine_fails_the_build_naming_the_file(self) -> None:
+        self._build("wowdeck-x86_64", ELF_MACHINE_X86_64)
+        with self.assertRaises(SystemExit) as ctx:
+            package.stage_engines(self.out, self.bin)
+        self.assertIn("wowdeck-aarch64", str(ctx.exception))
+
+    def test_an_x86_64_elf_named_aarch64_fails_the_build_naming_the_file(self) -> None:
+        self._build("wowdeck-x86_64", ELF_MACHINE_X86_64)
+        self._build("wowdeck-aarch64", ELF_MACHINE_X86_64)
+        with self.assertRaises(SystemExit) as ctx:
+            package.stage_engines(self.out, self.bin)
+        self.assertIn("wowdeck-aarch64", str(ctx.exception))
+        self.assertFalse((self.bin / "wowdeck-aarch64").exists())
+
+    def test_an_aarch64_elf_named_x86_64_fails_the_build_naming_the_file(self) -> None:
+        self._build("wowdeck-x86_64", ELF_MACHINE_AARCH64)
+        self._build("wowdeck-aarch64", ELF_MACHINE_AARCH64)
         with self.assertRaises(SystemExit) as ctx:
             package.stage_engines(self.out, self.bin)
         self.assertIn("wowdeck-x86_64", str(ctx.exception))
