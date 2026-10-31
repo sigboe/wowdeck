@@ -10,6 +10,7 @@ process is started: the plugin's backend is replaced with a stub.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import importlib.util
 import logging
 import os
@@ -60,6 +61,17 @@ def plugin_with(backend: StubBackend) -> Any:
     plugin = main.Plugin()
     plugin.backend = backend
     return plugin
+
+
+@contextlib.contextmanager
+def machine_name(machine: str):
+    """Stubs `platform.machine()` around the block, for `_main`'s engine pick."""
+    real_machine = main.platform.machine
+    main.platform.machine = lambda: machine
+    try:
+        yield
+    finally:
+        main.platform.machine = real_machine
 
 
 class RpcEnvelopeTests(unittest.TestCase):
@@ -115,15 +127,10 @@ class EngineSelectionTests(unittest.TestCase):
     (`uname -m`) and logs both."""
 
     def load_on(self, machine: str) -> tuple[Any, list[str]]:
-        real_machine = main.platform.machine
-        main.platform.machine = lambda: machine
-        try:
+        with machine_name(machine), self.assertLogs(_decky.logger, level="INFO") as logs:
             plugin = main.Plugin()
-            with self.assertLogs(_decky.logger, level="INFO") as logs:
-                asyncio.run(plugin._main())
-            return plugin, logs.output
-        finally:
-            main.platform.machine = real_machine
+            asyncio.run(plugin._main())
+        return plugin, logs.output
 
     def test_x86_64_selects_the_x86_64_engine(self) -> None:
         plugin, _ = self.load_on("x86_64")
@@ -137,9 +144,55 @@ class EngineSelectionTests(unittest.TestCase):
         plugin, _ = self.load_on("arm64")
         self.assertEqual(plugin.backend.binary_path, "/nonexistent/bin/wowdeck-aarch64")
 
+    def test_an_unknown_machine_selects_no_engine(self) -> None:
+        plugin, _ = self.load_on("riscv64")
+        self.assertIsNone(plugin.backend)
+
     def test_the_log_names_the_machine_and_the_engine(self) -> None:
         _, logs = self.load_on("aarch64")
         self.assertIn(f"INFO:{_decky.logger.name}:Machine aarch64: engine binary wowdeck-aarch64", logs)
+
+
+class UnsupportedMachineTests(unittest.TestCase):
+    """A machine with no engine binary: every call answers
+    unsupported_architecture, and no process is ever spawned."""
+
+    def plugin_on(self, machine: str) -> Any:
+        with machine_name(machine):
+            plugin = main.Plugin()
+            asyncio.run(plugin._main())
+        return plugin
+
+    def test_get_status_names_the_machine(self) -> None:
+        plugin = self.plugin_on("riscv64")
+        out = asyncio.run(plugin.get_status())
+        self.assertEqual(
+            out,
+            {
+                "ok": False,
+                "code": "unsupported_architecture",
+                "message": "WoWDeck doesn't run on riscv64 devices.",
+            },
+        )
+
+    def test_a_forwarded_rpc_returns_the_same_envelope(self) -> None:
+        plugin = self.plugin_on("riscv64")
+        out = asyncio.run(plugin.rpc("addons.list"))
+        self.assertEqual(
+            out,
+            {
+                "__error": {
+                    "code": "unsupported_architecture",
+                    "message": "WoWDeck doesn't run on riscv64 devices.",
+                }
+            },
+        )
+
+    def test_calls_spawn_nothing(self) -> None:
+        plugin = self.plugin_on("riscv64")
+        asyncio.run(plugin.get_status())
+        asyncio.run(plugin.rpc("addons.list"))
+        self.assertIsNone(plugin.backend)
 
 
 class SystemEnvironTest(unittest.TestCase):
