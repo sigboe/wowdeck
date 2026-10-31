@@ -46,6 +46,16 @@ installation (`~/Applications/World of Warcraft/`) and our plugin's files
 (`~/homebrew/{plugins,data,logs}/wowdeck/`). Steam, Decky and other
 plugins' settings, system files and sudo stay untouched.
 
+## The owner's DroidDeck phone
+
+The arm64 test device: an Android phone running DroidDeck (Steam and Decky
+in a proot container). The same rule holds: read-only outside a test
+request, and a request to test on the phone, on DroidDeck or on arm64 is
+standing approval to deploy our plugin, read state and drive the UI. Run the
+`droiddeck-test` skill. It is the owner's daily phone: ask before every
+Steam session stop or start. Changes stay inside our plugin's files and data
+in the container.
+
 ## Commits
 
 Small, functional commits scoped by area (e.g. "Get Addons: …", "docs: …").

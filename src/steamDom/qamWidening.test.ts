@@ -71,26 +71,26 @@ const {
   COLLAPSE_HOLD_MS,
   detachQamWidening,
   enforceStep,
-  isQamExpandStore,
   qamWideningStatus,
   resetQamWidening,
-  setQamExpandStore,
+  setQamExpander,
   setQamWidening,
   stopQamWidening,
   subscribeQamLayout,
   WIDENING_REAPPLY_MS,
 } = await import("./qamWidening");
 
-/** Every flag Steam's store was sent (lever 2), freshly installed per test. */
+/** Every state lever 2 was sent, freshly installed per test. */
 let expandCalls: boolean[] = [];
+
+/** A live expander (Steam's QAM renders through it) recording what it is sent. */
+function recordingExpander(live = true) {
+  return { live, setExpanded: (expanded: boolean) => void expandCalls.push(expanded) };
+}
 
 beforeEach(() => {
   expandCalls = [];
-  setQamExpandStore({
-    SetQAMFriendsChatExpanded: (expanded: boolean) => {
-      expandCalls.push(expanded);
-    },
-  });
+  setQamExpander(recordingExpander());
 });
 
 /** MutationObserver delivery plus the service's coalescing window. */
@@ -389,8 +389,8 @@ describe("QAM widening follows the browse session state machine", () => {
   });
 });
 
-describe("QAM widening drives Steam's expand flag only when available", () => {
-  test("sets and clears the flag with the DOM lever", () => {
+describe("QAM widening drives the native expand only when available", () => {
+  test("expands and collapses with the DOM lever", () => {
     const qam = buildSteamQam();
     expect(attachQamWidening(qam.anchor)).toBe(true);
     setQamWidening(true);
@@ -399,25 +399,37 @@ describe("QAM widening drives Steam's expand flag only when available", () => {
     expect(expandCalls).toEqual([true, false]);
   });
 
-  test("never touches the flag when the widening CSS is unavailable", () => {
+  test("never expands when the widening CSS is unavailable", () => {
     const qam = buildSteamQam({ companionRule: null });
     expect(attachQamWidening(qam.anchor)).toBe(false);
     setQamWidening(true);
     expect(expandCalls).toEqual([]);
   });
 
-  test("without Steam's store the mechanism is unavailable and nothing widens", () => {
-    setQamExpandStore(null);
+  test("without an expander the mechanism is unavailable and nothing widens", () => {
+    setQamExpander(null);
     const qam = buildSteamQam();
     expect(attachQamWidening(qam.anchor)).toBe(false);
     setQamWidening(true);
     expect(qam.root.classList.contains("QAMFriendExpanded")).toBe(false);
   });
 
-  test("a throwing store is swallowed to a warning", () => {
-    setQamExpandStore({
-      SetQAMFriendsChatExpanded: () => {
-        throw new Error("store gone");
+  test("an expander Steam's QAM does not render through leaves the page collapsed", () => {
+    // The DroidDeck bug: the page went wide while the view never moved, so
+    // the pane sat clipped off screen. Collapsed browse beats that.
+    setQamExpander(recordingExpander(false));
+    const qam = buildSteamQam();
+    expect(attachQamWidening(qam.anchor)).toBe(false);
+    setQamWidening(true);
+    expect(qam.root.classList.contains("QAMFriendExpanded")).toBe(false);
+    expect(expandCalls).toEqual([]);
+  });
+
+  test("a throwing expander is swallowed to a warning", () => {
+    setQamExpander({
+      live: true,
+      setExpanded: () => {
+        throw new Error("view gone");
       },
     });
     const qam = buildSteamQam();
@@ -426,24 +438,16 @@ describe("QAM widening drives Steam's expand flag only when available", () => {
     expect(qam.root.classList.contains("QAMFriendExpanded")).toBe(true);
   });
 
-  test("stop clears the flag for plugin unload, only if it set it", () => {
+  test("stop collapses for plugin unload, only if it expanded", () => {
     const qam = buildSteamQam();
     attachQamWidening(qam.anchor);
     stopQamWidening();
-    expect(expandCalls).toEqual([]); // Friends may own it: left alone
-    setQamExpandStore({ SetQAMFriendsChatExpanded: (e: boolean) => void expandCalls.push(e) });
+    expect(expandCalls).toEqual([]); // never sent: nothing to take back
+    setQamExpander(recordingExpander());
     attachQamWidening(qam.anchor);
     setQamWidening(true);
     stopQamWidening();
     expect(expandCalls).toEqual([true, false]);
-  });
-
-  test("finds the store by Steam's Friends field, nothing else", () => {
-    const store = { m_bQamFriendsExpanded: false, SetQAMFriendsChatExpanded() {} };
-    expect(isQamExpandStore(store)).toBe(true);
-    expect(isQamExpandStore({ SetQAMFriendsChatExpanded() {} })).toBe(false);
-    expect(isQamExpandStore({ m_bQamFriendsExpanded: false })).toBe(false);
-    expect(isQamExpandStore(null)).toBe(false);
   });
 });
 

@@ -148,6 +148,20 @@ describe("lists", () => {
     expect(latestDestination.get().error).toStartWith("Couldn't load addons. WowUp Hub");
   });
 
+  test("a setup problem says what to fix, not that the source failed", async () => {
+    // No WoW installation (DroidDeck, 2026-10-31): the engine's own words
+    // name the fix; blaming CurseForge sent the player the wrong way.
+    latestDestination.patch({ sourceId: "Curse" });
+    const noInstallation = Object.assign(
+      new Error("That WoW installation isn't available. Check Options"),
+      { code: "not_found" },
+    );
+    await loadMore("latest", fakeRpc(() => Promise.reject(noInstallation)).rpc);
+    expect(latestDestination.get().error).toBe(
+      "Couldn't load addons. That WoW installation isn't available. Check Options.",
+    );
+  });
+
   test("another category starts the list over, on the same source", () => {
     popularDestination.patch({ sourceId: "Curse", results: [result("1")], loaded: true });
     setCategory("1019");
@@ -283,6 +297,20 @@ describe("search", () => {
     expect(calls).toEqual([{ method: "addons.search", params: { query: "details" } }]);
     expect(searchDestination.get()).toMatchObject({ searching: false, outcome: { kind: "none" } });
     expect(searchDestination.get().results).toHaveLength(1);
+  });
+
+  test("a setup problem says what to fix; a network one still names the cause", async () => {
+    searchDestination.patch({ query: "dbm" });
+    const refused = Object.assign(new Error("Pick an installation first"), {
+      code: "invalid_request",
+    });
+    await runSearch(fakeRpc(() => Promise.reject(refused)).rpc);
+    expect(searchDestination.get().outcome).toEqual({
+      kind: "error",
+      text: "Couldn't search. Pick an installation first.",
+    });
+    await runSearch(fakeRpc(() => Promise.reject(new Error("TypeError: fetch failed"))).rpc);
+    expect(searchDestination.get().outcome.text).toContain("internet connection");
   });
 
   test("a blank query asks nothing", async () => {

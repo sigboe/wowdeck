@@ -46,6 +46,21 @@ export function searchHelperText(providers: ProviderInfo[], clientLabel: string 
 }
 
 /**
+ * The engine's own words when a browse failed on WoWDeck's setup rather than
+ * at the source: no WoW installation (`not_found`), a request it refused
+ * (`invalid_request`). Those messages already say what to fix (C06), and
+ * "CurseForge couldn't finish the search" would send the player the wrong
+ * way. Null for anything the source or the network caused.
+ */
+export function setupProblem(e: unknown): string | null {
+  const code = (e as { code?: unknown } | null)?.code;
+  if (code !== "not_found" && code !== "invalid_request") {
+    return null;
+  }
+  return rawErrorText(e) || null;
+}
+
+/**
  * Turns a raw provider/engine error string into something a user can act
  * on. Raw text such as "TypeError: fetch failed" says nothing about what to
  * do (Xbox Accessibility Guideline 115: describe the error and how to

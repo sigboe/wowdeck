@@ -3,7 +3,6 @@ import {
   ButtonItem,
   DropdownItem,
   Field,
-  findModuleExport,
   Focusable,
   GamepadButton,
   PanelSection,
@@ -39,7 +38,8 @@ import { settingsStore } from "./settings";
 import { loadSummary } from "./steamUpdates";
 import { startHomeBadge } from "./steamDom/homeBadge";
 import { startPluginExitWatch, startQamVisibilityWatch } from "./steamDom/qamVisibility";
-import { isQamExpandStore, setQamExpandStore, stopQamWidening } from "./steamDom/qamWidening";
+import { setQamExpander, stopQamWidening } from "./steamDom/qamWidening";
+import { QamExpandHook } from "./steamDom/qamExpandHook";
 import { registerShoulderNav } from "./shoulderNav";
 // Decky's plugin name (plugin.json); Decky's state identifies the active plugin by it.
 import { name as PLUGIN_NAME } from "../plugin.json";
@@ -313,9 +313,12 @@ export default definePlugin(() => {
   console.log("wowdeck frontend initializing");
 
   // Widened mode has a native half the QAM window cannot reach: Steam moves
-  // the QAM view itself while its Friends store says the QAM is expanded
-  // (see steamDom/qamWidening.ts). Hand the service that store once per load.
-  setQamExpandStore(findModuleExport(isQamExpandStore) ?? null);
+  // the QAM view itself while its placeholder carries Steam's `Expanded`
+  // class (see steamDom/qamExpandHook.tsx). Patch the QAM renderer once per
+  // load and hand the service the hook.
+  const qamExpand = new QamExpandHook();
+  qamExpand.init();
+  setQamExpander(qamExpand);
 
   // Once per plugin load (Decky startup, reload, update): Content() remounts
   // on every modal and tab switch (guide G4), so the toast is not tied to it.
@@ -426,6 +429,7 @@ export default definePlugin(() => {
       // Steam's DOM outlives a plugin reload: a reload mid-widened must leave
       // no widened classes behind for the reloaded world to trip over.
       stopQamWidening();
+      qamExpand.deinit();
       resumeRegistration?.unregister();
       console.log("wowdeck frontend unloading");
     },
