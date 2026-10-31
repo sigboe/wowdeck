@@ -2,6 +2,7 @@ import { useState } from "react";
 import { ButtonItem, Focusable, PanelSection, ToggleField } from "@decky/ui";
 import type { Diagnostics } from "../../types";
 import * as api from "../../services/backend";
+import { copyText } from "../../services/clipboard";
 import { descriptionStyle } from "../../steamTheme";
 import { pluginToast, toastError } from "../../toast";
 import { diagnosticsText } from "../../diagnostics";
@@ -34,9 +35,7 @@ export function DiagnosticsSection({ diagnostics, setDiagnostics }: Props) {
       return;
     }
     try {
-      // navigator.clipboard is not available here; the engine shells out to
-      // a bundled xclip (THIRD_PARTY_NOTICES.md).
-      const { ok, message } = await api.copyTextToClipboard(diagnosticsText(diagnostics));
+      const { ok, message } = await copyText(diagnosticsText(diagnostics));
       pluginToast(
         ok ? "Diagnostics copied" : "Couldn't copy. Select the text above instead.",
         ok ? "" : message,

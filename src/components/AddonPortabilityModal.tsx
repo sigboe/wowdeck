@@ -20,6 +20,7 @@ import {
 import { FileSelectionType, openFilePicker } from "@decky/api";
 import type { Installation, ImportComparison, ImportSummary, OperationResult } from "../types";
 import * as api from "../services/backend";
+import { copyText } from "../services/clipboard";
 import { errorText } from "../errors";
 import { STEAM, descriptionStyle } from "../steamTheme";
 import { pluginToast, toastError } from "../toast";
@@ -160,7 +161,7 @@ function AddonPortabilityModal({
       return;
     }
     try {
-      const { ok, message } = await api.copyTextToClipboard(exportPayload);
+      const { ok, message } = await copyText(exportPayload);
       pluginToast(
         ok ? "Export code copied" : "Couldn't copy. Select the text above instead.",
         ok ? "" : message,
