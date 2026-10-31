@@ -1,7 +1,8 @@
 """WoWDeck Addon Manager for Decky.
 
 Thin Decky plugin backend. All addon management logic lives in the standalone
-`wowdeck` engine binary which is spawned and supervised from here.
+engine binary for this machine (`bin/wowdeck-<uname -m>`), which is spawned
+and supervised from here.
 Communication is newline-delimited JSON (JSONL) over the child process
 stdin/stdout.
 
@@ -21,6 +22,7 @@ import asyncio
 import contextlib
 import json
 import os
+import platform
 import stat
 import sys
 import time
@@ -28,7 +30,14 @@ from typing import Any
 
 import decky
 
-BIN_NAME = "wowdeck"
+# Machine name (`uname -m`) to the engine binary in bin/ built for it
+# (tools/package.py ENGINES).
+ENGINE_BINARIES = {
+    "x86_64": "wowdeck-x86_64",
+}
+# Until unsupported machines get their own handling, any other machine starts
+# the x86_64 engine, as every build before the per-architecture names did.
+FALLBACK_ENGINE_BINARY = ENGINE_BINARIES["x86_64"]
 START_TIMEOUT = 10.0
 REQUEST_TIMEOUT = 120.0
 RESTART_MIN_DELAY = 1.0
@@ -294,8 +303,11 @@ class Plugin:
         # `self.backend` means a stray process never survives a reload.
         if self.backend is not None:
             await self.backend.stop()
-        binary = os.path.join(decky.DECKY_PLUGIN_DIR, "bin", BIN_NAME)
+        machine = platform.machine()
+        binary_name = ENGINE_BINARIES.get(machine, FALLBACK_ENGINE_BINARY)
+        binary = os.path.join(decky.DECKY_PLUGIN_DIR, "bin", binary_name)
         self.backend = BackendProcess(binary)
+        decky.logger.info("Machine %s: engine binary %s", machine, binary_name)
         decky.logger.info("WoWDeck Addon Manager loaded (plugin dir: %s)", decky.DECKY_PLUGIN_DIR)
 
     async def _unload(self):

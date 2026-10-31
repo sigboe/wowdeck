@@ -80,8 +80,8 @@ Run inside `nix develop` (or through `make`):
 | G-2 | `pnpm test` | all pass (309 at `8ee6b5b`); the script runs every `src/**/*.test.ts` (`bun test ./src`; `make test` runs G-2, the G-4 tests and G-5 together) |
 | G-3 | `pnpm run build` | `dist/index.js` built |
 | G-4 | `cd backend && bun run typecheck && bun test && bun run build` | all pass |
-| G-5 | `python3 tools/test_package.py && python3 tools/test_main_bridge.py` | 19 + 8 tests OK |
-| G-6 | `python3 tools/package.py` | one zip, `build/WoWDeck.zip`, and no `build/wowdeck/` left (unless `--keep-stage`); the packager's ELF check passes (engine interpreter `/lib64/ld-linux-x86-64.so.2`). Note the sha256 |
+| G-5 | `python3 tools/test_package.py && python3 tools/test_main_bridge.py` | all tests OK |
+| G-6 | `python3 tools/package.py` | one zip, `build/WoWDeck.zip`, and no `build/wowdeck/` left (unless `--keep-stage`); the packager's ELF check passes (`bin/wowdeck-x86_64`: x86-64, interpreter `/lib64/ld-linux-x86-64.so.2`); no `bin/wowdeck`. Note the sha256 |
 | G-7 | `unzip -l "build/WoWDeck.zip"` | no `curseForgeAPIKey-dontcommit`, no `.env`, no source maps with secrets |
 
 A failing gate blocks the deploy. The gates prove the code builds and the
@@ -104,7 +104,7 @@ the status tag and the glyph fallback; all fixed in the next build.
 |---|---|---|---|---|
 | E-1 | P0 | S | Install the zip through Decky (or copy it and reload Decky). Open the QAM → WoWDeck | The plugin opens on My Addons; no "Engine is not running" |
 | E-2 | P0 | S | SSH: `sha256sum` of the installed `dist/index.js` and the engine binary, compare with the build | Same as the local build |
-| E-3 | P0 | | SSH: `file` / `readelf -l` on the engine binary | Interpreter `/lib64/ld-linux-x86-64.so.2` |
+| E-3 | P0 | | SSH: `file` / `readelf -l` on `bin/wowdeck-x86_64`; `grep "engine binary" ~/homebrew/logs/wowdeck/*.log` | Interpreter `/lib64/ld-linux-x86-64.so.2`; the log line names machine `x86_64` and `wowdeck-x86_64` |
 | E-4 | P1 | | Kill the engine process (`kill <pid>`), open the plugin | "Engine is not running" row with a Retry button; Retry brings it back |
 | E-5 | P0 | | Decky → reload plugin, or restart Steam | Engine respawns; the plugin opens on the last tab |
 | E-6 | P1 | | Read the latest plugin log under `~/homebrew/logs/` | No exceptions. (Decky lowers the log level once the UI connects, so a clean log doesn't prove much.) |

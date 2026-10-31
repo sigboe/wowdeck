@@ -21,7 +21,9 @@ Layout produced (matches decky-loader expectations):
             py_modules/...     (if present)
             dist/index.js      (frontend bundle; the sourcemap next to it is
                                 build-time only and is never packaged)
-            bin/wowdeck    (engine binary)
+            bin/wowdeck-x86_64  (engine binary, one per architecture in
+                                ENGINES, named after `uname -m`; main.py
+                                starts the one for its machine)
             bin/bundled-curseforge-key  (only when a key is available; see
                                 write_curseforge_key_resource. main.py reads
                                 this and injects it into the engine's
@@ -53,6 +55,7 @@ import subprocess
 import sys
 import zipfile
 from pathlib import Path
+from typing import BinaryIO, NamedTuple
 
 ROOT = Path(__file__).resolve().parent.parent
 STAGE = ROOT / "build" / "wowdeck"
@@ -76,11 +79,26 @@ ROOT_FILES = (
 ABOUT_SNAPSHOT_DIR = "about-snapshot"
 ABOUT_SNAPSHOT_FILES = ("SUPPORTERS.md", ".github/FUNDING.yml")
 
-# Standard Linux x86_64 dynamic loader. NixOS-built binaries reference the
-# Nix store loader instead, which does not exist on SteamOS; rewriting the
-# interpreter makes the binary portable. On conventional distros this is a
-# no-op rewrite.
-TARGET_INTERPRETER = "/lib64/ld-linux-x86-64.so.2"
+
+
+class Engine(NamedTuple):
+    """One engine build: its file name in backend/out/ and bin/, the ELF
+    machine type it must have, and its architecture's standard loader."""
+
+    binary: str
+    elf_machine: int
+    loader: str
+
+
+# Architecture (`uname -m`) to engine. The loader is each architecture's
+# standard glibc dynamic loader: NixOS-built binaries reference the Nix store
+# loader instead, which does not exist on SteamOS; rewriting the interpreter
+# makes the binary portable. On conventional distros this is a no-op rewrite.
+ELF_MACHINE_X86_64 = 62  # EM_X86_64
+
+ENGINES = {
+    "x86_64": Engine("wowdeck-x86_64", ELF_MACHINE_X86_64, "/lib64/ld-linux-x86-64.so.2"),
+}
 
 # The key the project is authorized to ship is resolved from exactly one
 # of these, with the CI secret/environment variable taking precedence for
@@ -156,12 +174,24 @@ def write_curseforge_key_resource(bin_dir: Path) -> bool:
     return True
 
 
+def _read_elf_header(f: BinaryIO, binary: Path) -> bytes:
+    head = f.read(64)
+    if head[:4] != b"\x7fELF" or head[4] != 2 or head[5] != 1:
+        raise SystemExit(f"{binary} is not a 64-bit little-endian ELF")
+    return head
+
+
+def read_machine(binary: Path) -> int:
+    """Read e_machine (the target architecture) from a 64-bit little-endian
+    ELF without external tools."""
+    with binary.open("rb") as f:
+        return int.from_bytes(_read_elf_header(f, binary)[18:20], "little")
+
+
 def read_interpreter(binary: Path) -> str:
     """Read PT_INTERP from a 64-bit little-endian ELF without external tools."""
     with binary.open("rb") as f:
-        head = f.read(64)
-        if head[:4] != b"\x7fELF" or head[4] != 2 or head[5] != 1:
-            raise SystemExit(f"{binary} is not a 64-bit little-endian ELF")
+        head = _read_elf_header(f, binary)
         phoff = int.from_bytes(head[32:40], "little")
         phentsize = int.from_bytes(head[54:56], "little")
         phnum = int.from_bytes(head[56:58], "little")
@@ -176,7 +206,7 @@ def read_interpreter(binary: Path) -> str:
     raise SystemExit(f"{binary} has no ELF interpreter")
 
 
-def patch_interpreter(binary: Path) -> None:
+def patch_interpreter(binary: Path, loader: str) -> None:
     """Make the engine use the standard loader, or stop the build.
 
     A binary built under Nix points at a /nix/store loader that does not exist
@@ -185,7 +215,7 @@ def patch_interpreter(binary: Path) -> None:
     already correct.
     """
     current = read_interpreter(binary)
-    if current == TARGET_INTERPRETER:
+    if current == loader:
         return
     patchelf = shutil.which("patchelf")
     if not patchelf:
@@ -194,11 +224,33 @@ def patch_interpreter(binary: Path) -> None:
             "patchelf is not installed. Run the packager inside "
             "`nix shell nixpkgs#patchelf` (see docs/steam-deck.md)."
         )
-    subprocess.run([patchelf, "--set-interpreter", TARGET_INTERPRETER, str(binary)], check=True)
-    print(f"patched interpreter: {current} -> {TARGET_INTERPRETER}")
+    subprocess.run([patchelf, "--set-interpreter", loader, str(binary)], check=True)
+    print(f"patched interpreter of {binary.name}: {current} -> {loader}")
     after = read_interpreter(binary)
-    if after != TARGET_INTERPRETER:
+    if after != loader:
         raise SystemExit(f"interpreter is still {after} after patchelf")
+
+
+def stage_engines(out_dir: Path, bin_dir: Path) -> None:
+    """Copy every engine in ENGINES from the build output into bin/, checked
+    and patched, or stop the build naming the file.
+
+    A missing engine or one built for the wrong machine would ship a plugin
+    that never starts on that architecture.
+    """
+    for arch, engine in ENGINES.items():
+        src = out_dir / engine.binary
+        if not src.is_file():
+            raise SystemExit(f"engine binary {src} is missing (run: cd backend && bun run build)")
+        machine = read_machine(src)
+        if machine != engine.elf_machine:
+            raise SystemExit(
+                f"engine binary {src} has ELF machine type {machine}, not {engine.elf_machine} ({arch})"
+            )
+        dst = bin_dir / engine.binary
+        shutil.copy2(src, dst)
+        patch_interpreter(dst, engine.loader)
+        dst.chmod(0o755)
 
 
 def run(cmd: list[str]) -> None:
@@ -255,8 +307,6 @@ def main(argv: list[str] | None = None) -> int:
     missing = []
     if not (ROOT / "dist" / "index.js").exists():
         missing.append("dist/index.js (run: pnpm run build)")
-    if not (ROOT / "backend" / "out" / "wowdeck").exists():
-        missing.append("backend/out/wowdeck (run: cd backend && bun run build)")
     if missing:
         print("Missing build outputs:", file=sys.stderr)
         for m in missing:
@@ -279,9 +329,7 @@ def main(argv: list[str] | None = None) -> int:
     copy_about_snapshot(ROOT, STAGE)
     bin_dir = STAGE / "bin"
     bin_dir.mkdir()
-    shutil.copy2(ROOT / "backend" / "out" / "wowdeck", bin_dir / "wowdeck")
-    patch_interpreter(bin_dir / "wowdeck")
-    bin_dir.joinpath("wowdeck").chmod(0o755)
+    stage_engines(ROOT / "backend" / "out", bin_dir)
 
     write_curseforge_key_resource(bin_dir)
 
