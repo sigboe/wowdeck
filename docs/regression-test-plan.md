@@ -109,6 +109,7 @@ the status tag and the glyph fallback; all fixed in the next build.
 | E-5 | P0 | | Decky → reload plugin, or restart Steam | Engine respawns; the plugin opens on the last tab |
 | E-6 | P1 | | Read the latest plugin log under `~/homebrew/logs/` | No exceptions. (Decky lowers the log level once the UI connects, so a clean log doesn't prove much.) |
 | E-7 | P0 | | An arm64 device (the owner's DroidDeck test bed, or an arm64 SteamOS machine): install the same `WoWDeck.zip`; open the panel; list addons; install and remove one addon; then E-3's log check | My Addons lists addons; install and remove work as M-4/M-8; the log names machine `aarch64` and engine binary `wowdeck-aarch64` (#59; DroidDeck first needs #56's pre-check) |
+| E-8 | P1 | | The unsupported-machine panel, simulated on any one device (Steam itself runs only on x86_64 and arm64, so no real device reports an unsupported machine): a diagnostic build with one changed line in `main.py`'s `_main` (`machine = platform.machine()` becomes `machine = "riscv64"`), deployed like any other; open the panel; then deploy the normal build again; SSH: read the log and `ps aux \| grep wowdeck` | Panel: "This device isn't supported" / "WoWDeck doesn't run on riscv64 devices.", **no Retry button**; log: "Machine riscv64 has no engine binary"; no `wowdeck-` process starts. The error envelope and the no-spawn rule for every call are already pinned by G-5's bridge tests (#57) |
 
 ## 4. UI regression (the rework, T6)
 
