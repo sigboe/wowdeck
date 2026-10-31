@@ -27,6 +27,7 @@
             python3 # tools/package.py, packaging and main.py bridge tests
             patchelf # package.py sets the engine's ELF loader to SteamOS's /lib64 path
             _7zz # engine 7z extraction tests (RAR tests skip without unfree unrar)
+            wakeonlan # deck-test skill: wakes the sleeping Steam Deck over its USB Ethernet adapter
           ];
         };
       });

@@ -21,36 +21,44 @@ Leave Steam, Decky, other plugins and the system as they were.
 
 ## Steps
 
-1. **Connect.** `curl -s --max-time 3 localhost:9222/json/version` shows
+1. **Wake.** `ssh -o ConnectTimeout=5 -o BatchMode=yes $DECK true` failing
+   with "No route to host" means the Deck is asleep. Send a magic packet
+   from the dev shell: `wakeonlan -i <broadcast> <MAC>`, with the USB
+   Ethernet adapter's MAC and the LAN broadcast address from `local.md`.
+   Poll the SSH check every 30 s for 2 minutes. Wake-on-LAN works only
+   through that adapter, and only when it was plugged in before the Deck
+   went to sleep. Still asleep → ask the owner to wake the Deck. Done when
+   the SSH check succeeds.
+2. **Connect.** `curl -s --max-time 3 localhost:9222/json/version` shows
    `webSocketDebuggerUrl`. If not, open the tunnel:
    `ssh -f -N -o ExitOnForwardFailure=yes -o ServerAliveInterval=15 -L 9222:localhost:8080 -L 18080:localhost:8080 $DECK`.
    Still refused → ask the owner to enable Decky → Developer → "Allow Remote
    CEF Debugging". No `deck-cef` tools → set it up per `docs/remote-browser.md`.
    Done when `list_pages` returns the Steam windows.
-2. **Build.** `make build`. For an engine change, patch a copy of
+3. **Build.** `make build`. For an engine change, patch a copy of
    `backend/out/wowdeck`:
    `nix shell nixpkgs#patchelf -c patchelf --set-interpreter /lib64/ld-linux-x86-64.so.2 <copy>`
    (the Nix loader path does not exist on SteamOS: the plugin dies).
    Smoke-test the copy on the Deck from `/tmp` with a throwaway
    `WOWDECK_DATA_DIR` before it replaces the live one.
-3. **Back up** `state.json`, the logs and every file you replace into
+4. **Back up** `state.json`, the logs and every file you replace into
    `~/wowdeck-backups/<date>/` on the Deck.
-4. **Guard auto-update.** The owner runs auto-update. A reload after a
+5. **Guard auto-update.** The owner runs auto-update. A reload after a
    scan/matching change or with an extra source switched on updates newly
    matched addons within seconds. For those, set `autoUpdate` off first and
    restore it at the end.
-5. **Deploy in place**, over SSH:
+6. **Deploy in place**, over SSH:
    `ssh $DECK "cat > /home/deck/homebrew/plugins/wowdeck/dist/index.js" < dist/index.js`
    (scp mangles the path). `main.py` the same way. The engine binary goes to a
    temp name in `bin/`, then `mv` (it is running).
-6. **Reload.** On `SharedJSContext`: `DFL.Navigation.CloseSideMenus()`, then
+7. **Reload.** On `SharedJSContext`: `DFL.Navigation.CloseSideMenus()`, then
    `DeckyBackend.call("loader/reload_plugin","WoWDeck")`. An open or
    reopened QAM keeps rendering the old bundle: in the QAM, click Decky's back
    arrow, then "WoWDeck". Done when a behaviour only the new build
    has shows up.
-7. **Drive and observe.** See [Driving](#driving). Done when every claim in
+8. **Drive and observe.** See [Driving](#driving). Done when every claim in
    the request has an observed result.
-8. **Restore and report.** Restore `autoUpdate` and anything else you changed
+9. **Restore and report.** Restore `autoUpdate` and anything else you changed
    for the test, remove in-memory hooks, then report what you observed, tagged
    `DEVICE`, with date and method.
 
