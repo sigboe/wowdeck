@@ -6,6 +6,13 @@ What's new in each version of WoWDeck Addon Manager. The format follows
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-10-31
+
+### Fixed
+
+- The Update button in the panel can install the coming WoWDeck versions,
+  which 1.0.0 can't.
+
 ## [1.0.0] - 2026-10-30
 
 First public release.
