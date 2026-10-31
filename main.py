@@ -21,6 +21,7 @@ import asyncio
 import contextlib
 import json
 import os
+import stat
 import sys
 import time
 from typing import Any
@@ -76,6 +77,25 @@ def _system_environ() -> dict[str, str]:
     return env
 
 
+
+def _ensure_executable(path: str) -> None:
+    """Give the engine binary back the execute bit Decky's installer dropped.
+
+    Decky unpacks a plugin zip with Python's zipfile, which ignores the
+    stored modes; running as root on SteamOS it chmods the plugin afterwards,
+    but an unprivileged Decky (DroidDeck) leaves the binary at 0600 and the
+    engine never starts (DEVICE 2026-10-31). A missing binary is left for the
+    start itself to report.
+    """
+    try:
+        if os.access(path, os.X_OK):
+            return
+        mode = os.stat(path).st_mode
+        os.chmod(path, mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+        decky.logger.info("Engine binary was not executable; restored its execute bit")
+    except OSError as exc:
+        decky.logger.warning("Could not make the engine binary executable: %s", exc)
+
 class BackendError(Exception):
     def __init__(self, code: str, message: str):
         super().__init__(f"[{code}] {message}")
@@ -112,6 +132,7 @@ class BackendProcess:
                 await asyncio.sleep(RESTART_MIN_DELAY - since_last)
             self._last_start = time.monotonic()
             decky.logger.info("Starting engine binary: %s", self.binary_path)
+            _ensure_executable(self.binary_path)
             runtime_dir = getattr(decky, "DECKY_PLUGIN_RUNTIME_DIR", None)
             data_dir = runtime_dir or os.path.join(decky.DECKY_PLUGIN_DIR, "data")
             os.makedirs(data_dir, exist_ok=True)

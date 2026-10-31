@@ -12,7 +12,10 @@ from __future__ import annotations
 import asyncio
 import importlib.util
 import logging
+import os
+import stat
 import sys
+import tempfile
 import types
 import unittest
 from pathlib import Path
@@ -140,6 +143,31 @@ class SystemEnvironTest(unittest.TestCase):
         env = self.run_frozen({"LD_LIBRARY_PATH": "/opt/lib"}, frozen=False)
         self.assertEqual(env["LD_LIBRARY_PATH"], "/opt/lib")
 
+
+
+class EnsureExecutableTest(unittest.TestCase):
+    """Decky's installer drops file modes; the engine must still start."""
+
+    def binary(self, mode: int) -> str:
+        fd, path = tempfile.mkstemp()
+        os.close(fd)
+        os.chmod(path, mode)
+        self.addCleanup(os.remove, path)
+        return path
+
+    def test_restores_the_execute_bit_the_installer_dropped(self) -> None:
+        path = self.binary(0o600)  # as Decky left it on DroidDeck (DEVICE 2026-10-31)
+        main._ensure_executable(path)
+        self.assertTrue(os.access(path, os.X_OK))
+        self.assertEqual(stat.S_IMODE(os.stat(path).st_mode), 0o711)
+
+    def test_leaves_an_executable_binary_alone(self) -> None:
+        path = self.binary(0o755)
+        main._ensure_executable(path)
+        self.assertEqual(stat.S_IMODE(os.stat(path).st_mode), 0o755)
+
+    def test_a_missing_binary_is_left_to_the_start_to_report(self) -> None:
+        main._ensure_executable("/nonexistent/wowdeck")
 
 if __name__ == "__main__":
     unittest.main()

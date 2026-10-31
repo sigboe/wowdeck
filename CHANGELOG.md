@@ -12,6 +12,8 @@ What's new in each version of WoWDeck Addon Manager. The format follows
   and Search stayed out of sight.
 - Latest, Popular and Search say what to fix when no WoW installation is set
   up, instead of blaming the addon source.
+- WoWDeck starts after Decky installs or updates it where Decky runs without
+  root, such as DroidDeck.
 
 ## [1.0.1] - 2026-10-31
 
