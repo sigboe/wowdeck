@@ -81,7 +81,7 @@ Run inside `nix develop` (or through `make`):
 | G-3 | `pnpm run build` | `dist/index.js` built |
 | G-4 | `cd backend && bun run typecheck && bun test && bun run build` | all pass |
 | G-5 | `python3 tools/test_package.py && python3 tools/test_main_bridge.py` | all tests OK |
-| G-6 | `python3 tools/package.py` | one zip, `build/WoWDeck.zip`, and no `build/wowdeck/` left (unless `--keep-stage`); the packager's ELF check passes (`bin/wowdeck-x86_64`: x86-64, interpreter `/lib64/ld-linux-x86-64.so.2`); no `bin/wowdeck`. Note the sha256 |
+| G-6 | `python3 tools/package.py` | one zip, `build/WoWDeck.zip`, and no `build/wowdeck/` left (unless `--keep-stage`); the packager's ELF check passes for both engines (`bin/wowdeck-x86_64`: x86-64, interpreter `/lib64/ld-linux-x86-64.so.2`; `bin/wowdeck-aarch64`: AArch64, interpreter `/lib/ld-linux-aarch64.so.1`); no `bin/wowdeck`. Note the sha256 |
 | G-7 | `unzip -l "build/WoWDeck.zip"` | no `curseForgeAPIKey-dontcommit`, no `.env`, no source maps with secrets |
 
 A failing gate blocks the deploy. The gates prove the code builds and the
@@ -108,6 +108,7 @@ the status tag and the glyph fallback; all fixed in the next build.
 | E-4 | P1 | | Kill the engine process (`kill <pid>`), open the plugin | "Engine is not running" row with a Retry button; Retry brings it back |
 | E-5 | P0 | | Decky → reload plugin, or restart Steam | Engine respawns; the plugin opens on the last tab |
 | E-6 | P1 | | Read the latest plugin log under `~/homebrew/logs/` | No exceptions. (Decky lowers the log level once the UI connects, so a clean log doesn't prove much.) |
+| E-7 | P0 | | An arm64 device (the owner's DroidDeck test bed, or an arm64 SteamOS machine): install the same `WoWDeck.zip`; open the panel; list addons; install and remove one addon; then E-3's log check | My Addons lists addons; install and remove work as M-4/M-8; the log names machine `aarch64` and engine binary `wowdeck-aarch64` (#59; DroidDeck first needs #56's pre-check) |
 
 ## 4. UI regression (the rework, T6)
 
