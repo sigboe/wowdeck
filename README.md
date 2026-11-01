@@ -88,7 +88,11 @@ the top of Options with the **Update** button.
 
 ## What it does
 
-<img src="docs/screenshot-panel.png" alt="WoWDeck's My Addons list in the Quick Access Menu" width="280" align="right">
+<picture>
+  <source media="(max-width: 767px)" srcset="docs/blank.png">
+  <source srcset="docs/screenshot-panel.png 1.59x">
+  <img src="docs/screenshot-panel.png" alt="WoWDeck's My Addons list in the Quick Access Menu" align="right">
+</picture>
 
 - Finds WoW in Lutris, `~/Applications`, `~/Games`, Steam Proton
   prefixes, SD cards and custom paths, and lets you pick the flavor
@@ -127,6 +131,11 @@ the top of Options with the **Update** button.
   Beta into Forever. `docs/wtf-backup.md` has the details.
 - Leaves the previous version in place when an install fails.
 - Copies its diagnostics to the clipboard in one tap.
+
+<picture>
+  <source media="(max-width: 767px)" srcset="docs/screenshot-panel.png">
+  <img src="docs/blank.png" alt="">
+</picture>
 
 ## Troubleshooting
 
