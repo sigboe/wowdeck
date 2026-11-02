@@ -562,22 +562,25 @@ project moved URL import inline for exactly this reason (COMMIT 4de2067).
 
 ### 4.4 Global input
 
-- QAM tab switching (L1/R1) is NOT raw input any more (2026-10-15): the panel
-  root is a `Focusable` with `onButtonDown` handling `GamepadButton.BUMPER_LEFT`
-  / `BUMPER_RIGHT`, which is how Steam's own `Tabs` take the bumpers. Gamepad
-  button events travel through the focus tree, so the handler only fires while
-  focus is in the panel. The old global `registerShoulderNav` kept firing while
-  the full-screen Get Addons page was open and silently changed the QAM tab.
-- Raw input (`SteamClient.Input.RegisterForControllerInputMessages`; codes
-  LB=30, RB=31, D-pad Up=20, Down=21, Left=22, Right=23; undocumented,
-  INFERRED stable only by observation) remains only in the Details modal.
-  Open item (audit 2026-10-15): its L1/R1 and Left/Right paging should move to
-  `onButtonDown` on the page `Field` (the one focus target) like every other
-  bumper handler (S15); hold-to-scroll Up/Down has no Steam equivalent for a
-  single focus target and stays raw, implemented to Valve's own measured model
-  (`registerDirectScroll`, `src/valveScroll.ts`; see 6.4 and
-  docs/valve-bpm-scrolling.md). Not changed yet because it cannot be
-  tested without a deploy, and Details paging works today.
+- QAM tab switching has one owner. `createPanelShoulderNavigation` in
+  `src/shoulderNav.ts` advances tabs from Steam's native controller input while
+  the panel is mounted and the active navigation tree is the QAM. The root's
+  focused button handler consumes L1/R1 to
+  prevent Steam from changing QAM sections, and advances tabs itself only when
+  the native bridge or tree lookup is unavailable. This also covers presses on Decky's title
+  bar, outside our content (PC-10).
+- DOM focus cannot decide which of those input paths owns a press. Steam can
+  focus a plugin control in its gamepad tree while `document.activeElement`
+  reports `BODY`. Both handlers then advance the tab if the native fallback
+  uses DOM focus to decide whether the focused handler ran. The controlled
+  device reproduction and regression tests are recorded in §8.4c.
+- The panel's native subscription follows its component lifetime and checks
+  that its root is connected and the active tree id starts with `QuickAccess`.
+  The keyboard uses a different tree while the panel stays mounted, so checking
+  component lifetime alone would still switch tabs behind the keyboard. A QAM
+  close or a modal unmounts the panel. Raw input remains in the
+  Details modal for paging and scrolling, with its own lifetime and ownership
+  rules below.
 - Modals register their own handlers for their lifetime. The Details modal
   uses `galleryOpenRef` so the Details LB/RB handler is inert while the
   stacked Gallery viewer is open (mount/unmount-driven, so it is correct for
@@ -1669,7 +1672,7 @@ needs a human on a controller to confirm.
 
 | Screen | Contract |
 |---|---|
-| Plugin top level | L1/R1 cycle My Addons ↔ Get Addons ↔ Options, clamped, not wrapped. Left/Right on the tab row moves between tabs. (Switching LIVE per commits c77955a, 4881005; the pill look is new, 2026-10-15) |
+| Plugin top level | L1/R1 cycle My Addons ↔ Get Addons ↔ Options, clamped, not wrapped. Each press advances at most one tab even when Steam gamepad focus and DOM focus differ. Left/Right on the tab row moves between tabs. (Switching LIVE per commits c77955a, 4881005; the pill look is new, 2026-10-15) |
 | My Addons list (2026-10-15) | One focus stop per addon. A = Details (unmanaged: menu), X = Update when offered (unmanaged: Find online source, 2026-10-21), Menu = context menu (Update / Details / Ignore / Remove…), footer shows the labels; ⋯ opens the menu by touch. B closes the menu. |
 | Get Addons in the QAM (rev 2, 2026-10-19; device verification pending) | Collapsed: Install into above a vertical destination list (Search, Latest, Popular, From URL), focus on the plugin-tab nav bar, standard width. Focusing a destination widens the QAM and shows that destination's browse UI in the pane beside a ~240 px list; Right/A enters the pane; the pane holds Search, the lists, Popular's Category and From URL. A on a row = Details modal, X = Install, Menu = release channel. B/Left out of the pane collapses to the plugin-tab nav bar; L1/R1 leave and every re-entry lands collapsed. |
 | Details modal | LB/RB cycle Description/Changelog/Gallery (disabled Gallery skipped); Up/Down scroll text; Install and View-on-source reachable; B closes. Gallery thumbnail A opens viewer; viewer Left/Right changes image; B closes viewer only. (Viewer behavior LIVE per `AddonDetailsModal.tsx` comment.) |
@@ -2062,6 +2065,28 @@ third-party markup (style, sandbox, srcdoc, handlers, query string) survives.
 The playlist path `videoseries` is rejected. Pointer-only playback is the
 accepted weakness (U-18).
 
+
+### 8.4c One bumper press, two input paths (2026-11-03)
+
+DEVICE, SSH + Steam CEF with a virtual Xbox controller. The original runner
+sequence reproduced an R1 skip from My Addons to Options. Normal repeats
+usually passed. A controlled fixture then kept Steam gamepad focus on My Addons
+while making the QAM document's `activeElement` report `BODY`, a valid platform
+state (§3.1). One R1 produced one raw press/release pair, but both handlers in
+the same panel instance advanced the tab. Changing callback delays alone did
+not reproduce it.
+
+The regression tests dispatch both input paths in both orders and cover a tab
+render removing the DOM-focused control. Before the fix, three tests advanced
+two tabs instead of one. Native input now owns tab changes while the focused
+handler only consumes the event. Nine tests pass, including title-bar input,
+clamping, rapid presses, keyboard and other active trees, unmount cleanup and
+missing-bridge/tree fallbacks. A real on-screen keyboard check then confirmed
+that R1 leaves the plugin tab unchanged while the active tree is `virtual
+keyboard`, and B returns input to the QAM.
+The device fixture and normal runner sequence were repeated against the fix;
+see `docs/regression-test-plan.md`, Q-1c. All temporary input observers and DOM
+fixtures were removed afterward.
 
 ### 8.5 Verification report template
 

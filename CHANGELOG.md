@@ -18,6 +18,7 @@ What's new in each version of WoWDeck Addon Manager. The format follows
 
 ### Fixed
 
+- L1/R1 move one tab at a time instead of sometimes skipping Get Addons.
 - Get Addons opens wide again on newer Steam versions, where Latest, Popular
   and Search stayed out of sight.
 - Latest, Popular and Search say what to fix when no WoW installation is set
