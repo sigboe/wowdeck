@@ -5,9 +5,9 @@ import {
   Field,
   Focusable,
   GamepadButton,
+  getFocusNavController,
   PanelSection,
   PanelSectionRow,
-  type GamepadEvent,
 } from "@decky/ui";
 import { definePlugin } from "@decky/api";
 import { FaBoxOpen, FaDiceD6, FaSearch, FaCog } from "react-icons/fa";
@@ -40,7 +40,7 @@ import { startHomeBadge } from "./steamDom/homeBadge";
 import { startPluginExitWatch, startQamVisibilityWatch } from "./steamDom/qamVisibility";
 import { setQamExpander, stopQamWidening } from "./steamDom/qamWidening";
 import { QamExpandHook } from "./steamDom/qamExpandHook";
-import { registerShoulderNav } from "./shoulderNav";
+import { createPanelShoulderNavigation } from "./shoulderNav";
 // Decky's plugin name (plugin.json); Decky's state identifies the active plugin by it.
 import { name as PLUGIN_NAME } from "../plugin.json";
 import type { StatusInfo } from "./types";
@@ -147,33 +147,17 @@ function Content() {
     bumperEntry.current = true;
     setTab(QAM_TABS[next]!);
   };
-  const onButtonDown = (evt: GamepadEvent) => {
-    const button = evt.detail.button;
-    if (button !== GamepadButton.BUMPER_LEFT && button !== GamepadButton.BUMPER_RIGHT) {
-      return;
-    }
-    evt.preventDefault();
-    evt.stopPropagation();
-    stepTab(button === GamepadButton.BUMPER_LEFT ? -1 : 1);
-  };
-  // L1/R1 also work while focus is outside our content (PC-10): on Decky's
-  // title-bar back button, or nowhere yet right after the plugin opens. Those
-  // presses never reach the root's onButtonDown, so they are read from Steam's
-  // controller input (shoulderNav.ts); inside our content the root handles them.
   const stepTabRef = useRef(stepTab);
   stepTabRef.current = stepTab;
-  useEffect(() => {
-    const outside = (direction: -1 | 1) => {
-      const root = rootRef.current;
-      if (root && !root.contains(root.ownerDocument.activeElement)) {
-        stepTabRef.current(direction);
-      }
-    };
-    return registerShoulderNav(
-      () => outside(-1),
-      () => outside(1),
-    );
-  }, []);
+  const [shoulderNav] = useState(() =>
+    createPanelShoulderNavigation({
+      getRoot: () => rootRef.current,
+      step: (direction) => stepTabRef.current(direction),
+      buttons: { left: GamepadButton.BUMPER_LEFT, right: GamepadButton.BUMPER_RIGHT },
+      activeTreeId: () => getFocusNavController()?.GetActiveNavTree?.()?.m_ID,
+    }),
+  );
+  useEffect(() => shoulderNav.subscribe(), [shoulderNav]);
 
   // Options carries the update dot while a WoWDeck release is available,
   // like the panel's Update button it leads to (same shared state).
@@ -218,7 +202,7 @@ function Content() {
     <Focusable
       ref={rootRef}
       className="wowdeck-root wowdeck-scroll-buffer"
-      onButtonDown={onButtonDown}
+      onButtonDown={shoulderNav.onButtonDown}
       onGamepadFocus={remeasureScroll}
       {...STEAM_NO_TRANSFORM_SCROLL}
     >
