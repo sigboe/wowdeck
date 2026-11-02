@@ -1964,8 +1964,10 @@ maintainer, commit <hash>)`, not as your own verification.
   Targets of interest: `QuickAccess_uid2` (the plugin panel),
   `Steam Big Picture Mode` (where modals render) and `SharedJSContext`.
   `window.DFL` is exposed for inspecting `@decky/ui`.
-  Agents: prefer the Chrome DevTools MCP over that tunnel
-  (`docs/remote-browser.md`) to `ssh` batches and ad-hoc CDP scripts.
+  Agents: drive that tunnel with the `tools/deck-ui/` scripts
+  (`tools/deck-ui/README.md`), not ad-hoc CDP scripts. The Chrome DevTools MCP
+  (`docs/remote-browser.md`) covers console and network history and views no
+  script reaches.
 - `docs/steam-deck.md` gives SSH instructions and the pre-release checklist
   (Game Mode and Desktop Mode, suspend/resume, Wi-Fi loss, Decky reload, SD
   card). Another person's device is read-only.

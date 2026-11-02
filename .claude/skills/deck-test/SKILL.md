@@ -1,97 +1,83 @@
 ---
 name: deck-test
-description: Deploy to the owner's Steam Deck and test there through the deck-cef MCP tools, SSH and tools/deck-ui. Use whenever the owner asks to test, verify, check, look at or reproduce something on the Deck or on device.
+description: Deploy to the owner's Steam Deck and test there through tools/deck-ui/deck. Use whenever the owner asks to test, verify, check, look at or reproduce something on the Deck or on device. Pass a brief as the argument: the build (branch or commit, engine change or not), every claim to verify, and anything the owner said about the run.
+context: fork
 ---
 
 # Test on the Steam Deck
+
+You run in a fresh context. The brief from the caller:
+
+$ARGUMENTS
+
+An empty brief → verify the newest commit's change on `next` (`git log -1`),
+and say in the report that the brief was empty.
 
 The owner's request is the approval: deploy, read and drive without asking
 again. Scope (from `AGENTS.md`): the WoW installation and our plugin's files.
 Leave Steam, Decky, other plugins and the system as they were.
 
-- Deck: `$DECK`, a `deck@<host>` SSH target (key auth; no sudo). Export it in
-  your shell, or keep machine-local details — address, TV geometry, personal
-  test files — in `local.md` beside this file (git-ignored, never committed).
-- Plugin: `~/homebrew/plugins/wowdeck` (dir root-owned, files deck-owned);
-  state `~/homebrew/data/wowdeck/state.json`; logs
-  `~/homebrew/logs/wowdeck/`.
-- Browser tools: the `deck-cef` MCP server (`mcp__deck-cef__*`), Steam's own
-  CEF over the SSH tunnel. The `chrome-devtools` plugin drives a local Chrome
-  instead, so it never reaches the Deck.
+Every tool call re-sends this whole context, so the run's cost is calls ×
+context. Do the test in few calls: batch steps into one `deck run`, and read
+answers from probes instead of screenshots.
+
+## The tool
+
+`tools/deck-ui/deck` (`node deck.mjs help` lists every step). Machine-local
+details (Deck address, Wake-on-LAN) live in `tools/deck-ui/local.env`;
+missing → copy `local.env.example` and fill it from `local.md` beside this
+file.
+
+```sh
+tools/deck-ui/deck up            # wake, tunnel, build, back up, guard autoUpdate, deploy, reload
+tools/deck-ui/deck up --engine   # the same with the engine (patchelf, smoke test, atomic swap)
+tools/deck-ui/deck run 'open; seek "Get Addons" --enter; wait tab ~ Get; expect focus ~ Search'
+tools/deck-ui/deck down          # restore autoUpdate
+```
+
+- An action step (`open close nav press key seek rpc eval`) prints what changed
+  once the UI settles: `focus`, `tree` (the active nav tree;
+  `ModalDialogOverlay_*` = a modal is up), `route`, `plugin`. `no change` after a
+  press is a finding.
+- `wait <probe> ~ <text>` replaces sleeps; `expect` checks once. A failed check
+  stops the run and prints where the UI stands.
+- `rpc <method> '{json}' --pick=a.b[].c` calls the engine and checks the method
+  name against `contracts.ts`; `rpc --list` lists them.
+- `shot` writes a PNG capped at 800 px (`--clip=<css>` crops) and prints its
+  path. Read it only for a visual claim (layout, glyphs, colour).
+- `press` drives a real pad that lives for the whole run. B, X, Y, L1/R1 and
+  Options (= **Y**) exist only on the pad. Presses on our plugin's controls
+  are fine; Steam's and other plugins' controls get navigation only.
+- `log [n] [pattern]` tails the newest plugin log; `journalctl -u
+  plugin_loader` over SSH covers Decky.
 
 ## Steps
 
-1. **Wake.** `ssh -o ConnectTimeout=5 -o BatchMode=yes $DECK true` failing
-   with "No route to host" means the Deck is asleep. Send a magic packet
-   from the dev shell: `wakeonlan -i <broadcast> <MAC>`, with the USB
-   Ethernet adapter's MAC and the LAN broadcast address from `local.md`.
-   Poll the SSH check every 30 s for 2 minutes. Wake-on-LAN works only
-   through that adapter, and only when it was plugged in before the Deck
-   went to sleep. Still asleep → ask the owner to wake the Deck. Done when
-   the SSH check succeeds.
-2. **Connect.** `curl -s --max-time 3 localhost:9222/json/version` shows
-   `webSocketDebuggerUrl`. If not, open the tunnel:
-   `ssh -f -N -o ExitOnForwardFailure=yes -o ServerAliveInterval=15 -L 9222:localhost:8080 -L 18080:localhost:8080 $DECK`.
-   Still refused → ask the owner to enable Decky → Developer → "Allow Remote
-   CEF Debugging". No `deck-cef` tools → set it up per `docs/remote-browser.md`.
-   Done when `list_pages` returns the Steam windows.
-3. **Build.** `make build`. For an engine change, patch a copy of
-   `backend/out/wowdeck-x86_64`:
-   `nix shell nixpkgs#patchelf -c patchelf --set-interpreter /lib64/ld-linux-x86-64.so.2 <copy>`
-   (the Nix loader path does not exist on SteamOS: the plugin dies).
-   Smoke-test the copy on the Deck from `/tmp` with a throwaway
-   `WOWDECK_DATA_DIR` before it replaces the live one.
-4. **Back up** `state.json`, the logs and every file you replace into
-   `~/wowdeck-backups/<date>/` on the Deck.
-5. **Guard auto-update.** The owner runs auto-update. A reload after a
-   scan/matching change or with an extra source switched on updates newly
-   matched addons within seconds. For those, set `autoUpdate` off first and
-   restore it at the end.
-6. **Deploy in place**, over SSH:
-   `ssh $DECK "cat > /home/deck/homebrew/plugins/wowdeck/dist/index.js" < dist/index.js`
-   (scp mangles the path). `main.py` the same way. The engine binary goes to a
-   temp name in `bin/`, then `mv` to `bin/wowdeck-x86_64` (it is running).
-   `main.py` starts only that name: deploy it with a `main.py` that does.
-7. **Reload.** On `SharedJSContext`: `DFL.Navigation.CloseSideMenus()`, then
-   `DeckyBackend.call("loader/reload_plugin","WoWDeck")`. An open or
-   reopened QAM keeps rendering the old bundle: in the QAM, click Decky's back
-   arrow, then "WoWDeck". Done when a behaviour only the new build
-   has shows up.
-8. **Drive and observe.** See [Driving](#driving). Done when every claim in
-   the request has an observed result.
-9. **Restore and report.** Restore `autoUpdate` and anything else you changed
-   for the test, remove in-memory hooks, then report what you observed, tagged
-   `DEVICE`, with date and method.
+1. **Up.** `deck up` (add `--engine` for an engine change). It prints one line
+   per thing it did and stops on what needs the owner: a Deck still asleep
+   after Wake-on-LAN, or "Allow Remote CEF Debugging" switched off (Decky →
+   Developer). Done when it prints `up: deployed … reloaded <version>` or
+   `already runs this build`.
+2. **Drive and observe.** One `deck run` per claim where you can. Done when
+   every claim in the brief has an observed result.
+3. **Down and report.** `deck down`, remove any in-memory hooks, then report
+   each claim with what you observed, tagged `DEVICE`, with date and method.
+   Run `down` after a failed deployment or test too, if `up` changed autoUpdate.
+   Backups live under `~/homebrew/data/wowdeck/test-backups/`.
+   Leave the tested build installed. A step that needs the owner (waking the
+   Deck, a press only they can make, the on-screen keyboard) → stop and
+   report exactly what they must do; the caller relays it.
 
-## Driving
+## Beyond deck.mjs
 
-- `list_pages` once per session (and after a reload); pass `pageId` on every
-  call. Targets: `QuickAccess_uid2` (QAM and our panel), `SharedJSContext`
-  (`SteamClient`, `window.DFL`, `DeckyPluginLoader`, `DeckyBackend`),
-  `Steam Big Picture Mode` (routes, modals, Details), `notificationtoasts_uid2`.
-- Move around with `evaluate_script` on `SharedJSContext`:
-  `DFL.Navigation.OpenQuickAccessMenu(999)`,
-  `DeckyPluginLoader.deckyState.setActivePlugin('WoWDeck')`,
-  `DFL.Navigation.Navigate('/wowdeck/get-addons')`. `navigate_page`,
-  `new_page`, reload traces and navigation-mode Lighthouse replace Steam's UI;
-  leave them unused.
-- Engine calls without the UI:
-  `DeckyBackend.call('loader/call_plugin_method','WoWDeck','rpc','<method>',{…})`,
-  raced against a timeout; method names come from `contracts.ts` (an unknown
-  name hangs).
-- Real buttons: `DECK=$DECK tools/deck-ui/pad.sh wait:1500 <buttons>` (the first
-  press after connect is lost). B/X/Y/L1/R1 and Options (= **Y**) need the pad;
-  keyboard Escape is not B. Presses on our plugin's controls are fine;
-  Steam's and other plugins' controls get navigation only.
-- Query, don't dump: `evaluate_script` returning compact JSON beats
-  `take_snapshot`. `.gpfocus` text is in `textContent`.
-- Screenshots only of visible windows (a hidden QAM or `MainMenu` hangs):
-  `format: "jpeg"`, `filePath` on disk. Details hides the QAM.
-- Measure motion, profiles, per-press walks and guideline audits with the
-  `tools/deck-ui/` scripts (port 18080; table in `tools/deck-ui/README.md`).
-  Wrap `capture.mjs` in `timeout -s INT`.
-- Logs and processes over SSH: `~/homebrew/logs/wowdeck/`,
-  `journalctl -u plugin_loader`.
+- Motion, profiles, per-press walks and recordings: `walk.mjs --diff`,
+  `step.mjs --diff`, `film.mjs`, `profile.mjs`, `capture.mjs` (wrap in
+  `timeout -s INT`), `render.mjs`. `node tools/deck-ui/help.mjs` lists them.
+- The `deck-cef` MCP (`mcp__deck-cef__*`, pass `pageId` on every call) covers
+  console and network history and views no step reaches. Leave Steam's
+  windows where they are: `navigate_page`, `new_page`, reload traces and
+  navigation-mode Lighthouse replace Steam's UI. The `chrome-devtools` plugin
+  drives a local Chrome and never reaches the Deck.
 - CDP reaches the whole Steam client: cookies, tokens and account data stay
   unread.
 
