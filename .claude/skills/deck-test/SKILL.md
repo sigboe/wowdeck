@@ -37,7 +37,7 @@ tools/deck-ui/deck down          # restore autoUpdate
 
 - An action step (`open close nav press key seek rpc eval`) prints what changed
   once the UI settles: `focus`, `tree` (the active nav tree;
-  `ModalDialogOverlay_*` = a modal is up), `route`, `plugin`. `no change` after a
+  `ModalDialogOverlay_*` = a modal is up), `tab`, `route`, `plugin`. `no change` after a
   press is a finding.
 - `seek` matches visible focusable labels. Inactive tabs show only icons;
   seek the current tab by its label, then use `key left` or `key right`.

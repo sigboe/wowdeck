@@ -4,7 +4,7 @@
 // node deck.mjs down                          restore what `up` changed (autoUpdate)
 //
 // One entry point for a Deck test, so a test takes a few calls instead of a hundred:
-// every action step reports what it changed (focus, active nav tree, route, panel)
+// every action step reports what it changed (focus, active nav tree, plugin tab, route, panel)
 // once the UI settles, `wait`/`expect` replace sleeps and re-checks, and one virtual
 // pad lives through the whole run. `node deck.mjs help` lists the steps.
 import fs from "node:fs";
@@ -75,7 +75,8 @@ const show = (v) => (typeof v === "string" ? v : JSON.stringify(v));
 const NAV = `const c=window.DFL.getFocusNavController(),t=c.GetActiveNavTree(),e=t&&t.m_lastFocusNode&&t.m_lastFocusNode.m_element;
 const txt=(el,n)=>el?(el.innerText||'').trim().replace(/\\s+/g,' ').slice(0,n):null;`;
 const LOOK = `(()=>{${NAV}return JSON.stringify({tree:t?t.m_ID:null,focus:txt(e,50),route:location.pathname,
-plugin:window.DeckyPluginLoader?.deckyState?._activePlugin?.name??null})})()`;
+plugin:window.DeckyPluginLoader?.deckyState?._activePlugin?.name??null,
+tab:t?.Root?.m_element?.ownerDocument?.querySelector('.wowdeck-tab-selected')?.textContent?.trim()??null})})()`;
 
 const PROBES = {
   focus: { from: "look" },
@@ -493,7 +494,9 @@ async function up(args) {
   // 8. Reload. An open QAM keeps rendering the old bundle, so close it first.
   const pid = await rpc("system.getStatus", {}, 5000).then((s) => s.pid).catch(() => null);
   await evalIn("SharedJSContext", `window.DFL.Navigation.CloseSideMenus(),1`);
-  await evalIn("SharedJSContext", `DeckyBackend.call("loader/reload_plugin","WoWDeck").then(()=>1)`).catch(() => null);
+  await evalIn("SharedJSContext", `DeckyBackend.call("loader/reload_plugin","WoWDeck").then(()=>1)`).catch((e) =>
+    fail(`reload: ${e.message.split("\n")[0]}; backup in ${backup}; run deck down to restore autoUpdate`),
+  );
   let status = null;
   for (let i = 0; i < 40 && !status; i++) {
     await sleep(500);
