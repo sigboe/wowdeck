@@ -65,7 +65,7 @@ test("CDP connection, protocol and evaluation failures exit with an error", asyn
   }
 });
 
-for (const mode of ["ok", "guard-fail"]) {
+for (const mode of ["ok", "guard-fail", "reload-fail"]) {
   test(`deployment ${mode}: backs up within plugin data and saves the guard before changing settings`, async () => {
     const root = mkdtempSync(path.join(tmpdir(), "wowdeck-runner-"));
     try {
@@ -85,6 +85,11 @@ for (const mode of ["ok", "guard-fail"]) {
         expect(r.text).toContain("save autoUpdate guard: guard write failed");
         expect(r.text).not.toContain("fixture: rpc settings.set");
         expect(r.text).not.toContain("fixture: ssh cat >");
+      } else if (mode === "reload-fail") {
+        expect(r.code).toBe(1);
+        expect(r.text).toContain("reload: reload rejected");
+        expect(r.text).toContain("backup in /home/deck/homebrew/data/wowdeck/test-backups/");
+        expect(r.text).not.toContain("reloaded fixture");
       } else {
         expect(r.code).toBe(0);
         expect(r.text).toContain("reloaded fixture");
@@ -95,3 +100,10 @@ for (const mode of ["ok", "guard-fail"]) {
     }
   });
 }
+
+test("actions report plugin tab changes even when focus does not move", async () => {
+  const r = await cli("deck.mjs", ["key", "right"]);
+  expect(r.code).toBe(0);
+  expect(r.text).toContain('tab="Options"');
+  expect(r.text).not.toContain("no change");
+});

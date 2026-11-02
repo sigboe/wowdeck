@@ -29,12 +29,13 @@ if (process.env.CEF_DEPLOY) {
   syncBuiltinESMExports();
 }
 let focus = process.env.CEF_FOCUS || "Get Addons";
+let tab = "Get Addons";
 const element = (text) => ({
   textContent: text, innerText: text, ownerDocument: document,
   getBoundingClientRect: () => ({ x: 0, y: 0, right: 100, bottom: 30, width: 100, height: 30 }),
 });
 const document = {
-  querySelector: () => element(focus),
+  querySelector: (selector) => element(selector === ".wowdeck-tab-selected" ? tab : focus),
   createTreeWalker: (el) => {
     let used = false;
     return {
@@ -55,6 +56,9 @@ const context = vm.createContext({
     DeckyPluginLoader: { plugins: [{ name: "WoWDeck" }], deckyState: { _activePlugin: { name: "WoWDeck" } } },
   },
   DeckyBackend: { call: async (_loader, _plugin, _rpc, method, params) => {
+    if (_loader === "loader/reload_plugin" && process.env.CEF_DEPLOY === "reload-fail") {
+      throw new Error("reload rejected");
+    }
     if (process.env.CEF_DEPLOY) {
       console.log(`fixture: rpc ${method} ${JSON.stringify(params)}`);
       if (method === "settings.get") return { settings: { autoUpdate: true } };
@@ -78,6 +82,7 @@ globalThis.WebSocket = class extends EventTarget {
   close() { this.dispatchEvent(new Event("close")); }
   send(src) {
     const { id, method, params } = JSON.parse(src);
+    if (method === "Input.dispatchKeyEvent" && params.type === "keyUp" && params.key === "ArrowRight") tab = "Options";
     if (method === "Input.dispatchKeyEvent" && params.type === "keyUp" && params.key === "Enter") {
       console.log("fixture: Enter");
     }
@@ -85,10 +90,16 @@ globalThis.WebSocket = class extends EventTarget {
     try {
       if (method === "Runtime.evaluate") result = { result: { value: vm.runInContext(params.expression, context) } };
     } catch (e) { result = { exceptionDetails: { exception: { description: e.message } } }; }
-    Promise.resolve(result.result?.value).then((value) => {
-      if (result.result) result.result.value = value;
+    const respond = () => {
       const payload = process.env.CEF_PROTOCOL_ERROR ? { id, error: { message: "protocol failed" } } : { id, result };
       this.dispatchEvent(new MessageEvent("message", { data: JSON.stringify(payload) }));
+    };
+    Promise.resolve(result.result?.value).then((value) => {
+      if (result.result) result.result.value = value;
+      respond();
+    }, (error) => {
+      result = { exceptionDetails: { exception: { description: error.message } } };
+      respond();
     });
   }
 };
