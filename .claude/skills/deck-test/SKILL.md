@@ -31,7 +31,7 @@ file.
 ```sh
 tools/deck-ui/deck up            # wake, tunnel, build, back up, guard autoUpdate, deploy, reload
 tools/deck-ui/deck up --engine   # the same with the engine (patchelf, smoke test, atomic swap)
-tools/deck-ui/deck run 'open; seek "Get Addons" --enter; wait tab ~ Get; expect focus ~ Search'
+tools/deck-ui/deck run 'open; wait plugin = WoWDeck; probe tab focus'
 tools/deck-ui/deck down          # restore autoUpdate
 ```
 
@@ -39,6 +39,8 @@ tools/deck-ui/deck down          # restore autoUpdate
   once the UI settles: `focus`, `tree` (the active nav tree;
   `ModalDialogOverlay_*` = a modal is up), `route`, `plugin`. `no change` after a
   press is a finding.
+- `seek` matches visible focusable labels. Inactive tabs show only icons;
+  seek the current tab by its label, then use `key left` or `key right`.
 - `wait <probe> ~ <text>` replaces sleeps; `expect` checks once. A failed check
   stops the run and prints where the UI stands.
 - `rpc <method> '{json}' --pick=a.b[].c` calls the engine and checks the method
