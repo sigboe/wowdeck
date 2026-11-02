@@ -20,7 +20,7 @@ const ROOT = path.resolve(HERE, "../..");
 const PORT = process.env.DECK_UI_PORT || "18080";
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-const HELP = `deck.mjs steps (run several: deck.mjs run 'open; seek "Get Addons" --enter; wait tab ~ Get; shot')
+const HELP = `deck.mjs steps (run several: deck.mjs run 'open; wait plugin = WoWDeck; probe tab focus; shot')
   verb@target picks a CEF target by title substring; default QuickAccess_uid2 (change: target <substr>)
   open | close | nav <route>               QAM on our panel | close side menus | DFL.Navigation.Navigate
   press <button…>                          real pad (a b x y lb rb lt rt view menu guide l3 r3 up down left right wait:ms hold:b:ms)
