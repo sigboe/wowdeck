@@ -1,21 +1,29 @@
-# Debugging the Steam Deck UI with Chrome DevTools MCP
+# Driving the Deck's CEF from an agent
 
-## Contents
+Steam exposes its CEF browser on a remote debugging port (`127.0.0.1:8080` on
+the Deck). Two clients drive it over one SSH tunnel: the `tools/deck-ui/`
+scripts and the Chrome DevTools MCP (`deck-cef`). They speak the same protocol,
+so they see the same information.
 
-- [Setup](#setup)
-- [Verified (2026-10-18, SteamOS, Decky 3.2.10, CEF Chrome/126.0.6478.183)](#verified-2026-10-18-steamos-decky-3210-cef-chrome12606478183)
-- [Rules for Steam targets](#rules-for-steam-targets)
-- [Token efficiency](#token-efficiency)
-- [When to use something else](#when-to-use-something-else)
-- [If the MCP cannot connect](#if-the-mcp-cannot-connect)
-- [Safety](#safety)
+Prefer the scripts. Measured 2026-11-02 in one session, same pages, tokenized
+with `o200k_base`:
 
-The preferred way for an agent to inspect our panel on a real Steam Deck. The
-Chrome DevTools MCP connects to Steam's own CEF browser through an SSH tunnel.
-Each MCP tool call returns a short structured result, so you do not need to
-write throwaway CDP scripts or run `ssh … node …` batches. Use the
-`tools/deck-ui/` scripts only for what the MCP cannot do (see
-[When to use something else](#when-to-use-something-else)).
+| task | scripts | MCP |
+|---|---|---|
+| state line (pages, route, plugin, QAM, focus) | 42 | about 250 |
+| 12-node accessibility tree | 51 | 752 (`take_snapshot`) |
+| guideline audit of our panel | 15 (`--brief`) | about 4,400 |
+| fixed cost, every request | 0 | 6,549 |
+
+The audit gap is the 7.4 KB `audit.js`: a script reads it from disk, the MCP has
+to receive it inside a tool call. The fixed cost is the 32 tool schemas, which
+the client injects into every request while the server is configured.
+
+Use the MCP where writing a script would cost more than the call:
+`list_console_messages`, `list_network_requests`, an accessibility snapshot of
+a view you have never seen, and plain exploration. Everything else goes through
+`tools/deck-ui/`; `node tools/deck-ui/help.mjs` prints the command list for
+about 500 tokens.
 
 Deck rules: `AGENTS.md` ("The owner's Steam Deck"); the test procedure is the
 `deck-test` skill (`.claude/skills/deck-test/SKILL.md`).
@@ -25,19 +33,18 @@ Deck rules: `AGENTS.md` ("The owner's Steam Deck"); the test procedure is the
 1. On the Deck: Decky → Settings → Developer → enable "Allow Remote CEF
    Debugging". Steam then listens on `127.0.0.1:8080` on the Deck only. This is
    Steam's CEF (Chrome 126), not a Chrome browser.
-2. Tunnel it to local port 9222. The second `-L` keeps the `tools/deck-ui`
-   scripts (port 18080) working through the same connection:
+2. Tunnel it. Both forwards matter: 9222 for the MCP, 18080 for the scripts.
 
    ```bash
    ssh -f -N -o ExitOnForwardFailure=yes -o ServerAliveInterval=15 \
      -L 9222:localhost:8080 -L 18080:localhost:8080 deck@<deck-ip>
-   curl -s localhost:9222/json/version   # must show "webSocketDebuggerUrl"
+   curl -s localhost:18080/json        # lists targets when the tunnel works
    ```
 
-3. Point an MCP server at the tunnel with `--browser-url`. Without it,
-   chrome-devtools-mcp starts its own local Chrome. That includes the default
-   `chrome-devtools-mcp` Claude Code plugin. Claude Code, for this project
-   only:
+3. Check the scripts with `node tools/deck-ui/state.mjs`. It prints one line.
+4. The MCP is optional. Point it at the tunnel with `--browser-url`; without
+   that flag it starts its own local Chrome, and so does the default
+   `chrome-devtools-mcp` Claude Code plugin.
 
    ```bash
    claude mcp add --scope local deck-cef -- \
@@ -45,87 +52,103 @@ Deck rules: `AGENTS.md` ("The owner's Steam Deck"); the test procedure is the
      --no-usage-statistics --no-performance-crux
    ```
 
-   OpenCode or another client: run the same command line as a stdio MCP
-   server. Restart the client so it loads the server.
+   For OpenCode, the same command line as a stdio server:
+   `opencode mcp add deck-cef -- npx -y chrome-devtools-mcp@1.11.0 --browser-url=http://127.0.0.1:9222 --no-usage-statistics --no-performance-crux`.
+
+## Targets
+
+`curl -s localhost:18080/json | grep -o '"title": "[^"]*"'` lists them:
+
+```
+notificationtoasts_uid2
+MainMenu_uid2
+SharedJSContext              SteamClient, window.DFL, DeckyPluginLoader
+QuickAccess_uid2             the QAM and our panel
+Steam Big Picture Mode       routes and modals
+```
+
+`SharedJSContext` runs Steam's and Decky's own JavaScript. `window.DFL` is
+`@decky/ui` there, so `DFL.Navigation.OpenQuickAccessMenu(999)`,
+`DeckyPluginLoader.deckyState.setActivePlugin('WoWDeck')` and
+`DFL.Navigation.Navigate('/wowdeck/get-addons')` work through either client.
 
 ## Verified (2026-10-18, SteamOS, Decky 3.2.10, CEF Chrome/126.0.6478.183)
 
-- `list_pages` lists every Steam window:
+- Every Steam window is its own target, including an empty `data:` page that
+  some clients select by default.
+- `evaluate_script` and `Runtime.evaluate` work on `QuickAccess_uid2` and
+  `SharedJSContext`.
+- Accessibility trees work on a hidden QAM. A screenshot of
+  `QuickAccess_uid2` with the QAM closed hangs until the client times out, so
+  open it first.
+- `tools/deck-ui/film.mjs` and `profile.mjs` prove `Page.startScreencast` and
+  `Profiler` work over the same endpoint.
 
-  ```
-  1: data:text/html,<body></body>   [selected]  ← an empty page, not ours
-  2: notificationtoasts_uid2
-  3: MainMenu_uid2
-  4: QuickAccess_uid2               ← the QAM and our panel
-  5: SharedJSContext                ← SteamClient, window.DFL, DeckyPluginLoader
-  6: Steam Big Picture Mode         ← routes and modals
-  ```
+## Reaching a control
 
-- `evaluate_script` works on `QuickAccess_uid2` and `SharedJSContext`
-  (`window.DFL` is defined there).
-- `take_snapshot` works, including on a hidden QAM.
-- `take_screenshot` of a visible window returns in about 0.3 s.
+`node tools/deck-ui/seek.mjs QuickAccess_uid2 "Third-party notices"` focuses the
+matching element in one call and prints what it focused: `found "Third-party
+notices…" (jump)`. It walks Steam's navigation tree from
+`DFL.getFocusNavController().GetActiveNavTree()` and calls `BTakeFocus()` on the
+best match, so it crosses columns, scroll regions and focused text fields that
+arrow keys cannot: a text field in the path stops `ArrowDown` dead.
+
+`--press` walks there with real key presses instead, checking the label after
+every press, for when the navigation itself is what you are testing. `--list`
+prints the matching labels, `--enter` presses Enter after, and `--reset` opens
+the QAM on our panel first.
+
+Measured 2026-11-02: the earlier "three presses, look, three more, overshoot,
+one back" sequence was five calls and 258 tokens to reach an earlier row than
+the target; `seek.mjs` was one call and 39.
 
 ## Rules for Steam targets
 
-- **Always pass `pageId`.** The selected page by default is the empty `data:`
-  page. Page IDs are per MCP session, so find them by title with
-  `list_pages`.
-- **Never reload or navigate a Steam window.** Do not call `navigate_page`, do
-  not call `new_page`, do not run `performance_start_trace` with
-  `reload: true`, and do not run `lighthouse_audit` in navigation mode. Any of
-  these reloads or replaces part of the Steam UI. To move around, use the
-  `window.DFL.Navigation` one-liners from `tools/deck-ui/README.md` through
-  `evaluate_script` on `SharedJSContext`.
-- **Do not screenshot a hidden window.** `take_screenshot` on
-  `QuickAccess_uid2` with the QAM closed hung until the client timed out. Open
-  the QAM first
-  (`window.DFL.Navigation.OpenQuickAccessMenu(999)` on `SharedJSContext`).
-- **Input is device input.** `press_key`, `click`, `fill`, `type_text` and
-  `drag` act on the owner's Steam UI. `press_key` has not been verified on
-  CEF yet. Data-changing presses stay inside our plugin; check what has
-  `.gpfocus` before any Enter.
+- Never reload or navigate a Steam window. Do not call `navigate_page`, do not
+  call `new_page`, do not run `performance_start_trace` with `reload: true`, and
+  do not run `lighthouse_audit` in navigation mode. Any of these reloads or
+  replaces part of the Steam UI. Move around with the `window.DFL.Navigation`
+  calls above.
+- The MCP selects an empty page by default, so pass `pageId` on every call after
+  one `list_pages`. Page IDs are per MCP session.
+- Input is device input. `press_key`, `click`, `fill`, `type_text` and `drag` act
+  on the owner's Steam UI, and so do `deck.mjs`, `key.mjs`, `walk.mjs` and `pad.sh`. Keep
+  data-changing presses inside our plugin.
+- Never screenshot a hidden window.
 
 ## Token efficiency
 
-1. Ask `evaluate_script` for exactly the fields you need, and return compact
-   JSON (counts, boxes, class names, focused element). Do not dump
+Every tool call sends the whole conversation again, so a test costs about
+calls × context size. Fewer calls save more than shorter output.
+
+1. Batch a test into one `tools/deck-ui/deck run '…'`: each action step reports
+   what it changed, `wait` and `expect` replace sleeps and re-checks, and
+   `deck up` does the deploy in one call.
+2. Ask for the fields you need and return compact JSON. Do not dump
    `outerHTML`.
-2. Prefer `evaluate_script` over `take_snapshot`. A snapshot of the open
-   panel lists every node in the a11y tree.
-3. Take a screenshot only when the question is visual (layout, clipping,
-   motion end state). Pass `format: "jpeg"` with a `quality`, and pass
-   `filePath` so the image is saved to disk instead of being sent inline.
-4. Filter `list_console_messages` and `list_network_requests` by `types` or
-   `resourceTypes`, and page through them, instead of reading all history.
-5. Run `list_pages` once per session. Repeat it only after a Steam UI reload
-   or a Decky reload.
-6. After an action, check the outcome once with a targeted query. Do not
-   repeat the whole workflow.
-7. Summarize findings. Do not paste raw tool output into the conversation.
+3. `deck state`, `deck probe …` and `tree.mjs --max=N` replace `list_pages`
+   plus a snapshot.
+4. Use `seek.mjs` to move to a control by its label in one call instead of
+   pressing and looking. Use `walk.mjs --diff` and `step.mjs --diff` for
+   repeated presses when the navigation itself is under test: they print only
+   what changed, and the measurement expression is a file, not repeated tool
+   arguments.
+5. Take a screenshot only when the question is visual. `deck shot` caps it at
+   800 px and `--clip=<css>` crops it to one element.
+6. Run `deck state` once per session. Repeat it after a Steam UI reload or a
+   Decky reload.
+7. After an action, check the outcome once with a targeted query. Do not repeat
+   the whole workflow.
+8. Summarize findings. Do not paste raw tool output into the conversation.
 
-## When to use something else
+## If it does not connect
 
-- **`tools/deck-ui/` scripts** (through the `18080` forward): `film.mjs`
-  (frame-by-frame motion), `profile.mjs` (CPU profile of a trigger),
-  `step.mjs`/`walk.mjs` (measure after each key press), `render.mjs` (render
-  one @decky/ui component in memory) and `audit-view.mjs`/`audit-focus.js`
-  (guideline audits). These are bundles of many CDP calls that the MCP has
-  no single tool for. You can also pass `audit.js` or a measure file's
-  contents to `evaluate_script`.
-- **SSH**: tunnel management, process checks, logs
-  (`journalctl -u plugin_loader`, `~/homebrew/logs/<plugin>/`), reading
-  Steam's `sp.js`/`sp.css`, and deploys. Do not use SSH to run browser
-  JavaScript when the MCP is connected.
-
-## If the MCP cannot connect
-
-1. Run `curl -s localhost:9222/json/version`. If it fails, the tunnel is
-   down: check `pgrep -af 'ssh.*9222'` and open the tunnel again.
-2. If the tunnel is up but the Deck refuses connections, CEF debugging is
-   off, or Steam restarted with it off. Ask the owner to enable it again.
-3. Retry the MCP call once. If it still fails, fall back to the deck-ui
-   scripts. Do not write new ad-hoc CDP scripts.
+1. `curl -s localhost:18080/json` fails: the tunnel is down. Check
+   `pgrep -af 'ssh.*8080'` and open it again.
+2. The tunnel is up but the connection is refused: CEF debugging is off, or
+   Steam restarted with it off. Ask the owner to enable it again.
+3. The MCP fails while the scripts work: its `--browser-url` is missing, or its
+   `pageId` is stale. Re-run `list_pages`.
 
 ## Safety
 
