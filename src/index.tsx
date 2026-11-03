@@ -26,7 +26,7 @@ import { pluginUpdateDot } from "./pluginUpdate";
 import { addonSession } from "./session";
 import { askUntilAnswered } from "./askUntilAnswered";
 import { QAM_TABS, QAM_VIEW, qamState, type QamTab } from "./qamState";
-import { startSourceJump } from "./optionsJump";
+import { startSourceJump, startInstallationJump } from "./optionsJump";
 import { CURSE_KEY_ROW } from "./components/settings/common";
 import { FocusRow } from "./components/FocusSlot";
 import { QAM_DROPDOWN_BELOW_VALUE } from "./components/dropdownValue";
@@ -287,6 +287,12 @@ function Content() {
               );
               startSourceJump(marked, providers, needsSetup ? CURSE_KEY_ROW : undefined);
             }
+            setRestoreRows(true);
+            bumperEntry.current = false;
+            setTab("settings");
+          }}
+          onOpenInstallations={() => {
+            startInstallationJump();
             setRestoreRows(true);
             bumperEntry.current = false;
             setTab("settings");

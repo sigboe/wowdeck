@@ -2,12 +2,15 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import {
   fileImport,
-  installArchive,
+  installArchive as guardedInstallArchive,
   pickArchive,
   resetFileImport,
   type FileImportView,
 } from "./fileImportState";
 import type { ArchivePreview, OperationResult } from "./types";
+
+const installArchive = (install: Parameters<typeof guardedInstallArchive>[0]) =>
+  guardedInstallArchive(install, () => true);
 
 /**
  * Manual Install's From a file, as a pure state machine (the seam the spec
@@ -99,6 +102,24 @@ describe("pickArchive", () => {
 });
 
 describe("installArchive", () => {
+  test("a missing installation preserves the preview and never sends the install", async () => {
+    await pickArchive(
+      () => Promise.resolve({ path: preview.externalId }),
+      () => Promise.resolve({ result: preview, error: null }),
+    );
+    let warnings = 0;
+    await guardedInstallArchive(
+      async () => {
+        throw new Error("must not install");
+      },
+      () => {
+        warnings++;
+        return false;
+      },
+    );
+    expect(warnings).toBe(1);
+    expect(fileImport.get()).toEqual({ phase: "ready", preview, error: null });
+  });
   test("ready → installing → success; installs the preview's provider/path pair", async () => {
     await pickArchive(
       () => Promise.resolve({ path: preview.externalId }),
