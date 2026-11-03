@@ -6,6 +6,7 @@
 - [Evidence from a real Steam Deck](#evidence-from-a-real-steam-deck)
 - [Validity tiers](#validity-tiers)
 - [Candidate model](#candidate-model)
+- [Prefix registry](#prefix-registry)
 - [Identity](#identity)
 
 How the engine decides that a directory is a usable World of Warcraft
@@ -84,11 +85,12 @@ case.
 { location, clientType, validity, detectionSource }
 ```
 
-with `detectionSource ∈ { custom, lutris, steam, removable, known-path }`
+with `detectionSource ∈ { custom, prefix-registry, lutris, steam, removable, known-path }`
 (priority order for dedup when the same path is found twice). Sources:
 
 - `custom` — user-configured paths (settings `customWowPaths`), incl.
   `drive_c`/`Program Files (x86)` prefix layouts
+- `prefix-registry` reads Blizzard WoW paths recorded in Wine prefixes.
 - `lutris` — `~/Applications`, `~/Games`, Lutris `system.yml` game_path
 - `steam` — every Steam library (from `libraryfolders.vdf`) →
   `steamapps/compatdata/*/pfx/drive_c`
@@ -98,6 +100,49 @@ with `detectionSource ∈ { custom, lutris, steam, removable, known-path }`
 `detect()` = candidates filtered to `confirmed`/`likely`, converted to
 installations. Detection **adds/updates, never removes** (WowUp
 `importWowInstallations` semantics) — removal is an explicit user action.
+
+## Prefix registry
+
+The detector reads `system.reg` in each Steam compatdata `pfx`, Lutris
+prefix and custom path that contains a `system.reg`. Lutris prefixes include
+`battlenet`, `world-of-warcraft` and `world-of-warcraft-classic` below
+`~/Games` and the configured `game_path`. It also visits bottle folders in
+`~/.local/share/bottles/bottles` and
+`~/.var/app/com.usebottles.bottles/data/bottles/bottles`.
+
+The reader streams the file line by line and retains only these values:
+
+- `InstallPath` under
+  `Software\Wow6432Node\Blizzard Entertainment\World of Warcraft`
+  and its subkeys, including `Beta`.
+- `InstallLocation` under
+  `Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\World of Warcraft*`.
+
+It strips trailing backslashes. When an `InstallPath` ends in a known flavor
+folder, it uses the parent WoW root. An `InstallLocation` already names the
+root. The usual flavor search then finds every sibling, including Retail
+when only another flavor has a registry entry.
+
+Drive letters resolve through `dosdevices/<letter>:`. This supports `C:`
+inside the prefix, `D:` on an SD card and `Z:` outside the prefix. Raw device
+entries such as `d::` are ignored. An unmapped letter is skipped and logged.
+The translated path is tried exactly first. If it is missing, each segment
+uses its exact spelling if present, or its single case-insensitive match.
+Missing or ambiguous segments are skipped and logged.
+
+Registry candidates use the same validity tiers as other sources. During
+deduplication, `custom` outranks `prefix-registry`, which outranks `lutris`,
+`steam`, `removable` and `known-path`. Existing installations keep their ids.
+Stale paths and private-server roots without supported flavor folders yield
+no candidates. A missing or unreadable registry cannot stop other discovery.
+Diagnostics contain fixed reason codes, without paths or registry values.
+The detector never reads `user.reg`, `product.db` or Battle.net account data.
+
+Detector tests use temporary homes and real drive-mapping symlinks. The
+fixtures in `backend/tests/fixtures/installation-registry/` reconstruct the
+sanitized registry values quoted in spec #74, with `<user>` in place of the
+username. They are not copies of device files. Synthetic variants cover
+other drive letters, case matching, launcher prefixes and failure isolation.
 
 ## Identity
 

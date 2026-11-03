@@ -1,0 +1,5 @@
+WINE REGISTRY Version 2
+;; Reconstructed from the sanitized recorded value quoted in spec #74.
+
+[Software\\Wow6432Node\\Blizzard Entertainment\\World of Warcraft]
+"InstallPath"="Z:\\home\\<user>\\Applications\\TurtleWoW\\"

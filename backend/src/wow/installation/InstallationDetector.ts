@@ -7,12 +7,19 @@
  * Deck reference notes in docs/steam-deck.md. Unlike WowUp we do not decode
  * Battle.net's product.db protobuf — on a Deck, WoW is nearly always a
  * Lutris/Bottles/Proton-prefix or plain-folder install, so directory
- * probing + user-configured paths cover the real cases.
+ * probing, Blizzard system.reg paths and user-configured paths find installs.
+ * Registry paths resolve through dosdevices, with case matching on Linux.
  */
 
+import { prefixRegistryRoots } from "./PrefixRegistry";
 import { join } from "node:path";
 import type { WowInstallation } from "../models";
-import { getClientTypeForFolderName, WOW_FLAVOR_FOLDERS, WOW_INTERFACE_FOLDER_NAME, WOW_ADDON_FOLDER_NAME } from "../toc/toc";
+import {
+  getClientTypeForFolderName,
+  WOW_FLAVOR_FOLDERS,
+  WOW_INTERFACE_FOLDER_NAME,
+  WOW_ADDON_FOLDER_NAME,
+} from "../toc/toc";
 import { WowClientType } from "../types";
 import { getClientTypeLabel } from "../utils/gametype";
 import { isDirectory, listDirectory, pathExists, readTextFile } from "../fs/safe-fs";
@@ -65,7 +72,8 @@ export const WOW_EXECUTABLE_NAMES: readonly string[] = [
 export type ValidityTier = "confirmed" | "likely" | "addon-data" | "invalid";
 
 /** Where a candidate was found. */
-export type DetectionSource = "custom" | "lutris" | "steam" | "removable" | "known-path";
+export type DetectionSource =
+  "custom" | "prefix-registry" | "lutris" | "steam" | "removable" | "known-path";
 
 /** A flavor directory that looks like it may host a WoW installation. */
 export interface InstallationCandidate {
@@ -78,10 +86,11 @@ export interface InstallationCandidate {
 
 const SOURCE_PRIORITY: Record<DetectionSource, number> = {
   custom: 0,
-  lutris: 1,
-  steam: 2,
-  removable: 3,
-  "known-path": 4,
+  "prefix-registry": 1,
+  lutris: 2,
+  steam: 3,
+  removable: 4,
+  "known-path": 5,
 };
 
 /** Installations at or above this tier are registered automatically. */
@@ -228,7 +237,9 @@ export async function readFlavorVersion(flavorDir: string): Promise<string | und
   return row?.["Version"] || undefined;
 }
 
-export async function createInstallationForFlavorDir(flavorDir: string): Promise<WowInstallation | null> {
+export async function createInstallationForFlavorDir(
+  flavorDir: string,
+): Promise<WowInstallation | null> {
   const normalized = flavorDir.replace(/\\/g, "/").replace(/\/+$/, "");
   const flavorName = normalized.split("/").pop() ?? "";
   const clientType = getClientTypeForFolderName(flavorName);
@@ -307,7 +318,9 @@ export class InstallationDetector {
 
     for (const { path: root, source } of roots) {
       for (const flavor of await findFlavorDirs(root)) {
-        const clientType = getClientTypeForFolderName(flavor.replace(/\\/g, "/").replace(/\/+$/, "").split("/").pop() ?? "");
+        const clientType = getClientTypeForFolderName(
+          flavor.replace(/\\/g, "/").replace(/\/+$/, "").split("/").pop() ?? "",
+        );
         if (clientType === WowClientType.None) {
           continue;
         }
@@ -335,13 +348,17 @@ export class InstallationDetector {
     const { homeDir, customPaths = [] } = this.options;
     const roots: Array<{ path: string; source: DetectionSource }> = [];
 
+    const prefixes = new Set<string>();
+
     const addRoot = (path: string, source: DetectionSource): void => {
-      if (path && !roots.some((r) => r.path === path)) {
-        roots.push({ path, source });
-      }
+      if (!path) return;
+      const existing = roots.find((r) => r.path === path);
+      if (!existing) roots.push({ path, source });
+      else if (SOURCE_PRIORITY[source] < SOURCE_PRIORITY[existing.source]) existing.source = source;
     };
 
     for (const custom of customPaths) {
+      if (await pathExists(join(custom, "system.reg"))) prefixes.add(custom);
       // also probe common prefix layouts below a custom root
       addRoot(custom, "custom");
       addRoot(join(custom, "drive_c"), "custom");
@@ -353,11 +370,12 @@ export class InstallationDetector {
     addRoot(join(homeDir, "Games"), "lutris");
 
     // Lutris config library path
-    const lutrisGamePaths = await this.lutrisLibraryPaths();
+    const lutrisGamePaths = [join(homeDir, "Games"), ...(await this.lutrisLibraryPaths())];
     for (const lib of lutrisGamePaths) {
-      addRoot(join(lib, "battlenet", "drive_c"), "lutris");
-      addRoot(join(lib, "world-of-warcraft", "drive_c"), "lutris");
-      addRoot(join(lib, "world-of-warcraft-classic", "drive_c"), "lutris");
+      for (const game of ["battlenet", "world-of-warcraft", "world-of-warcraft-classic"]) {
+        prefixes.add(join(lib, game));
+        addRoot(join(lib, game, "drive_c"), "lutris");
+      }
     }
 
     // Steam proton prefixes
@@ -369,6 +387,7 @@ export class InstallationDetector {
           if (!entry.isDirectory) {
             continue;
           }
+          prefixes.add(join(entry.path, "pfx"));
           const driveC = join(entry.path, "pfx", "drive_c");
           if (await isDirectory(driveC)) {
             addRoot(join(driveC, "Program Files (x86)"), "steam");
@@ -378,10 +397,25 @@ export class InstallationDetector {
       }
     }
 
+    // Native and Flatpak Bottles store each prefix directly in its bottle folder.
+    for (const bottles of [
+      join(homeDir, ".local/share/bottles/bottles"),
+      join(homeDir, ".var/app/com.usebottles.bottles/data/bottles/bottles"),
+    ]) {
+      for (const bottle of await listDirectory(bottles)) {
+        if (bottle.isDirectory) prefixes.add(bottle.path);
+      }
+    }
+    for (const prefix of prefixes) {
+      if (!(await isDirectory(prefix))) continue;
+      for (const path of await prefixRegistryRoots(prefix)) addRoot(path, "prefix-registry");
+    }
+
     // Removable media (SD cards) — probe one level deep
     if (this.options.scanRemovableMedia !== false) {
       const userMedia =
-        this.options.removableMediaBase ?? join("/run/media", this.options.homeDir.replace(/\/+$/, "").split("/").pop() ?? "");
+        this.options.removableMediaBase ??
+        join("/run/media", this.options.homeDir.replace(/\/+$/, "").split("/").pop() ?? "");
       for (const mount of await listDirectory(userMedia)) {
         if (!mount.isDirectory) {
           continue;

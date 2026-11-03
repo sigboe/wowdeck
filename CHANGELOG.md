@@ -8,6 +8,9 @@ What's new in each version of WoWDeck Addon Manager. The format follows
 
 ### Added
 
+- WoWDeck now finds WoW wherever Battle.net installed it in a Wine
+  prefix, including on the SD card.
+
 - WoWDeck now installs and runs on arm64 SteamOS devices, from the same zip
   as everyone else.
 
