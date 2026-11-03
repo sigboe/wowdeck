@@ -46,7 +46,7 @@ export async function connect(want) {
   });
   const send = (method, params = {}, timeout = TIMEOUT) => new Promise((resolve, reject) => {
     const my = ++id;
-    const timer = setTimeout(() => finish(reject, new Error(`CDP ${method} timed out`)), timeout);
+    const timer = setTimeout(() => finish(reject, new Error(`CDP ${method} timed out after ${timeout} ms${method === "Runtime.evaluate" ? "; page-side work may still be running; inspect before retrying" : ""}`)), timeout);
     function finish(fn, value) {
       clearTimeout(timer);
       pending.delete(my);

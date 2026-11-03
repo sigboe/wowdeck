@@ -23,10 +23,34 @@ every request. Use it for what a one-off script would cost more to write than
 to call: console and network history, an accessibility tree of an unfamiliar
 view, exploration. `docs/remote-browser.md` has the setup and the rules.
 
-Run the local regression checks with `nix develop -c bun test tools/deck-ui/runner.test.ts`.
+Run the local regression checks with `nix develop -c bun test tools/deck-ui`.
 They simulate CEF and SSH without contacting a device.
 
 ## Connect
+
+For a device test, run `tools/deck-ui/deck up` from the repository root.
+It tries `DECK`, then the comma-separated fallback addresses in `DECK_HOSTS`.
+Put the Wi-Fi and Ethernet addresses of the same Deck in `local.env`.
+If none answers, it sends configured Wake-on-LAN and retries before asking
+for manual wake. The USB Ethernet adapter must be connected before sleep.
+SSH commands have a 30-second process limit and do not reuse or stop existing
+SSH control sessions. The selected address is used for deployment, controller
+input and new debugger tunnels. No live device access is needed for the tests.
+
+For long evaluations, set a budget with `deck eval --t=120000 --file=script.js`.
+Use `--file=script.js` or `--stdin` to pass literal JavaScript without the
+batch parser removing quotes. For example:
+
+```sh
+tools/deck-ui/deck eval --t=120000 --stdin <<'JS'
+DeckyBackend.call("loader/reload_plugin", "WoWDeck").then(() => "reloaded")
+JS
+```
+
+The default evaluation budget is 10 seconds. A timeout stops waiting, not the
+page-side operation. Inspect its state before retrying an install or scan.
+
+For a manual debugger connection without deployment:
 
 1. On the Deck: Decky → Settings → Developer → enable "Allow Remote CEF Debugging".
    Steam then listens on `127.0.0.1:8080` on the Deck only.

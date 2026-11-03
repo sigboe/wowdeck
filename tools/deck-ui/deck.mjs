@@ -14,6 +14,7 @@ import readline from "node:readline";
 import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { connect, evalIn } from "./cdp.mjs";
+import { createConnection, SSH_OPTIONS } from "./connection.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, "../..");
@@ -29,7 +30,8 @@ const HELP = `deck.mjs steps (run several: deck.mjs run 'open; wait plugin = WoW
   probe <name…>                            print probes: {PROBES}
   wait <probe> <~|=|!~|!=> <text> [--t=ms] poll until true (default 5000 ms); expect = check once
   rpc <method> ['{json}'] [--pick=a.b[].c,d] [--full] [--t=ms]   engine call; rpc --list
-  eval <expr|file.js> [--full]             evaluate in the target
+  eval <expr|file.js> [--full] [--t=ms]    evaluate in the target (default 10000 ms)
+  eval --file=path.js | --stdin           literal JavaScript, no run-tokenizer quote stripping
   shot [out.png] [--max=800] [--clip=css] [--full]   screenshot, longest edge capped at --max px
   audit | tree [--roles=a,b] | state | log [n] [pattern] | sleep <ms> | target <substr>
   up [--engine] [--no-build] [--no-guard] [--reload] [--dry-run] | down   deploy and reload | restore autoUpdate
@@ -51,7 +53,6 @@ function loadEnv() {
 }
 const ENV = loadEnv();
 const shellQuote = (s) => "'" + String(s).replaceAll("'", "'\"'\"'") + "'";
-const deckHost = () => ENV.DECK || fail("set DECK=deck@<ip> or add it to tools/deck-ui/local.env");
 
 class StepError extends Error {}
 function fail(msg) {
@@ -60,10 +61,11 @@ function fail(msg) {
 
 function run(cmd, args, opts = {}) {
   const r = spawnSync(cmd, args, { encoding: opts.binary ? undefined : "utf8", maxBuffer: 1 << 26, ...opts });
-  return { code: r.status ?? 1, out: r.stdout ?? "", err: r.stderr ?? (r.error ? String(r.error) : "") };
+  return { code: r.status ?? 1, out: r.stdout ?? "", err: `${r.stderr ?? ""}${r.error ? String(r.error) : ""}` };
 }
-const ssh = (script, opts = {}) =>
-  run("ssh", ["-o", "BatchMode=yes", "-o", "ConnectTimeout=5", deckHost(), script], opts);
+const connection = createConnection(ENV, run, sleep);
+const deckHost = () => connection.host();
+const ssh = (script, opts) => connection.ssh(script, opts);
 const onPath = (tool) => run("sh", ["-c", `command -v ${tool}`]).code === 0;
 // A dev-shell tool, through nix when this shell lacks it.
 const tool = (name, pkg = name) => (onPath(name) ? [name] : ["nix", "shell", `nixpkgs#${pkg}`, "-c", name]);
@@ -125,26 +127,42 @@ class Pad {
   async start() {
     const b64 = fs.readFileSync(path.join(HERE, "pad.py")).toString("base64");
     // The script travels as an argument so stdin stays free for the button lines.
-    this.proc = spawn("ssh", ["-o", "BatchMode=yes", "-o", "ConnectTimeout=5", deckHost(),
+    this.proc = spawn("ssh", [...SSH_OPTIONS, deckHost(),
       `python3 -c "import base64;exec(base64.b64decode('${b64}'))" --settle 3000 --stdin`]);
     this.lines = readline.createInterface({ input: this.proc.stdout })[Symbol.asyncIterator]();
     let err = "";
     this.exited = new Promise((resolve) => this.proc.once("close", resolve));
     this.proc.on("error", (e) => { err += e.message; });
     this.proc.stderr.on("data", (d) => (err += d));
-    const first = await this.lines.next();
+    const first = await this.nextLine(15000);
     if (first.value !== "ready") fail(`pad did not start: ${err.trim().split("\n").pop() || "no output"}`);
+  }
+  async nextLine(timeout) {
+    let timer;
+    try {
+      return await Promise.race([
+        this.lines.next(),
+        new Promise((_, reject) => { timer = setTimeout(() => {
+          this.proc.kill("SIGKILL");
+          reject(new StepError("pad SSH timed out"));
+        }, timeout); }),
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
   }
   async press(buttons) {
     if (!this.proc) await this.start();
     this.proc.stdin.write(`${buttons.join(" ")}\n`);
-    const r = await this.lines.next();
+    const r = await this.nextLine(120000);
     if (r.value !== "ok") fail(`pad: ${r.value ?? "closed"}`);
   }
   async close() {
     if (!this.proc) return;
     this.proc.stdin.end();
-    await this.exited;
+    const timer = setTimeout(() => this.proc.kill("SIGKILL"), 5000);
+    try { await this.exited; }
+    finally { clearTimeout(timer); }
   }
 }
 
@@ -332,10 +350,15 @@ class Runner {
         }, true);
       }
       case "eval": {
-        const src = plain(args).join(" ") || fail("eval <expr|file.js>");
-        const expr = fs.existsSync(src) ? fs.readFileSync(src, "utf8") : src;
+        const file = flagOf(args, "file", null);
+        const stdin = hasFlag(args, "stdin");
+        const src = plain(args).join(" ");
+        if (Number(!!file) + Number(stdin) + Number(!!src) !== 1) fail("eval <expr|file.js> or --file=path.js or --stdin");
+        const timeout = Number(flagOf(args, "t", 10000));
+        if (!Number.isSafeInteger(timeout) || timeout <= 0 || timeout > 2147483647) fail("eval --t must be an integer from 1 to 2147483647 milliseconds");
+        const expr = stdin ? fs.readFileSync(0, "utf8") : file ? fs.readFileSync(file, "utf8") : fs.existsSync(src) ? fs.readFileSync(src, "utf8") : src;
         return this.action(async () => {
-          const v = await evalIn(target, expr).catch((e) => fail(`eval: ${e.message.split("\n")[0]}`));
+          const v = await evalIn(target, expr, timeout).catch((e) => fail(`eval: ${e.message.split("\n")[0]}`));
           return hasFlag(args, "full") ? show(v) : clip(show(v ?? "undefined"), 1500);
         }, true);
       }
@@ -392,23 +415,18 @@ async function tunnelUp() {
 
 async function up(args) {
   // 1. Wake.
-  let alive = ssh("true");
-  if (alive.code !== 0) {
-    if (!/No route to host|timed out/i.test(alive.err)) fail(`ssh ${deckHost()}: ${alive.err.trim()}`);
-    if (!ENV.DECK_WOL_MAC) fail("the Deck is asleep and local.env has no DECK_WOL_MAC: ask the owner to wake it");
-    run(tool("wakeonlan")[0], [...tool("wakeonlan").slice(1), "-i", ENV.DECK_WOL_BROADCAST || "255.255.255.255", ENV.DECK_WOL_MAC]);
-    for (let i = 0; i < 8 && alive.code !== 0; i++) {
-      await sleep(15000);
-      alive = ssh("true");
-    }
-    if (alive.code !== 0) fail("still asleep 2 min after Wake-on-LAN (it works only through the USB Ethernet adapter, plugged in before sleep): ask the owner to wake the Deck");
-    say("wake: woke by Wake-on-LAN");
-  }
+  const woke = await connection.up(() => {
+    const command = tool("wakeonlan");
+    const result = run(command[0], [...command.slice(1), "-i", ENV.DECK_WOL_BROADCAST || "255.255.255.255", ENV.DECK_WOL_MAC], { timeout: 60000, killSignal: "SIGKILL" });
+    if (result.code !== 0) fail(`Wake-on-LAN failed: ${result.err.trim()}`);
+  });
+  say(`ssh: ${deckHost()}${woke ? " (woke by Wake-on-LAN)" : ""}`);
 
   // 2. Tunnel.
   if (!(await tunnelUp())) {
-    run("ssh", ["-f", "-N", "-o", "ExitOnForwardFailure=yes", "-o", "ServerAliveInterval=15",
-      "-L", `${PORT}:localhost:8080`, "-L", "9222:localhost:8080", deckHost()]);
+    const tunnel = run("ssh", [...SSH_OPTIONS, "-f", "-N", "-o", "ExitOnForwardFailure=yes",
+      "-L", `${PORT}:localhost:8080`, "-L", "9222:localhost:8080", deckHost()], { timeout: 15000, killSignal: "SIGKILL" });
+    if (tunnel.code !== 0) fail(`SSH tunnel: ${tunnel.err.trim()}`);
     await sleep(1000);
     if (!(await tunnelUp())) fail("CEF debugger unreachable: ask the owner to enable Decky → Developer → Allow Remote CEF Debugging");
     say("tunnel: opened");

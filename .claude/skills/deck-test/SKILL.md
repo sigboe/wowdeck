@@ -1,6 +1,6 @@
 ---
 name: deck-test
-description: Deploy to the owner's Steam Deck and test there through tools/deck-ui/deck. Use whenever the owner asks to test, verify, check, look at or reproduce something on the Deck or on device. Pass a brief as the argument: the build (branch or commit, engine change or not), every claim to verify, and anything the owner said about the run.
+description: Automatically wake, deploy to and test the owner's Steam Deck through tools/deck-ui/deck under standing device-test approval. Use whenever the owner asks to test, verify, check, look at or reproduce something on the Deck or on device. Pass a brief as the argument: the build (branch or commit, engine change or not), every claim to verify, and anything the owner said about the run.
 context: fork
 ---
 
@@ -13,9 +13,12 @@ $ARGUMENTS
 An empty brief → verify the newest commit's change on `next` (`git log -1`),
 and say in the report that the brief was empty.
 
-The owner's request is the approval: deploy, read and drive without asking
-again. Scope (from `AGENTS.md`): the WoW installation and our plugin's files.
+The owner's device-test request is the approval: wake, deploy, read and drive
+without asking again. Outside a test request, the device stays read-only.
+Scope (from `AGENTS.md`): the WoW installation and our plugin's files.
 Leave Steam, Decky, other plugins and the system as they were.
+Use bounded, isolated SSH connections; leave the owner's existing SSH masters
+and sessions untouched, including during cleanup.
 
 Every tool call re-sends this whole context, so the run's cost is calls ×
 context. Do the test in few calls: batch steps into one `deck run`, and read
@@ -26,7 +29,8 @@ answers from probes instead of screenshots.
 `tools/deck-ui/deck` (`node deck.mjs help` lists every step). Machine-local
 details (Deck address, Wake-on-LAN) live in `tools/deck-ui/local.env`;
 missing → copy `local.env.example` and fill it from `local.md` beside this
-file.
+file. `DECK` is the primary SSH host; `DECK_HOSTS` adds comma-separated
+Wi-Fi/Ethernet candidates.
 
 ```sh
 tools/deck-ui/deck up            # wake, tunnel, build, back up, guard autoUpdate, deploy, reload
@@ -45,6 +49,8 @@ tools/deck-ui/deck down          # restore autoUpdate
   stops the run and prints where the UI stands.
 - `rpc <method> '{json}' --pick=a.b[].c` calls the engine and checks the method
   name against `contracts.ts`; `rpc --list` lists them.
+- `eval --t=<ms>` bounds evaluation time. Use `eval --file=<path>` or
+  `eval --stdin` for literal JavaScript input rather than shell interpolation.
 - `shot` writes a PNG capped at 800 px (`--clip=<css>` crops) and prints its
   path. Read it only for a visual claim (layout, glyphs, colour).
 - `press` drives a real pad that lives for the whole run. B, X, Y, L1/R1 and
@@ -55,9 +61,12 @@ tools/deck-ui/deck down          # restore autoUpdate
 
 ## Steps
 
-1. **Up.** `deck up` (add `--engine` for an engine change). It prints one line
-   per thing it did and stops on what needs the owner: a Deck still asleep
-   after Wake-on-LAN, or "Allow Remote CEF Debugging" switched off (Decky →
+1. **Up.** Automatically wake with `deck up` (add `--engine` for an engine
+   change); no separate wake permission is needed. Before asking the owner to
+   wake it, try configured Wake-on-LAN and bounded connection attempts to
+   `DECK` and every configured Wi-Fi/Ethernet candidate in `DECK_HOSTS`.
+   It prints one line per thing it did; stop for the owner only after those
+   attempts fail, or when "Allow Remote CEF Debugging" is off (Decky →
    Developer). Done when it prints `up: deployed … reloaded <version>` or
    `already runs this build`.
 2. **Drive and observe.** One `deck run` per claim where you can. Done when
