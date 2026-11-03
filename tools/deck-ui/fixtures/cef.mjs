@@ -5,13 +5,37 @@ import { syncBuiltinESMExports } from "node:module";
 import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import path from "node:path";
+import { EventEmitter } from "node:events";
+import { PassThrough, Writable } from "node:stream";
 
-if (process.env.CEF_DEPLOY) {
+const realSetTimeout = globalThis.setTimeout;
+let lastTimer;
+let tunnelOpened = !process.env.CEF_TUNNEL;
+globalThis.setTimeout = (callback, delay, ...args) => {
+  const timer = realSetTimeout(callback, delay, ...args);
+  lastTimer = { callback, delay, timer };
+  if (delay === { "start-stall": 15000, "press-stall": 120000, "close-stall": 5000 }[process.env.CEF_PAD]) {
+    clearTimeout(timer);
+    queueMicrotask(callback);
+  }
+  return timer;
+};
+
+if (process.env.CEF_DEPLOY || process.env.CEF_PAD) {
   const original = childProcess.spawnSync;
   let uploaded = false;
   childProcess.spawnSync = (cmd, args, opts) => {
     if (cmd !== "ssh") return original(cmd, args, opts);
+    if (opts.timeout !== (args.includes("-N") ? 15000 : 30000) || opts.killSignal !== "SIGKILL" || !args.includes("ControlPath=none")) {
+      throw new Error("unbounded or shared SSH connection");
+    }
+    if (args.includes("-N")) {
+      tunnelOpened = true;
+      console.log(`fixture: tunnel ${args.at(-1)}`);
+      return { status: 0, stdout: "", stderr: "" };
+    }
     const script = args.at(-1);
+    if (args.at(-2) === "unreachable") return { status: null, error: new Error("spawnSync ssh ETIMEDOUT"), stdout: "", stderr: "" };
     console.log(`fixture: ssh ${script}`);
     if (process.env.CEF_DEPLOY === "guard-fail" && script.includes("> ") && script.includes("/guard.json")) {
       return { status: 1, stdout: "", stderr: "guard write failed" };
@@ -25,6 +49,26 @@ if (process.env.CEF_DEPLOY) {
       ).join("\n");
     }
     return { status: 0, stdout, stderr: "" };
+  };
+  if (process.env.CEF_PAD) childProcess.spawn = (command, args) => {
+    if (command !== "ssh" || !args.includes("ControlPath=none") || args.at(-2) !== "fixture") {
+      throw new Error("unexpected controller connection");
+    }
+    const proc = new EventEmitter();
+    proc.stdout = new PassThrough();
+    proc.stderr = new PassThrough();
+    proc.stdin = new Writable({ write(_chunk, _encoding, done) {
+      if (process.env.CEF_PAD !== "press-stall") proc.stdout.write("ok\n");
+      done();
+    } });
+    proc.kill = (signal) => {
+      console.log(`fixture: killed controller SSH ${signal}`);
+      proc.stdout.end();
+      proc.stderr.end();
+      proc.emit("close", null, signal);
+    };
+    if (process.env.CEF_PAD !== "start-stall") queueMicrotask(() => proc.stdout.write("ready\n"));
+    return proc;
   };
   syncBuiltinESMExports();
 }
@@ -70,7 +114,7 @@ const context = vm.createContext({
   // Resolve RPCs immediately; the timeout branch never fires in the fixture.
   setTimeout: () => {},
 });
-globalThis.fetch = async (url) => ({ ok: true, json: async () => String(url).endsWith("/json/version") ? { webSocketDebuggerUrl: "ws://fixture" } : [
+globalThis.fetch = async (url) => ({ ok: true, json: async () => String(url).endsWith("/json/version") ? (tunnelOpened ? { webSocketDebuggerUrl: "ws://fixture" } : {}) : [
   { title: "SharedJSContext", webSocketDebuggerUrl: "ws://fixture/shared" },
   { title: "QuickAccess_uid2", webSocketDebuggerUrl: "ws://fixture/qam" },
 ] });
@@ -88,7 +132,15 @@ globalThis.WebSocket = class extends EventTarget {
     }
     let result = {};
     try {
-      if (method === "Runtime.evaluate") result = { result: { value: vm.runInContext(params.expression, context) } };
+      if (method === "Runtime.evaluate") {
+        if (params.expression.includes("/* fixture timeout */") ||
+            (params.expression.includes("/* fixture long */") && lastTimer.delay < 120000)) {
+          clearTimeout(lastTimer.timer);
+          queueMicrotask(lastTimer.callback);
+          return;
+        }
+        result = { result: { value: vm.runInContext(params.expression, context) } };
+      }
     } catch (e) { result = { exceptionDetails: { exception: { description: e.message } } }; }
     const respond = () => {
       const payload = process.env.CEF_PROTOCOL_ERROR ? { id, error: { message: "protocol failed" } } : { id, result };

@@ -39,8 +39,8 @@ once goes through `nix shell nixpkgs#<pkg> -c …`; a tool needed again goes int
 Outside a test request, the Deck is read-only.
 
 When the owner asks to test, verify or check anything on the Deck (or "on
-device"), that request is standing approval to deploy our plugin, read state
-remotely, and drive the UI. Run the `deck-test` skill
+device"), that request is standing approval to wake it automatically with
+Wake-on-LAN, deploy our plugin, read state remotely, and drive the UI. Run the `deck-test` skill
 (`.claude/skills/deck-test/SKILL.md`). Changes stay inside the WoW
 installation (`~/Applications/World of Warcraft/`) and our plugin's files
 (`~/homebrew/{plugins,data,logs}/wowdeck/`). Steam, Decky and other
