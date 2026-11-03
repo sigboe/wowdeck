@@ -317,8 +317,9 @@ export class InstallationDetector {
   async detectCandidates(): Promise<InstallationCandidate[]> {
     const roots = await this.candidateWoWRoots();
     const byLocation = new Map<string, InstallationCandidate>();
+    const allSources = new Map<string, Set<DetectionSource>>();
 
-    for (const { path: root, source } of roots) {
+    for (const { path: root, source, sources } of roots) {
       for (const flavor of await findFlavorDirs(root)) {
         const clientType = getClientTypeForFolderName(
           flavor.replace(/\\/g, "/").replace(/\/+$/, "").split("/").pop() ?? "",
@@ -331,6 +332,9 @@ export class InstallationDetector {
           continue;
         }
         const key = flavor.toLowerCase();
+        const seen = allSources.get(key) ?? new Set<DetectionSource>();
+        for (const s of sources) seen.add(s);
+        allSources.set(key, seen);
         const existing = byLocation.get(key);
         if (!existing || SOURCE_PRIORITY[source] < SOURCE_PRIORITY[existing.detectionSource]) {
           byLocation.set(key, {
@@ -343,20 +347,42 @@ export class InstallationDetector {
       }
     }
 
-    return [...byLocation.values()].sort((a, b) => a.clientType - b.clientType);
+    const candidates = [...byLocation.values()].sort((a, b) => a.clientType - b.clientType);
+    for (const candidate of candidates) {
+      // No paths: they can contain the user's name. Flavor and sources are enough to debug.
+      const sources = [...(allSources.get(candidate.location.toLowerCase()) ?? [])].sort(
+        (a, b) => SOURCE_PRIORITY[a] - SOURCE_PRIORITY[b],
+      );
+      console.error(
+        JSON.stringify({
+          component: "detection",
+          flavor: candidate.location.replace(/\\/g, "/").replace(/\/+$/, "").split("/").pop(),
+          validity: candidate.validity,
+          sources,
+        }),
+      );
+    }
+    return candidates;
   }
 
-  private async candidateWoWRoots(): Promise<Array<{ path: string; source: DetectionSource }>> {
+  private async candidateWoWRoots(): Promise<
+    Array<{ path: string; source: DetectionSource; sources: Set<DetectionSource> }>
+  > {
     const { homeDir, customPaths = [] } = this.options;
-    const roots: Array<{ path: string; source: DetectionSource }> = [];
+    const roots: Array<{ path: string; source: DetectionSource; sources: Set<DetectionSource> }> =
+      [];
 
     const prefixes = new Set<string>();
 
     const addRoot = (path: string, source: DetectionSource): void => {
       if (!path) return;
       const existing = roots.find((r) => r.path === path);
-      if (!existing) roots.push({ path, source });
-      else if (SOURCE_PRIORITY[source] < SOURCE_PRIORITY[existing.source]) existing.source = source;
+      if (!existing) {
+        roots.push({ path, source, sources: new Set([source]) });
+        return;
+      }
+      existing.sources.add(source);
+      if (SOURCE_PRIORITY[source] < SOURCE_PRIORITY[existing.source]) existing.source = source;
     };
 
     for (const custom of customPaths) {
