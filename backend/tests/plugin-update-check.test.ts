@@ -41,6 +41,7 @@ interface Harness {
   toastShown: () => string | null;
   /** The persisted update channel. */
   channel: () => UpdateChannel;
+  lastRunVersion: () => string | null;
   /** A new engine session over the same persisted state (a restart). */
   restart: (over?: { currentVersion?: string; now?: number; respond?: (url: string) => unknown }) => void;
 }
@@ -54,6 +55,8 @@ function makeCheck(options: {
   stored?: PluginUpdateSnapshot | null;
   toastShownFor?: string | null;
   channel?: UpdateChannel;
+  lastRunVersion?: string | null;
+  stagedVersion?: string | null;
   now?: number;
 }): Harness {
   let calls = 0;
@@ -78,6 +81,8 @@ function makeCheck(options: {
     toastShownFor: options.toastShownFor ?? null,
     backoff: null as PluginUpdateBackoff | null,
     channel: options.channel ?? null,
+    lastRunVersion: options.lastRunVersion === undefined ? currentVersion : options.lastRunVersion,
+    stagedVersion: options.stagedVersion ?? null,
   };
   let check = build();
   function build() {
@@ -99,6 +104,14 @@ function makeCheck(options: {
         writeToastShown: (version) => {
           persisted.toastShownFor = version;
         },
+        readLastRunVersion: () => persisted.lastRunVersion,
+        writeLastRunVersion: (version) => {
+          persisted.lastRunVersion = version;
+        },
+        readStagedVersion: () => persisted.stagedVersion,
+        writeStagedVersion: (version) => {
+          persisted.stagedVersion = version;
+        },
         // Null until the owner picks one: the setting a pre-channel install has.
         readChannel: () => persisted.channel ?? "stable",
         writeChannel: (channel) => {
@@ -119,6 +132,7 @@ function makeCheck(options: {
     backoff: () => persisted.backoff,
     toastShown: () => persisted.toastShownFor,
     channel: () => persisted.channel ?? "stable",
+    lastRunVersion: () => persisted.lastRunVersion,
     restart(over = {}) {
       if (over.respond) respond = over.respond;
       if (over.currentVersion) currentVersion = over.currentVersion;
@@ -1131,5 +1145,116 @@ describe("check({ force: true }): Check again", () => {
     expect((await second).offer?.version).toBe("0.2.1");
     expect(h.calls()).toBe(2);
     expect(secondAskedAfterFirst).toBe(true);
+  });
+});
+
+describe("the installed build sets the update channel", () => {
+  test("a hand-installed beta switches Stable to Beta before the startup check", async () => {
+    const h = makeCheck({
+      currentVersion: "0.3.0-beta.2",
+      lastRunVersion: "0.2.0",
+      channel: "stable",
+      stored: stampOf({ channel: "stable" }),
+      respond: () => [withZip("v0.3.0-beta.3")],
+    });
+    expect(h.check.channel()).toBe("beta");
+    expect(h.lastRunVersion()).toBe("0.3.0-beta.2");
+    expect(h.calls()).toBe(0);
+    const result = await h.check.check();
+    expect(result.offer?.version).toBe("0.3.0-beta.3");
+    expect(h.askedUrl()).toContain("/releases?");
+    expect(result.toastPending).toBe(false);
+  });
+  test.each([
+    {
+      name: "hand-installed stable leaves Beta",
+      running: "0.3.0",
+      last: "0.3.0-beta.2",
+      staged: null,
+      channel: "beta",
+      expected: "stable",
+    },
+    {
+      name: "updater-installed stable keeps Beta",
+      running: "0.3.0",
+      last: "0.3.0-beta.2",
+      staged: "0.3.0",
+      channel: "beta",
+      expected: "beta",
+    },
+    {
+      name: "updater-installed beta keeps Beta",
+      running: "0.3.0-beta.3",
+      last: "0.3.0-beta.2",
+      staged: "0.3.0-beta.3",
+      channel: "beta",
+      expected: "beta",
+    },
+    {
+      name: "a different staged version does not mark a stable install",
+      running: "0.3.0",
+      last: "0.3.0-beta.2",
+      staged: "0.2.0",
+      channel: "beta",
+      expected: "stable",
+    },
+    {
+      name: "first beta start selects Beta",
+      running: "0.3.0-beta.2",
+      last: null,
+      staged: null,
+      channel: "stable",
+      expected: "beta",
+    },
+    {
+      name: "first stable start selects Stable",
+      running: "0.3.0",
+      last: null,
+      staged: null,
+      channel: "beta",
+      expected: "stable",
+    },
+    {
+      name: "same beta version keeps the player's Stable choice",
+      running: "0.3.0-beta.2",
+      last: "0.3.0-beta.2",
+      staged: null,
+      channel: "stable",
+      expected: "stable",
+    },
+    {
+      name: "same stable version keeps the player's Beta choice",
+      running: "0.3.0",
+      last: "0.3.0",
+      staged: null,
+      channel: "beta",
+      expected: "beta",
+    },
+  ] as const)("$name", ({ running, last, staged, channel, expected }) => {
+    const h = makeCheck({
+      currentVersion: running,
+      lastRunVersion: last,
+      stagedVersion: staged,
+      channel,
+      respond: () => [],
+    });
+    expect(h.check.channel()).toBe(expected);
+    expect(h.lastRunVersion()).toBe(running);
+    h.restart();
+    expect(h.check.channel()).toBe(expected);
+    expect(h.calls()).toBe(0);
+  });
+
+  test("choosing Stable on a beta survives a restart", async () => {
+    const h = makeCheck({
+      currentVersion: "0.3.0-beta.2",
+      lastRunVersion: null,
+      respond: () => withZip("v0.2.0"),
+    });
+    expect(h.check.channel()).toBe("beta");
+    await h.check.setChannel("stable");
+    h.restart();
+    expect(h.check.channel()).toBe("stable");
+    expect(h.lastRunVersion()).toBe("0.3.0-beta.2");
   });
 });

@@ -78,7 +78,7 @@ export class UpdateStager {
      * The update check's answer with the zip's URL; `refresh` forces a
      * fresh check. Never spends the toast.
      */
-    private check: Pick<PluginUpdateCheck, "forStaging">,
+    private check: Pick<PluginUpdateCheck, "forStaging" | "recordStagedVersion">,
     private tokenProvider: () => string | undefined = () => undefined,
     private tempDir: string = tmpdir(),
   ) {}
@@ -141,6 +141,7 @@ export class UpdateStager {
       console.error(
         `[self-update] staged WoWDeck ${version} for Decky's installer (sha256 ${sha256.slice(0, 8)}…)`,
       );
+      this.check.recordStagedVersion(version);
       return { result: { artifact: `file://${zipPath}`, version, sha256 }, error: null };
     } catch (err) {
       // Nothing is staged on any failure.

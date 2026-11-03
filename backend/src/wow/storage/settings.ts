@@ -179,6 +179,16 @@ const RULES: Rules = {
   // Set through system.setUpdateChannel only, so a switch always runs its
   // check; a missing value (every install before channels) is Stable.
   pluginUpdateChannel: { default: () => "stable", normalize: normalizeUpdateChannel, userWritable: false },
+  pluginUpdateLastRunVersion: {
+    default: () => null,
+    normalize: normalizedVersion,
+    userWritable: false,
+  },
+  pluginUpdateStagedVersion: {
+    default: () => null,
+    normalize: normalizedVersion,
+    userWritable: false,
+  },
   // Only ever stored after validation (settings.set checks the folder).
   wtfBackupDir: stringOrNull(true),
   wtfKeepSnapshots: {
