@@ -1,0 +1,12 @@
+WINE REGISTRY Version 2
+;; Reconstructed from the sanitized recorded values quoted in spec #74.
+;; No device registry was accessed for this fixture.
+
+[Software\\Wow6432Node\\Blizzard Entertainment\\World of Warcraft]
+"InstallPath"="Z:\\home\\<user>\\Applications\\World of Warcraft\\_forever_\\"
+
+[Software\\Wow6432Node\\Blizzard Entertainment\\World of Warcraft\\Beta]
+"InstallPath"="Z:\\home\\<user>\\Applications\\World of Warcraft\\_classic_beta_\\"
+
+[Software\\Wow6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\World of Warcraft Classic Era]
+"InstallLocation"="Z:\\home\\<user>\\Applications\\World of Warcraft"

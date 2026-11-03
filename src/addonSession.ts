@@ -27,6 +27,9 @@ export interface AddonSessionState {
   addons: Addon[];
   /** Requests reading the list right now (list or provider refresh). */
   loads: number;
+  /** Find WoW survives tab changes and picker round-trips. */
+  findingWow: boolean;
+  findWowResult: string | null;
   /** Addon ids with an action running (update, reinstall, channel switch, …). */
   busy: Readonly<Record<string, true>>;
   /** Null, or which Update all runs: this installation or every one (WF-13). */
@@ -62,6 +65,7 @@ export interface AddonSession extends Pick<Store<AddonSessionState>, "get" | "su
   /** Re-scan folders and ask the providers for new releases. */
   refreshFromProviders(): Promise<void>;
   reloadAll(): Promise<void>;
+  findWow(): Promise<void>;
   /**
    * Make another installation the active one. The kept addon list and the
    * Get Addons results belong to the previous one, so both are reset.
@@ -75,6 +79,8 @@ export function createAddonSession(deps: AddonSessionDeps): AddonSession {
     selectedId: null,
     addons: [],
     loads: 0,
+    findingWow: false,
+    findWowResult: null,
     busy: {},
     updatingAll: null,
     showIgnored: false,
@@ -243,6 +249,27 @@ export function createAddonSession(deps: AddonSessionDeps): AddonSession {
         }
       } catch (e) {
         toastError("Couldn't check for updates", e);
+      }
+    },
+    async findWow() {
+      if (store.get().findingWow) {
+        return;
+      }
+      store.patch({ findingWow: true, findWowResult: null });
+      try {
+        const { installations } = await rpc("installations.detect");
+        const result = `Found ${plural(installations.length, "installation")}`;
+        store.patch({ findWowResult: result });
+        toast(result);
+        await reloadInstallations();
+        await reloadAddons();
+      } catch (e) {
+        store.patch({
+          findWowResult: "Couldn't find WoW. Try again, or add its folder in Options.",
+        });
+        toastError("Couldn't find installations", e);
+      } finally {
+        store.patch({ findingWow: false });
       }
     },
     async reloadAll() {
