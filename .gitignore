@@ -43,6 +43,7 @@ Thumbs.db
 
 # Machine-local skill details (Deck address, personal test paths)
 .claude/skills/*/local.md
+tools/deck-ui/local.env
 
 # Build output
 dist/

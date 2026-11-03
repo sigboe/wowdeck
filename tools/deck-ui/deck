@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Short form of deck.mjs: tools/deck-ui/deck run 'open; probe tab'
+exec node "$(dirname "$0")/deck.mjs" "$@"

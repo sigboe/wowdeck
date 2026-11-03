@@ -145,10 +145,11 @@ ever matches `v*-beta.*`, and `release.yml` ignores those tags.
 
 Decky plugins are best verified on real hardware. SSH is enabled by default
 on SteamOS (`deck@<device-ip>`); `docs/steam-deck.md` has device notes.
-Inspect the UI with the Chrome DevTools MCP over an SSH tunnel
-(`docs/remote-browser.md`). Deck rules: `AGENTS.md` ("The owner's Steam
-Deck"); the test procedure is the `deck-test` skill
-(`.claude/skills/deck-test/SKILL.md`).
+Inspect the UI with the `tools/deck-ui/` scripts over an SSH tunnel
+(`tools/deck-ui/README.md`). The Chrome DevTools MCP (`docs/remote-browser.md`)
+covers console and network history and views no script reaches. Deck rules:
+`AGENTS.md` ("The owner's Steam Deck"); the test procedure is the `deck-test`
+skill (`.claude/skills/deck-test/SKILL.md`).
 
 ## Checklists
 

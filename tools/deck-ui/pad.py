@@ -7,6 +7,11 @@ the uaccess ACL), presses the named buttons in order, then removes the pad.
 Normally run through pad.sh from the development machine.
 
   python3 pad.py [--delay MS] [--settle MS] BUTTON...
+  python3 pad.py [--delay MS] [--settle MS] --stdin
+
+--stdin keeps one pad alive and reads one line of steps at a time from stdin,
+answering each with "ok" (or "error: ...") until EOF; deck.mjs drives it so a
+whole run makes one controller and pops one pair of connect toasts.
 
 Buttons: a b x y lb rb lt rt view menu guide l3 r3 up down left right
 (lb/rb are L1/R1, lt/rt are L2/R2, menu is the Deck's ☰, view is ⧉).
@@ -85,40 +90,65 @@ class Pad:
         os.close(self.fd)
 
 
+def invalid(steps: list[str]) -> str | None:
+    for step in steps:
+        name = step.split(":")[1] if step.startswith("hold:") else step
+        if not step.startswith("wait:") and name not in KEYS and name not in DPAD and name not in TRIGGERS:
+            return name
+    return None
+
+
+def run(pad: Pad, steps: list[str], delay: float, echo: bool) -> None:
+    for step in steps:
+        if step.startswith("wait:"):
+            time.sleep(int(step[5:]) / 1000)
+            continue
+        hold = 0.08
+        if step.startswith("hold:"):
+            _, step, ms = step.split(":")
+            hold = int(ms) / 1000
+        pad.set(step, True)
+        time.sleep(hold)
+        pad.set(step, False)
+        time.sleep(delay)
+        if echo:
+            print(step, flush=True)
+
+
 def main(argv: list[str]) -> int:
-    delay, settle, steps = 0.25, 1.5, []
+    delay, settle, steps, stdin = 0.25, 1.5, [], False
     args = iter(argv)
     for arg in args:
         if arg == "--delay":
             delay = int(next(args)) / 1000
         elif arg == "--settle":
             settle = int(next(args)) / 1000
+        elif arg == "--stdin":
+            stdin = True
         else:
             steps.append(arg.lower())
-    if not steps:
+    if not steps and not stdin:
         print(__doc__, file=sys.stderr)
         return 2
-    for step in steps:  # validate before creating the device
-        name = step.split(":")[1] if step.startswith("hold:") else step
-        if not step.startswith("wait:") and name not in KEYS and name not in DPAD and name not in TRIGGERS:
-            print(f"unknown button: {name}", file=sys.stderr)
-            return 2
+    bad = invalid(steps)  # validate before creating the device
+    if bad:
+        print(f"unknown button: {bad}", file=sys.stderr)
+        return 2
     pad = Pad()
     try:
         time.sleep(settle)  # let Steam notice the new controller
-        for step in steps:
-            if step.startswith("wait:"):
-                time.sleep(int(step[5:]) / 1000)
+        if not stdin:
+            run(pad, steps, delay, echo=True)
+            return 0
+        print("ready", flush=True)
+        for line in sys.stdin:
+            steps = line.lower().split()
+            bad = invalid(steps)
+            if bad:
+                print(f"error: unknown button: {bad}", flush=True)
                 continue
-            hold = 0.08
-            if step.startswith("hold:"):
-                _, step, ms = step.split(":")
-                hold = int(ms) / 1000
-            pad.set(step, True)
-            time.sleep(hold)
-            pad.set(step, False)
-            time.sleep(delay)
-            print(step, flush=True)
+            run(pad, steps, delay, echo=False)
+            print("ok", flush=True)
     finally:
         time.sleep(0.2)
         pad.close()
