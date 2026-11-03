@@ -205,8 +205,11 @@ test.each(["missing", "unreadable", "stale", "private-server", "unmapped", "ambi
       expect((await detector([independent]).detect()).map((i) => i.location)).toEqual([
         independent,
       ]);
-      if (!["private-server"].includes(variant)) expect(logs.length).toBeGreaterThan(0);
-      for (const args of logs) {
+      const registryLogs = logs.filter(
+        (args) => JSON.parse(String(args[0])).component === "prefix-registry",
+      );
+      if (!["private-server"].includes(variant)) expect(registryLogs.length).toBeGreaterThan(0);
+      for (const args of registryLogs) {
         expect(args).toHaveLength(1);
         expect(JSON.parse(String(args[0]))).toEqual({
           component: "prefix-registry",
@@ -244,4 +247,25 @@ test("only WoW Blizzard keys supply paths; user.reg and product.db never supply 
   writeFileSync(join(prefix, "product.db"), valid);
   writeFileSync(join(prefix, "system.reg"), unrelated);
   expect(await detector().detectCandidates()).toEqual([]);
+});
+
+test("each detected flavor logs every source that found it, without paths", async () => {
+  const wow = join(home, "Applications/World of Warcraft");
+  flavor(wow, "_forever_");
+  registry(`Z:${wow.replaceAll("/", "\\")}\\_forever_\\`);
+  const lines: string[] = [];
+  const spy = spyOn(console, "error").mockImplementation((...args: unknown[]) => {
+    lines.push(String(args[0]));
+  });
+  try {
+    await detector([wow]).detectCandidates();
+  } finally {
+    spy.mockRestore();
+  }
+  const logs = lines.map((l) => JSON.parse(l)).filter((l) => l.component === "detection");
+  expect(logs).toHaveLength(1);
+  expect(logs[0]).toMatchObject({ flavor: "_forever_", validity: "confirmed" });
+  expect(logs[0].sources[0]).toBe("custom");
+  expect(logs[0].sources).toContain("prefix-registry");
+  expect(lines.join("\n")).not.toContain(root);
 });
