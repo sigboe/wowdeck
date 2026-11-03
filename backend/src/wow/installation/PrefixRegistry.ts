@@ -1,6 +1,6 @@
 /** Project-owned Wine registry discovery. Only Blizzard WoW path values are retained. */
 import { createReadStream } from "node:fs";
-import { realpath } from "node:fs/promises";
+import { realpath, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { isDirectory, listDirectory } from "../fs/safe-fs";
@@ -9,6 +9,71 @@ import { WOW_FLAVOR_FOLDERS } from "../toc/toc";
 // Do not log paths, registry text, or exception messages: they can contain personal data.
 function skipped(reason: string): void {
   console.error(JSON.stringify({ component: "prefix-registry", reason }));
+}
+
+/** Scan known prefix roots, reading each physical registry once. No recursive disk search. */
+export async function prefixRegistryDiscoveries(prefixes: Iterable<string>): Promise<Array<{ prefix: string; roots: string[] }>> {
+  const canonical = new Set<string>();
+  for (const prefix of prefixes) {
+    const path = await realpath(prefix).catch(() => undefined);
+    if (!path || canonical.has(path) || !(await isDirectory(path))) continue;
+    canonical.add(path);
+  }
+  const readable: string[] = [];
+  for (const prefix of canonical) {
+    try {
+      if ((await stat(join(prefix, "system.reg"))).isFile()) readable.push(prefix);
+      else skipped("unreadable-registry");
+    } catch (error) {
+      skipped((error as NodeJS.ErrnoException).code === "ENOENT" ? "missing-registry" : "unreadable-registry");
+    }
+  }
+  const matching = await matchingRegistries(readable);
+  const results: Array<{ prefix: string; roots: string[] }> = [];
+  for (let i = 0; i < matching.length; i += 4) {
+    results.push(...await Promise.all(matching.slice(i, i + 4).map(async (prefix) => ({ prefix, roots: await prefixRegistryRoots(prefix) }))));
+  }
+  return results;
+}
+
+/** Grep is an optional prefilter. Failure falls back to the same Bun parser. */
+async function matchingRegistries(prefixes: string[]): Promise<string[]> {
+  const grep = Bun.which("grep");
+  if (!grep) return prefixes;
+  const matching: string[] = [];
+  // Keep argv well below Linux's argument limit, including unusually long paths.
+  const batches: string[][] = [];
+  let batch: string[] = [];
+  let bytes = 0;
+  for (const prefix of prefixes) {
+    const size = Buffer.byteLength(join(prefix, "system.reg")) + 1;
+    if (batch.length && (bytes + size > 32 * 1024 || batch.length >= 128)) {
+      batches.push(batch);
+      batch = [];
+      bytes = 0;
+    }
+    batch.push(prefix);
+    bytes += size;
+  }
+  if (batch.length) batches.push(batch);
+  for (const paths of batches) {
+    try {
+      const proc = Bun.spawn([grep, "-a", "-i", "-l", "-Z", "-F", "--", "World of Warcraft", ...paths.map(p => join(p, "system.reg"))], {
+        stdin: "ignore", stdout: "pipe", stderr: "ignore",
+        env: { ...process.env, LC_ALL: "C" }, timeout: 5000,
+      });
+      const [output, code] = await Promise.all([new Response(proc.stdout).text(), proc.exited]);
+      if (code !== 0 && code !== 1) {
+        matching.push(...paths);
+        continue;
+      }
+      const files = new Set(output.split("\0"));
+      matching.push(...paths.filter(path => files.has(join(path, "system.reg"))));
+    } catch {
+      matching.push(...paths);
+    }
+  }
+  return matching;
 }
 
 async function resolveCase(path: string): Promise<string | undefined> {

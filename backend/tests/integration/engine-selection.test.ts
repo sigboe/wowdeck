@@ -78,11 +78,7 @@ function flavor(name: string, version: string): string {
 
 beforeAll(() => {
   rmSync(ROOT, { recursive: true, force: true });
-  const rows = [flavor("_retail_", "11.0.2"), flavor("_classic_era_", "1.15.7")];
-  writeFileSync(
-    join(ROOT, "home/Applications/World of Warcraft", ".build.info"),
-    `Product!STRING:0|Version!STRING:0\n${rows.join("\n")}\n`,
-  );
+  mkdirSync(join(ROOT, "home"), { recursive: true });
   engine = spawnEngine();
 });
 
@@ -104,6 +100,11 @@ describe("engine selection persistence", () => {
   });
 
   test("detect reports exactly one selected installation", async () => {
+    const rows = [flavor("_retail_", "11.0.2"), flavor("_classic_era_", "1.15.7")];
+    writeFileSync(
+      join(ROOT, "home/Applications/World of Warcraft", ".build.info"),
+      `Product!STRING:0|Version!STRING:0\n${rows.join("\n")}\n`,
+    );
     const res = await send("installations.detect");
     const installs = res.result.installations;
     expect(installs).toHaveLength(2);

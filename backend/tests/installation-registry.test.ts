@@ -269,3 +269,32 @@ test("each detected flavor logs every source that found it, without paths", asyn
   expect(logs[0].sources).toContain("prefix-registry");
   expect(lines.join("\n")).not.toContain(root);
 });
+
+test.each([null, "/no-such-grep-executable"])("registry discovery works when grep is unavailable or fails (%s)", async (grep) => {
+  const { prefixRegistryDiscoveries } = await import("../src/wow/installation/PrefixRegistry");
+  const retail = flavor(join(root, "outside/World of Warcraft"), "_retail_");
+  registry(`Z:${retail.replaceAll("/", "\\")}`);
+  const which = spyOn(Bun, "which").mockReturnValue(grep);
+  try {
+    expect((await prefixRegistryDiscoveries([prefix])).flatMap(r => r.roots)).toEqual([join(retail, "..")]);
+  } finally {
+    which.mockRestore();
+  }
+});
+
+test("grep handles newline filenames and searches batches beyond the first 128 registries", async () => {
+  const { prefixRegistryDiscoveries } = await import("../src/wow/installation/PrefixRegistry");
+  const prefixes: string[] = [];
+  for (let i = 0; i < 129; i++) {
+    const p = join(root, `prefix ${i}\nline`);
+    mkdirSync(p);
+    writeFileSync(join(p, "system.reg"), "WINE REGISTRY Version 2\n");
+    prefixes.push(p);
+  }
+  const last = prefixes.at(-1)!;
+  mkdirSync(join(last, "dosdevices"));
+  symlinkSync("/", join(last, "dosdevices/z:"));
+  const retail = flavor(join(root, "outside/World of Warcraft"), "_retail_");
+  registry(`Z:${retail.replaceAll("/", "\\")}`, last);
+  expect((await prefixRegistryDiscoveries(prefixes)).flatMap(r => r.roots)).toEqual([join(retail, "..")]);
+});

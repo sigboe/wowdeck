@@ -9,7 +9,8 @@
 
 import { findSP } from "@decky/ui";
 import { STEAM } from "../steamTheme";
-import { badgeState, type BadgeState } from "../steamLibrary";
+import { badgeState, linkedSteamGames, type BadgeState } from "../steamLibrary";
+import { addonSession } from "../session";
 import { settingsStore } from "../settings";
 import { getSteamUpdates, onSteamSurfaceShown, subscribeSteamUpdates } from "../steamUpdates";
 
@@ -150,8 +151,9 @@ export function startHomeBadge(): () => void {
       if (!doc) {
         return;
       }
-      const { steamGame: game, steamBadge: badge } = settingsStore.get().settings;
-      const tiles = game && badge ? findTiles(doc, game.appId) : [];
+      const { steamGame, steamAutoLink, steamBadge: badge } = settingsStore.get().settings;
+      const games = linkedSteamGames(addonSession.get().installations, steamGame, steamAutoLink);
+      const tiles = badge ? games.flatMap((game) => findTiles(doc!, game.appId)) : [];
       const { summary, checking } = getSteamUpdates();
       const state = tiles.length ? badgeState(summary, checking) : null;
       for (const old of Array.from(doc.querySelectorAll(`.${BADGE_CLASS}`))) {
@@ -195,24 +197,29 @@ export function startHomeBadge(): () => void {
   // A new game or a badge switched on counts its tiles as appearing again;
   // any other setting leaves them alone.
   const steamKey = () => {
-    const { steamGame, steamBadge } = settingsStore.get().settings;
-    return `${steamGame?.appId ?? ""}:${steamBadge}`;
+    const { steamGame, steamAutoLink, steamBadge } = settingsStore.get().settings;
+    return `${linkedSteamGames(addonSession.get().installations, steamGame, steamAutoLink)
+      .map((g) => g.appId)
+      .join(",")}:${steamBadge}`;
   };
   let lastSteamKey = steamKey();
-  const offSettings = settingsStore.subscribe(() => {
+  const linksChanged = () => {
     if (steamKey() === lastSteamKey) {
       return;
     }
     lastSteamKey = steamKey();
     seen = new WeakSet();
     schedule();
-  });
+  };
+  const offSettings = settingsStore.subscribe(linksChanged);
+  const offInstallations = addonSession.subscribe(linksChanged);
   const offUpdates = subscribeSteamUpdates(schedule);
   schedule();
 
   return () => {
     observer?.disconnect();
     offSettings();
+    offInstallations();
     offUpdates();
     if (timer) {
       clearTimeout(timer);

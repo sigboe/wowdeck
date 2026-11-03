@@ -93,6 +93,7 @@ describe("classifyFlavorDir", () => {
       "WowClassicT.exe",
       "WowClassicB.exe",
       "Wow-arm64.exe",
+      "Wow-ARM64.exe",
     ].entries()) {
       const dir = flavor(TMP, `exe-${i}`);
       withExe(dir, exe);
@@ -216,4 +217,11 @@ describe("InstallationDetector validity gating", () => {
     expect(eraCandidates).toHaveLength(1);
     expect(eraCandidates[0]!.detectionSource).toBe("custom");
   });
+});
+
+
+test.each(["World of Warcraft Launcher.exe", "Battle.net.exe", "Battle.net Launcher.exe", "battlenet.overlay.runtime.exe"])("%s alone is not evidence that a game client is installed", async (exe) => {
+  const dir = flavor(TMP, "launcher-only");
+  withExe(dir, exe);
+  expect(await classifyFlavorDir(dir)).toBe("invalid");
 });
