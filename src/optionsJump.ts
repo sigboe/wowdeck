@@ -22,6 +22,7 @@ import { rememberFocus, subscribeFocusMemory } from "./focusMemory";
 import { QAM_VIEW } from "./qamState";
 import { firstFocusableMarkedSource } from "./sourceAccess";
 import type { ProviderInfo } from "./types";
+import { createStore } from "./store";
 
 const ROW_KEY_PREFIX = "provider:";
 
@@ -40,6 +41,23 @@ const state: { jump: SourceJump | null } = { jump: null };
 
 type JumpListener = () => void;
 const listeners = new Set<JumpListener>();
+const installationState = createStore<{ startedAt: number | null }>({ startedAt: null });
+
+export const installationJump = (): number | null => installationState.get().startedAt;
+
+export const subscribeInstallationJump = installationState.subscribe;
+
+export function clearInstallationJump(): void {
+  if (installationJump() !== null) {
+    installationState.set({ startedAt: null });
+  }
+}
+
+export function startInstallationJump(): void {
+  clearSourceJump();
+  rememberFocus(QAM_VIEW.settings, "detect");
+  installationState.set({ startedAt: Date.now() });
+}
 
 function set(jump: SourceJump | null): void {
   state.jump = jump;
@@ -64,6 +82,7 @@ export function startSourceJump(
   providers: readonly ProviderInfo[],
   fallbackKey?: string,
 ): void {
+  clearInstallationJump();
   const ids = new Set(marked);
   const first = firstFocusableMarkedSource(providers, ids);
   const landingKey = first
@@ -102,6 +121,9 @@ export function clearSourceJump(): void {
 // landing row means the user moved on — wherever in Options they went. The
 // landing row itself keeps the highlight, and so does any other marked row.
 subscribeFocusMemory((view, key) => {
+  if (view === QAM_VIEW.settings && key !== "detect" && installationJump() !== null) {
+    clearInstallationJump();
+  }
   const jump = state.jump;
   if (!jump || view !== QAM_VIEW.settings) {
     return;

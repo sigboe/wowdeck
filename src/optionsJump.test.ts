@@ -6,6 +6,9 @@ import {
   sourceRowKey,
   startSourceJump,
   subscribeSourceJump,
+  startInstallationJump,
+  installationJump,
+  clearInstallationJump,
 } from "./optionsJump";
 import { rememberFocus, rememberedFocus, resetFocusMemory } from "./focusMemory";
 import { QAM_VIEW } from "./qamState";
@@ -28,7 +31,18 @@ function provider(id: string, overrides: Partial<ProviderInfo> = {}): ProviderIn
 
 beforeEach(() => {
   clearSourceJump();
+  clearInstallationJump();
   resetFocusMemory();
+});
+
+test("the installation jump lands on Find and clears when focus moves on", () => {
+  startInstallationJump();
+  expect(rememberedFocus(QAM_VIEW.settings)).toBe("detect");
+  expect(installationJump()).not.toBeNull();
+  rememberFocus(QAM_VIEW.settings, "detect");
+  expect(installationJump()).not.toBeNull();
+  rememberFocus(QAM_VIEW.settings, "activeInstallation");
+  expect(installationJump()).toBeNull();
 });
 
 describe("the Options jump", () => {

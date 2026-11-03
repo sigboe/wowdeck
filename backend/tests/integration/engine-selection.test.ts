@@ -94,6 +94,15 @@ afterAll(() => {
 });
 
 describe("engine selection persistence", () => {
+  test("install with an empty store fails before provider lookup or download", async () => {
+    expect((await send("installations.list")).result.installations).toEqual([]);
+    const response = await send("addons.install", { providerId: "WowUpHub", externalId: "111" });
+    expect(response.error).toMatchObject({
+      code: "not_found",
+      message: "That WoW installation isn't available. Check Options",
+    });
+  });
+
   test("detect reports exactly one selected installation", async () => {
     const res = await send("installations.detect");
     const installs = res.result.installations;

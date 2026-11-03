@@ -286,6 +286,7 @@ device-passed 2026-10-23 on the Deck screen, pane 506 CSS px):
 |---|---|---|---|---|
 | O-1 | P1 | S | D-pad from top to bottom of Options | Every row reachable; dropdowns, toggles and drill-in rows look like Steam's settings |
 | O-2 | P1 | | WoW installations: **Find WoW installations** | Finds the Steam/Lutris/Proton installs; toast with the count |
+| O-2a | P1 | | With no installations, try X on a Get Addons row, a release channel, the Details install action, and Manual Install from a file. Cancel, then choose **Find WoW installations**. Repeat after finding WoW. | Each attempt opens the same warning without installing. Cancel keeps the browse position. Find closes the warning and focuses the blinking Find row in Options without starting a scan. The row legend changes from Find WoW install to Install once WoW is available. Detection shows a spinner until it finishes, including across tab changes. |
 | O-2b | P0 | | A WoW root with a `_forever_` folder (the Forever client): **Find WoW installations**, then Get Addons → search "Questie" | The installation is listed as "Forever" (Installation details: "World of Warcraft: Forever · _forever_"), not Retail; a `_retail_` beside it stays Retail; Get Addons finds Forever addons |
 | O-3 | P1 | | **Add installation manually**: Browse, then back out of the picker without choosing | Focus is back **on the Browse button** |
 | O-3b | P1 | | Browse, pick a folder | The path is filled in and focus is **on Display name (optional)** |
@@ -533,6 +534,33 @@ it; again 2026-10-18 for the widened-QAM rework:
 10. M-5: where the context menu opens inside the QAM.
 
 ## 8. Result record
+
+### Device run, November 3, 2026
+
+DEVICE, ticket #64, M-0 and O-2a. Tested through Deck CEF probes and controller
+input. Temporary RPC responses presented an empty installation list without
+removing the owner's installation or addon records. The My Addons widget
+showed a spinner and Finding WoW while scanning, then Found 0 installations.
+Browse X opened the warning, B returned to the same row, and Find WoW installations opened
+Options with its Find row focused. Installing from Details left the warning
+open after Details closed; B returned to the browse row. No install RPC reached
+the engine. The Find row had the blink animation, which cleared when focus
+moved on. Starting a scan in Options and switching to My Addons kept the
+Finding WoW state until the result arrived. Release-channel and archive gates
+have deterministic frontend tests. The engine RPC test checks the empty-store
+refusal. Test hooks were removed, real installations were shown again, and
+auto-update was restored after the run.
+
+Eight full detection RPCs took 5.9483, 5.9711, 6.3315, 5.8803, 6.3417, 5.8806,
+6.4144 and 5.8981 seconds. Mean 6.0833 seconds; median 5.9597 seconds. These
+measure the combined registry, VDF and path discovery, including RPC overhead,
+not separate stages or startup. Each returned three installations. The Deck
+had 84 Steam game manifests across two libraries, 76 Proton prefixes, 225
+registry files in those prefixes and one shortcuts VDF. Those are inventory
+counts, not a claim that every registry is read. Repeated scans used warm
+filesystem caches; this is not a cold-cache or worst-case bound.
+
+### Record template
 
 Copy for each run, into the commit notes or `ActionItems.yaml`:
 
