@@ -91,9 +91,13 @@ export async function installArchive(
   install: (pair: { providerId: string; externalId: string }) => Promise<{
     operation: OperationResult;
   }>,
+  canInstall: () => boolean,
 ): Promise<void> {
   const { phase, preview } = fileImport.get();
   if (phase !== "ready" || !preview) {
+    return;
+  }
+  if (!canInstall()) {
     return;
   }
   const id = ++turn;

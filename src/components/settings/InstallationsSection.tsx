@@ -1,11 +1,10 @@
-import { useState } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { DropdownItem, Field, PanelSection, PanelSectionRow } from "@decky/ui";
 import { FaSearchLocation } from "react-icons/fa";
 import type { Installation } from "../../types";
 import * as api from "../../services/backend";
 import { descriptionStyle } from "../../steamTheme";
 import { pluginToast, toastError } from "../../toast";
-import { plural } from "../../text";
 import { addonSession } from "../../session";
 import { confirmRemoveInstallation } from "../confirmRemove";
 import { openInstallationDetails } from "../InstallationDetailsModal";
@@ -13,6 +12,11 @@ import { QAM_DROPDOWN_VALUE } from "../dropdownValue";
 import { FactLine } from "../FactLine";
 import { FocusRow } from "../FocusSlot";
 import { SettingsRow, VIEW, busyIcon } from "./common";
+import {
+  clearInstallationJump,
+  installationJump,
+  subscribeInstallationJump,
+} from "../../optionsJump";
 
 interface Props {
   installations: Installation[];
@@ -24,7 +28,9 @@ interface Props {
 
 /** The active installation (its details on the Options button) and detection. */
 export function InstallationsSection({ installations, selectedId, onSelect, onChanged }: Props) {
-  const [detecting, setDetecting] = useState(false);
+  const { findingWow: detecting } = useSyncExternalStore(addonSession.subscribe, addonSession.get);
+  const jump = useSyncExternalStore(subscribeInstallationJump, installationJump);
+  useEffect(() => clearInstallationJump, []);
   const selected = installations.find((i) => i.id === selectedId) ?? null;
 
   // The module store holds the selected installation's addons (G4); read
@@ -70,16 +76,8 @@ export function InstallationsSection({ installations, selectedId, onSelect, onCh
   };
 
   const detect = async () => {
-    setDetecting(true);
-    try {
-      const { installations: found } = await api.rpc("installations.detect");
-      pluginToast(`Found ${plural(found.length, "installation")}`);
-      await onChanged();
-    } catch (e) {
-      toastError("Couldn't find installations", e);
-    } finally {
-      setDetecting(false);
-    }
+    clearInstallationJump();
+    await addonSession.findWow();
   };
 
   return (
@@ -124,7 +122,11 @@ export function InstallationsSection({ installations, selectedId, onSelect, onCh
           <div style={descriptionStyle}>No installations yet. Find or add one below.</div>
         </PanelSectionRow>
       )}
-      <SettingsRow id="detect">
+      <SettingsRow
+        id="detect"
+        className={jump !== null ? "wowdeck-source-jump" : undefined}
+        style={jump !== null ? { animationDelay: `${jump - Date.now()}ms` } : undefined}
+      >
         <Field
           focusable
           label="Find WoW installations"

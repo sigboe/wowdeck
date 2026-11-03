@@ -337,7 +337,11 @@ export function resultTags(installed: Addon | null): string[] {
  */
 export function resultInstallLabel(
   installed: Addon | null,
-): "Install" | "Reinstall" | "Update" | null {
+  installationCount = 1,
+): "Install" | "Find WoW install" | "Reinstall" | "Update" | null {
+  if (installationCount === 0) {
+    return "Find WoW install";
+  }
   if (!installed) {
     return "Install";
   }

@@ -1039,6 +1039,10 @@ export interface PluginSettings {
    * check). Missing or unknown in the stored file means Stable.
    */
   pluginUpdateChannel: UpdateChannel;
+  /** Last engine-start version; engine-written only. Null before the first start. */
+  pluginUpdateLastRunVersion: string | null;
+  /** Last successfully verified updater package; engine-written only. */
+  pluginUpdateStagedVersion: string | null;
   /** User-chosen folder for WTF backups (e.g. on an SD card); null = the plugin's own data folder. */
   wtfBackupDir: string | null;
   /** How many automatic pre-restore safety backups to keep per game version (1-10). */

@@ -44,6 +44,10 @@ function harness(answers: Record<string, unknown>) {
 }
 
 describe("addon session: installations", () => {
+  test("a result directs the player to find WoW only with no installations", () => {
+    expect(resultInstallLabel(null, 0)).toBe("Find WoW install");
+    expect(resultInstallLabel(null, 1)).toBe("Install");
+  });
   test("an empty Find WoW scan reports the result and can be retried after a failure", async () => {
     const answers: Record<string, unknown> = {
       "installations.detect": new Error("scan failed"),

@@ -81,6 +81,8 @@ describe("StateStore normalizes stored settings (RF-07)", () => {
           wtfBackupDir: 42,
           selectedInstallationId: "retail-0",
           pluginUpdateToastShownFor: "tomorrow",
+          pluginUpdateLastRunVersion: 42,
+          pluginUpdateStagedVersion: "1.2.3-rc.1",
           somethingOld: true,
         },
       }),

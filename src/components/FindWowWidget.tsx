@@ -1,4 +1,4 @@
-import { DialogButton, PanelSection, PanelSectionRow } from "@decky/ui";
+import { DialogButton, PanelSection, PanelSectionRow, Spinner } from "@decky/ui";
 import { descriptionStyle } from "../steamTheme";
 import { QAM_VIEW } from "../qamState";
 import { focusTarget, useRestoreFocus } from "./FocusSlot";
@@ -39,7 +39,14 @@ export function FindWowWidget({
           onClick={onDetect}
           {...focusTarget(QAM_VIEW.installed, "findWow")}
         >
-          {detecting ? "Finding WoW…" : "Find WoW"}
+          {detecting ? (
+            <>
+              <Spinner style={{ width: "1em", display: "inline-block", marginRight: "8px" }} />
+              Finding WoW…
+            </>
+          ) : (
+            "Find WoW"
+          )}
         </DialogButton>
       </PanelSectionRow>
       {result && (

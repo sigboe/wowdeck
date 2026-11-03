@@ -78,6 +78,7 @@ export function GetAddonsTab({
   landOnInstallation = false,
   onExitToNav,
   onOpenSources,
+  onOpenInstallations,
 }: {
   installations: Installation[];
   selectedId: string | null;
@@ -96,6 +97,7 @@ export function GetAddonsTab({
    * navigates and blink-highlights.
    */
   onOpenSources: (providers: ProviderInfo[], marked: readonly string[]) => void;
+  onOpenInstallations: () => void;
 }) {
   const listZoneAnchor = useRef<HTMLDivElement>(null);
   const installationRef = useRef<HTMLDivElement>(null);
@@ -401,6 +403,7 @@ export function GetAddonsTab({
   };
 
   const sources: SourceControls = {
+    openInstallations: onOpenInstallations,
     providers,
     loaded: providersLoaded,
     openSources: (marked) => onOpenSources(providers, marked),
@@ -422,6 +425,7 @@ export function GetAddonsTab({
             <ListTab
               key={latestSource ?? ""}
               destination="latest"
+              onFindInstallations={onOpenInstallations}
               view={browseFocusView("latest")}
             />
           </CapabilityGate>
@@ -438,6 +442,7 @@ export function GetAddonsTab({
             <ListTab
               key={`${popularSource ?? ""}:${categoryId ?? "all"}`}
               destination="popular"
+              onFindInstallations={onOpenInstallations}
               view={browseFocusView("popular")}
             />
           </CapabilityGate>

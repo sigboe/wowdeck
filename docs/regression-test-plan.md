@@ -286,6 +286,7 @@ device-passed 2026-10-23 on the Deck screen, pane 506 CSS px):
 |---|---|---|---|---|
 | O-1 | P1 | S | D-pad from top to bottom of Options | Every row reachable; dropdowns, toggles and drill-in rows look like Steam's settings |
 | O-2 | P1 | | WoW installations: **Find WoW installations** | Finds the Steam/Lutris/Proton installs; toast with the count |
+| O-2a | P1 | | With no installations, try X on a Get Addons row, a release channel, the Details install action, and Manual Install from a file. Cancel, then choose **Find WoW installations**. Repeat after finding WoW. | Each attempt opens the same warning without installing. Cancel keeps the browse position. Find closes the warning and focuses the blinking Find row in Options without starting a scan. The row legend changes from Find WoW install to Install once WoW is available. Detection shows a spinner until it finishes, including across tab changes. |
 | O-2b | P0 | | A WoW root with a `_forever_` folder (the Forever client): **Find WoW installations**, then Get Addons → search "Questie" | The installation is listed as "Forever" (Installation details: "World of Warcraft: Forever · _forever_"), not Retail; a `_retail_` beside it stays Retail; Get Addons finds Forever addons |
 | O-3 | P1 | | **Add installation manually**: Browse, then back out of the picker without choosing | Focus is back **on the Browse button** |
 | O-3b | P1 | | Browse, pick a folder | The path is filled in and focus is **on Display name (optional)** |
@@ -432,6 +433,7 @@ interval, with plain-text notes.
 | PU-25 | P1 | S | With the panel showing an offer from a check earlier today, publish a newer build on the Deck's channel. Focus **Update** on the panel, press X; press X twice quickly | The footer shows **X Check again**. The button reads "Checking…", disabled, then the panel, the update dot and the Updates row name the newer build, with the toast "WoWDeck <version> is available". Pressed twice, one check runs and one toast shows. With nothing newer the toast reads "WoWDeck is up to date"; with Wi-Fi off, "Couldn't check for updates" and the panel keeps its offer. Works with WoW running. `src/selfUpdateStore.test.ts` covers the joining and the toasts; `backend/tests/plugin-update-check.test.ts` covers skipping the daily cap and the backoff (verified DEVICE 2026-10-28, this branch's build with the engine built as 0.2.1-beta.3 on Beta, virtual pad and CDP polling. The stored answer named 0.2.1-beta.4, checked minutes earlier. With **Update** focused the footer showed **X Check again** and **Y Release notes**. X turned the button into "Checking…", disabled, for about 0.5 s. Then the panel read "WoWDeck 0.2.1-beta.6 available", the Updates row read `0.2.1-beta.3 → 0.2.1-beta.6`, `lastPluginUpdate` named beta.6 and the toast read "WoWDeck 0.2.1-beta.6 is available". The update dot was not measured. Two presses 180 ms apart sent one `system.updateCheck {force: true}` and showed one toast. "WoWDeck is up to date" is in PU-26. Turning Wi-Fi off is a system setting, so a test wrapper started the engine with `WOWDECK_RELEASES_URL` pointing at a closed local port. The button read "Checking…" for about 6 s, the toast read "Couldn't check for updates" and the panel kept the beta.6 offer. The log showed `[plugin-update] check unavailable: request to https://127.0.0.1:9/repos/sigboe/wowdeck/releases?… failed: TypeError: Unable to connect. …`. A check that succeeds logs nothing. The next forced check, inside the backoff that failure started, ran and cleared `pluginUpdateBackoff`. Not run with WoW open) |
 | PU-26 | P1 | S | Options › Updates, up to date: focus the WoWDeck row's **⋯**, press X; then press A | The footer shows **X Check again**, no Y. The row's description reads "Checking…" until the toast "WoWDeck is up to date". When a newer build exists, the toast reads "WoWDeck <version> is available" and the panel appears. A still opens the update channel modal (verified DEVICE 2026-10-28, engine built as 0.2.1-beta.6 on Beta, stored answer 0.2.1-beta.6. The row read `WoWDeck 0.2.1-beta.6` / `Up to date`. On **⋯** the footer showed **X Check again**, A Select and B Back, no Y. Two X presses 180 ms apart sent one forced check; the description read "Checking…" for about 0.4 s, then one toast "WoWDeck is up to date". A opened the update channel modal with **Stable** focused, and B closed it with focus back on **⋯**. The newer-build case ran with the engine built as 0.2.1-beta.3 and a stored answer naming 0.2.1-beta.3: no panel, row "Up to date", Y on **⋯** did nothing. X then brought the panel "WoWDeck 0.2.1-beta.6 available" and the toast "WoWDeck 0.2.1-beta.6 is available". During a check started from the panel the row also read "Checking…") |
 | PU-27 | P1 | S | Options › Updates with an offered build that has release notes: focus the WoWDeck row's **⋯**, press Y; press B; press Y again and A on the modal's **Update** | The footer shows **Y Release notes**. Y opens the same "WoWDeck X.Y.Z release notes" modal as PU-24, **Update** focused; B closes it with focus back on **⋯**; A starts the update as in PU-11 (verified DEVICE 2026-10-28, engine built as 0.2.1-beta.3 on Beta, offer 0.2.1-beta.6. On **⋯** the footer showed **X Check again** and **Y Release notes**. Y opened "WoWDeck 0.2.1-beta.6 release notes", plain text with • bullets, **Update** focused, footer A Update and B Back. B closed it with focus back on **⋯**. Y again, then A on the modal's **Update**: the panel's button read "Preparing…", disabled, the log showed `[self-update] staged WoWDeck 0.2.1-beta.6 for Decky's installer (sha256 dbe4f436…)`, and Decky's prompt "Update WoWDeck" asked to update to 0.2.1-beta.6. B cancelled the prompt, so the install did not run, and the QAM went back to Decky's plugin list) |
+| PU-28 | P1 | | On Stable, install a beta zip by hand and restart. Pick Stable in Options and restart again. On Beta, install a stable zip by hand, then repeat with a newer stable through the in-app updater. Also try a first install without settings and a first start without a stored last-run version | The beta install selects Beta before the first check. The choice made in Options survives a restart of the same build. A stable zip installed by hand selects Stable; an in-app stable update keeps Beta. Without a stored last-run version, the installed build selects its channel. Options › Updates shows the channel, with no notice about the switch. Automated coverage is in `backend/tests/plugin-update-check.test.ts` and `backend/tests/update-stager.test.ts` (partly verified DEVICE 2026-11-03, build 1.0.1 with engine RPCs and restarts. Beta picked, then a restart of the same build: still **Beta**. From Stable, a build labelled 1.0.2-beta.99 installed by hand: **Beta**. From that Beta, stable 1.0.1 installed by hand: **Stable**. No errors in the plugin log. Not run on the device: the in-app stable update, which needs Decky's installer prompt; the first start without a stored version; and the Options › Updates screen) |
 
 ### 4.6 WTF backup (folds in WF-01 `deck_verification`)
 
@@ -532,6 +534,33 @@ it; again 2026-10-18 for the widened-QAM rework:
 10. M-5: where the context menu opens inside the QAM.
 
 ## 8. Result record
+
+### Device run, November 3, 2026
+
+DEVICE, ticket #64, M-0 and O-2a. Tested through Deck CEF probes and controller
+input. Temporary RPC responses presented an empty installation list without
+removing the owner's installation or addon records. The My Addons widget
+showed a spinner and Finding WoW while scanning, then Found 0 installations.
+Browse X opened the warning, B returned to the same row, and Find WoW installations opened
+Options with its Find row focused. Installing from Details left the warning
+open after Details closed; B returned to the browse row. No install RPC reached
+the engine. The Find row had the blink animation, which cleared when focus
+moved on. Starting a scan in Options and switching to My Addons kept the
+Finding WoW state until the result arrived. Release-channel and archive gates
+have deterministic frontend tests. The engine RPC test checks the empty-store
+refusal. Test hooks were removed, real installations were shown again, and
+auto-update was restored after the run.
+
+Eight full detection RPCs took 5.9483, 5.9711, 6.3315, 5.8803, 6.3417, 5.8806,
+6.4144 and 5.8981 seconds. Mean 6.0833 seconds; median 5.9597 seconds. These
+measure the combined registry, VDF and path discovery, including RPC overhead,
+not separate stages or startup. Each returned three installations. The Deck
+had 84 Steam game manifests across two libraries, 76 Proton prefixes, 225
+registry files in those prefixes and one shortcuts VDF. Those are inventory
+counts, not a claim that every registry is read. Repeated scans used warm
+filesystem caches; this is not a cold-cache or worst-case bound.
+
+### Record template
 
 Copy for each run, into the commit notes or `ActionItems.yaml`:
 

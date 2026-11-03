@@ -80,7 +80,7 @@ function makeStager(
     },
   };
   return {
-    stager: new UpdateStager(net, { forStaging: async () => answerOf(answer) }, token ? () => token : undefined, ROOT),
+    stager: new UpdateStager(net, { forStaging: async () => answerOf(answer), recordStagedVersion: () => {} }, token ? () => token : undefined, ROOT),
     auths: () => auths,
   };
 }
@@ -258,6 +258,7 @@ describe("UpdateStager.stage after the offered zip is gone", () => {
         downloadUrl: ASSET_A,
       } as PluginUpdateSnapshot,
       toastShownFor: null as string | null,
+      stagedVersion: "0.1.0" as string | null,
     };
     const checks: string[] = [];
     const downloads: string[] = [];
@@ -291,6 +292,12 @@ describe("UpdateStager.stage after the offered zip is gone", () => {
         writeToastShown: (version) => {
           persisted.toastShownFor = version;
         },
+        readLastRunVersion: () => "0.2.0",
+        writeLastRunVersion: () => {},
+        readStagedVersion: () => persisted.stagedVersion,
+        writeStagedVersion: (version) => {
+          persisted.stagedVersion = version;
+        },
         readChannel: () => "beta",
         writeChannel: () => {},
       },
@@ -298,6 +305,14 @@ describe("UpdateStager.stage after the offered zip is gone", () => {
     );
     return { stager: new UpdateStager(net, check, undefined, ROOT), persisted, checks, downloads };
   }
+
+  test("a successful stage records the verified version", async () => {
+    mkdirSync(ROOT, { recursive: true });
+    const h = harness({ listing: [], assets: { [ASSET_A]: () => pluginZip("0.2.1-beta.1") } });
+    expect((await h.stager.stage()).result?.version).toBe("0.2.1-beta.1");
+    expect(h.persisted.stagedVersion).toBe("0.2.1-beta.1");
+    rmSync(join(ROOT, "wowdeck-update-0.2.1-beta.1.zip"), { force: true });
+  });
 
   test("a newer release from the forced check is staged, and its answer is stored", async () => {
     mkdirSync(ROOT, { recursive: true });
@@ -318,6 +333,7 @@ describe("UpdateStager.stage after the offered zip is gone", () => {
     expect(h.persisted.stamp).toMatchObject({ latestVersion: "0.2.1-beta.4", downloadUrl: ASSET_B, checkedAt: NOW });
     // Staging shows the panel already: the forced check never spends the toast.
     expect(h.persisted.toastShownFor).toBeNull();
+    expect(h.persisted.stagedVersion).toBe("0.2.1-beta.4");
     rmSync(join(ROOT, "wowdeck-update-0.2.1-beta.4.zip"), { force: true });
   });
 
@@ -365,6 +381,7 @@ describe("UpdateStager.stage after the offered zip is gone", () => {
       expect(h.downloads).toEqual([ASSET_A]);
       expect(h.checks).toEqual([]);
       expect(h.persisted.stamp.downloadUrl).toBe(ASSET_A);
+      expect(h.persisted.stagedVersion).toBe("0.1.0");
     }
   });
 
@@ -383,6 +400,7 @@ describe("UpdateStager.stage after the offered zip is gone", () => {
       },
     };
     const check = {
+      recordStagedVersion: () => {},
       async forStaging(opts?: { refresh?: boolean }) {
         refreshes.push(opts?.refresh);
         return answers.shift()!;

@@ -34,6 +34,7 @@ import { revealRemembered } from "../focusMemory";
 import { openAddonDetailsModal, resultDetails } from "./AddonDetailsModal";
 import { showChoiceMenu } from "./choiceMenu";
 import { installChannelChoices } from "../releaseChannel";
+import { requireInstallation } from "./requireInstallation";
 
 /**
  * The four browse destinations (Search, Latest, Popular, Manual Install) and
@@ -52,6 +53,7 @@ const resultKey = (r: SearchResult) => `${r.providerId}:${r.externalId}`;
  * Manual Install's off-source notice under a link result).
  */
 export interface SourceControls {
+  openInstallations: () => void;
   providers: ProviderInfo[];
   /** The sources have loaded (or failed to): the capability decision is final. */
   loaded: boolean;
@@ -72,11 +74,25 @@ export function Status({ text, tone }: { text: string; tone?: "error" | "warning
 }
 
 /** Result rows with one install path and per-row busy state. */
-function ResultList({ results, view }: { results: SearchResult[]; view?: string }) {
+export function ResultList({
+  results,
+  view,
+  onFindInstallations,
+}: {
+  results: SearchResult[];
+  view?: string;
+  onFindInstallations: () => void;
+}) {
   // My Addons' list says what is installed, however it got there.
-  const { addons, busy } = useSyncExternalStore(addonSession.subscribe, addonSession.get);
+  const { addons, busy, installations } = useSyncExternalStore(
+    addonSession.subscribe,
+    addonSession.get,
+  );
   const [installing, setInstalling] = useState<Record<string, boolean>>({});
   const install = async (r: SearchResult, channel?: ReleaseChannel) => {
+    if (!requireInstallation(onFindInstallations)) {
+      return;
+    }
     const key = resultKey(r);
     setInstalling((m) => ({ ...m, [key]: true }));
     await addonSession.actions.install(r, channel);
@@ -87,11 +103,11 @@ function ResultList({ results, view }: { results: SearchResult[]; view?: string 
       {results.map((r) => {
         const key = resultKey(r);
         const installed = installedAddonFor(addons, r);
-        const installLabel = resultInstallLabel(installed);
+        const installLabel = resultInstallLabel(installed, installations.length);
         const tags = resultTags(installed);
         // An installed addon takes My Addons' update or reinstall path.
         const primary = () =>
-          !installed
+          !installed || addonSession.get().installations.length === 0
             ? install(r)
             : installLabel === "Update"
               ? addonSession.actions.update(installed)
@@ -195,17 +211,25 @@ export function SearchTab({
           </Focusable>
         </Field>
       </PanelSectionRow>
-      {results && <ResultList results={results} view={browseFocusView("search")} />}
+      {results && (
+        <ResultList
+          results={results}
+          view={browseFocusView("search")}
+          onFindInstallations={sources.openInstallations}
+        />
+      )}
     </>
   );
 }
 
 /** A list that loads LOAD_MORE_PAGE_SIZE at a time (browseDestinations.ts). */
 export function ListTab({
+  onFindInstallations,
   destination,
   emptyText = "No addons found.",
   view,
 }: {
+  onFindInstallations: () => void;
   destination: ListDestinationId;
   emptyText?: string;
   /** Focus-memory view (browseSessionState.browseFocusView) to keep the list's place. */
@@ -266,7 +290,7 @@ export function ListTab({
 
   return (
     <div ref={listRef}>
-      <ResultList results={state.results} view={view} />
+      <ResultList results={state.results} view={view} onFindInstallations={onFindInstallations} />
       {error && (
         <PanelSectionRow>
           <Field
@@ -346,8 +370,14 @@ export function ManualInstallTab({ sources }: { sources: SourceControls }) {
           </Focusable>
         </Field>
       </PanelSectionRow>
-      <FileImportSection view={view} />
-      {resolved && <ResultList results={[resolved]} view={view} />}
+      <FileImportSection view={view} onFindInstallations={sources.openInstallations} />
+      {resolved && (
+        <ResultList
+          results={[resolved]}
+          view={view}
+          onFindInstallations={sources.openInstallations}
+        />
+      )}
       {resolved && <SourceOffNotice sources={sources} providerId={resolved.providerId} />}
     </>
   );
@@ -371,7 +401,13 @@ function previewLine(p: ArchivePreview): string {
  * panel — interrupts nothing; every outcome renders inline here, never a
  * modal.
  */
-function FileImportSection({ view }: { view: string }) {
+function FileImportSection({
+  view,
+  onFindInstallations,
+}: {
+  view: string;
+  onFindInstallations: () => void;
+}) {
   const file = useSyncExternalStore(fileImport.subscribe, fileImport.get);
   const busy =
     file.phase === "picking" || file.phase === "inspecting" || file.phase === "installing";
@@ -404,7 +440,10 @@ function FileImportSection({ view }: { view: string }) {
     if (!preview) {
       return;
     }
-    void installArchive((pair) => api.rpc("addons.install", pair));
+    void installArchive(
+      (pair) => api.rpc("addons.install", pair),
+      () => requireInstallation(onFindInstallations),
+    );
   };
 
   return (
