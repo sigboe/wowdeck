@@ -2,6 +2,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   AUTO_CHECK_EVERY_MS,
+  linkedSteamGames,
   autoUpdateText,
   badgeState,
   filterSteamGames,
@@ -119,5 +120,22 @@ describe("autoUpdateText (WF-02)", () => {
       "Automatic updates postponed",
     );
     expect(autoUpdateText({ updated: [], failed: [], skipped: null })).toBeNull();
+  });
+});
+
+describe("automatic Steam attachments", () => {
+  const wow = { appId: 42, name: "WoW" };
+  const battle = { appId: 43, name: "Battle.net" };
+  const installs = [{ steamGames: [wow, battle] }, { steamGames: [wow] }, {}];
+  test("every detected entry is attached once, alongside an explicit manual choice", () => {
+    expect(linkedSteamGames(installs, { appId: 9, name: "Manual" })).toEqual([
+      { appId: 9, name: "Manual" },
+      wow,
+      battle,
+    ]);
+  });
+  test("turning off automatic attachment keeps only the explicit manual choice", () => {
+    expect(linkedSteamGames(installs, wow, false)).toEqual([wow]);
+    expect(linkedSteamGames(installs, null, false)).toEqual([]);
   });
 });

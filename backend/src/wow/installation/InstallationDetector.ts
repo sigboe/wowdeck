@@ -11,9 +11,11 @@
  * Registry paths resolve through dosdevices, with case matching on Linux.
  */
 
-import { prefixRegistryRoots } from "./PrefixRegistry";
-import { readSteamShortcuts } from "./SteamShortcuts";
+import { prefixRegistryDiscoveries } from "./PrefixRegistry";
+import { readSteamShortcuts, shortcutPrefixes, shortcutPrefixOverrides, isWowShortcut, type SteamShortcut } from "./SteamShortcuts";
+import { realpath } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join } from "node:path";
+import type { SteamGameLink } from "../../api/contracts";
 import type { WowInstallation } from "../models";
 import {
   getClientTypeForFolderName,
@@ -37,27 +39,8 @@ export interface DetectionOptions {
 
 const WOW_DIR_NAMES = ["world of warcraft"];
 
-/**
- * Known WoW client executable names (case-sensitive, as shipped by
- * Battle.net). Derived from WowUp warcraft-platform.win.ts lines 15-45
- * (identical list is used by the linux platform since the Windows client
- * runs unchanged under Wine/Proton). Presence of any of these in a flavor
- * directory is the strongest evidence of a real installation.
- */
-export const WOW_EXECUTABLE_NAMES: readonly string[] = [
-  "Wow.exe",
-  "WowT.exe",
-  "WowB.exe",
-  "WowClassic.exe",
-  "WowClassicT.exe",
-  "WowClassicB.exe",
-  "Wow-arm64.exe",
-  "WowT-arm64.exe",
-  "WowB-arm64.exe",
-  "WowClassic-arm64.exe",
-  "WowClassicT-arm64.exe",
-  "WowClassicB-arm64.exe",
-];
+export { WOW_EXECUTABLE_NAMES } from "./WowExecutables";
+import { isWowClientExecutable, isWowLaunchExecutable } from "./WowExecutables";
 
 /**
  * Validity of a candidate flavor directory (see docs/installation-detection.md).
@@ -269,8 +252,8 @@ export async function createInstallationForFlavorDir(
  * Retail flavor has no executable at all.
  */
 export async function classifyFlavorDir(flavorDir: string): Promise<ValidityTier> {
-  for (const exe of WOW_EXECUTABLE_NAMES) {
-    if (await pathExists(join(flavorDir, exe))) {
+  for (const entry of await listDirectory(flavorDir)) {
+    if (!entry.isDirectory && isWowClientExecutable(entry.name) && await pathExists(entry.path)) {
       return "confirmed";
     }
   }
@@ -287,6 +270,7 @@ export async function classifyFlavorDir(flavorDir: string): Promise<ValidityTier
 }
 
 export class InstallationDetector {
+  private steamGames = new Map<string, SteamGameLink[]>();
   constructor(private options: DetectionOptions) {}
 
   /**
@@ -302,6 +286,8 @@ export class InstallationDetector {
       }
       const installation = await createInstallationForFlavorDir(candidate.location);
       if (installation) {
+        const games = this.steamGames.get(candidate.location);
+        if (games?.length) installation.steamGames = games;
         installations.push(installation);
       }
     }
@@ -310,39 +296,54 @@ export class InstallationDetector {
   }
 
   /**
-   * All flavor-directory candidates from every probed source, deduplicated
+   * Registry and shortcut candidates, then known locations when needed, deduplicated
    * by path with the most specific detection source kept. Includes
    * addon-data candidates so the UI can offer them for manual confirmation.
    */
   async detectCandidates(): Promise<InstallationCandidate[]> {
+    this.steamGames.clear();
     const roots = await this.candidateWoWRoots();
     const byLocation = new Map<string, InstallationCandidate>();
     const allSources = new Map<string, Set<DetectionSource>>();
 
-    for (const { path: root, source, sources } of roots) {
-      for (const flavor of await findFlavorDirs(root)) {
-        const clientType = getClientTypeForFolderName(
-          flavor.replace(/\\/g, "/").replace(/\/+$/, "").split("/").pop() ?? "",
-        );
-        if (clientType === WowClientType.None) {
-          continue;
-        }
-        const validity = await classifyFlavorDir(flavor);
-        if (validity === "invalid") {
-          continue;
-        }
-        const key = flavor.toLowerCase();
-        const seen = allSources.get(key) ?? new Set<DetectionSource>();
-        for (const s of sources) seen.add(s);
-        allSources.set(key, seen);
-        const existing = byLocation.get(key);
-        if (!existing || SOURCE_PRIORITY[source] < SOURCE_PRIORITY[existing.detectionSource]) {
-          byLocation.set(key, {
-            location: flavor,
-            clientType,
-            validity,
-            detectionSource: source,
-          });
+    const primary = roots.filter(r => ["prefix-registry", "steam-shortcut", "custom"].includes(r.source));
+    const fallback = roots.filter(r => !primary.includes(r));
+    primary.sort((a, b) => ["prefix-registry", "steam-shortcut", "custom"].indexOf(a.source) - ["prefix-registry", "steam-shortcut", "custom"].indexOf(b.source));
+    for (const phase of [primary, fallback]) {
+      if (phase === fallback) {
+        if ([...byLocation.values()].some(c => AUTO_REGISTER_TIERS.includes(c.validity))) break;
+        for (const path of await this.removableRoots()) phase.push({ path, source: "removable", sources: new Set(["removable"]) });
+      }
+      for (const { path: root, source, sources, games = [] } of phase) {
+        for (const flavor of await findFlavorDirs(root)) {
+          const clientType = getClientTypeForFolderName(
+            flavor.replace(/\\/g, "/").replace(/\/+$/, "").split("/").pop() ?? "",
+          );
+          if (clientType === WowClientType.None) {
+            continue;
+          }
+          const validity = await classifyFlavorDir(flavor);
+          if (validity === "invalid") {
+            continue;
+          }
+          if (games.length) {
+            const linked = new Map((this.steamGames.get(flavor) ?? []).map(g => [g.appId, g]));
+            for (const game of games) linked.set(game.appId, game);
+            this.steamGames.set(flavor, [...linked.values()].sort((a, b) => a.appId - b.appId));
+          }
+          const key = flavor.toLowerCase();
+          const seen = allSources.get(key) ?? new Set<DetectionSource>();
+          for (const foundSource of sources) seen.add(foundSource);
+          allSources.set(key, seen);
+          const existing = byLocation.get(key);
+          if (!existing || SOURCE_PRIORITY[source] < SOURCE_PRIORITY[existing.detectionSource]) {
+            byLocation.set(key, {
+              location: flavor,
+              clientType,
+              validity,
+              detectionSource: source,
+            });
+          }
         }
       }
     }
@@ -353,36 +354,32 @@ export class InstallationDetector {
       const sources = [...(allSources.get(candidate.location.toLowerCase()) ?? [])].sort(
         (a, b) => SOURCE_PRIORITY[a] - SOURCE_PRIORITY[b],
       );
-      console.error(
-        JSON.stringify({
-          component: "detection",
-          flavor: candidate.location.replace(/\\/g, "/").replace(/\/+$/, "").split("/").pop(),
-          validity: candidate.validity,
-          sources,
-        }),
-      );
+      console.error(JSON.stringify({
+        component: "detection",
+        flavor: candidate.location.replace(/\\/g, "/").replace(/\/+$/, "").split("/").pop(),
+        validity: candidate.validity,
+        sources,
+      }));
     }
     return candidates;
   }
 
-  private async candidateWoWRoots(): Promise<
-    Array<{ path: string; source: DetectionSource; sources: Set<DetectionSource> }>
-  > {
+  private async candidateWoWRoots(): Promise<Array<{ path: string; source: DetectionSource; sources: Set<DetectionSource>; games?: SteamGameLink[] }>> {
     const { homeDir, customPaths = [] } = this.options;
-    const roots: Array<{ path: string; source: DetectionSource; sources: Set<DetectionSource> }> =
-      [];
+    const roots: Array<{ path: string; source: DetectionSource; sources: Set<DetectionSource>; games?: SteamGameLink[] }> = [];
+    const shortcuts: SteamShortcut[] = [];
 
     const prefixes = new Set<string>();
 
-    const addRoot = (path: string, source: DetectionSource): void => {
+    const addRoot = (path: string, source: DetectionSource, games: SteamGameLink[] = []): void => {
       if (!path) return;
       const existing = roots.find((r) => r.path === path);
-      if (!existing) {
-        roots.push({ path, source, sources: new Set([source]) });
-        return;
+      if (!existing) roots.push({ path, source, sources: new Set([source]), games });
+      else {
+        existing.sources.add(source);
+        if (SOURCE_PRIORITY[source] < SOURCE_PRIORITY[existing.source]) existing.source = source;
+        existing.games = [...new Map([...(existing.games ?? []), ...games].map(g => [g.appId, g])).values()];
       }
-      existing.sources.add(source);
-      if (SOURCE_PRIORITY[source] < SOURCE_PRIORITY[existing.source]) existing.source = source;
     };
 
     for (const custom of customPaths) {
@@ -408,24 +405,22 @@ export class InstallationDetector {
 
     // Steam proton prefixes
     if (this.options.scanSteam !== false) {
-      const liveAppIds = new Set<string>();
-      // Without a readable shortcuts file we cannot tell dead prefixes apart.
-      let shortcutsKnown = false;
       for (const root of this.steamHomes()) {
         for (const user of await listDirectory(join(root, "userdata"))) {
           if (!user.isDirectory) continue;
           try {
             const bytes = await Bun.file(join(user.path, "config/shortcuts.vdf")).bytes();
-            const shortcuts = readSteamShortcuts(bytes);
-            shortcutsKnown = true;
-            for (const shortcut of shortcuts) {
-              liveAppIds.add(String(shortcut.appId));
+            const parsed = readSteamShortcuts(bytes);
+            shortcuts.push(...parsed);
+            for (const shortcut of parsed) {
+              for (const prefix of shortcutPrefixes(shortcut)) prefixes.add(prefix);
               for (const rawPath of [shortcut.exe, shortcut.startDir]) {
                 const path = rawPath.trim().replace(/^"(.*)"$/, "$1");
                 if (!isAbsolute(path)) continue;
                 addRoot(
-                  WOW_EXECUTABLE_NAMES.includes(basename(path)) ? dirname(path) : path,
+                  isWowLaunchExecutable(basename(path)) ? dirname(path) : path,
                   "steam-shortcut",
+                  isWowShortcut(shortcut) && shortcut.name ? [{ appId: shortcut.appId, name: shortcut.name }] : [],
                 );
               }
             }
@@ -436,23 +431,16 @@ export class InstallationDetector {
       }
       const steamRoots = await this.steamLibraryFolders();
       for (const library of steamRoots) {
-        for (const entry of await listDirectory(join(library, "steamapps"))) {
-          const appId = /^appmanifest_(\d+)\.acf$/.exec(entry.name)?.[1];
-          if (appId && !entry.isDirectory) liveAppIds.add(appId);
-        }
-      }
-      for (const library of steamRoots) {
         const compatRoot = join(library, "steamapps", "compatdata");
         for (const entry of await listDirectory(compatRoot)) {
-          if (!entry.isDirectory) {
+          if (!entry.isDirectory && !entry.isSymlink) {
             continue;
           }
-          if (!shortcutsKnown || liveAppIds.has(entry.name)) prefixes.add(join(entry.path, "pfx"));
+          prefixes.add(join(entry.path, "pfx"));
           const driveC = join(entry.path, "pfx", "drive_c");
-          if (await isDirectory(driveC)) {
-            addRoot(join(driveC, "Program Files (x86)"), "steam");
-            addRoot(driveC, "steam");
-          }
+          addRoot(join(driveC, "Program Files (x86)"), "steam");
+          addRoot(join(driveC, "Program Files"), "steam");
+          addRoot(driveC, "steam");
         }
       }
     }
@@ -466,12 +454,35 @@ export class InstallationDetector {
         if (bottle.isDirectory) prefixes.add(bottle.path);
       }
     }
-    for (const prefix of prefixes) {
-      if (!(await isDirectory(prefix))) continue;
-      for (const path of await prefixRegistryRoots(prefix)) addRoot(path, "prefix-registry");
+    // Associate only recognized launchers with prefixes. Other games can share a prefix.
+    const prefixGames = new Map<string, Map<number, SteamGameLink>>();
+    const libraries = this.options.scanSteam === false ? [] : await this.steamLibraryFolders();
+    for (const shortcut of shortcuts) {
+      if (!isWowShortcut(shortcut) || !shortcut.name) continue;
+      const explicit = shortcutPrefixOverrides(shortcut);
+      const referenced = explicit.length ? explicit : libraries.map(lib => join(lib, "steamapps/compatdata", String(shortcut.appId), "pfx"));
+      for (const reference of referenced) {
+        const canonical = await realpath(reference).catch(() => undefined);
+        if (!canonical) continue;
+        prefixes.add(canonical);
+        const games = prefixGames.get(canonical) ?? new Map<number, SteamGameLink>();
+        games.set(shortcut.appId, { appId: shortcut.appId, name: shortcut.name });
+        prefixGames.set(canonical, games);
+        // A launcher can still locate the standard layout when its registry is missing.
+        for (const folder of ["drive_c", "drive_c/Program Files (x86)", "drive_c/Program Files"]) {
+          addRoot(join(canonical, folder), "steam-shortcut", [...games.values()]);
+        }
+      }
+    }
+    for (const { prefix, roots: found } of await prefixRegistryDiscoveries(prefixes)) {
+      for (const path of found) addRoot(path, "prefix-registry", [...(prefixGames.get(prefix)?.values() ?? [])]);
     }
 
-    // Removable media (SD cards) — probe one level deep
+    return roots;
+  }
+
+  private async removableRoots(): Promise<string[]> {
+    const roots: string[] = [];
     if (this.options.scanRemovableMedia !== false) {
       const userMedia =
         this.options.removableMediaBase ??
@@ -480,10 +491,10 @@ export class InstallationDetector {
         if (!mount.isDirectory) {
           continue;
         }
-        addRoot(mount.path, "removable");
+        roots.push(mount.path);
         for (const child of await listDirectory(mount.path)) {
           if (child.isDirectory) {
-            addRoot(child.path, "removable");
+            roots.push(child.path);
           }
         }
       }

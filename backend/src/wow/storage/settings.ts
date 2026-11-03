@@ -197,6 +197,7 @@ const RULES: Rules = {
     userWritable: true,
   },
   steamGame: { default: () => null, normalize: normalizeSteamGame, userWritable: true },
+  steamAutoLink: toggle(true),
   steamAutoCheck: toggle(true),
   steamBadge: toggle(true),
   hideLibraries: toggle(false),

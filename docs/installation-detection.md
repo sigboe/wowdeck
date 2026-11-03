@@ -7,6 +7,8 @@
 - [Validity tiers](#validity-tiers)
 - [Candidate model](#candidate-model)
 - [Prefix registry](#prefix-registry)
+- [Steam shortcuts](#steam-shortcuts)
+- [Automatic Steam links](#automatic-steam-links)
 - [Identity](#identity)
 
 How the engine decides that a directory is a usable World of Warcraft
@@ -68,14 +70,13 @@ contents alone, so we surface it as a candidate and let the user decide
 (manual add flow). A leftover-files directory must never become a
 *selectable* installation automatically.
 
-Executable names are matched exactly (case-sensitive, as Battle.net ships
-them); unrelated executables (`Agent.exe`, …) do not confirm anything.
-The whitelist is WowUp's (`warcraft-platform.win.ts:15-45`), covering
+Client executable names are matched without case sensitivity, including
+`Wow-ARM64.exe`; unrelated executables (`Agent.exe`, …) do not confirm anything.
+The client whitelist in `WowExecutables.ts` starts with WowUp's (`warcraft-platform.win.ts:15-45`), covering
 `Wow.exe`, `WowT.exe`, `WowB.exe`, `WowClassic.exe`, `WowClassicT.exe`,
-`WowClassicB.exe` and the `-arm64` variants — matching WowUp's own
-`_validWoWExecutable` model (specific known names, never "any .exe"),
-with tests for each name, for unrelated executables and for the no-exe
-case.
+`WowClassicB.exe` and the `-arm64` variants. We also accept `Wow-ARM64.exe`,
+as shipped on DroidDeck. Tests cover specific known names, unrelated
+executables and the no-exe case.
 
 ## Candidate model
 
@@ -150,8 +151,8 @@ other drive letters, case matching, launcher prefixes and failure isolation.
 
 The detector reads `userdata/*/config/shortcuts.vdf` for every Steam user
 under `~/.local/share/Steam` and `~/.steam/steam`. A project-owned binary
-KeyValues reader extracts each shortcut's unsigned `appid`, `Exe` and
-`StartDir`. Nested fields such as tags do not affect discovery. Missing,
+KeyValues reader extracts each shortcut's unsigned `appid`, `Exe`,
+`StartDir` and `LaunchOptions`. Nested fields such as tags do not affect discovery. Missing,
 truncated and malformed files are skipped independently of other users.
 
 Quoted absolute program and start paths become candidates. A known WoW
@@ -159,17 +160,56 @@ executable contributes its containing folder. A flavor folder or WoW root
 uses the existing flavor search. No shortcut program is executed. Validity
 tiers and automatic registration follow the same rules as other sources.
 
-Before reading compatdata registries, the detector collects live shortcut
-appIds across all users and installed Steam appIds from
-`steamapps/appmanifest_*.acf` across all libraries. A compatdata registry is
-read only when its folder's appId is in that set. Prefixes belonging to
-deleted shortcuts are skipped. Existing directory probes inside compatdata
-continue as before, and Lutris, Bottles and custom prefixes are unaffected.
-Disabling Steam scanning disables both shortcut discovery and Steam prefixes.
+Detection runs in this order:
+
+1. Registry discovery across every prefix in known Steam libraries, Lutris
+   and Bottles locations, plus explicit custom and shortcut prefix references.
+2. Non-Steam shortcuts pointing at game clients, supported launchers or WoW
+   folders. Registry results retain priority when both find the same install.
+3. Known game-folder locations and removable media, only when the first two
+   passes and explicit custom paths find no confirmed or likely installation.
+
+Steam prefixes do not need to match a live shortcut appId. Shared and named
+prefixes, including symlinks, are searched too. Physical prefixes are read
+once. System grep first returns filenames containing `World of Warcraft`;
+only those registries reach the existing section parser and drive mapping.
+Arguments are batched, output is NUL-delimited, and a missing or failed grep
+falls back to Bun. At most four registries are parsed concurrently. Registry
+values and personal paths are never logged.
+
+Literal leading `STEAM_COMPAT_DATA_PATH` and `WINEPREFIX` assignments locate
+prefixes outside Steam's libraries. Quoted values and `env` are supported;
+shell expressions are never evaluated. The former names the parent of
+`pfx`, the latter the prefix itself. Executable and start paths inside `pfx`
+also locate it. Disabling Steam scanning disables Steam shortcut and prefix
+discovery, while Lutris, Bottles and custom paths remain available.
+
+Supported launchers are `World of Warcraft Launcher.exe`, `Battle.net.exe`
+and `Battle.net Launcher.exe`, observed on the reference Deck. They help
+locate installs but never confirm one. The running-game guard uses only
+client executable names, so a running Battle.net does not count as WoW.
+
+## Automatic Steam links
+
+Registry and shortcut evidence links every matching WoW or Battle.net Steam
+entry to the discovered installations. A shared Battle.net prefix does not
+link shortcuts explicitly launching another Blizzard product. Wrappers with
+an explicit WoW product command and prefix can link through registry evidence.
+Executable ancestry is a discovery hint; without an explicit environment
+override, Steam's appId prefix determines the runtime association. A known-folder
+fallback alone never links an unrelated Steam entry. Each scan refreshes
+these links and removes stale ones without deleting installations.
+
+Discovery runs at engine startup and through Find WoW. The game-page section
+and home-tile badge use all detected links, alongside the existing manual
+picker. Options can disable automatic linking. Linking never changes
+`autoUpdate`, `steamAutoCheck` or `steamBadge`; automatic addon updates stay
+opt-in, and existing user choices remain in effect.
 
 Detector tests construct synthetic binary `shortcuts.vdf` fixtures in
 temporary homes. They cover multiple users, both Steam locations, executable
-and folder paths, validity tiers, source priority, live appIds and broken files.
+and folder paths, validity tiers, source priority, live appIds, shared and
+external prefixes, literal overrides, symlinks and broken files.
 
 ## Identity
 

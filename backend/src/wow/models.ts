@@ -11,6 +11,7 @@
  */
 
 import type { Toc } from "./toc/toc";
+import type { SteamGameLink } from "../api/contracts";
 import { AddonChannelType, type AddonIgnoreReason, type AddonProviderType, AddonDependencyType, WowClientType } from "./types";
 
 /** Serializable stand-in for fs.Stats. */
@@ -37,6 +38,8 @@ export interface WowInstallation {
   version?: string;
   /** How this installation entered the list (default: detected). */
   source: InstallationSource;
+  /** Registry/shortcut evidence from the latest scan; absent on older stored records. */
+  steamGames?: SteamGameLink[];
 }
 
 export type InstallationSource = "detected" | "manual";

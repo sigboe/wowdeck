@@ -8,7 +8,8 @@ What's new in each version of WoWDeck Addon Manager. The format follows
 
 ### Added
 
-- WoWDeck now finds WoW through Steam shortcuts and Battle.net's Wine prefixes, including on the SD card.
+- WoWDeck finds WoW through Battle.net prefixes and Steam shortcuts, including shared prefixes and the SD card.
+- Detected WoW and Battle.net entries now show addon updates on their Steam game pages and home tiles.
 - Find WoW from My Addons when setting up, with a reminder to link its Steam library entry.
 - WoWDeck now installs and runs on arm64 SteamOS devices, from the same zip
   as everyone else.
@@ -23,6 +24,8 @@ What's new in each version of WoWDeck Addon Manager. The format follows
 ### Fixed
 
 - Installing addons without WoW set up now points you to Find WoW installations in Options.
+- Finding WoW is faster on large Steam libraries.
+- WoW installations using Wow-ARM64.exe are now recognized during installation scans and Steam shortcut detection.
 - L1/R1 move one tab at a time instead of sometimes skipping Get Addons.
 - Get Addons opens wide again on newer Steam versions, where Latest, Popular
   and Search stayed out of sight.

@@ -395,6 +395,7 @@ export default definePlugin(() => {
   // plugin is checked.
   const stopPluginExitWatch = startPluginExitWatch(PLUGIN_NAME);
   void settingsStore.load();
+  void addonSession.reloadInstallations();
 
   // Both notifications also run on wake: an engine session can last weeks on
   // a Deck that sleeps, so the daily cap — not the session — decides whether

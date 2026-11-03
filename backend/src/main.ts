@@ -134,6 +134,12 @@ const service = new AddonService(
 );
 const catalogue = new Catalogue(registry);
 const installationService = service.installations;
+// Discovery also refreshes Steam attachments while the QAM is closed. It never opts into updates.
+try {
+  await installationService.detect(homeDir);
+} catch {
+  console.error(JSON.stringify({ component: "installation-detection", reason: "startup-scan-failed" }));
+}
 const companionCoordinator = new CompanionSyncCoordinator(service);
 const updateCheck = new UpdateCheck(service, companionCoordinator);
 const updateToastGate = new UpdateToastGate(service, store, updateCheck);

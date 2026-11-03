@@ -15,6 +15,22 @@ export interface SteamGame {
   name: string;
 }
 
+/** Automatic links require engine evidence; the Options picker remains an explicit override. */
+export function linkedSteamGames(
+  installations: { steamGames?: SteamGame[] }[],
+  manual: SteamGame | null,
+  automatic = true,
+): SteamGame[] {
+  const games = new Map<number, SteamGame>();
+  if (automatic) {
+    for (const installation of installations) {
+      for (const game of installation.steamGames ?? []) games.set(game.appId, game);
+    }
+  }
+  if (manual) games.set(manual.appId, manual);
+  return [...games.values()].sort((a, b) => a.appId - b.appId);
+}
+
 const SHORTCUT_APP_TYPE = 1073741824;
 
 interface SteamApp {

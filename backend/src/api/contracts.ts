@@ -67,6 +67,12 @@ export interface FoundInstallation {
   displayName: string;
 }
 
+/** A Steam library shortcut linked to a discovered installation. */
+export interface SteamGameLink {
+  appId: number;
+  name: string;
+}
+
 /** A World of Warcraft installation (one per game flavor). */
 export interface Installation {
   id: string;
@@ -86,6 +92,8 @@ export interface Installation {
   selected: boolean;
   /** Product version string when discoverable, else null. */
   version: string | null;
+  /** Steam shortcuts proven to launch this installation by registry or executable discovery. */
+  steamGames?: SteamGameLink[];
 }
 
 /** An installed addon as reported by scanning the AddOns directory. */
@@ -1050,9 +1058,11 @@ export interface PluginSettings {
   /**
    * The Steam library entry (usually a non-Steam shortcut) that launches WoW,
    * picked in Options (BEYOND-05). Its game page shows the addon-updates
-   * section. Null = no Steam integration.
+   * section. Null leaves only automatic links, when enabled.
    */
   steamGame: { appId: number; name: string } | null;
+  /** Attach discovered WoW entries to their Steam game pages and home tiles. Does not enable automatic updates. */
+  steamAutoLink: boolean;
   /** Check for addon updates in the background when the linked game's page or tile appears (at most every 15 min). */
   steamAutoCheck: boolean;
   /** Badge on the linked game's tile on Steam's home screen; off = a kill switch if a Steam update breaks it. */

@@ -73,7 +73,10 @@ export class InstallationService {
   /** Detect installations into the list; the whole list after. */
   async detect(homeDir: string): Promise<Installation[]> {
     const detector = new InstallationDetector({ homeDir, customPaths: this.store.settings.customWowPaths });
-    this.store.setInstallations(mergeInstallations(this.store.installations, await detector.detect()));
+    const found = await detector.detect();
+    // Keep installations through an unmounted drive, but never keep stale shortcut links.
+    this.store.setInstallations(mergeInstallations(this.store.installations.map(i => ({ ...i, steamGames: [] })), found,
+      (prior, current) => { prior.steamGames = current.steamGames ?? []; }));
     return this.listed();
   }
 
@@ -94,6 +97,7 @@ export class InstallationService {
       source: i.source ?? "detected",
       selected: i.id === this.selectedId(),
       version: i.version ?? null,
+      steamGames: i.steamGames ?? [],
     };
   }
 
