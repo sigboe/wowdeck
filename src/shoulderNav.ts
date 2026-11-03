@@ -170,3 +170,65 @@ export function registerDirectionalNav(onLeft: () => void, onRight: () => void):
   );
   return () => registration.unregister();
 }
+
+/** The part of Steam's gamepad event the panel's bumper handler needs. */
+interface PanelButtonEvent {
+  detail: { button: number };
+  preventDefault(): void;
+  stopPropagation(): void;
+}
+
+/**
+ * Own the panel's two bumper input paths, including presses on Decky's title bar.
+ * Steam's gamepad focus can be inside the panel while DOM focus is BODY. Using
+ * activeElement to split ownership then handles the same press twice.
+ * DEVICE 2026-11-03: SSH/CEF, virtual-pad R1 and a DOM-focus fixture.
+ *
+ * Native input owns tab changes only while the active tree's m_ID starts with
+ * QuickAccess (getFocusNavController().GetActiveNavTree(), @decky/ui). The
+ * keyboard uses a separate tree even while our panel stays mounted. If that
+ * lookup or the native bridge is unavailable, focused events own navigation.
+ */
+export function createPanelShoulderNavigation({
+  getRoot,
+  step,
+  buttons,
+  activeTreeId,
+}: {
+  getRoot: () => HTMLElement | null;
+  step: (direction: -1 | 1) => void;
+  buttons: { left: number; right: number };
+  activeTreeId: () => unknown;
+}): { onButtonDown: (event: PanelButtonEvent) => void; subscribe: () => () => void } {
+  const nativeInput =
+    typeof window.SteamClient?.Input?.RegisterForControllerInputMessages === "function";
+  const treeId = (): string | null => {
+    try {
+      const id = activeTreeId();
+      return typeof id === "string" ? id : null;
+    } catch {
+      return null;
+    }
+  };
+  const onButtonDown = (event: PanelButtonEvent) => {
+    const button = event.detail.button;
+    const direction = button === buttons.left ? -1 : button === buttons.right ? 1 : null;
+    if (direction === null) return;
+    event.preventDefault();
+    event.stopPropagation();
+    // The focused event consumes Steam's default action. Native input moves the
+    // tab; only a missing bridge/tree falls back to moving it here instead.
+    if ((!nativeInput || treeId() === null) && getRoot()?.isConnected) step(direction);
+  };
+  const raw = (direction: -1 | 1) => {
+    if (getRoot()?.isConnected && treeId()?.startsWith("QuickAccess")) step(direction);
+  };
+  return {
+    onButtonDown,
+    subscribe: () =>
+      registerShoulderNav(
+        () => raw(-1),
+        () => raw(1),
+      ),
+  };
+}
