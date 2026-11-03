@@ -212,7 +212,7 @@ test.each(["missing", "unreadable", "stale", "private-server", "unmapped", "ambi
           component: "prefix-registry",
           reason: {
             "private-server": undefined,
-            missing: "unreadable-registry",
+            missing: "missing-registry",
             unreadable: "unreadable-registry",
             stale: "missing-path",
             unmapped: "unmapped-drive",

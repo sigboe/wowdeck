@@ -81,8 +81,10 @@ export async function prefixRegistryRoots(prefix: string): Promise<string[]> {
       const path = value[2]!.replace(/\\([\\"])/g, "$1").replace(/\\+$/, "");
       paths.push({ path, installPath: valueName === "InstallPath" });
     }
-  } catch {
-    skipped("unreadable-registry");
+  } catch (error) {
+    // Steam leaves save-only prefixes without system.reg; name that apart from read failures.
+    const code = (error as NodeJS.ErrnoException | undefined)?.code;
+    skipped(code === "ENOENT" ? "missing-registry" : "unreadable-registry");
     return [];
   } finally {
     lines.close();
