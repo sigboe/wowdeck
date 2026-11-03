@@ -107,6 +107,17 @@ messages or PR descriptions — the owner asks for it per PR.
 
 ## Agent skills
 
+### Sub-agents under Codex
+
+Codex here runs on ChatGPT sharing, which rejects Codex's native sub-agents
+(`spawn_agent` and the other multi-agent tools). The rejected item stays in
+the thread's history, so every later turn fails too. Under Codex, never use
+them. Wherever a skill says sub-agent, background agent or subagent:
+
+- use T3 Code's `delegate_task` when it is available, with a self-contained
+  brief; pass `mode: "wait"` when this turn needs the report;
+- otherwise do the work yourself in this thread, one task after another.
+
 ### Writing
 
 Markdown people read (`README.md`, `CHANGELOG.md`,
