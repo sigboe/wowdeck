@@ -59,6 +59,8 @@ Each smell reads *what it is* → *how to fix*; match it against the diff:
 
 Issue both sub-agent calls together, in the foreground, and aggregate the reports they return.
 
+Codex on ChatGPT sharing rejects native sub-agents and leaves the thread unusable, so never spawn them there. Use the host's delegation tool (T3 Code `delegate_task` with `mode: "wait"`) with the self-contained prompts below. If there is none, run Standards then Spec as two passes in this thread, each from its own prompt.
+
 **Standards sub-agent prompt** should include:
 
 - The full diff command and commit list.
