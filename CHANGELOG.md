@@ -15,12 +15,12 @@ What's new in each version of WoWDeck Addon Manager. The format follows
 
 ### Changed
 
+- Installing a beta build switches you to Beta updates; installing a stable build by hand
+  switches you back to Stable.
 - On devices it can't run on, WoWDeck now says so instead of telling you to
   try again.
 
 ### Fixed
-
-- Installing a beta selects Beta updates; installing a stable zip by hand selects Stable updates.
 
 - L1/R1 move one tab at a time instead of sometimes skipping Get Addons.
 - Get Addons opens wide again on newer Steam versions, where Latest, Popular
