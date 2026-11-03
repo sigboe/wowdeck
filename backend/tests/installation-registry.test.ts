@@ -20,6 +20,7 @@ beforeEach(() => {
     join(home, ".local/share/Steam/steamapps/libraryfolders.vdf"),
     `"path" "${home}/.local/share/Steam"`,
   );
+  writeFileSync(join(home, ".local/share/Steam/steamapps/appmanifest_123.acf"), '"appid" "123"');
 });
 afterEach(() => rmSync(root, { recursive: true, force: true }));
 
@@ -211,7 +212,7 @@ test.each(["missing", "unreadable", "stale", "private-server", "unmapped", "ambi
           component: "prefix-registry",
           reason: {
             "private-server": undefined,
-                missing: "unreadable-registry",
+            missing: "unreadable-registry",
             unreadable: "unreadable-registry",
             stale: "missing-path",
             unmapped: "unmapped-drive",

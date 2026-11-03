@@ -85,12 +85,13 @@ case.
 { location, clientType, validity, detectionSource }
 ```
 
-with `detectionSource ∈ { custom, prefix-registry, lutris, steam, removable, known-path }`
+with `detectionSource ∈ { custom, prefix-registry, steam-shortcut, lutris, steam, removable, known-path }`
 (priority order for dedup when the same path is found twice). Sources:
 
 - `custom` — user-configured paths (settings `customWowPaths`), incl.
   `drive_c`/`Program Files (x86)` prefix layouts
 - `prefix-registry` reads Blizzard WoW paths recorded in Wine prefixes.
+- `steam-shortcut` reads program and start folders from Steam shortcuts.
 - `lutris` — `~/Applications`, `~/Games`, Lutris `system.yml` game_path
 - `steam` — every Steam library (from `libraryfolders.vdf`) →
   `steamapps/compatdata/*/pfx/drive_c`
@@ -131,8 +132,9 @@ uses its exact spelling if present, or its single case-insensitive match.
 Missing or ambiguous segments are skipped and logged.
 
 Registry candidates use the same validity tiers as other sources. During
-deduplication, `custom` outranks `prefix-registry`, which outranks `lutris`,
-`steam`, `removable` and `known-path`. Existing installations keep their ids.
+deduplication, `custom` outranks `prefix-registry`, which outranks
+`steam-shortcut`, `lutris`, `steam`, `removable` and `known-path`.
+Existing installations keep their ids.
 Stale paths and private-server roots without supported flavor folders yield
 no candidates. A missing or unreadable registry cannot stop other discovery.
 Diagnostics contain fixed reason codes, without paths or registry values.
@@ -143,6 +145,31 @@ fixtures in `backend/tests/fixtures/installation-registry/` reconstruct the
 sanitized registry values quoted in spec #74, with `<user>` in place of the
 username. They are not copies of device files. Synthetic variants cover
 other drive letters, case matching, launcher prefixes and failure isolation.
+
+## Steam shortcuts
+
+The detector reads `userdata/*/config/shortcuts.vdf` for every Steam user
+under `~/.local/share/Steam` and `~/.steam/steam`. A project-owned binary
+KeyValues reader extracts each shortcut's unsigned `appid`, `Exe` and
+`StartDir`. Nested fields such as tags do not affect discovery. Missing,
+truncated and malformed files are skipped independently of other users.
+
+Quoted absolute program and start paths become candidates. A known WoW
+executable contributes its containing folder. A flavor folder or WoW root
+uses the existing flavor search. No shortcut program is executed. Validity
+tiers and automatic registration follow the same rules as other sources.
+
+Before reading compatdata registries, the detector collects live shortcut
+appIds across all users and installed Steam appIds from
+`steamapps/appmanifest_*.acf` across all libraries. A compatdata registry is
+read only when its folder's appId is in that set. Prefixes belonging to
+deleted shortcuts are skipped. Existing directory probes inside compatdata
+continue as before, and Lutris, Bottles and custom prefixes are unaffected.
+Disabling Steam scanning disables both shortcut discovery and Steam prefixes.
+
+Detector tests construct synthetic binary `shortcuts.vdf` fixtures in
+temporary homes. They cover multiple users, both Steam locations, executable
+and folder paths, validity tiers, source priority, live appIds and broken files.
 
 ## Identity
 

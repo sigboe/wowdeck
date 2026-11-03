@@ -7,12 +7,13 @@
  * Deck reference notes in docs/steam-deck.md. Unlike WowUp we do not decode
  * Battle.net's product.db protobuf — on a Deck, WoW is nearly always a
  * Lutris/Bottles/Proton-prefix or plain-folder install, so directory
- * probing, Blizzard system.reg paths and user-configured paths find installs.
+ * probing, Blizzard system.reg paths, Steam shortcuts and custom paths find installs.
  * Registry paths resolve through dosdevices, with case matching on Linux.
  */
 
 import { prefixRegistryRoots } from "./PrefixRegistry";
-import { join } from "node:path";
+import { readSteamShortcuts } from "./SteamShortcuts";
+import { basename, dirname, isAbsolute, join } from "node:path";
 import type { WowInstallation } from "../models";
 import {
   getClientTypeForFolderName,
@@ -73,7 +74,7 @@ export type ValidityTier = "confirmed" | "likely" | "addon-data" | "invalid";
 
 /** Where a candidate was found. */
 export type DetectionSource =
-  "custom" | "prefix-registry" | "lutris" | "steam" | "removable" | "known-path";
+  "custom" | "prefix-registry" | "steam-shortcut" | "lutris" | "steam" | "removable" | "known-path";
 
 /** A flavor directory that looks like it may host a WoW installation. */
 export interface InstallationCandidate {
@@ -87,10 +88,11 @@ export interface InstallationCandidate {
 const SOURCE_PRIORITY: Record<DetectionSource, number> = {
   custom: 0,
   "prefix-registry": 1,
-  lutris: 2,
-  steam: 3,
-  removable: 4,
-  "known-path": 5,
+  "steam-shortcut": 2,
+  lutris: 3,
+  steam: 4,
+  removable: 5,
+  "known-path": 6,
 };
 
 /** Installations at or above this tier are registered automatically. */
@@ -380,14 +382,42 @@ export class InstallationDetector {
 
     // Steam proton prefixes
     if (this.options.scanSteam !== false) {
+      const liveAppIds = new Set<string>();
+      for (const root of this.steamHomes()) {
+        for (const user of await listDirectory(join(root, "userdata"))) {
+          if (!user.isDirectory) continue;
+          try {
+            const bytes = await Bun.file(join(user.path, "config/shortcuts.vdf")).bytes();
+            for (const shortcut of readSteamShortcuts(bytes)) {
+              liveAppIds.add(String(shortcut.appId));
+              for (const rawPath of [shortcut.exe, shortcut.startDir]) {
+                const path = rawPath.trim().replace(/^"(.*)"$/, "$1");
+                if (!isAbsolute(path)) continue;
+                addRoot(
+                  WOW_EXECUTABLE_NAMES.includes(basename(path)) ? dirname(path) : path,
+                  "steam-shortcut",
+                );
+              }
+            }
+          } catch {
+            // Missing or malformed shortcut files cannot stop other discovery.
+          }
+        }
+      }
       const steamRoots = await this.steamLibraryFolders();
+      for (const library of steamRoots) {
+        for (const entry of await listDirectory(join(library, "steamapps"))) {
+          const appId = /^appmanifest_(\d+)\.acf$/.exec(entry.name)?.[1];
+          if (appId && !entry.isDirectory) liveAppIds.add(appId);
+        }
+      }
       for (const library of steamRoots) {
         const compatRoot = join(library, "steamapps", "compatdata");
         for (const entry of await listDirectory(compatRoot)) {
           if (!entry.isDirectory) {
             continue;
           }
-          prefixes.add(join(entry.path, "pfx"));
+          if (liveAppIds.has(entry.name)) prefixes.add(join(entry.path, "pfx"));
           const driveC = join(entry.path, "pfx", "drive_c");
           if (await isDirectory(driveC)) {
             addRoot(join(driveC, "Program Files (x86)"), "steam");
@@ -447,10 +477,9 @@ export class InstallationDetector {
   }
 
   private async steamLibraryFolders(): Promise<string[]> {
-    const steamHome = join(this.options.homeDir, ".local", "share", "Steam");
-    const roots = [steamHome, join(this.options.homeDir, ".steam", "steam")];
     const libraries = new Set<string>();
-    for (const root of roots) {
+    for (const root of this.steamHomes()) {
+      if (await isDirectory(root)) libraries.add(root);
       const vdf = join(root, "steamapps", "libraryfolders.vdf");
       try {
         const text = await readTextFile(vdf);
@@ -462,5 +491,12 @@ export class InstallationDetector {
       }
     }
     return [...libraries];
+  }
+
+  private steamHomes(): string[] {
+    return [
+      join(this.options.homeDir, ".local/share/Steam"),
+      join(this.options.homeDir, ".steam/steam"),
+    ];
   }
 }
