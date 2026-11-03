@@ -997,8 +997,16 @@ describe("system.updateCheck (the plugin's own update notice)", () => {
       const bad = await call1(4, "system.setUpdateChannel", { channel: "nightly" });
       expect(bad.error.code).toBe("invalid_request");
       // Options cannot set it around the switch's check.
-      const set = await call1(5, "settings.set", { settings: { pluginUpdateChannel: "stable" } });
+      const set = await call1(5, "settings.set", {
+        settings: {
+          pluginUpdateChannel: "stable",
+          pluginUpdateLastRunVersion: "9999.0.0",
+          pluginUpdateStagedVersion: "9999.0.0",
+        },
+      });
       expect(set.result.settings.pluginUpdateChannel).toBe("beta");
+      expect(set.result.settings.pluginUpdateLastRunVersion).toBe(version);
+      expect(set.result.settings.pluginUpdateStagedVersion).toBeNull();
     } finally {
       first.kill();
     }

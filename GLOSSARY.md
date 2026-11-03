@@ -116,7 +116,9 @@ Which WoWDeck builds the owner is offered: **Stable** (releases from `main`,
 `next`, "Built from every merged change. Newer features, may have bugs.").
 Beta also offers a stable release when it is newer than the latest beta build;
 leaving Beta offers the latest stable even when it is older ("Switch to
-stable"). Set under Options › Updates › WoWDeck.
+stable"). Set under Options › Updates › WoWDeck. Installing a beta selects Beta;
+installing a stable zip by hand selects Stable. An in-app stable update keeps
+Beta selected. A channel chosen in Options stays selected across restarts.
 _Avoid_: release channel (that is an addon's Stable/Beta/Alpha).
 
 **Release notes**:

@@ -15,6 +15,8 @@ What's new in each version of WoWDeck Addon Manager. The format follows
 
 ### Changed
 
+- Installing a beta build switches you to Beta updates; installing a stable build by hand
+  switches you back to Stable.
 - On devices it can't run on, WoWDeck now says so instead of telling you to
   try again.
 
