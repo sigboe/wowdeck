@@ -383,12 +383,16 @@ export class InstallationDetector {
     // Steam proton prefixes
     if (this.options.scanSteam !== false) {
       const liveAppIds = new Set<string>();
+      // Without a readable shortcuts file we cannot tell dead prefixes apart.
+      let shortcutsKnown = false;
       for (const root of this.steamHomes()) {
         for (const user of await listDirectory(join(root, "userdata"))) {
           if (!user.isDirectory) continue;
           try {
             const bytes = await Bun.file(join(user.path, "config/shortcuts.vdf")).bytes();
-            for (const shortcut of readSteamShortcuts(bytes)) {
+            const shortcuts = readSteamShortcuts(bytes);
+            shortcutsKnown = true;
+            for (const shortcut of shortcuts) {
               liveAppIds.add(String(shortcut.appId));
               for (const rawPath of [shortcut.exe, shortcut.startDir]) {
                 const path = rawPath.trim().replace(/^"(.*)"$/, "$1");
@@ -417,7 +421,7 @@ export class InstallationDetector {
           if (!entry.isDirectory) {
             continue;
           }
-          if (liveAppIds.has(entry.name)) prefixes.add(join(entry.path, "pfx"));
+          if (!shortcutsKnown || liveAppIds.has(entry.name)) prefixes.add(join(entry.path, "pfx"));
           const driveC = join(entry.path, "pfx", "drive_c");
           if (await isDirectory(driveC)) {
             addRoot(join(driveC, "Program Files (x86)"), "steam");

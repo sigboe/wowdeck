@@ -213,3 +213,19 @@ test("disabling Steam discovery skips shortcuts and their prefix registries", as
   });
   expect(await disabled.detectCandidates()).toEqual([]);
 });
+
+test("with no readable shortcut file, every compatdata prefix registry is still read", async () => {
+  const live = flavor(join(home, "live/_retail_"));
+  prefix(3000000001, live);
+  const dosdevices = join(steam, "steamapps/compatdata/3000000001/pfx/dosdevices");
+  mkdirSync(dosdevices);
+  symlinkSync("/", join(dosdevices, "z:"));
+  expect(await detector().detectCandidates()).toEqual([
+    {
+      location: live,
+      clientType: WowClientType.Retail,
+      validity: "confirmed",
+      detectionSource: "prefix-registry",
+    },
+  ]);
+});
