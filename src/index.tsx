@@ -12,6 +12,7 @@ import {
 import { definePlugin } from "@decky/api";
 import { FaBoxOpen, FaDiceD6, FaSearch, FaCog } from "react-icons/fa";
 import * as api from "./services/backend";
+import { FindWowWidget } from "./components/FindWowWidget";
 import { InstalledView } from "./components/InstalledView";
 import { GetAddonsTab as GetAddonsBrowseTab } from "./components/GetAddonsTab";
 import { SettingsView } from "./components/SettingsView";
@@ -81,10 +82,8 @@ function Content() {
   const selectedTabRef = useRef<HTMLDivElement>(null);
   const remeasureScroll = useScrollBuffer(rootRef, { attach: true });
   // Module scope (addonSession.ts): the panel unmounts for every menu (G4).
-  const { addons, loads, installations, selectedId } = useSyncExternalStore(
-    addonSession.subscribe,
-    addonSession.get,
-  );
+  const { addons, loads, installations, selectedId, findingWow, findWowResult } =
+    useSyncExternalStore(addonSession.subscribe, addonSession.get);
   const [engineOk, setEngineOk] = useState<boolean | null>(null);
   // Set when the bridge reports this machine has no engine at all: no
   // amount of retrying helps, so the panel says so instead (no Retry).
@@ -246,12 +245,26 @@ function Content() {
 
       {tab === "installed" && (
         <>
-          <InstalledView
-            addons={addons}
-            loading={loads > 0}
+          <FindWowWidget
+            installationCount={installations.length}
+            detecting={findingWow}
+            result={findWowResult}
+            onDetect={() => void addonSession.findWow()}
+            onOpenOptions={() => {
+              setRestoreRows(true);
+              bumperEntry.current = false;
+              setTab("settings");
+            }}
             restoreRows={restoreRows}
-            multipleInstallations={installations.length > 1}
           />
+          {installations.length > 0 && (
+            <InstalledView
+              addons={addons}
+              loading={loads > 0}
+              restoreRows={restoreRows}
+              multipleInstallations={installations.length > 1}
+            />
+          )}
         </>
       )}
       {tab === "browse" && (

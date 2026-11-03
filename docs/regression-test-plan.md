@@ -145,6 +145,7 @@ inactive tabs have no text for `seek` to match.
 
 | ID | Pri | S | Steps | Expected |
 |---|---|---|---|---|
+| M-0 | P1 | S | With no WoW installation, open My Addons. Press Find WoW, retry after an empty or failed scan, then open Options. Repeat with a detectable installation, including one with no addons. | Find WoW appears only without an installation. Scanning shows progress and prevents another scan. An empty scan reports zero; failure offers a retry and manual setup. Open Options leads to the existing folder and Steam library settings. The widget suggests linking WoW or Battle.net for game page and tile updates. A successful scan shows the installation's addons, or its empty addon list, without the widget. |
 | M-1 | P1 | S | D-pad Down through the list | One stop per addon; the page scrolls with focus; nothing skipped |
 | M-2 | P1 | S | Focus an addon; look at the footer | A **Details**, Menu **Options**, and X **Update** only when that addon has an update |
 | M-3 | P1 | S | A on a managed addon | Details opens (carousel, description, changelog); B closes and focus returns near the row |
