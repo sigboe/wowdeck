@@ -442,6 +442,7 @@ interval, with plain-text notes.
 | PU-26 | P1 | S | Options › Updates, up to date: focus the WoWDeck row's **⋯**, press X; then press A | The footer shows **X Check again**, no Y. The row's description reads "Checking…" until the toast "WoWDeck is up to date". When a newer build exists, the toast reads "WoWDeck <version> is available" and the panel appears. A still opens the update channel modal (verified DEVICE 2026-10-28, engine built as 0.2.1-beta.6 on Beta, stored answer 0.2.1-beta.6. The row read `WoWDeck 0.2.1-beta.6` / `Up to date`. On **⋯** the footer showed **X Check again**, A Select and B Back, no Y. Two X presses 180 ms apart sent one forced check; the description read "Checking…" for about 0.4 s, then one toast "WoWDeck is up to date". A opened the update channel modal with **Stable** focused, and B closed it with focus back on **⋯**. The newer-build case ran with the engine built as 0.2.1-beta.3 and a stored answer naming 0.2.1-beta.3: no panel, row "Up to date", Y on **⋯** did nothing. X then brought the panel "WoWDeck 0.2.1-beta.6 available" and the toast "WoWDeck 0.2.1-beta.6 is available". During a check started from the panel the row also read "Checking…") |
 | PU-27 | P1 | S | Options › Updates with an offered build that has release notes: focus the WoWDeck row's **⋯**, press Y; press B; press Y again and A on the modal's **Update** | The footer shows **Y Release notes**. Y opens the same "WoWDeck X.Y.Z release notes" modal as PU-24, **Update** focused; B closes it with focus back on **⋯**; A starts the update as in PU-11 (verified DEVICE 2026-10-28, engine built as 0.2.1-beta.3 on Beta, offer 0.2.1-beta.6. On **⋯** the footer showed **X Check again** and **Y Release notes**. Y opened "WoWDeck 0.2.1-beta.6 release notes", plain text with • bullets, **Update** focused, footer A Update and B Back. B closed it with focus back on **⋯**. Y again, then A on the modal's **Update**: the panel's button read "Preparing…", disabled, the log showed `[self-update] staged WoWDeck 0.2.1-beta.6 for Decky's installer (sha256 dbe4f436…)`, and Decky's prompt "Update WoWDeck" asked to update to 0.2.1-beta.6. B cancelled the prompt, so the install did not run, and the QAM went back to Decky's plugin list) |
 | PU-28 | P1 | | On Stable, install a beta zip by hand and restart. Pick Stable in Options and restart again. On Beta, install a stable zip by hand, then repeat with a newer stable through the in-app updater. Also try a first install without settings and a first start without a stored last-run version | The beta install selects Beta before the first check. The choice made in Options survives a restart of the same build. A stable zip installed by hand selects Stable; an in-app stable update keeps Beta. Without a stored last-run version, the installed build selects its channel. Options › Updates shows the channel, with no notice about the switch. Automated coverage is in `backend/tests/plugin-update-check.test.ts` and `backend/tests/update-stager.test.ts` (partly verified DEVICE 2026-11-03, build 1.0.1 with engine RPCs and restarts. Beta picked, then a restart of the same build: still **Beta**. From Stable, a build labelled 1.0.2-beta.99 installed by hand: **Beta**. From that Beta, stable 1.0.1 installed by hand: **Stable**. No errors in the plugin log. Not run on the device: the in-app stable update, which needs Decky's installer prompt; the first start without a stored version; and the Options › Updates screen) |
+| PU-29 | P0 | | Upgrade from the last stable release. Remove WoWDeck, install the last stable `WoWDeck.zip` from GitHub Releases, then find WoW and install, update and roll back a few addons so its saved addon information is real. Pick **Beta** in Options › Updates and press **Update** on the panel for the release candidate beta. After the reload, open My Addons, Get Addons and Options, then update, roll back and remove one addon | Decky's prompt installs the candidate and WoWDeck reloads on it. Every addon, installation and setting from the old version is still there. No tab shows the recovery notice or the can't-read-saved-information notice. The addon actions work, and the log has no errors |
 
 ### 4.6 WTF backup (folds in WF-01 `deck_verification`)
 
@@ -524,8 +525,35 @@ or restore strays remain. The pre-test snapshot is
 ## 7. Known risks to look at first
 
 These are the places most likely to be wrong, so check them first in a full
-run. Updated 2026-10-15 after the owner's first device pass and the fixes for
-it; again 2026-10-18 for the widened-QAM rework:
+run. The newest list comes first.
+
+### Before 1.1.0 (2026-11-04)
+
+1.1.0 is the first release with the arm64 engine and with transactional
+addon changes. The Recovery screen still has only Retry (#118 is not in this
+release). If the engine fails to start on a device, the player's only fix is
+a manual reinstall, so check engine start before anything else.
+
+1. E-1, E-7: the engine starts on the Deck and on DroidDeck from the same
+   zip, and E-3's log line names the right binary for each machine.
+2. PU-29: the new version reads the addon information that 1.0.1 saved,
+   with no recovery notice and nothing lost.
+3. R-1, R-2, R-7 to R-13: every addon install, update and removal now goes
+   through a transaction. An interrupted change must leave either the old or
+   the new files, and recovery must finish or undo it.
+4. E-10 to E-12, R-4, M-45: detection now reads Battle.net prefixes, Steam
+   shortcuts and the SD card. Look for missed installs, duplicates and
+   entries pointing at the wrong flavor.
+5. PU-20, PU-23, PU-28: the update channel follows the installed build, and
+   switching back from Beta to Stable works.
+6. Q-1 to Q-6, GA-3, GA-27: L1/R1 and the widened Get Addons on the Steam
+   build installed at test time.
+
+### Earlier risks (2026-10-15 to 2026-10-18)
+
+Written after the owner's first device pass and the fixes for it, then
+updated for the widened-QAM rework.
+
 
 1. Q-1b: the glyphs come from Steam's own glyph component, found at runtime;
    if the lookup misses, text "L1/R1" shows instead.
