@@ -141,6 +141,25 @@ stable version and the release steps above are unchanged. The version and
 prune choices are `tools/beta-release.ts` (tests beside it); pruning only
 ever matches `v*-beta.*`, and `release.yml` ignores those tags.
 
+### Branch protection
+
+The repository deletes a PR's head branch after merging it. On
+2026-10-31 that deleted `main`: a PR merged `main` back into `next`, and
+GitHub then removed its head branch. Two rulesets now stop that from
+happening again:
+
+- The `main: releases only` ruleset blocks deleting or force-pushing
+  `main`. `main` changes only through a PR that passes the Release gate
+  and merges with a merge commit.
+- The `next: no deletion or force push` ruleset blocks the same two
+  things on `next`.
+
+GitHub doesn't auto-delete a protected head branch, so a PR from `main`
+into `next` is now safe. A hotfix still goes on its own `hotfix/X.Y.Z`
+branch off `main`. Merge it into `main`, then into `next`. Don't remove
+or loosen either ruleset to get a release through. When the gate is red,
+fix the release.
+
 ## Testing on a real Steam Deck
 
 Decky plugins are best verified on real hardware. SSH is enabled by default
