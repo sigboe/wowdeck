@@ -136,9 +136,10 @@ leaving Beta offers the latest stable even when it is older ("Switch to
 stable"). Set under Options › Updates › WoWDeck. Installing a beta selects Beta;
 installing a stable zip by hand selects Stable. An in-app stable update keeps
 Beta selected. A channel chosen in Options stays selected across restarts.
-A test build (`X.Y.Z-test.N`, made for device testing, never published)
-selects Beta and checks like any build: it sorts above every beta of its own
-release, so only a newer release or a newer X.Y.Z is offered.
+A test build (`X.Y.Z-test.N`, made for device testing, never published) is on
+no channel: no channel is checked, Check again is hidden, and the channel
+picker always offers the chosen channel's newest build ("Switch to beta X",
+"Switch to stable X") — the way out of a test build.
 _Avoid_: release channel (that is an addon's Stable/Beta/Alpha).
 
 **Release notes**:

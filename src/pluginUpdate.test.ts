@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import {
   closeStalePanel,
+  isTestBuild,
   panelOffer,
   pluginUpdateDot,
   pluginUpdateRow,
@@ -123,6 +124,55 @@ describe("releaseNotesAction: Y on the panel's Update button", () => {
 
   test("no offer, no action", () => {
     expect(releaseNotesAction(null)).toBeNull();
+  });
+});
+
+describe("isTestBuild", () => {
+  test("true only for a test build's answer (X.Y.Z-test.N)", () => {
+    expect(isTestBuild(info({ currentVersion: "1.0.2-test.114" }))).toBe(true);
+  });
+
+  test("false for a release, a beta and a failed answer", () => {
+    expect(isTestBuild(info({ currentVersion: "1.1.1" }))).toBe(false);
+    expect(isTestBuild(info({ currentVersion: "1.1.2-beta.29" }))).toBe(false);
+    expect(isTestBuild(info({ status: "unknown", failed: true }))).toBe(false);
+  });
+
+  test("false before the engine answered", () => {
+    expect(isTestBuild(null)).toBe(false);
+  });
+});
+
+describe("a leaveTest offer (the way out of a test build)", () => {
+  const LEAVE_TEST = info({
+    status: "available",
+    currentVersion: "1.0.2-test.114",
+    offer: {
+      kind: "leaveTest",
+      version: "1.0.2-beta.27",
+      headline: "Switch to beta 1.0.2-beta.27",
+      buttonLabel: "Switch to beta 1.0.2-beta.27",
+      toastBody: "Switch in Options",
+      rowLabel: "Switch to beta 1.0.2-beta.27",
+      releaseNotes: null,
+      releaseUrl: "https://github.com/sigboe/wowdeck/releases/tag/v1.0.2-beta.27",
+      installable: true,
+    },
+  });
+
+  test("the Updates row names the switch and the version transition", () => {
+    expect(pluginUpdateRow(LEAVE_TEST)).toEqual({
+      label: "Switch to beta 1.0.2-beta.27",
+      description: "1.0.2-test.114 → 1.0.2-beta.27",
+    });
+  });
+
+  test("the panel offers it and toasts once, like any installable offer", () => {
+    expect(panelOffer(LEAVE_TEST)?.kind).toBe("leaveTest");
+    expect(pluginUpdateToast({ ...LEAVE_TEST, toastPending: true })).toEqual({
+      title: "Switch to beta 1.0.2-beta.27",
+      body: "Switch in Options",
+    });
   });
 });
 

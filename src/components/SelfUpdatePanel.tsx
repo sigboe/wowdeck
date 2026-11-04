@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from "react";
 import { DialogButton, Field } from "@decky/ui";
 import { QAM_VIEW } from "../qamState";
-import { panelOffer, pluginUpdateDot, releaseNotesAction } from "../pluginUpdate";
+import { isTestBuild, panelOffer, pluginUpdateDot, releaseNotesAction } from "../pluginUpdate";
 import { selfUpdateStore } from "../selfUpdate";
 import { FocusRow } from "./FocusSlot";
 import { openReleaseNotesModal } from "./ReleaseNotesModal";
@@ -26,6 +26,9 @@ export function SelfUpdatePanel() {
     return null;
   }
   const releaseNotes = releaseNotesAction(offer);
+  // No Check again on a test build: the answer can only repeat the same
+  // leave-test offer; the channel modal (⋯ on the Updates row) is the way.
+  const test = isTestBuild(info);
   return (
     <div style={{ padding: "0 16px 8px" }}>
       <FocusRow view={QAM_VIEW.settings} id="selfUpdate">
@@ -34,8 +37,10 @@ export function SelfUpdatePanel() {
             style={{ position: "relative", minWidth: 0, width: "auto", padding: "8px 16px" }}
             disabled={staging || checking}
             onClick={() => void selfUpdateStore.runUpdate()}
-            onSecondaryActionDescription="Check again"
-            onSecondaryButton={() => void selfUpdateStore.checkAgain()}
+            {...(!test && {
+              onSecondaryActionDescription: "Check again",
+              onSecondaryButton: () => void selfUpdateStore.checkAgain(),
+            })}
             onOptionsActionDescription={releaseNotes?.label}
             onOptionsButton={
               releaseNotes

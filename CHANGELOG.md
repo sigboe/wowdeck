@@ -13,6 +13,10 @@ What's new in each version of WoWDeck Addon Manager. The format follows
 - Addon details show every game version a release supports as colored tags with friendly names, including Titan Reforged, so multi-game addons list them all.
 - Titan Reforged and China Beta installations are detected and can be added, so their addons install like any other client.
 
+### Changed
+
+- A test build now shows the way out: pick Beta or Stable under Options › Updates to switch to it.
+
 ### Fixed
 
 - The WoWDeck update row in Options shows just the version change and no longer runs off the right edge.

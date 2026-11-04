@@ -324,8 +324,12 @@ export class PluginUpdateCheck {
     // Stable never offers an older build — except to a running beta, which
     // is on the wrong channel: leaving Beta offers the latest stable.
     const betaOnStable = stampChannel(stamp) === "stable" && isBetaVersion(this.currentVersion);
+    // A test build is not on a channel: its owner needs the way back to a
+    // published one, so the channel's newest build is offered however it
+    // compares (a genuinely newer build took the "update" branch above).
+    const leaveTest = cmp <= 0 && isTestVersion(this.currentVersion);
     const switchToStable = cmp < 0 && betaOnStable;
-    if (cmp <= 0 && !switchToStable) {
+    if (cmp <= 0 && !switchToStable && !leaveTest) {
       return {
         status: "current",
         currentVersion: this.currentVersion,
@@ -336,6 +340,29 @@ export class PluginUpdateCheck {
       };
     }
     const version = stamp.latestVersion;
+    if (leaveTest) {
+      // The stored answer's channel is the one the owner would land on.
+      const channelName = stampChannel(stamp) === "beta" ? "beta" : "stable";
+      const switchLabel = `Switch to ${channelName} ${version}`;
+      return {
+        status: "available",
+        currentVersion: this.currentVersion,
+        offer: {
+          kind: "leaveTest",
+          version,
+          headline: switchLabel,
+          buttonLabel: switchLabel,
+          toastBody: "Switch in Options",
+          rowLabel: switchLabel,
+          releaseNotes: stamp.releaseNotes ? releaseNotesText(stamp.releaseNotes) : null,
+          releaseUrl: stamp.releaseUrl ?? RELEASES_PAGE,
+          installable: stamp.downloadUrl !== null,
+        },
+        downloadUrl: stamp.downloadUrl,
+        checked: false,
+        failed: false,
+      };
+    }
     const switchLabel = `Switch to stable ${version}`;
     return {
       status: "available",
