@@ -587,6 +587,49 @@ updated for the widened-QAM rework.
 
 ## 8. Result record
 
+### Release 1.1.0, November 4, 2026
+
+DEVICE. The candidate was the v1.0.2-beta.29 release zip (3a241e6), which
+has the same code as v1.1.0; only Markdown and the version changed after it.
+The runs used CDP probes, the virtual pad and engine RPC over SSH, and
+`droiddeckctl` on the phone.
+
+On the Deck (SteamOS 3.9.5), before release:
+
+- Passed: E-1, E-3, R-13, Q-1, Q-4, and PU-20 up to the Switch button.
+- PU-29 passed. Starting from the real v1.0.1 zip with an empty state, the
+  Deck matched 41 addons over 3 installations. After addon changes in 1.0.1,
+  the Beta update to the candidate kept every addon and installation, and no
+  tab showed a recovery notice.
+- Found #122 (P2). The release URL in the WoWDeck row in Options › Updates
+  runs past the QAM's edge.
+- Q-1b showed F6/F7 keycaps after CDP keyboard input. On the phone, real pad
+  input shows L1/R1; recheck on the Deck with the pad.
+
+On DroidDeck 0.6.9 (arm64), before release:
+
+- E-7 passed. The zip installed through Decky's installer with the engine at
+  mode 0600. After the session restart the log names `wowdeck-aarch64` and
+  says the execute bit was restored. The phone now has a real WoW Forever
+  install, which WoWDeck found on its own. MyWheel installed from Latest and
+  Menu › Remove deleted it.
+- GA-27 passed in full, including the Friends check: Friends' own expand
+  still works, and Get Addons widens again afterwards.
+- Decky hung again after the update until the session restarted. The cause
+  is DroidDeck's Decky build, which runs Python 3.14 under proot. It is
+  reported as Droid-Deck/DroidDeck#2103.
+
+On the Deck after publishing, PU-4, PU-11 and PU-12 passed. 1.0.1 on Stable
+was offered 1.1.0 and installed it through Decky's prompt. The staged zip's
+sha256 matched the published asset. Afterwards the channel was still Stable,
+all 3 installations and 45 addons were there, and no tab showed a recovery
+notice.
+
+These did not run before release: R-1, R-2, R-4 and M-45, which need a
+suspend, a Wi-Fi drop or the SD card; R-7 to R-12; E-10 to E-12; PU-23 and
+PU-28; GA-3 on the Deck; and the rest of the full plan. Start the next run
+with them.
+
 ### Device run, November 3, 2026
 
 DEVICE, ticket #64, M-0 and O-2a. Tested through Deck CEF probes and controller
