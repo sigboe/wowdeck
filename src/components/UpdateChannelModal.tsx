@@ -19,14 +19,16 @@ const TITLE = "WoWDeck Update Channel";
  * Valve's Steam Client Update Channel: one row per channel, the active one
  * checked. A picks and closes at once, with no confirm step; B closes
  * without changing anything. The panel is unmounted while this is open
- * (G4): the choice goes through `onPick`.
+ * (G4): the choice goes through `onPick`. A test build is on no channel
+ * (`current` null): no row is checked, and picking either — even the one
+ * stored — switches, because that pick is its way out of the test build.
  */
 function UpdateChannelModal({
   current,
   onPick,
   closeModal,
 }: {
-  current: UpdateChannel;
+  current: UpdateChannel | null;
   onPick: (channel: UpdateChannel) => void;
   closeModal?: () => void;
 }) {
@@ -63,7 +65,7 @@ function UpdateChannelModal({
 }
 
 export function openUpdateChannelModal(
-  current: UpdateChannel,
+  current: UpdateChannel | null,
   onPick: (channel: UpdateChannel) => void,
 ): void {
   const close = () => modalResult.Close();

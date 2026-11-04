@@ -18,6 +18,16 @@ import type { DotColor } from "./updateDot";
 export type PluginUpdateInfo = MethodMap["system.updateCheck"]["result"];
 
 /**
+ * Whether the running WoWDeck is a test build (X.Y.Z-test.N), read from the
+ * engine's answer: a test build is on no update channel, so its Check again
+ * is hidden and the channel modal checks no row — picking a channel is the
+ * way out (the engine then offers that channel's newest build, `leaveTest`).
+ */
+export function isTestBuild(info: PluginUpdateInfo | null): boolean {
+  return info?.currentVersion !== undefined && /-test\.\d+$/.test(info.currentVersion);
+}
+
+/**
  * The "WoWDeck Update Channel" modal's rows (GLOSSARY: Update channel),
  * after Valve's Steam Client Update Channel: a name and one line each.
  */

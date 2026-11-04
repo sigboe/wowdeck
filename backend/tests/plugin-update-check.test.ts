@@ -1279,21 +1279,45 @@ describe("the installed build sets the update channel", () => {
   });
 });
 
-describe("a test build checks like any other (established DEVICE 2026-11-04: 1.0.2-test.114 answered \"Couldn't check for updates\" and backed off)", () => {
-  test("the same release's betas are not newer: current, no failure backoff", async () => {
+describe("a test build checks like any other, and always has the way out (established DEVICE 2026-11-04: 1.0.2-test.114 answered \"Couldn't check for updates\" and backed off)", () => {
+  test("the channel's newest build is offered as a leave-test switch, older or not", async () => {
     const h = makeCheck({
       currentVersion: "1.0.2-test.114",
       channel: "beta",
       respond: () => [withZip("v1.0.2-beta.27")],
     });
     const result = await h.check.check({ force: true });
-    expect(result.status).toBe("current");
+    expect(result.status).toBe("available");
     expect(result.failed).toBe(false);
     expect(h.backoff()).toBeNull();
+    expect(result.offer).toMatchObject({
+      kind: "leaveTest",
+      version: "1.0.2-beta.27",
+      headline: "Switch to beta 1.0.2-beta.27",
+      buttonLabel: "Switch to beta 1.0.2-beta.27",
+      rowLabel: "Switch to beta 1.0.2-beta.27",
+      toastBody: "Switch in Options",
+      installable: true,
+    });
     expect(h.stamp()?.latestVersion).toBe("1.0.2-beta.27");
   });
 
-  test("a newer X.Y.Z on Beta is offered", async () => {
+  test("the leave-test offer names Stable on Stable's answer", async () => {
+    const h = makeCheck({
+      currentVersion: "1.0.2-test.114",
+      channel: "stable",
+      respond: () => withZip("v1.0.1"),
+    });
+    const result = await h.check.check({ force: true });
+    expect(result.status).toBe("available");
+    expect(result.offer).toMatchObject({
+      kind: "leaveTest",
+      version: "1.0.1",
+      headline: "Switch to stable 1.0.1",
+    });
+  });
+
+  test("a genuinely newer X.Y.Z is offered as a plain update, not a switch", async () => {
     const h = makeCheck({
       currentVersion: "1.0.2-test.114",
       channel: "beta",
@@ -1301,7 +1325,7 @@ describe("a test build checks like any other (established DEVICE 2026-11-04: 1.0
     });
     const result = await h.check.check({ force: true });
     expect(result.status).toBe("available");
-    expect(result.offer?.version).toBe("1.0.3-beta.1");
+    expect(result.offer).toMatchObject({ kind: "update", version: "1.0.3-beta.1" });
   });
 
   test("a test-tagged release on the list is never offered to Beta", async () => {
@@ -1325,6 +1349,18 @@ describe("a test build checks like any other (established DEVICE 2026-11-04: 1.0
     });
     expect(h.check.channel()).toBe("beta");
     const result = await h.check.check({ force: true });
-    expect(result.status).toBe("current");
+    expect(result.offer?.kind).toBe("leaveTest");
+  });
+
+  test("the leave-test offer toasts once per version like any offer", async () => {
+    const h = makeCheck({
+      currentVersion: "1.0.2-test.114",
+      channel: "beta",
+      respond: () => [withZip("v1.0.2-beta.27")],
+    });
+    const first = await h.check.check(NOTIFY);
+    expect(first.toastPending).toBe(true);
+    const again = await h.check.check({ ...NOTIFY, force: true });
+    expect(again.toastPending).toBe(false);
   });
 });
