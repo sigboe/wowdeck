@@ -4,6 +4,8 @@ import type {
   RecoveryRetryResult,
   RecoveryVerifyResult,
   StateFileRecoveryStatus,
+  ReleaseChannel,
+  SearchResult,
 } from "./types";
 import { createStore, type Store } from "./store";
 import {
@@ -39,6 +41,19 @@ export interface AddonSessionState {
   findWowResult: string | null;
   /** Addon ids with an action running (update, reinstall, channel switch, …). */
   busy: Readonly<Record<string, true>>;
+  /**
+   * Get Addons results being installed, by `resultKey`: from before
+   * the install call until the list read that shows the outcome has run.
+   * Kept here so every view of a result (Results, Details, a remounted QAM)
+   * shows it pending, and a second install of it is refused.
+   */
+  installing: Readonly<Record<string, true>>;
+  /**
+   * An installation switch is underway: from before its selection call until
+   * its list read has settled. Catalogue installs are refused meanwhile, so
+   * views show them unavailable.
+   */
+  switching: boolean;
   /** Null, or which Update all runs: this installation or every one (WF-13). */
   updatingAll: null | "installation" | "all";
   showIgnored: boolean;
@@ -133,6 +148,8 @@ export function createAddonSession(deps: AddonSessionDeps): AddonSession {
     findingWow: false,
     findWowResult: null,
     busy: {},
+    installing: {},
+    switching: false,
     updatingAll: null,
     showIgnored: false,
     filter: "",
@@ -307,13 +324,47 @@ export function createAddonSession(deps: AddonSessionDeps): AddonSession {
     }
   }) as typeof rpc;
 
-  const actions = createAddonActions({
+  const shared = createAddonActions({
     ...deps,
     rpc: watchedRpc,
     setUpdatingAll: (updatingAll) => store.patch({ updatingAll }),
     begin,
     settled: settle,
   });
+
+  // Pending installs stay apart from `running`: the list read an install
+  // waits for is scheduled by `running` alone, so it never waits on them.
+  const setInstalling = (key: string, pending: boolean) => {
+    const installing = { ...store.get().installing };
+    if (pending) {
+      installing[key] = true;
+    } else {
+      delete installing[key];
+    }
+    store.patch({ installing });
+  };
+  const actions: AddonActions = {
+    ...shared,
+    /**
+     * One install per result at a time, whichever view or release channel
+     * asks: a repeat while it is pending sends nothing and is not queued.
+     */
+    async install(result: SearchResult, channel?: ReleaseChannel) {
+      const key = resultKey(result);
+      // During a switch the result may belong to the previous installation:
+      // refused, not queued.
+      if (store.get().switching || store.get().installing[key]) {
+        return;
+      }
+      setInstalling(key, true);
+      try {
+        // Resolves after its list read, whether that read succeeded or not.
+        await shared.install(result, channel);
+      } finally {
+        setInstalling(key, false);
+      }
+    },
+  };
 
   return {
     get: store.get,
@@ -421,6 +472,13 @@ export function createAddonSession(deps: AddonSessionDeps): AddonSession {
       return result;
     },
     async selectInstallation(id) {
+      // Also guards a selector opened before an install started: refused,
+      // with no selection RPC, and not replayed later.
+      if (store.get().switching || installationSwitchBlocked(store.get())) {
+        return;
+      }
+      // Synchronous, so no install slips in between.
+      store.patch({ switching: true });
       try {
         // The engine's selection first, so the two never disagree.
         await rpc("installations.select", { installationId: id });
@@ -430,7 +488,10 @@ export function createAddonSession(deps: AddonSessionDeps): AddonSession {
         await reloadAddons();
       } catch (e) {
         toastError("Couldn't switch installation", e);
-        void reloadInstallations();
+        // Part of the switch: it ends once this attempt has settled.
+        await reloadInstallations();
+      } finally {
+        store.patch({ switching: false });
       }
     },
   };
@@ -470,11 +531,61 @@ function keepListFields(row: Addon, returned: Addon): Addon {
   };
 }
 
+/** A catalogue result's identity: provider and external addon ID. */
+export interface ResultRef {
+  providerId: string;
+  externalId: string;
+}
+
+/**
+ * The result's key among rows and pending installs. The release channel is
+ * only a choice for an install, not part of the identity.
+ */
+export function resultKey(result: ResultRef): string {
+  return `${result.providerId}:${result.externalId}`;
+}
+
+/**
+ * Why installation selectors are off right now, or null when switching is
+ * allowed. A pending catalogue install settles on the installation whose list
+ * the session shows, so switching waits for every one to settle. Derived from
+ * the installs alone: it never lifts any other restriction.
+ */
+export function installationSwitchBlocked(
+  state: Pick<AddonSessionState, "installing">,
+): string | null {
+  return Object.keys(state.installing).length > 0 ? "Wait for addon installs to finish." : null;
+}
+
+/** The result is being installed (from any view). */
+export function isInstallPending(
+  state: Pick<AddonSessionState, "installing">,
+  result: ResultRef,
+): boolean {
+  return !!state.installing[resultKey(result)];
+}
+
+/**
+ * What every view of a Get Addons result shows, read from the session's
+ * current state: the installed addon it stands for, its tags, what X does,
+ * and whether it is working (installing, or its installed addon busy), when
+ * X and the release channel menu are unavailable.
+ */
+export function catalogueResult(
+  state: Pick<AddonSessionState, "addons" | "busy" | "installing">,
+  result: ResultRef,
+) {
+  const installed = installedAddonFor(state.addons, result);
+  return {
+    installed,
+    tags: resultTags(installed),
+    installLabel: resultInstallLabel(installed),
+    pending: isInstallPending(state, result) || (!!installed && !!state.busy[installed.id]),
+  };
+}
+
 /** The installed addon a provider result stands for, matched by provider and id. */
-export function installedAddonFor(
-  addons: readonly Addon[],
-  result: { providerId: string; externalId: string },
-): Addon | null {
+export function installedAddonFor(addons: readonly Addon[], result: ResultRef): Addon | null {
   return (
     addons.find((a) => a.providerId === result.providerId && a.externalId === result.externalId) ??
     null

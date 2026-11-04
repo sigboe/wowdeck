@@ -1,5 +1,5 @@
 import { useEffect, useSyncExternalStore } from "react";
-import { DropdownItem, Field, PanelSection, PanelSectionRow } from "@decky/ui";
+import { Field, PanelSection, PanelSectionRow } from "@decky/ui";
 import { FaSearchLocation } from "react-icons/fa";
 import type { Installation } from "../../types";
 import * as api from "../../services/backend";
@@ -10,6 +10,7 @@ import { confirmRemoveInstallation } from "../confirmRemove";
 import { openInstallationDetails } from "../InstallationDetailsModal";
 import { QAM_DROPDOWN_VALUE } from "../dropdownValue";
 import { FactLine } from "../FactLine";
+import { InstallationSelect } from "../InstallationSelect";
 import { FocusRow } from "../FocusSlot";
 import { SettingsRow, VIEW, busyIcon } from "./common";
 import {
@@ -21,13 +22,12 @@ import {
 interface Props {
   installations: Installation[];
   selectedId: string | null;
-  onSelect: (id: string) => void;
   /** Reload installations + addons after structural changes. */
   onChanged: () => Promise<void>;
 }
 
 /** The active installation (its details on the Options button) and detection. */
-export function InstallationsSection({ installations, selectedId, onSelect, onChanged }: Props) {
+export function InstallationsSection({ installations, selectedId, onChanged }: Props) {
   const { findingWow: detecting } = useSyncExternalStore(addonSession.subscribe, addonSession.get);
   const jump = useSyncExternalStore(subscribeInstallationJump, installationJump);
   useEffect(() => clearInstallationJump, []);
@@ -96,7 +96,8 @@ export function InstallationsSection({ installations, selectedId, onSelect, onCh
               : undefined
           }
         >
-          <DropdownItem
+          <InstallationSelect
+            session={addonSession}
             label="Active installation"
             description={
               selected ? (
@@ -112,9 +113,6 @@ export function InstallationsSection({ installations, selectedId, onSelect, onCh
                 />
               ) : undefined
             }
-            rgOptions={installations.map((i) => ({ data: i.id, label: i.displayName }))}
-            selectedOption={selectedId}
-            onChange={(option) => onSelect(option.data as string)}
             renderButtonValue={QAM_DROPDOWN_VALUE}
           />
         </FocusRow>

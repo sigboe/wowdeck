@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   ButtonItem,
-  DropdownItem,
   Field,
   Focusable,
   GamepadButton,
@@ -24,6 +23,7 @@ import { pluginToast } from "./toast";
 import { selfUpdateStore } from "./selfUpdate";
 import { pluginUpdateDot } from "./pluginUpdate";
 import { addonSession } from "./session";
+import { InstallationSelect } from "./components/InstallationSelect";
 import { askUntilAnswered } from "./askUntilAnswered";
 import { QAM_TABS, QAM_VIEW, qamState, type QamTab } from "./qamState";
 import { startSourceJump, startInstallationJump } from "./optionsJump";
@@ -228,12 +228,10 @@ function Content() {
           // div both touched the highlight's edges (guide S27; DEVICE audit).
           <div style={{ padding: "0 16px 8px" }}>
             <FocusRow view={QAM_VIEW.installed} id="installation">
-              <DropdownItem
+              <InstallationSelect
+                session={addonSession}
                 // No label: the button is the whole row (owner, 2026-10-23).
                 menuLabel="Installation"
-                rgOptions={installations.map((i) => ({ data: i.id, label: i.displayName }))}
-                selectedOption={selectedId}
-                onChange={(option) => void addonSession.selectInstallation(option.data as string)}
                 childrenContainerWidth="max"
                 renderButtonValue={QAM_DROPDOWN_BELOW_VALUE}
                 bottomSeparator="none"
@@ -275,7 +273,6 @@ function Content() {
         <GetAddonsBrowseTab
           installations={installations}
           selectedId={selectedId}
-          onSelectInstallation={addonSession.selectInstallation}
           landOnInstallation={bumperEntry.current}
           onExitToNav={() => selectedTabRef.current?.focus()}
           onOpenSources={(providers, marked) => {
@@ -307,7 +304,6 @@ function Content() {
         <SettingsView
           installations={installations}
           selectedId={selectedId}
-          onSelect={addonSession.selectInstallation}
           onChanged={addonSession.reloadAll}
           restoreRows={restoreRows}
         />

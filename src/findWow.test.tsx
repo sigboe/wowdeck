@@ -3,6 +3,7 @@ import type { ReactElement, ReactNode } from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { JSDOM } from "jsdom";
+import { deckyUiStub } from "./deckyUiStub";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { Installation, SearchResult } from "./types";
 
@@ -44,6 +45,7 @@ mock.module("@decky/api", () => ({
 // Steam supplies these controls at runtime. Keep their visible labels and
 // disabled state while rendering outside Steam.
 mock.module("@decky/ui", () => ({
+  ...deckyUiStub,
   Field: (props: RowActions) => {
     row = props;
     return (

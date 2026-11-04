@@ -36,11 +36,54 @@ export const deckyUiStub = {
     description,
     disabled,
     children,
-  }: Kids & { label?: ReactNode; description?: ReactNode; disabled?: boolean }) => (
+    onSecondaryActionDescription,
+    onMenuActionDescription,
+  }: Kids & {
+    label?: ReactNode;
+    description?: ReactNode;
+    disabled?: boolean;
+    onSecondaryActionDescription?: string;
+    onMenuActionDescription?: string;
+  }) => (
     <div data-disabled={disabled ? "true" : undefined}>
       <b>{label}</b>
       <i>{description}</i>
       {children}
+      <footer>
+        {onSecondaryActionDescription && <span>X: {onSecondaryActionDescription}</span>}
+        {onMenuActionDescription && <span>Menu: {onMenuActionDescription}</span>}
+      </footer>
+    </div>
+  ),
+  Navigation: {},
+  GamepadButton: {},
+  ConfirmModal: () => null,
+  Menu: () => null,
+  MenuItem: () => null,
+  showContextMenu: () => {},
+  TextField: () => null,
+  Spinner: () => <span role="progressbar" />,
+  DropdownItem: (p: {
+    label?: string;
+    menuLabel?: string;
+    disabled?: boolean;
+    description?: ReactNode;
+    rgOptions: { data: string; label: string }[];
+    selectedOption: string | null;
+  }) => (
+    <div>
+      <select
+        aria-label={p.label ?? p.menuLabel}
+        disabled={p.disabled}
+        defaultValue={p.selectedOption ?? undefined}
+      >
+        {p.rgOptions.map((o) => (
+          <option key={o.data} value={o.data}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+      {p.description}
     </div>
   ),
   showModal: () => ({ Close: () => {} }),

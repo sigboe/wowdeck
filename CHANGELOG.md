@@ -18,11 +18,12 @@ What's new in each version of WoWDeck Addon Manager. The format follows
 
 ### Changed
 
+- The installation picker is greyed out while a Get Addons install runs.
 - Installing a beta build switches you to Beta updates; installing a stable build by hand
   switches you back to Stable.
-- Manage backups and Copy settings open with your backups shown, and keep them shown with a Retry when a refresh fails.
+- Manage backups and Copy settings keep your backups visible and offer Retry when a refresh fails.
 - Backup actions and the backup folder settings turn off while one of them is running.
-- If WoWDeck loses track of a backup action or folder change, it says the result is unknown and won't repeat it.
+- An unknown backup or folder-change result stays visible, so you can check it before repeating the action.
 - On devices it can't run on, WoWDeck now says so instead of telling you to
   try again.
 - When an addon installs or is removed but its temporary files can't be
@@ -37,6 +38,7 @@ What's new in each version of WoWDeck Addon Manager. The format follows
 - WoW installations using Wow-ARM64.exe are now recognized during installation scans and Steam shortcut detection.
 - A Roll back that fails now leaves the addon as it was and keeps the version
   you can go back to.
+- Get Addons keeps showing an addon as installing, and no longer installs it twice.
 - L1/R1 move one tab at a time instead of sometimes skipping Get Addons.
 - Get Addons opens wide again on newer Steam versions, where Latest, Popular
   and Search stayed out of sight.

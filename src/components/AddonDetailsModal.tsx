@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   DialogButton,
   Field,
@@ -34,6 +34,9 @@ import {
 import { registerDirectScroll, scrollTweenTarget } from "../valveScroll";
 import { nextGalleryIndex } from "../gallery";
 import { holdBrowseSessionForModal } from "../browseSessionState";
+import { addonSession } from "../session";
+import type { AddonSessionState } from "../addonSession";
+import type { ResultActions } from "../resultActions";
 import { SafeMarkdown } from "./SafeMarkdown";
 import { clearModalDimming, stripModalChrome } from "../steamDom/modalChrome";
 
@@ -121,7 +124,19 @@ interface ModalProps {
   dependencies?: DependencyNote | null;
   /** The Relationships page's content; the page exists only when this has entries. */
   relationships?: Relationships | null;
+  /**
+   * Get Addons results: X, Menu and the tags read from the addon session
+   * while the modal is open, in place of the four props above. An install
+   * pending in any view shows here, and once it lands X acts on the
+   * installed addon instead of installing again.
+   */
+  live?: (state: AddonSessionState) => LiveInstall;
 }
+
+type LiveInstall = Pick<
+  ResultActions,
+  "installLabel" | "tags" | "pending" | "onInstall" | "channelMenu"
+>;
 
 /**
  * The identity block of the details header: logo, name, provider pill and
@@ -238,20 +253,24 @@ function AddonDetailsIdentity({
  * props. Both actions close the modal; X is absent when `installLabel` is
  * null.
  */
-function AddonDetailsModal({
+export function AddonDetailsModal({
   result,
-  onInstall,
   closeModal,
   releaseHold,
   bannerUrl,
-  installLabel,
-  tags,
-  channelMenu,
   dependencies,
   relationships,
+  live,
+  ...fixed
 }: ModalProps) {
   const [section, setSection] = useState<Section>("description");
-  const [installing, setInstalling] = useState(false);
+  // The X action this modal is running (closing when it ends), and an install
+  // of this result pending anywhere (the session's).
+  const [running, setRunning] = useState(false);
+  const session = useSyncExternalStore(addonSession.subscribe, addonSession.get, addonSession.get);
+  const now = live?.(session);
+  const { installLabel, tags, channelMenu, onInstall } = now ?? fixed;
+  const installing = running || !!now?.pending;
 
   const {
     value: description,
@@ -381,11 +400,11 @@ function AddonDetailsModal({
     if (installing) {
       return;
     }
-    setInstalling(true);
+    setRunning(true);
     try {
       await onInstall();
     } finally {
-      setInstalling(false);
+      setRunning(false);
       closeModal?.();
     }
   };
@@ -414,8 +433,8 @@ function AddonDetailsModal({
         : installLabel
       : undefined,
     onSecondaryButton: installLabel ? install : undefined,
-    onMenuActionDescription: channelMenu ? "Release channel" : undefined,
-    onMenuButton: channelMenu ? () => channelMenu(() => closeModal?.()) : undefined,
+    onMenuActionDescription: channelMenu && !installing ? "Release channel" : undefined,
+    onMenuButton: channelMenu && !installing ? () => channelMenu(() => closeModal?.()) : undefined,
   };
 
   // The page is one focus target, so Steam treats every D-pad press as a

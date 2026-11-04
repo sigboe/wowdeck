@@ -1,13 +1,7 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useSyncExternalStore } from "react";
 import { FileSelectionType, openFilePicker } from "@decky/api";
 import { DialogButton, Field, Focusable, PanelSectionRow, Spinner, TextField } from "@decky/ui";
-import type {
-  ArchivePreview,
-  Installation,
-  ProviderInfo,
-  ReleaseChannel,
-  SearchResult,
-} from "../types";
+import type { ArchivePreview, Installation, ProviderInfo, SearchResult } from "../types";
 import * as api from "../services/backend";
 import { installationLabel, searchHelperText } from "../search";
 import { browseFocusView, popupOpening } from "../browseSessionState";
@@ -25,12 +19,8 @@ import {
 import { fileImport, installArchive, pickArchive } from "../fileImportState";
 import { hasMore } from "../loadMore";
 import { addonSession } from "../session";
-import {
-  installedAddonFor,
-  recoveryNeededFor,
-  resultInstallLabel,
-  resultTags,
-} from "../addonSession";
+import { resultActions, type ResultActionsDeps } from "../resultActions";
+import { resultKey, recoveryNeededFor, type AddonSessionState } from "../addonSession";
 import { STEAM, descriptionStyle } from "../steamTheme";
 import { AddonResultRow } from "./AddonResultRow";
 import { ZeroCapabilityScreen } from "./ZeroCapabilityScreen";
@@ -38,7 +28,6 @@ import { FocusSlot, focusTarget } from "./FocusSlot";
 import { revealRemembered } from "../focusMemory";
 import { openAddonDetailsModal, resultDetails } from "./AddonDetailsModal";
 import { showChoiceMenu } from "./choiceMenu";
-import { installChannelChoices } from "../releaseChannel";
 import { requireInstallation } from "./requireInstallation";
 
 /**
@@ -47,9 +36,6 @@ import { requireInstallation } from "./requireInstallation";
  * Addons pane (UI-02 rev 2). Everything here is chrome-agnostic; the QAM tab
  * owns the destination list and the pane around it.
  */
-
-/** The result's key among the rows. */
-const resultKey = (r: SearchResult) => `${r.providerId}:${r.externalId}`;
 
 /**
  * What Get Addons needs to act on its sources (GetAddonsTab owns them): the
@@ -78,7 +64,30 @@ export function Status({ text, tone }: { text: string; tone?: "error" | "warning
   return <div style={{ ...descriptionStyle, color }}>{text}</div>;
 }
 
-/** Result rows with one install path and per-row busy state. */
+/**
+ * Opening the Release channel menu for a result. The menu hides the QAM
+ * window; that is not a close.
+ */
+const resultDeps = (onFindInstallations: () => void): ResultActionsDeps => ({
+  requireInstallation: () => requireInstallation(onFindInstallations),
+  actions: addonSession.actions,
+  showChannelMenu: (choices, pick) => {
+    popupOpening();
+    showChoiceMenu("Release channel", choices, undefined, pick);
+  },
+});
+
+/** Details for a result, following the session's state while it is open. */
+const openResultDetails = (r: SearchResult, onFindInstallations: () => void) => {
+  const live = (state: AddonSessionState) =>
+    resultActions(state, r, resultDeps(onFindInstallations));
+  openAddonDetailsModal({ ...resultDetails(r), ...live(addonSession.get()), live });
+};
+
+/**
+ * Result rows with one install path. Whether a result is installing lives in
+ * the addon session, so it survives Details, menus and a remounted QAM.
+ */
 export function ResultList({
   results,
   view,
@@ -90,63 +99,26 @@ export function ResultList({
 }) {
   // My Addons' list says what is installed, however it got there.
   const state = useSyncExternalStore(addonSession.subscribe, addonSession.get);
-  const { addons, busy, installations } = state;
-  const locked = recoveryNeededFor(state) !== null;
-  const [installing, setInstalling] = useState<Record<string, boolean>>({});
-  const install = async (r: SearchResult, channel?: ReleaseChannel) => {
-    if (!requireInstallation(onFindInstallations)) {
-      return;
-    }
-    const key = resultKey(r);
-    setInstalling((m) => ({ ...m, [key]: true }));
-    await addonSession.actions.install(r, channel);
-    setInstalling((m) => ({ ...m, [key]: false }));
-  };
   return (
     <>
       {results.map((r) => {
         const key = resultKey(r);
-        const installed = installedAddonFor(addons, r);
-        const installLabel = locked ? null : resultInstallLabel(installed, installations.length);
-        const tags = resultTags(installed);
-        // An installed addon takes My Addons' update or reinstall path.
-        const primary = () =>
-          !installed || addonSession.get().installations.length === 0
-            ? install(r)
-            : installLabel === "Update"
-              ? addonSession.actions.update(installed)
-              : addonSession.actions.reinstall(installed);
-        // Release channel menu (WF-03, Menu button): install from a channel.
-        const choices = locked ? null : installChannelChoices(r);
-        const channelMenu = choices
-          ? (afterPick?: () => void) => {
-              // The menu hides the QAM window; that is not a close.
-              popupOpening();
-              showChoiceMenu("Release channel", choices, undefined, (c) => {
-                afterPick?.();
-                void install(r, c);
-              });
-            }
-          : undefined;
+        const { pending, tags, installLabel, onInstall, channelMenu } = resultActions(
+          state,
+          r,
+          resultDeps(onFindInstallations),
+        );
         return (
           <PanelSectionRow key={key}>
             <AddonResultRow
               memory={view ? focusTarget(view, key) : undefined}
               result={r}
-              installing={!!installing[key] || (!!installed && !!busy[installed.id])}
+              installing={pending}
               tags={tags}
               installLabel={installLabel}
-              onInstall={() => void primary()}
+              onInstall={() => void onInstall()}
               onChannelMenu={channelMenu && (() => channelMenu())}
-              onDetails={() =>
-                openAddonDetailsModal({
-                  ...resultDetails(r),
-                  installLabel,
-                  tags,
-                  onInstall: primary,
-                  channelMenu,
-                })
-              }
+              onDetails={() => openResultDetails(r, onFindInstallations)}
             />
           </PanelSectionRow>
         );
