@@ -32,7 +32,7 @@ import { FocusRow } from "./components/FocusSlot";
 import { RecoveryNotice } from "./components/RecoveryNotice";
 import { QAM_DROPDOWN_BELOW_VALUE } from "./components/dropdownValue";
 import { STEAM_NO_TRANSFORM_SCROLL, useScrollBuffer } from "./components/ScrollBuffer";
-import { handleWtfEvent } from "./wtfBackupState";
+import { wtfLifecycle } from "./wtfSession";
 import { wtfCompletedToast } from "./wtfText";
 import { patchGamePage } from "./steamGamePage";
 import { autoUpdateText } from "./steamLibrary";
@@ -360,9 +360,9 @@ export default definePlugin(() => {
 
   // WTF backup/restore jobs run in the engine and outlive any panel or modal, so their
   // progress/outcome events are subscribed once per plugin load into a module-scope
-  // store (wtfBackupState.ts), not in a component that a modal would unmount.
+  // lifecycle (wtfLifecycle.ts), not in a component that a modal would unmount.
   const offWtfEvents = api.onBackendEvent((event) => {
-    handleWtfEvent(event);
+    wtfLifecycle.handleEvent(event);
     if (event.event === "wtf.completed") {
       const toast = wtfCompletedToast(event.params);
       if (toast) {

@@ -113,6 +113,17 @@ The frontend's Steam DOM reach (QAM widening, QAM visibility, the home
 badge, the Details modal chrome) lives in `src/steamDom/`, one file per hack,
 each stating what it depends on, how it fails and its kill switch.
 
+Settings backups have one frontend owner, `src/wtfLifecycle.ts` (ADR 0007).
+It holds the backup lists and copy sources that Options, Manage backups and
+Settings copy show, the actions that change them, and the one operation
+slot. Lists are per-installation resources from `src/keyedResource.ts`,
+which handles viewers, shared polling and stale answers.
+`src/wtfAffected.ts` decides which lists each change makes stale.
+`src/wtfSession.ts` connects the lifecycle to the engine and gives views
+their hooks. The lifecycle reads time through `src/clock.ts`, so tests drive
+it through the typed RPC with a manual clock and a deferred transport
+(`src/testSupport/`).
+
 ## WowUp relationship
 
 `wowup/` is a pinned WowUp checkout used as a read-only reference during

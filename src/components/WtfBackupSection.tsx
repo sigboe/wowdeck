@@ -1,18 +1,16 @@
-import { useState, useSyncExternalStore } from "react";
+import { useSyncExternalStore } from "react";
 import { ButtonItem, DropdownItem, Field, PanelSection, PanelSectionRow } from "@decky/ui";
 import { FaChevronRight, FaFolderOpen } from "react-icons/fa";
 import { FileSelectionType, openFilePicker } from "@decky/api";
-import type { Installation, PluginSettings } from "../types";
-import * as api from "../services/backend";
+import type { Installation } from "../types";
 import { settingsStore } from "../settings";
-import { useWtfList } from "../useWtfList";
-import { bumpWtfList, clearWtfOutcome, getWtfState, subscribeWtfState } from "../wtfBackupState";
+import { useBackupList, useWtfOperation, wtfLifecycle } from "../wtfSession";
 import { formatBytes, formatWhen } from "../wtfFormat";
-import { friendlyWtfCallError, jobPercent, jobProgressText } from "../wtfText";
+import { jobPercent, jobProgressText } from "../wtfText";
 import { FocusRow } from "./FocusSlot";
 import { QAM_VIEW } from "../qamState";
 import { QamProgressBar } from "./QamProgressBar";
-import { STEAM, descriptionStyle } from "../steamTheme";
+import { STEAM, descriptionStyle, outcomeColor } from "../steamTheme";
 
 import { openWtfBackupModal } from "./WtfBackupModal";
 
@@ -27,26 +25,16 @@ interface Props {
  * The variable-length backup list lives in a modal (guide P9).
  */
 export function WtfBackupSection({ installation }: Props) {
-  const wtf = useSyncExternalStore(subscribeWtfState, getWtfState);
-  const { list, error, loading, reload } = useWtfList(installation?.id ?? null, wtf.listVersion);
-  const [actionError, setActionError] = useState<string | null>(null);
+  const op = useWtfOperation();
+  const { data: list, error, loading, refresh: reload } = useBackupList(installation?.id ?? null);
+  const actionError = installation ? (op.errors[installation.id] ?? null) : null;
   // Null until the engine answered: the folder and count rows never show a default.
   const stored = useSyncExternalStore(settingsStore.subscribe, settingsStore.get);
   const settings = stored.loaded ? stored.settings : null;
-  const [settingsError, setSettingsError] = useState<string | null>(null);
-
-  /** Save and reload the list; a rejected folder (not writable, inside WTF…) is shown inline and nothing is stored. */
-  const saveSettings = async (
-    patch: Partial<Pick<PluginSettings, "wtfBackupDir" | "wtfKeepSnapshots">>,
-  ) => {
-    setSettingsError(null);
-    try {
-      await settingsStore.write(patch);
-      bumpWtfList();
-    } catch (e) {
-      setSettingsError(friendlyWtfCallError(e));
-    }
-  };
+  // A rejected folder (not writable, inside WTF…) is kept by the lifecycle, so it outlives the picker.
+  const settingsError = op.settingsError;
+  // A job reads the folder and count while it runs; they change only when nothing is pending.
+  const settingsFree = op.activity === null;
 
   // The folder picker is a modal and unmounts this panel (guide G4), so the choice is saved
   // straight from the picker's result instead of through component state.
@@ -62,42 +50,17 @@ export function WtfBackupSection({ installation }: Props) {
     } catch {
       return; // cancelled
     }
-    await saveSettings({ wtfBackupDir: picked.path });
+    await wtfLifecycle.saveSettings({ wtfBackupDir: picked.path });
   };
 
   const jobHere =
-    wtf.job && installation && wtf.job.installationId === installation.id ? wtf.job : null;
+    op.job && installation && op.job.installationId === installation.id ? op.job : null;
   const outcome =
-    wtf.outcome && installation && wtf.outcome.installationId === installation.id
-      ? wtf.outcome
-      : null;
+    op.outcome && installation && op.outcome.installationId === installation.id ? op.outcome : null;
   const newest = list?.backups.find((b) => b.valid);
 
-  const backUp = async () => {
-    if (!installation) {
-      return;
-    }
-    clearWtfOutcome();
-    setActionError(null);
-    try {
-      await api.rpc("wtf.create", { installationId: installation.id });
-      await reload(true);
-    } catch (e) {
-      setActionError(friendlyWtfCallError(e));
-    }
-  };
-
-  const cancel = async () => {
-    if (!wtf.job) {
-      return;
-    }
-    setActionError(null);
-    try {
-      await api.rpc("wtf.cancel", { jobId: wtf.job.jobId });
-    } catch (e) {
-      setActionError(friendlyWtfCallError(e));
-    }
-  };
+  const backUp = () => installation && void wtfLifecycle.create(installation.id);
+  const cancel = () => void wtfLifecycle.cancel();
 
   const status = !installation
     ? "Select a WoW installation first."
@@ -112,7 +75,9 @@ export function WtfBackupSection({ installation }: Props) {
           : newest
             ? `Last backup ${formatWhen(newest.createdAt, Date.now())} · ${formatBytes(newest.sizeBytes)} · ${list.backups.length} in total`
             : "No backups yet.";
-  const canBackUp = !!installation && wtf.job === null && !!list?.wtfExists && !!list?.dirAvailable;
+  // The slot is global: a job starting or running anywhere blocks this one.
+  const canBackUp =
+    !!installation && op.activity === null && !!list?.wtfExists && !!list?.dirAvailable;
   const line = (text: string, color: string = STEAM.textMuted) => (
     <PanelSectionRow>
       <div style={{ ...descriptionStyle, color, paddingTop: "8px" }}>{text}</div>
@@ -150,7 +115,7 @@ export function WtfBackupSection({ installation }: Props) {
           })()}
         </PanelSectionRow>
       ) : null}
-      {outcome && line(outcome.text, outcome.ok ? STEAM.positive : STEAM.danger)}
+      {outcome && line(outcome.text, outcomeColor(outcome.ok))}
       {actionError && line(actionError, STEAM.danger)}
 
       <FocusRow view={QAM_VIEW.settings} id="wtf:backUp">
@@ -165,7 +130,7 @@ export function WtfBackupSection({ installation }: Props) {
                 : status || "Addon settings, keybinds, macros and UI layout (the WTF folder)"}
             </span>
           }
-          onClick={() => (jobHere ? void cancel() : canBackUp && void backUp())}
+          onClick={() => (jobHere ? cancel() : canBackUp && backUp())}
         />
       </FocusRow>
       <FocusRow view={QAM_VIEW.settings} id="wtf:manage">
@@ -183,14 +148,15 @@ export function WtfBackupSection({ installation }: Props) {
       </FocusRow>
       <FocusRow view={QAM_VIEW.settings} id="wtf:folder">
         <Field
-          focusable
+          focusable={settingsFree}
+          disabled={!settingsFree}
           label="Backup folder"
           description={
             <span style={{ ...descriptionStyle, wordBreak: "break-all" }}>
               {settings?.wtfBackupDir ?? "Internal storage (default)"}
             </span>
           }
-          onClick={() => void chooseFolder()}
+          onClick={() => settingsFree && void chooseFolder()}
           onOKActionDescription="Choose"
         >
           <FaFolderOpen />
@@ -198,12 +164,17 @@ export function WtfBackupSection({ installation }: Props) {
       </FocusRow>
       {settings?.wtfBackupDir && (
         <FocusRow view={QAM_VIEW.settings} id="wtf:defaultFolder">
-          <ButtonItem layout="below" onClick={() => void saveSettings({ wtfBackupDir: null })}>
+          <ButtonItem
+            layout="below"
+            disabled={!settingsFree}
+            onClick={() => void wtfLifecycle.saveSettings({ wtfBackupDir: null })}
+          >
             Use default folder
           </ButtonItem>
         </FocusRow>
       )}
       {settingsError && line(settingsError, STEAM.danger)}
+      {op.settingsUnknown && line(op.settingsUnknown)}
       {settings && (
         <FocusRow view={QAM_VIEW.settings} id="wtf:keep">
           <DropdownItem
@@ -211,7 +182,10 @@ export function WtfBackupSection({ installation }: Props) {
             description="Made automatically before each restore"
             rgOptions={KEEP_OPTIONS}
             selectedOption={settings.wtfKeepSnapshots}
-            onChange={(option) => void saveSettings({ wtfKeepSnapshots: option.data as number })}
+            disabled={!settingsFree}
+            onChange={(option) =>
+              void wtfLifecycle.saveSettings({ wtfKeepSnapshots: option.data as number })
+            }
           />
         </FocusRow>
       )}

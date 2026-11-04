@@ -18,6 +18,7 @@ import {
   currentSettingsSource,
   copyGameRunningNotice,
   okActionLabel,
+  unknownOutcome,
   outcomeOf,
   restoreBlockedReason,
   restoreDialogText,
@@ -528,6 +529,29 @@ describe("import notice", () => {
     );
     expect(importNotice({ alreadyPresent: true, otherVersion: null })).toBe(
       "That backup is already in the list.",
+    );
+  });
+});
+
+describe("unknown result", () => {
+  test("says the result can't be told and what to check, per job and request kind; neither success nor failure", () => {
+    expect(unknownOutcome("create", "i1")).toEqual({
+      kind: "create",
+      installationId: "i1",
+      ok: null,
+      text: "Couldn't tell whether the backup finished. Check the backup list before trying again.",
+    });
+    expect(unknownOutcome("restore", "i1").text).toBe(
+      "Couldn't tell whether the restore finished. Check your settings in game before trying again.",
+    );
+    expect(unknownOutcome("copy", "i1").text).toBe(
+      "Couldn't tell whether the Settings copy finished. Check your settings in game before trying again.",
+    );
+    expect(unknownOutcome("import", "i1").text).toBe(
+      "Couldn't tell whether the import finished. Check the backup list before trying again.",
+    );
+    expect(unknownOutcome("delete", "i1").text).toBe(
+      "Couldn't tell whether the backup was deleted. Check the backup list before trying again.",
     );
   });
 });

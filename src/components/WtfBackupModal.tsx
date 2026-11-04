@@ -1,5 +1,5 @@
 import { ScrollBuffer } from "./ScrollBuffer";
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef } from "react";
 import {
   DialogBody,
   DialogBodyText,
@@ -15,21 +15,12 @@ import { FileSelectionType, openFilePicker } from "@decky/api";
 import { FaChevronRight } from "react-icons/fa";
 import { wowupModalStyleCss } from "../sharedStyles";
 import { requestFocus } from "../focusMemory";
-import { STEAM, descriptionStyle } from "../steamTheme";
+import { STEAM, descriptionStyle, outcomeColor } from "../steamTheme";
 import type { Installation, WtfBackupInfo } from "../types";
-import * as api from "../services/backend";
-import { useWtfList } from "../useWtfList";
+import { useBackupList, useCopySources, useWtfOperation, wtfLifecycle } from "../wtfSession";
 import { type BackupActionKey, backupActions, loadedBackupFocus } from "../wtfBackupFocus";
-import { bumpWtfList, clearWtfOutcome, getWtfState, subscribeWtfState } from "../wtfBackupState";
 import { formatBytes, formatWhen } from "../wtfFormat";
-import {
-  friendlyWtfCallError,
-  importNotice,
-  jobProgressText,
-  okActionLabel,
-  restoreBlockedReason,
-} from "../wtfText";
-import { useWtfCopySources } from "../useWtfCopySources";
+import { jobProgressText, okActionLabel, restoreBlockedReason } from "../wtfText";
 import { confirmDeleteBackup, confirmRestoreBackup } from "./confirmWtf";
 import { BackupRowDescription } from "./BackupRowDescription";
 import { focusTarget } from "./FocusSlot";
@@ -50,21 +41,21 @@ interface ModalProps {
  * A modal, not a QAM section (guide P9): a variable-length list doesn't
  * belong in a 300 px column, and the modal owns its own state so the panel
  * teardown every modal causes (G4) can't lose anything — the job state
- * itself lives in module scope (wtfBackupState.ts).
+ * itself lives in module scope (wtfLifecycle.ts).
  */
 function WtfBackupModal({ installation, closeModal }: ModalProps) {
-  const wtf = useSyncExternalStore(subscribeWtfState, getWtfState);
-  const { list, error, loading, reload } = useWtfList(installation.id, wtf.listVersion);
-  const { sources } = useWtfCopySources(installation.id, wtf.listVersion);
-  const [actionError, setActionError] = useState<string | null>(null);
-  const [busyFile, setBusyFile] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const op = useWtfOperation();
+  const { data: list, error, loading, refresh: reload } = useBackupList(installation.id);
+  const sources = useCopySources(installation.id).data?.sources ?? null;
+  // Kept by the lifecycle for this installation, so they survive the picker and other modals.
+  const actionError = op.errors[installation.id] ?? null;
+  const notice = op.notices[installation.id] ?? null;
 
-  const jobHere = wtf.job && wtf.job.installationId === installation.id ? wtf.job : null;
-  const jobElsewhere = wtf.job && !jobHere;
-  const anyJob = wtf.job !== null;
-  const outcome =
-    wtf.outcome && wtf.outcome.installationId === installation.id ? wtf.outcome : null;
+  const jobHere = op.job && op.job.installationId === installation.id ? op.job : null;
+  const jobElsewhere = op.job && !jobHere;
+  // The slot is global: a job starting or running anywhere blocks these actions.
+  const anyJob = op.activity !== null;
+  const outcome = op.outcome && op.outcome.installationId === installation.id ? op.outcome : null;
   const gameRunning = list?.gameRunning ?? "unknown";
   const now = Date.now();
   const focusChosen = useRef(false);
@@ -82,55 +73,32 @@ function WtfBackupModal({ installation, closeModal }: ModalProps) {
     }
   }, [list]);
 
-  const startCreate = async () => {
-    clearWtfOutcome();
-    setActionError(null);
-    try {
-      await api.rpc("wtf.create", { installationId: installation.id });
-      await reload(true); // attach to the job the engine just started
-    } catch (e) {
-      setActionError(friendlyWtfCallError(e));
-    }
-  };
+  const startCreate = () => void wtfLifecycle.create(installation.id);
 
   const startRestore = (backup: WtfBackupInfo, blockedReason: string | null) => {
-    const onDelete = anyJob || busyFile === backup.fileName ? null : () => startDelete(backup);
+    const onDelete = anyJob ? null : () => startDelete(backup);
     confirmRestoreBackup(
       backup,
       installation.displayName,
       gameRunning,
-      async (options) => {
-        clearWtfOutcome();
-        setActionError(null);
-        try {
-          await api.rpc("wtf.restore", {
-            fileName: backup.fileName,
-            acceptUnknownFlavor: options.acceptUnknownFlavor,
-            keepCurrentConfig: options.keepCurrentConfig,
-            installationId: installation.id,
-          });
-          await reload(true);
-        } catch (e) {
-          setActionError(friendlyWtfCallError(e));
-        }
+      (options) => {
+        // The guard is checked again here: a job may have started while the dialog was open.
+        void wtfLifecycle.restore(installation.id, {
+          fileName: backup.fileName,
+          acceptUnknownFlavor: options.acceptUnknownFlavor,
+          keepCurrentConfig: options.keepCurrentConfig,
+        });
       },
       { blockedReason, onDelete },
     );
   };
 
   const startDelete = (backup: WtfBackupInfo) => {
-    confirmDeleteBackup(backup, async () => {
-      setActionError(null);
-      setBusyFile(backup.fileName);
-      try {
-        await api.rpc("wtf.delete", { fileName: backup.fileName, installationId: installation.id });
-        await reload();
-      } catch (e) {
-        setActionError(friendlyWtfCallError(e));
-      } finally {
-        setBusyFile(null);
-      }
-    });
+    // Checked by the lifecycle again on OK: something may have started meanwhile.
+    confirmDeleteBackup(
+      backup,
+      () => void wtfLifecycle.deleteBackup(installation.id, backup.fileName),
+    );
   };
 
   const importFromFile = async () => {
@@ -149,32 +117,11 @@ function WtfBackupModal({ installation, closeModal }: ModalProps) {
     } catch {
       return; // cancelled
     }
-    clearWtfOutcome();
-    setActionError(null);
-    setNotice(null);
-    try {
-      const result = await api.rpc("wtf.import", {
-        path: picked.path,
-        installationId: installation.id,
-      });
-      setNotice(importNotice(result));
-      bumpWtfList();
-    } catch (e) {
-      setActionError(friendlyWtfCallError(e));
-    }
+    // The guard is checked now, not when the picker opened: a job may have started meanwhile.
+    await wtfLifecycle.importBackup(installation.id, picked.path);
   };
 
-  const cancelJob = async () => {
-    if (!wtf.job) {
-      return;
-    }
-    setActionError(null);
-    try {
-      await api.rpc("wtf.cancel", { jobId: wtf.job.jobId });
-    } catch (e) {
-      setActionError(friendlyWtfCallError(e));
-    }
-  };
+  const cancelJob = () => void wtfLifecycle.cancel();
 
   const { canBackUp, canImport } = backupActions(list, anyJob);
 
@@ -208,7 +155,7 @@ function WtfBackupModal({ installation, closeModal }: ModalProps) {
             </DialogBodyText>
           )}
           {outcome && (
-            <DialogBodyText style={{ color: outcome.ok ? STEAM.positive : STEAM.danger }}>
+            <DialogBodyText style={{ color: outcomeColor(outcome.ok) }}>
               {outcome.text}
             </DialogBodyText>
           )}
@@ -247,7 +194,7 @@ function WtfBackupModal({ installation, closeModal }: ModalProps) {
                 label="Copy settings from another version…"
                 description="Bring over another WoW version's addon settings, keybinds and layout"
                 focusable
-                onClick={() => openWtfCopyModal(installation, () => void reload(true))}
+                onClick={() => openWtfCopyModal(installation)}
                 {...actionFocus("copy")}
               >
                 <FaChevronRight />
@@ -287,7 +234,8 @@ function WtfBackupModal({ installation, closeModal }: ModalProps) {
             {list?.dirAvailable &&
               list.backups.map((backup) => {
                 const blockedReason = restoreBlockedReason(backup, anyJob, gameRunning);
-                const deleteOff = anyJob || busyFile === backup.fileName;
+                // A delete holds the slot too, so a row being deleted is off with the rest.
+                const deleteOff = anyJob;
                 // One focus stop per backup (guide S14): A (or a tap) opens the
                 // Restore dialog, which also offers Delete for touch; X deletes
                 // (Steam's usual X). No buttons on the row.
