@@ -5,6 +5,8 @@
 - [Language](#language)
 - [Get Addons rework](#get-addons-rework)
 - [WoW clients](#wow-clients)
+- [Addon archives](#addon-archives)
+- [Addon recovery](#addon-recovery)
 
 A Decky plugin that manages World of Warcraft addons on the Steam Deck. This
 glossary fixes the language used across UI, engine and docs.
@@ -191,3 +193,25 @@ _Avoid_: Forever (beta), Classic Beta
 Restoring one WoW version's WTF (its current settings or one of its backups)
 into another version's installation. The source is only read; nothing moves.
 _Avoid_: migrate, transfer, cross-flavor restore
+
+## Addon archives
+
+**Addon folder**:
+A folder containing at least one `.toc` file directly inside it. Its TOC's
+presence alone does not establish compatibility with a particular WoW client.
+
+## Addon recovery
+
+**Previous version**:
+A saved addon version available through Roll back.
+_Avoid_: "recovery copy", which belongs to an unfinished addon operation.
+
+**Recovery copies**:
+Addon folders preserved to recover from an incomplete addon operation. They
+are distinct from the previous version offered through Roll back.
+_Avoid_: "kept files", which also describes the previous version.
+
+**Recovery required**:
+The state of a WoW installation whose unfinished addon operation leaves its
+addon state uncertain. Further addon changes pause until recovery resolves it.
+_Avoid_: "broken installation", which suggests WoW itself cannot run.

@@ -29,6 +29,7 @@ import { QAM_TABS, QAM_VIEW, qamState, type QamTab } from "./qamState";
 import { startSourceJump, startInstallationJump } from "./optionsJump";
 import { CURSE_KEY_ROW } from "./components/settings/common";
 import { FocusRow } from "./components/FocusSlot";
+import { RecoveryNotice } from "./components/RecoveryNotice";
 import { QAM_DROPDOWN_BELOW_VALUE } from "./components/dropdownValue";
 import { STEAM_NO_TRANSFORM_SCROLL, useScrollBuffer } from "./components/ScrollBuffer";
 import { handleWtfEvent } from "./wtfBackupState";
@@ -242,6 +243,9 @@ function Content() {
         )}
         {tab === "settings" && <SelfUpdatePanel />}
       </div>
+
+      {/* One recovery notice for all three tabs, from the module session (#107). */}
+      <RecoveryNotice view={QAM_VIEW[tab]} />
 
       {tab === "installed" && (
         <>

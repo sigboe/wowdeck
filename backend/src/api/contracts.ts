@@ -270,6 +270,143 @@ export interface OperationResult {
   addonName?: string;
   /** Provider external ids of required dependencies not currently installed for this installation. Informational only — never auto-installed, matching upstream WowUp. */
   missingRequiredDependencies?: string[];
+  /**
+   * The operation succeeded, but its cleanup didn't finish: temporary files
+   * or its transaction marker are left. Plain text to show with the success;
+   * the leftovers stay known as committed (never restored or undone) and go
+   * at the next addon change. Never set on a failed operation.
+   */
+  cleanupWarning?: string;
+  /**
+   * Set (always with status "failed") when the installation is recovery
+   * required: this operation's undo stopped and left recovery copies, or
+   * it was refused because an earlier one did. Unlike an ordinary
+   * failure, trying again does not help until recovery.
+   */
+  recoveryRequired?: true;
+  /**
+   * The separate addon operations this one ran after its own addon
+   * committed, in order, each with `addonName` when known: the required
+   * dependencies installed with it, or the libraries its removal left
+   * unneeded. Each committed or failed on its own and stays that way;
+   * this operation's `status` is its own addon's. An ordinary failure lets
+   * the next one run; after one sets `recoveryRequired`, the rest are
+   * refused (failed, `recoveryRequired`) and nothing more changes in the
+   * installation. Absent when there were none.
+   */
+  followUps?: OperationResult[];
+}
+
+/**
+ * Whether an installation's addons can change (ADR 0006). "recoveryRequired":
+ * an addon operation could not put its files back; addon changes, scans and
+ * removing the installation are refused there until recovery.
+ */
+export interface InstallationRecoveryStatus {
+  installationId: string;
+  status: "ready" | "recoveryRequired";
+}
+
+/**
+ * Whether the engine could read its saved state file (ADR 0006). One that
+ * exists but can't be read may hold recovery information, so the engine
+ * keeps it as it is: addon changes are paused in every installation and
+ * nothing is saved (settings and installations included) until the player
+ * repairs or restores it and restarts. The installation list is empty then,
+ * so this is the only place the block shows; `reason` and `nextStep` word it.
+ */
+export type StateFileRecoveryStatus =
+  | { status: "readable" }
+  | { status: "unreadable"; reason: string; nextStep: string };
+
+/**
+ * What a recovery-required installation's recovery is about, pre-digested
+ * for display (see `installations.recoveryDetails`). Locations are
+ * AddOns-relative display text ("AddOns/Suite"), never paths to act on.
+ */
+export interface InstallationRecoveryDetails {
+  installationId: string;
+  installationName: string;
+  status: InstallationRecoveryStatus["status"];
+  /** One entry per addon operation whose undo stopped; empty when ready. */
+  operations: RecoveryOperationDetails[];
+  /**
+   * Whether Retry recovery (`installations.retryRecovery`) can be offered:
+   * every stopped operation left recovery information this build can read.
+   * When it can't, `reason` says why and `nextStep` what to do instead.
+   * Offered still runs every check again and may refuse.
+   */
+  retry: RecoveryActionAvailability;
+  /**
+   * Whether Verify recovery (`installations.verifyRecovery`) can be
+   * offered, on the same terms: it needs readable recovery information to
+   * know what the original arrangement was. Offered still checks every
+   * byte and may refuse.
+   */
+  verify: RecoveryActionAvailability;
+}
+
+/** Whether a recovery action can be offered; when not, why and what to do instead. */
+export type RecoveryActionAvailability = { available: true } | { available: false; reason: string; nextStep: string };
+
+/**
+ * What Retry recovery did. "recovered": the original files and records are
+ * back and the installation's addons can change again (`cleanupWarning`
+ * when temporary files are left). "refused": nothing was overwritten,
+ * deleted or recreated, the installation stays recovery required, and
+ * `reason`, `nextStep` and `conflicts` explain what is in the way.
+ * `restored` names the addons put back either way (one refused operation
+ * doesn't undo another that finished).
+ */
+export type RecoveryRetryResult =
+  | { installationId: string; status: "recovered"; restored: string[]; cleanupWarning?: string }
+  | {
+      installationId: string;
+      status: "refused";
+      restored: string[];
+      reason: string;
+      nextStep: string;
+      conflicts: { location: string; reason: string }[];
+    };
+
+/**
+ * What Verify recovery found. "verified": the original folders are back
+ * exactly as they were (every byte, and nothing where nothing was), the
+ * original record is saved and the installation's addons can change again
+ * (`cleanupWarning` when temporary files are left). "refused": nothing was
+ * changed and the installation stays recovery required; `conflicts` lists
+ * what still differs from the original. `verified` names the addons whose
+ * repair was confirmed either way.
+ */
+export type RecoveryVerifyResult =
+  | { installationId: string; status: "verified"; verified: string[]; cleanupWarning?: string }
+  | {
+      installationId: string;
+      status: "refused";
+      verified: string[];
+      reason: string;
+      nextStep: string;
+      conflicts: { location: string; reason: string }[];
+    };
+
+/** The addon operations an addon transaction commits (ADR 0006). */
+export const ADDON_OPERATIONS = ["install", "update", "remove", "rollback"] as const;
+export type AddonOperationKind = (typeof ADDON_OPERATIONS)[number];
+
+export interface RecoveryOperationDetails {
+  transactionId: string;
+  /** The addon's name from its original record, else its id. */
+  addonName: string;
+  /** The version the original record had; null for a new install or none known. */
+  originalVersion: string | null;
+  /** "unknown" when the recovery information can't be read. */
+  operation: AddonOperationKind | "unknown";
+  /** When the operation began (epoch ms); null when not recorded. */
+  startedAt: number | null;
+  /** Where the original files are kept now, and where each belongs. */
+  preserved: { location: string; belongsAt: string }[];
+  /** What stands in the way of putting the original arrangement back. */
+  conflicts: { location: string; reason: string }[];
 }
 
 /** One row of an import preview — see `addons.previewImport`. */
@@ -575,9 +712,57 @@ export interface MethodMap {
     params: { installationId: string };
     result: { installationId: string };
   };
+  /**
+   * Every installation's recovery status (read-only; allowed in a recovery
+   * required installation). Refused calls answer error code
+   * "recovery_required" or an operation with `recoveryRequired`.
+   */
+  "installations.recoveryStatus": {
+    params: Record<string, never>;
+    result: { installations: InstallationRecoveryStatus[]; stateFile: StateFileRecoveryStatus };
+  };
+  /**
+   * One installation's recovery details: the preserved locations and the
+   * conflicts found now (read-only, never repairs; allowed in a recovery
+   * required installation). Unknown installation: "not_found".
+   */
+  "installations.recoveryDetails": {
+    params: { installationId: string };
+    result: InstallationRecoveryDetails;
+  };
+  /**
+   * Retry recovery, on the player's request only: in the engine's addon
+   * change queue, check the recorded evidence again and, when it shows the
+   * files are exactly as the stopped operation left them, put the original
+   * folders and record back, then lift the block. Refusals are a result,
+   * never an error. Unknown installation: "not_found".
+   */
+  "installations.retryRecovery": {
+    params: { installationId: string };
+    result: RecoveryRetryResult;
+  };
+  /**
+   * Verify recovery, on the player's request only, after they put the
+   * original files back by hand: in the engine's addon change queue, check
+   * that every place the stopped operation touched holds exactly what it
+   * held before (and that what wasn't there isn't), then save the original
+   * record and only then lift the block. Never changes files or the
+   * recorded evidence; refusals are a result, never an error. Unknown
+   * installation: "not_found".
+   */
+  "installations.verifyRecovery": {
+    params: { installationId: string };
+    result: RecoveryVerifyResult;
+  };
+  /**
+   * The active installation's addons. In a recovery-required installation
+   * this is read-only: the stored addon records as they are, without
+   * scanning folders or reconciling anything, and `unverified` is set (the
+   * files may not match them). Unmanaged folders are not listed then.
+   */
   "addons.list": {
     params: Record<string, never>;
-    result: { addons: Addon[] };
+    result: { addons: Addon[]; unverified?: true };
   };
   "addons.refresh": {
     params: { installationId?: string };

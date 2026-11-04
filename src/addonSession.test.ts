@@ -3,6 +3,8 @@ import { describe, expect, test } from "bun:test";
 import type { Addon, Installation, SearchResult } from "./types";
 import {
   createAddonSession,
+  recoveryNeededFor,
+  stateFileRecoveryFor,
   installedAddonFor,
   resultInstallLabel,
   resultTags,
@@ -149,6 +151,7 @@ describe("addon session: installations", () => {
     expect(log).toEqual([
       'installations.select {"installationId":"i9"}',
       "error Couldn't switch installation | no such installation",
+      "installations.recoveryStatus",
       "installations.list",
     ]);
     expect(session.get().selectedId).toBe("i1");
@@ -412,5 +415,336 @@ describe("Get Addons results against My Addons' list", () => {
 
   test("recently updated adds Updated", () => {
     expect(resultTags(addon({ newlyUpdated: true }))).toEqual(["Installed", "Updated"]);
+  });
+});
+
+describe("addon session: recovery required (#107)", () => {
+  const a = { ...installation("A", true), displayName: "Retail" } as Installation;
+  const b = { ...installation("B"), displayName: "Classic" } as Installation;
+  const status = (required: string[]) => ({
+    installations: ["A", "B"].map((id) => ({
+      installationId: id,
+      status: required.includes(id) ? "recoveryRequired" : "ready",
+    })),
+  });
+
+  test("the engine's recovery status names the active installation for every subscriber", async () => {
+    const { session } = harness({
+      "installations.list": { installations: [a, b] },
+      "installations.recoveryStatus": status(["A"]),
+      "addons.list": { addons: [addon()], unverified: true },
+    });
+    const seen: (Installation | null)[] = [];
+    session.subscribe(() => seen.push(recoveryNeededFor(session.get())));
+    session.subscribe(() => {});
+    await session.reloadAll();
+    expect(recoveryNeededFor(session.get())?.displayName).toBe("Retail");
+    expect(seen[seen.length - 1]?.displayName).toBe("Retail");
+    expect(session.get().addonsUnverified).toBe(true);
+    expect(session.get().addons.map((x) => x.id)).toEqual(["a1"]);
+  });
+
+  test("a new session over the same engine (a plugin reload) shows it again", async () => {
+    const answers = {
+      "installations.list": { installations: [a, b] },
+      "installations.recoveryStatus": status(["A"]),
+      "addons.list": { addons: [], unverified: true },
+    };
+    await harness(answers).session.reloadAll();
+    const { session } = harness(answers);
+    await session.reloadAll();
+    expect(recoveryNeededFor(session.get())?.id).toBe("A");
+  });
+
+  test("switching to an unaffected installation shows none, with a verified list", async () => {
+    const answers: Record<string, unknown> = {
+      "installations.list": { installations: [a, b] },
+      "installations.recoveryStatus": status(["A"]),
+      "addons.list": { addons: [], unverified: true },
+      "installations.select": {},
+    };
+    const { session } = harness(answers);
+    await session.reloadAll();
+    answers["addons.list"] = { addons: [addon()] };
+    await session.selectInstallation("B");
+    expect(recoveryNeededFor(session.get())).toBeNull();
+    expect(session.get().addonsUnverified).toBe(false);
+  });
+
+  test("an unreadable state file shows for every subscriber with no installation listed", async () => {
+    const stateFile = {
+      status: "unreadable",
+      reason: "WoWDeck Addon Manager can't read its saved state file",
+      nextStep: "Repair or restore state.json, then restart Steam",
+    };
+    const { session } = harness({
+      "installations.list": { installations: [] },
+      "installations.recoveryStatus": { installations: [], stateFile },
+      "addons.list": { addons: [] },
+    });
+    const seen: unknown[] = [];
+    session.subscribe(() => seen.push(stateFileRecoveryFor(session.get())));
+    await session.reloadAll();
+    expect(stateFileRecoveryFor(session.get())).toEqual({
+      reason: stateFile.reason,
+      nextStep: stateFile.nextStep,
+    });
+    expect(seen[seen.length - 1]).toEqual({
+      reason: stateFile.reason,
+      nextStep: stateFile.nextStep,
+    });
+    expect(recoveryNeededFor(session.get())).toBeNull();
+  });
+
+  test("a readable state file (or an older engine that doesn't say) shows none", async () => {
+    const { session } = harness({
+      "installations.list": { installations: [a, b] },
+      "installations.recoveryStatus": status([]),
+      "addons.list": { addons: [] },
+    });
+    await session.reloadAll();
+    expect(stateFileRecoveryFor(session.get())).toBeNull();
+  });
+
+  test("an unverified list marks its installation even before the status is read again", async () => {
+    const { session } = harness({
+      "installations.list": { installations: [a, b] },
+      "installations.recoveryStatus": status([]),
+      "addons.list": { addons: [], unverified: true },
+    });
+    await session.reloadAll();
+    expect(recoveryNeededFor(session.get())?.id).toBe("A");
+  });
+
+  test("an operation that leaves recovery required reads the status again", async () => {
+    const answers: Record<string, unknown> = {
+      "installations.list": { installations: [a, b] },
+      "installations.recoveryStatus": status([]),
+      "addons.list": { addons: [addon()] },
+      "addons.update": {
+        addon: addon(),
+        operation: {
+          status: "failed",
+          error: "Couldn't put the addon's files back",
+          recoveryRequired: true,
+        },
+      },
+    };
+    const { session } = harness(answers);
+    await session.reloadAll();
+    expect(recoveryNeededFor(session.get())).toBeNull();
+    answers["installations.recoveryStatus"] = status(["A"]);
+    await session.actions.update(addon());
+    expect(recoveryNeededFor(session.get())?.id).toBe("A");
+  });
+
+  test("a removal whose orphaned library left recovery required reads the status again (#110)", async () => {
+    const answers: Record<string, unknown> = {
+      "installations.list": { installations: [a, b] },
+      "installations.recoveryStatus": status([]),
+      "addons.list": { addons: [addon()] },
+      "addons.remove": {
+        addonId: addon().id,
+        operation: {
+          status: "removed",
+          error: null,
+          followUps: [{ status: "failed", error: "stopped", recoveryRequired: true }],
+        },
+      },
+    };
+    const { session } = harness(answers);
+    await session.reloadAll();
+    answers["installations.recoveryStatus"] = status(["A"]);
+    await session.actions.remove(addon());
+    expect(recoveryNeededFor(session.get())?.id).toBe("A");
+  });
+
+  test("a refused call (recovery_required) reads the status again", async () => {
+    const refused = Object.assign(new Error("Retail needs recovery first"), {
+      code: "recovery_required",
+    });
+    const answers: Record<string, unknown> = {
+      "installations.list": { installations: [a, b] },
+      "installations.recoveryStatus": status([]),
+      "addons.list": { addons: [addon()] },
+      "addons.setIgnored": refused,
+    };
+    const { session } = harness(answers);
+    await session.reloadAll();
+    answers["installations.recoveryStatus"] = status(["A"]);
+    await session.actions.setIgnored(addon(), true);
+    expect(recoveryNeededFor(session.get())?.id).toBe("A");
+  });
+
+  test("checking for updates there reads the stored list instead of asking providers", async () => {
+    const { session, log } = harness({
+      "installations.list": { installations: [a, b] },
+      "installations.recoveryStatus": status(["A"]),
+      "addons.list": { addons: [addon()], unverified: true },
+    });
+    await session.reloadAll();
+    log.length = 0;
+    await session.refreshFromProviders();
+    expect(log).toEqual(["addons.list"]);
+  });
+
+  test("a status that can't be read keeps the last one", async () => {
+    const answers: Record<string, unknown> = {
+      "installations.list": { installations: [a, b] },
+      "installations.recoveryStatus": status(["A"]),
+      "addons.list": { addons: [] },
+    };
+    const { session } = harness(answers);
+    await session.reloadInstallations();
+    answers["installations.recoveryStatus"] = new Error("engine busy");
+    await session.reloadInstallations();
+    expect(recoveryNeededFor(session.get())?.id).toBe("A");
+  });
+});
+
+describe("addon session: Retry recovery (#108)", () => {
+  const a = { ...installation("A", true), displayName: "Retail" } as Installation;
+  const status = (required: string[]) => ({
+    installations: [
+      { installationId: "A", status: required.includes("A") ? "recoveryRequired" : "ready" },
+    ],
+  });
+
+  test("a recovered installation drops the notice for every subscriber and reads a verified list", async () => {
+    const answers: Record<string, unknown> = {
+      "installations.list": { installations: [a] },
+      "installations.recoveryStatus": status(["A"]),
+      "addons.list": { addons: [addon()], unverified: true },
+      "installations.retryRecovery": {
+        installationId: "A",
+        status: "recovered",
+        restored: ["Suite"],
+      },
+    };
+    const { session, log } = harness(answers);
+    await session.reloadAll();
+    expect(recoveryNeededFor(session.get())?.id).toBe("A");
+    const seen: (string | null)[] = [];
+    session.subscribe(() => seen.push(recoveryNeededFor(session.get())?.id ?? null));
+    answers["installations.recoveryStatus"] = status([]);
+    answers["addons.list"] = { addons: [addon()] };
+    log.length = 0;
+
+    const result = await session.retryRecovery("A");
+
+    expect(result?.status).toBe("recovered");
+    expect(log).toContain('installations.retryRecovery {"installationId":"A"}');
+    expect(log).toContain("toast Recovered Retail | Suite put back. Addon changes work again.");
+    expect(recoveryNeededFor(session.get())).toBeNull();
+    expect(seen[seen.length - 1]).toBeNull();
+    expect(session.get().addonsUnverified).toBe(false);
+  });
+
+  test("a refused retry keeps the notice and returns the engine's explanation", async () => {
+    const refused = {
+      installationId: "A",
+      status: "refused",
+      restored: [],
+      reason: "Files changed since the addon change stopped",
+      nextStep: "Put the files listed here back as they were, then try again",
+      conflicts: [
+        { location: "AddOns/Suite", reason: "Its files changed since the addon change stopped." },
+      ],
+    };
+    const { session, log } = harness({
+      "installations.list": { installations: [a] },
+      "installations.recoveryStatus": status(["A"]),
+      "addons.list": { addons: [], unverified: true },
+      "installations.retryRecovery": refused,
+    });
+    await session.reloadAll();
+
+    expect(await session.retryRecovery("A")).toEqual(refused as never);
+    expect(recoveryNeededFor(session.get())?.id).toBe("A");
+    expect(log.filter((l) => l.startsWith("toast"))).toEqual([]);
+  });
+
+  test("a retry the engine can't answer says so and returns nothing", async () => {
+    const { session, log } = harness({
+      "installations.list": { installations: [a] },
+      "installations.recoveryStatus": status(["A"]),
+      "addons.list": { addons: [] },
+      "installations.retryRecovery": new Error("engine busy"),
+    });
+    await session.reloadAll();
+    expect(await session.retryRecovery("A")).toBeNull();
+    expect(log).toContain("error Couldn't retry recovery | engine busy");
+    expect(recoveryNeededFor(session.get())?.id).toBe("A");
+  });
+});
+
+describe("addon session: Verify recovery (#109)", () => {
+  const a = { ...installation("A", true), displayName: "Retail" } as Installation;
+  const status = (required: string[]) => ({
+    installations: [
+      { installationId: "A", status: required.includes("A") ? "recoveryRequired" : "ready" },
+    ],
+  });
+
+  test("a verified installation drops the notice and reads a verified list", async () => {
+    const answers: Record<string, unknown> = {
+      "installations.list": { installations: [a] },
+      "installations.recoveryStatus": status(["A"]),
+      "addons.list": { addons: [addon()], unverified: true },
+      "installations.verifyRecovery": {
+        installationId: "A",
+        status: "verified",
+        verified: ["Suite"],
+      },
+    };
+    const { session, log } = harness(answers);
+    await session.reloadAll();
+    answers["installations.recoveryStatus"] = status([]);
+    answers["addons.list"] = { addons: [addon()] };
+    log.length = 0;
+
+    const result = await session.verifyRecovery("A");
+
+    expect(result?.status).toBe("verified");
+    expect(log).toContain('installations.verifyRecovery {"installationId":"A"}');
+    expect(log).toContain(
+      "toast Verified the repair of Retail | Suite checked. Addon changes work again.",
+    );
+    expect(recoveryNeededFor(session.get())).toBeNull();
+    expect(session.get().addonsUnverified).toBe(false);
+  });
+
+  test("a refused verification keeps the notice and returns what still differs", async () => {
+    const refused = {
+      installationId: "A",
+      status: "refused",
+      verified: [],
+      reason: "The original files aren't all back yet",
+      nextStep: "Put the original files back, then verify again",
+      conflicts: [{ location: "AddOns/Suite", reason: "Its files differ from the original." }],
+    };
+    const { session, log } = harness({
+      "installations.list": { installations: [a] },
+      "installations.recoveryStatus": status(["A"]),
+      "addons.list": { addons: [], unverified: true },
+      "installations.verifyRecovery": refused,
+    });
+    await session.reloadAll();
+
+    expect(await session.verifyRecovery("A")).toEqual(refused as never);
+    expect(recoveryNeededFor(session.get())?.id).toBe("A");
+    expect(log.filter((l) => l.startsWith("toast"))).toEqual([]);
+  });
+
+  test("a verification the engine can't answer says so and returns nothing", async () => {
+    const { session, log } = harness({
+      "installations.list": { installations: [a] },
+      "installations.recoveryStatus": status(["A"]),
+      "addons.list": { addons: [] },
+      "installations.verifyRecovery": new Error("engine busy"),
+    });
+    await session.reloadAll();
+    expect(await session.verifyRecovery("A")).toBeNull();
+    expect(log).toContain("error Couldn't verify recovery | engine busy");
   });
 });

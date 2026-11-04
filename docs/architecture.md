@@ -78,7 +78,7 @@ backend/src/
     ├── toc/             TOC parser
     ├── providers/       provider abstraction, registry + implementations
     ├── downloads/       download service
-    ├── archives/        safe extraction
+    ├── archives/        safe extraction, Addon folder check, TOC metadata
     ├── net/             HTTP client
     ├── storage/         state file and the settings rules table
     ├── notifications/   update check, update toast gate, WowUp companion data
@@ -90,9 +90,17 @@ Addon records are read and written only through `AddonRecords`
 (`store.addons`). A record read from it is read-only (a deep `Readonly`
 type); a change is a patch, persisted before the call returns, and a patch
 merges into the stored record, so two writers never overwrite each other's
-fields. The installer returns its changes instead of writing them, and
-`AddonService` writes them only when the install succeeded: a failed
-install, update or channel switch leaves the record as it was.
+fields.
+
+Install and update change folders and the record through one addon
+transaction (`addons/AddonTransaction.ts`, ADR 0006). The installer
+downloads and stages the release, and the transaction does the rest. It
+stores a marker with content evidence before the first live change, moves
+folders with renames inside `AddOns/.wowdeck/tx-<id>/`, and commits the
+record and its commit evidence in one write. If that fails, it moves
+everything back. A failed install, update or channel switch leaves the
+folders and the record as they were. Tests fail the transaction's steps by
+name through `fs/StageFs.ts`.
 
 Every record change runs in `AddonService`'s gate, one at a time: the gate
 holds the writable `AddonRecords`, and the service and `InstallationService`

@@ -1,5 +1,5 @@
 import { ScrollBuffer } from "./ScrollBuffer";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import {
   DialogBody,
   DialogBodyText,
@@ -20,11 +20,12 @@ import {
 import { FileSelectionType, openFilePicker } from "@decky/api";
 import type { Installation, ImportComparison, ImportSummary, OperationResult } from "../types";
 import * as api from "../services/backend";
+import { addonSession } from "../session";
 import { copyText } from "../services/clipboard";
 import { errorText } from "../errors";
 import { STEAM, descriptionStyle } from "../steamTheme";
 import { pluginToast, toastError } from "../toast";
-import { plural } from "../text";
+import { importResultLine, plural, RECOVERY_NOTE } from "../text";
 import { installationLabel } from "../search";
 import { wowupModalStyleCss } from "../sharedStyles";
 import { ellipsisValue } from "./dropdownValue";
@@ -323,7 +324,16 @@ function AddonPortabilityModal({
       const failed = operations.filter((op) => op.status === "failed").length;
       pluginToast(
         installed > 0 ? `Installed ${plural(installed, "addon")}` : "Nothing new to install",
-        failed > 0 ? `${plural(failed, "addon")} couldn't be installed. See the list.` : "",
+        [
+          failed > 0 ? `${plural(failed, "addon")} couldn't be installed. See the list.` : "",
+          operations.some(
+            (op) => op.recoveryRequired || op.followUps?.some((f) => f.recoveryRequired),
+          )
+            ? RECOVERY_NOTE
+            : "",
+        ]
+          .filter(Boolean)
+          .join(" "),
       );
       if (installed > 0) {
         onInstalled();
@@ -357,7 +367,10 @@ function AddonPortabilityModal({
     />
   );
 
-  const applyDisabled = applying || !summary || summary.addedCt === 0;
+  // Recovery required (#107): the engine refuses installs into it.
+  const { recoveryRequired } = useSyncExternalStore(addonSession.subscribe, addonSession.get);
+  const applyDisabled =
+    applying || !summary || summary.addedCt === 0 || !!recoveryRequired[installationId];
   const summaryParts = summary
     ? [
         summary.addedCt > 0 ? `${summary.addedCt} new` : "",
@@ -505,9 +518,7 @@ function AddonPortabilityModal({
                       }}
                     >
                       {op.addonName ? `${op.addonName}: ` : ""}
-                      {op.status === "failed"
-                        ? `failed, ${op.error ?? "unknown error"}`
-                        : "installed"}
+                      {importResultLine(op)}
                     </DialogBodyText>
                   ))}
                 </DialogControlsSection>

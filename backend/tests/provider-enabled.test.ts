@@ -178,11 +178,11 @@ describe("allowEdit enforcement", () => {
 
     await catalogue.search("anything", installation, "TukUI");
     expect(tukui.searchCalls).toBe(0);
+    store.setInstallations([installation]);
     await expect(service.install({ intent: "install", providerId: "TukUI", externalId: "1", installation })).rejects.toThrow(
       "That addon source isn't available",
     );
 
-    store.setInstallations([installation]);
     store.addons.createMany([
       {
         id: "a1",

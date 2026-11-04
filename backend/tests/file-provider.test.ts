@@ -18,6 +18,19 @@ import type { NetworkClient } from "../src/wow/net/network";
 import { createStateStore } from "../src/wow/storage/StateStore";
 import { WowClientType } from "../src/wow/types";
 import type { WowInstallation } from "../src/wow/models";
+import {
+  addonAndDocsZip,
+  emptyTocZip,
+  failTocReads,
+  genericAndMainlineZip,
+  looseFileZip,
+  mixedCaseTocZip,
+  nestedOnlyTocZip,
+  orderBundleZip,
+  otherClientTocZip,
+  tocNamedDirectoryZip,
+  upperCaseTocZip,
+} from "./helpers/addon-folder-archives";
 
 const ROOT = "/tmp/opencode/wowdeck-tests/file-provider";
 const FIXTURES = join(import.meta.dir, "fixtures", "archives");
@@ -349,5 +362,154 @@ describe("installing a local archive", () => {
     expect(operation.error).toMatch(/doesn't contain an addon/i);
     expect(await f.service.listAddons(f.installation)).toEqual([]);
     expect(readdirSync(f.addonsPath)).toEqual([]);
+  });
+});
+
+describe("the Addon folder rule, preview and install on the same archives", () => {
+  const accepted: Array<[string, Uint8Array, string]> = [
+    ["an uppercase .TOC", upperCaseTocZip, "Foo Upper"],
+    ["a mixed-case .Toc", mixedCaseTocZip, "Foo Mixed"],
+  ];
+  const rejected: Array<[string, Uint8Array]> = [
+    ["no folder at all", looseFileZip],
+    ["a folder whose only TOC is nested deeper", nestedOnlyTocZip],
+    ["a directory named like a TOC", tocNamedDirectoryZip],
+    ["an addon folder next to one without a TOC", addonAndDocsZip],
+  ];
+
+  for (const [label, zip, title] of accepted) {
+    test(`${label}: both the preview and the install accept the folder`, async () => {
+      const f = fixture(`rule-accept-${title.replace(/\W/g, "")}`, { "a.zip": zip });
+      const path = f.archivePath("a.zip");
+      const preview = await f.service.inspectArchive(path, f.installation);
+      expect(preview).toMatchObject({ name: title, folders: ["Foo"] });
+      const { operation } = await f.service.install({
+        intent: "install",
+        providerId: "File",
+        externalId: path,
+        installation: f.installation,
+      });
+      expect(operation.status).toBe("installed");
+      expect(readdirSync(f.addonsPath)).toEqual(["Foo"]);
+    });
+  }
+
+  for (const [label, zip] of rejected) {
+    test(`${label}: the preview refuses it and the install refuses it, leaving AddOns untouched`, async () => {
+      const f = fixture(`rule-reject-${label.replace(/\W+/g, "-")}`, { "a.zip": zip });
+      const path = f.archivePath("a.zip");
+      await expect(f.service.inspectArchive(path, f.installation)).rejects.toMatchObject({
+        code: "archive_no_addons",
+      });
+      const { operation } = await f.service.install({
+        intent: "install",
+        providerId: "File",
+        externalId: path,
+        installation: f.installation,
+      });
+      expect(operation.status).toBe("failed");
+      expect(operation.error).toMatch(/valid addon|contain an addon/);
+      expect(readdirSync(f.addonsPath)).toEqual([]);
+      expect(Array.from(new Bun.Glob("inspect-*").scanSync({ cwd: f.inspectRoot }))).toEqual([]);
+    });
+  }
+
+  test("the two refusals keep their own wording: no addon folders vs a selected folder with no TOC", async () => {
+    const f = fixture("rule-wording", { "none.zip": looseFileZip, "docs.zip": addonAndDocsZip });
+    await expect(f.service.inspectArchive(f.archivePath("none.zip"), f.installation)).rejects.toThrow(
+      "That archive doesn't contain any WoW addon folders",
+    );
+    await expect(f.service.inspectArchive(f.archivePath("docs.zip"), f.installation)).rejects.toThrow(
+      "That archive contains folders that aren't WoW addon folders (no .toc inside Docs)",
+    );
+    const failure = async (name: string) =>
+      (
+        await f.service.install({
+          intent: "install",
+          providerId: "File",
+          externalId: f.archivePath(name),
+          installation: f.installation,
+        })
+      ).operation.error;
+    expect(await failure("none.zip")).toContain("The archive doesn't contain an addon");
+    expect(await failure("docs.zip")).toContain("The archive doesn't contain a valid addon");
+  });
+});
+
+describe("TOC metadata, preview and install on the same archives", () => {
+  const installFile = (f: ReturnType<typeof fixture>, name: string) =>
+    f.service.install({
+      intent: "install",
+      providerId: "File",
+      externalId: f.archivePath(name),
+      installation: f.installation,
+    });
+
+  test("an empty TOC passes the structure check; the preview names it after the file, the install after the folder", async () => {
+    const f = fixture("toc-empty", { "Foo-1.2.zip": emptyTocZip });
+    const preview = await f.service.inspectArchive(f.archivePath("Foo-1.2.zip"), f.installation);
+    expect(preview).toMatchObject({ name: "Foo-1.2", author: null, version: null, folders: ["Foo"] });
+    expect((await installFile(f, "Foo-1.2.zip")).operation.status).toBe("installed");
+    expect(readdirSync(f.addonsPath)).toEqual(["Foo"]);
+    const [addon] = await f.service.listAddons(f.installation);
+    // The install has no file-name fallback: its last resort is the folder name.
+    expect(addon).toMatchObject({ name: "Foo", author: null, version: "" });
+  });
+
+  test("a TOC meant for another client is still read: no compatibility check, first-TOC fallback", async () => {
+    const f = fixture("toc-other-client", { "Foo-1.2.zip": otherClientTocZip });
+    const preview = await f.service.inspectArchive(f.archivePath("Foo-1.2.zip"), f.installation);
+    expect(preview).toMatchObject({ name: "Foo Classic", version: "1.0", folders: ["Foo"] });
+    expect((await installFile(f, "Foo-1.2.zip")).operation.status).toBe("installed");
+    const [addon] = await f.service.listAddons(f.installation);
+    expect(addon).toMatchObject({ name: "Foo Classic", version: "1.0" });
+  });
+
+  test("a client-specific TOC beats the generic one in the preview and in the installed record", async () => {
+    const f = fixture("toc-priority", { "Foo-1.2.zip": genericAndMainlineZip });
+    const preview = await f.service.inspectArchive(f.archivePath("Foo-1.2.zip"), f.installation);
+    expect(preview).toMatchObject({ name: "Foo Mainline", author: "Mainline Author", version: "2.0" });
+    await installFile(f, "Foo-1.2.zip");
+    const [addon] = await f.service.listAddons(f.installation);
+    expect(addon).toMatchObject({ name: "Foo Mainline", author: "Mainline Author", version: "2.0" });
+  });
+
+  test("a bundle's preview lists its folders sorted and takes its metadata from the first of them", async () => {
+    const f = fixture("toc-bundle-order", { "Bundle.zip": orderBundleZip });
+    const preview = await f.service.inspectArchive(f.archivePath("Bundle.zip"), f.installation);
+    expect(preview).toMatchObject({
+      folders: ["Alpha", "Zeta"],
+      name: "Alpha Suite",
+      author: "Alpha Author",
+      version: "1.0",
+    });
+  });
+
+  test("a TOC that cannot be read fails the preview, even when another folder's TOC reads fine", async () => {
+    const f = fixture("toc-read-fails", { "Bundle.zip": orderBundleZip });
+    const restore = failTocReads("Zeta/Zeta.toc");
+    try {
+      await expect(f.service.inspectArchive(f.archivePath("Bundle.zip"), f.installation)).rejects.toThrow(
+        "TOC read failed",
+      );
+    } finally {
+      restore();
+    }
+    expect(Array.from(new Bun.Glob("inspect-*").scanSync({ cwd: f.inspectRoot }))).toEqual([]);
+  });
+
+  test("the same unreadable TOC does not stop the install, which keeps no metadata from the read", async () => {
+    const f = fixture("toc-read-fails-install", { "Bundle.zip": orderBundleZip });
+    const restore = failTocReads("Zeta/Zeta.toc");
+    try {
+      const { operation } = await installFile(f, "Bundle.zip");
+      expect(operation.status).toBe("installed");
+    } finally {
+      restore();
+    }
+    expect(readdirSync(f.addonsPath).sort()).toEqual(["Alpha", "Zeta"]);
+    const [addon] = await f.service.listAddons(f.installation);
+    expect(addon!.author).toBeNull();
+    expect(addon!.name).not.toMatch(/Suite/);
   });
 });

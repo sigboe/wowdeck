@@ -9,7 +9,7 @@ import type {
   RpcResult,
   Settled,
 } from "../api/contracts";
-import { InstallError, NotFoundError, ProviderError, ValidationError } from "../wow/errors";
+import { InstallError, NotFoundError, ProviderError, RecoveryRequiredError, ValidationError } from "../wow/errors";
 import { PathEscapeError } from "../wow/fs/safe-fs";
 import { WtfBackupError } from "../wow/wtf/errors";
 
@@ -27,6 +27,9 @@ export class EngineError extends Error {
 export function errorCodeFor(err: unknown): string {
   if (err instanceof EngineError) {
     return err.code;
+  }
+  if (err instanceof RecoveryRequiredError) {
+    return "recovery_required";
   }
   if (err instanceof NotFoundError) {
     return "not_found";

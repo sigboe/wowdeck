@@ -10,7 +10,7 @@ import { runningFileManager, showItems } from "../../desktop/FileManager";
 export function register(server: JsonlServer, { service, catalogue, installationService, updateCheck }: HandlerDeps): void {
   server.on("addons.list", async () => {
     const installation = installationService.require();
-    return { addons: await service.listAddons(installation) };
+    return service.addonList(installation);
   });
 
   server.on("addons.refresh", async (params) => updateCheck.refresh(installationService.require(params.installationId)));

@@ -45,6 +45,7 @@ export function InstallationsSection({ installations, selectedId, onSelect, onCh
     openInstallationDetails(selected, addonCounts(), {
       onRescan: () => void rescan(),
       onRemove: removeSelected,
+      recoveryRequired: !!addonSession.get().recoveryRequired[selected.id],
     });
 
   const rescan = async () => {

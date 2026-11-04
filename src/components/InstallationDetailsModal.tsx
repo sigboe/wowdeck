@@ -18,7 +18,11 @@ import { addonCountText, gameFolder, homePath, splitGameVersion } from "../insta
 interface Actions {
   onRescan: () => void;
   onRemove: () => void;
+  /** Recovery required (#107): the engine refuses both, so they're off. */
+  recoveryRequired?: boolean;
 }
+
+const RECOVERY_OFF = "Not available until this installation's recovery is done";
 
 /**
  * The Installation details dialog: read-only facts about the selected
@@ -27,7 +31,7 @@ interface Actions {
  * (rescan and remove). Built from Steam's dialog components like
  * RestoreBackupModal, so spacing and focus colours are Steam's; B closes.
  */
-function InstallationDetailsModal({
+export function InstallationDetailsModal({
   installation,
   counts,
   actions,
@@ -78,12 +82,18 @@ function InstallationDetailsModal({
             <Field
               focusable
               label="Rescan addons"
+              disabled={actions.recoveryRequired}
               description={
                 <span style={descriptionStyle}>
-                  Finds addons added or changed outside WoWDeck Addon Manager
+                  {actions.recoveryRequired
+                    ? RECOVERY_OFF
+                    : "Finds addons added or changed outside WoWDeck Addon Manager"}
                 </span>
               }
               onClick={() => {
+                if (actions.recoveryRequired) {
+                  return;
+                }
                 close();
                 actions.onRescan();
               }}
@@ -92,11 +102,23 @@ function InstallationDetailsModal({
             </Field>
             <Field
               focusable
-              label={<span style={{ color: STEAM.danger }}>Remove this installation…</span>}
+              label={
+                <span style={{ color: actions.recoveryRequired ? undefined : STEAM.danger }}>
+                  Remove this installation…
+                </span>
+              }
+              disabled={actions.recoveryRequired}
               description={
-                <span style={descriptionStyle}>Your game and addon files won't be deleted</span>
+                <span style={descriptionStyle}>
+                  {actions.recoveryRequired
+                    ? RECOVERY_OFF
+                    : "Your game and addon files won't be deleted"}
+                </span>
               }
               onClick={() => {
+                if (actions.recoveryRequired) {
+                  return;
+                }
                 close();
                 actions.onRemove();
               }}

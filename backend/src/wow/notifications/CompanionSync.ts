@@ -56,6 +56,11 @@ export class CompanionSyncCoordinator {
   }
 
   private async regenerateOne(installation: WowInstallation): Promise<void> {
+    if (this.service.recovery.required(installation.id)) {
+      // Recovery required (ADR 0006): its AddOns folder stays as the
+      // stopped change left it until recovery.
+      return;
+    }
     const companionPresent = await this.isCompanionInstalled(installation);
     if (!companionPresent) {
       // No misleading partial integration — never create the data

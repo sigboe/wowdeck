@@ -4,7 +4,7 @@ import type { JsonlServer } from "../../bridge/jsonl";
 import type { HandlerDeps } from "./deps";
 import { getClientTypeForGameType } from "../../wow/utils/gametype";
 
-export function register(server: JsonlServer, { installationService, updateCheck, homeDir }: HandlerDeps): void {
+export function register(server: JsonlServer, { installationService, service, updateCheck, homeDir }: HandlerDeps): void {
   server.on("installations.list", async () => ({ installations: installationService.listed() }));
 
   server.on("installations.detect", async () => {
@@ -34,4 +34,17 @@ export function register(server: JsonlServer, { installationService, updateCheck
     await installationService.remove(params.installationId);
     return { installationId: params.installationId };
   });
+
+  server.on("installations.recoveryStatus", async () => ({
+    installations: installationService.list().map((i) => service.recovery.status(i.id)),
+    stateFile: service.recovery.stateFile(),
+  }));
+
+  server.on("installations.recoveryDetails", async (params) =>
+    service.recovery.details(installationService.require(params.installationId)),
+  );
+
+  server.on("installations.retryRecovery", async (params) => service.retryRecovery(params.installationId));
+
+  server.on("installations.verifyRecovery", async (params) => service.verifyRecovery(params.installationId));
 }

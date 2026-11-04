@@ -25,7 +25,12 @@ import {
 import { fileImport, installArchive, pickArchive } from "../fileImportState";
 import { hasMore } from "../loadMore";
 import { addonSession } from "../session";
-import { installedAddonFor, resultInstallLabel, resultTags } from "../addonSession";
+import {
+  installedAddonFor,
+  recoveryNeededFor,
+  resultInstallLabel,
+  resultTags,
+} from "../addonSession";
 import { STEAM, descriptionStyle } from "../steamTheme";
 import { AddonResultRow } from "./AddonResultRow";
 import { ZeroCapabilityScreen } from "./ZeroCapabilityScreen";
@@ -84,10 +89,9 @@ export function ResultList({
   onFindInstallations: () => void;
 }) {
   // My Addons' list says what is installed, however it got there.
-  const { addons, busy, installations } = useSyncExternalStore(
-    addonSession.subscribe,
-    addonSession.get,
-  );
+  const state = useSyncExternalStore(addonSession.subscribe, addonSession.get);
+  const { addons, busy, installations } = state;
+  const locked = recoveryNeededFor(state) !== null;
   const [installing, setInstalling] = useState<Record<string, boolean>>({});
   const install = async (r: SearchResult, channel?: ReleaseChannel) => {
     if (!requireInstallation(onFindInstallations)) {
@@ -103,7 +107,7 @@ export function ResultList({
       {results.map((r) => {
         const key = resultKey(r);
         const installed = installedAddonFor(addons, r);
-        const installLabel = resultInstallLabel(installed, installations.length);
+        const installLabel = locked ? null : resultInstallLabel(installed, installations.length);
         const tags = resultTags(installed);
         // An installed addon takes My Addons' update or reinstall path.
         const primary = () =>
@@ -113,7 +117,7 @@ export function ResultList({
               ? addonSession.actions.update(installed)
               : addonSession.actions.reinstall(installed);
         // Release channel menu (WF-03, Menu button): install from a channel.
-        const choices = installChannelChoices(r);
+        const choices = locked ? null : installChannelChoices(r);
         const channelMenu = choices
           ? (afterPick?: () => void) => {
               // The menu hides the QAM window; that is not a close.
@@ -409,6 +413,8 @@ function FileImportSection({
   onFindInstallations: () => void;
 }) {
   const file = useSyncExternalStore(fileImport.subscribe, fileImport.get);
+  const locked =
+    recoveryNeededFor(useSyncExternalStore(addonSession.subscribe, addonSession.get)) !== null;
   const busy =
     file.phase === "picking" || file.phase === "inspecting" || file.phase === "installing";
   // A failed pick has no preview card yet, so its error takes the helper
@@ -500,7 +506,7 @@ function FileImportSection({
             <FocusSlot view={view} id="file:install">
               <DialogButton
                 style={{ minWidth: 0, width: "auto" }}
-                disabled={busy}
+                disabled={busy || locked}
                 onClick={install}
               >
                 {file.phase === "installing" ? <Spinner style={{ width: "1em" }} /> : "Install"}
