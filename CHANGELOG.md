@@ -8,53 +8,37 @@ What's new in each version of WoWDeck Addon Manager. The format follows
 
 ### Added
 
-- WoWDeck finds WoW through Battle.net prefixes and Steam shortcuts, including shared prefixes and the SD card.
-- Detected WoW and Battle.net entries now show addon updates on their Steam game pages and home tiles.
+- WoWDeck installs and runs on arm64 SteamOS devices, from the same zip as everyone else.
+- WoWDeck finds WoW in Battle.net's Proton prefixes and in Steam shortcuts, including shared prefixes and the SD card.
+- Steam game pages and home tiles for WoW and Battle.net show when addon updates are waiting.
 - Find WoW from My Addons when setting up, with a reminder to link its Steam library entry.
-- WoWDeck now installs and runs on arm64 SteamOS devices, from the same zip
-  as everyone else.
-- Every tab shows incomplete addon changes and offers recovery or checks your manual repair before allowing further changes.
-- When saved addon information can't be read, every tab explains how to restore it and resume saving settings.
+- If an addon change was cut short, every tab says so and offers recovery, or checks your own fix, before more changes.
+- If WoWDeck can't read its saved addon information, every tab explains how to restore it.
 
 ### Changed
 
-- The installation picker is greyed out while a Get Addons install runs.
-- Installing a beta build switches you to Beta updates; installing a stable build by hand
-  switches you back to Stable.
-- Manage backups and Copy settings keep your backups visible and offer Retry when a refresh fails.
-- Backup actions and the backup folder settings turn off while one of them is running.
-- An unknown backup or folder-change result stays visible, so you can check it before repeating the action.
-- On devices it can't run on, WoWDeck now says so instead of telling you to
-  try again.
-- When an addon installs or is removed but its temporary files can't be
-  deleted, WoWDeck says so and deletes them at the next addon change.
+- Installing a beta build switches you to Beta updates; installing a stable build by hand switches you back to Stable.
+- On devices it can't run on, WoWDeck says so instead of asking you to try again.
 - Update all names the addons it couldn't update.
 - Removing an addon names the libraries removed with it or left behind.
+- If an addon's temporary files can't be deleted, WoWDeck says so and deletes them at the next addon change.
+- Manage backups and Copy settings keep your backups visible, offer Retry when a refresh fails, and lock while a backup runs.
+- If a backup or folder change ends with an unknown result, it stays on screen so you can check before trying again.
+- The installation picker is greyed out while Get Addons installs an addon.
 
 ### Fixed
 
-- Load addon lists from files inside nested folders.
-- Keep addon import failures and cleanup warnings visible after the list refreshes.
-
-- Import backup now shows folders so you can reach ZIP files outside your home folder.
-
-- Manual Install can browse folders for archives, and returning from popups restores the full pane width.
-
-- Installing addons without WoW set up now points you to Find WoW installations in Options.
-- Finding WoW is faster on large Steam libraries.
-- WoW installations using Wow-ARM64.exe are now recognized during installation scans and Steam shortcut detection.
-- A Roll back that fails now leaves the addon as it was and keeps the version
-  you can go back to.
+- An addon install, update or removal that fails part-way puts the old files back, so My Addons matches what WoW loads.
+- A Roll back that fails leaves the addon as it was and keeps the version you can go back to.
 - Get Addons keeps showing an addon as installing, and no longer installs it twice.
+- Without WoW set up, installing or browsing addons points you to Find WoW installations in Options.
+- WoWDeck finds WoW's ARM64 version, in installation scans and in Steam shortcuts.
+- Finding WoW is faster on large Steam libraries.
+- Import backup and Manual Install can browse folders, so you can reach ZIP files outside your home folder.
+- Addon lists load from files inside nested folders, and import failures and cleanup warnings stay visible after a refresh.
+- Get Addons opens wide again on newer Steam versions and after closing a popup.
 - L1/R1 move one tab at a time instead of sometimes skipping Get Addons.
-- Get Addons opens wide again on newer Steam versions, where Latest, Popular
-  and Search stayed out of sight.
-- Latest, Popular and Search say what to fix when no WoW installation is set
-  up, instead of blaming the addon source.
-- WoWDeck starts after Decky installs or updates it where Decky runs without
-  root, such as DroidDeck.
-- An addon install, update or removal that fails part-way puts the old files
-  back, so My Addons matches what WoW loads.
+- WoWDeck starts after Decky installs or updates it where Decky runs without root, such as DroidDeck.
 
 ## [1.0.1] - 2026-10-31
 
