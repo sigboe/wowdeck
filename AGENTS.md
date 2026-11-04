@@ -147,4 +147,4 @@ When a skill finishes, or the last item of a report, ticket set or
 checklist is done, end the reply with a seam line: what finished, and the
 next skill to run, prefixed with `/clear` when that step starts on new
 material (a new ticket or spec) rather than the work already loaded. The
-map and the clearing rule are in `docs/agents/workflow.md`.
+map and the clearing and thread-settling rules are in `docs/agents/workflow.md`.
