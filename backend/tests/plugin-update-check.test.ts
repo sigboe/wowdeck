@@ -172,10 +172,30 @@ describe("compareVersions", () => {
     expect(compareVersions("0.3.0-beta.9", "0.3.0-beta.10")).toBe(-1);
   });
 
-  test("null for pre-releases other than -beta.N", () => {
+  test("a test build sorts above every beta of its release, below the release itself, tests by N", () => {
+    const ordered = [
+      "0.2.0",
+      "0.3.0-beta.12",
+      "0.3.0-beta.40",
+      "0.3.0-test.3",
+      "0.3.0-test.114",
+      "0.3.0",
+      "0.3.1-beta.1",
+    ];
+    for (let i = 0; i < ordered.length - 1; i++) {
+      expect(compareVersions(ordered[i]!, ordered[i + 1]!)).toBe(-1);
+      expect(compareVersions(ordered[i + 1]!, ordered[i]!)).toBe(1);
+    }
+    expect(compareVersions("0.3.0-test.9", "0.3.0-test.10")).toBe(-1);
+    expect(compareVersions("0.3.0-test.114", "0.3.0-beta.400")).toBe(1);
+  });
+
+  test("null for pre-releases other than -beta.N and -test.N", () => {
     expect(compareVersions("1.2.3-rc.1", "0.1.1")).toBeNull();
     expect(compareVersions("1.2.3-beta", "0.1.1")).toBeNull();
     expect(compareVersions("1.2.3-beta.x", "0.1.1")).toBeNull();
+    expect(compareVersions("1.2.3-test", "0.1.1")).toBeNull();
+    expect(compareVersions("1.2.3-alpha.1", "0.1.1")).toBeNull();
   });
 });
 
@@ -1256,5 +1276,55 @@ describe("the installed build sets the update channel", () => {
     h.restart();
     expect(h.check.channel()).toBe("stable");
     expect(h.lastRunVersion()).toBe("0.3.0-beta.2");
+  });
+});
+
+describe("a test build checks like any other (established DEVICE 2026-11-04: 1.0.2-test.114 answered \"Couldn't check for updates\" and backed off)", () => {
+  test("the same release's betas are not newer: current, no failure backoff", async () => {
+    const h = makeCheck({
+      currentVersion: "1.0.2-test.114",
+      channel: "beta",
+      respond: () => [withZip("v1.0.2-beta.27")],
+    });
+    const result = await h.check.check({ force: true });
+    expect(result.status).toBe("current");
+    expect(result.failed).toBe(false);
+    expect(h.backoff()).toBeNull();
+    expect(h.stamp()?.latestVersion).toBe("1.0.2-beta.27");
+  });
+
+  test("a newer X.Y.Z on Beta is offered", async () => {
+    const h = makeCheck({
+      currentVersion: "1.0.2-test.114",
+      channel: "beta",
+      respond: () => [withZip("v1.0.3-beta.1")],
+    });
+    const result = await h.check.check({ force: true });
+    expect(result.status).toBe("available");
+    expect(result.offer?.version).toBe("1.0.3-beta.1");
+  });
+
+  test("a test-tagged release on the list is never offered to Beta", async () => {
+    const h = makeCheck({
+      currentVersion: "0.1.1",
+      channel: "beta",
+      respond: () => [withZip("v1.0.2-test.999"), withZip("v0.2.0")],
+    });
+    const result = await h.check.check({ force: true });
+    expect(result.status).toBe("available");
+    expect(result.offer?.version).toBe("0.2.0");
+    expect(h.stamp()?.latestVersion).toBe("0.2.0");
+  });
+
+  test("first start of a test build selects Beta", async () => {
+    const h = makeCheck({
+      currentVersion: "1.0.2-test.114",
+      lastRunVersion: null,
+      channel: "stable",
+      respond: () => [withZip("v1.0.2-beta.27")],
+    });
+    expect(h.check.channel()).toBe("beta");
+    const result = await h.check.check({ force: true });
+    expect(result.status).toBe("current");
   });
 });
