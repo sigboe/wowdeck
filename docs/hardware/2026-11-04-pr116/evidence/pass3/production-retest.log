@@ -1,0 +1,4 @@
+open → tree="QuickAccess-NA" focus=null tab="My Addons"
+probe tab items → tab="My Addons" items="MY ADDONS | Forever | All up to date"
+eval@SharedJSContext --file=.scratch/pass3/restore… → {"installations":[{"id":"351cab445486","selected":false},{"id":"032c354a655f","selected":false},{"id":"5e80311f078e","selected":true}],"backupRootIsFixture":false,"autoUpdate":false,"hookPresent":false}
+close → tree="GamepadUI_Full_Root" focus="" tab=null

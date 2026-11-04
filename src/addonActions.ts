@@ -2,7 +2,7 @@ import type { Addon, OperationResult, ReleaseChannel, SearchResult } from "./typ
 import type { rpcVia } from "./services/envelope";
 import { isUndoRollback, providerLabel } from "./addonRow";
 import { CHANNEL_LABEL } from "./releaseChannel";
-import { updateAllToast } from "./text";
+import { cleanupNote, followUpNote, RECOVERY_NOTE, updateAllToast } from "./text";
 
 export interface AddonActionDeps {
   rpc: ReturnType<typeof rpcVia>;
@@ -71,21 +71,34 @@ export function createAddonActions(deps: AddonActionDeps) {
           change = null;
           return;
         }
-        toast(`Installed ${result.name}`, channel ? `${CHANNEL_LABEL[channel]} release` : "");
+        toast(
+          `Installed ${result.name}`,
+          cleanupNote(channel ? `${CHANNEL_LABEL[channel]} release` : "", operation),
+        );
         const missing = operation.missingRequiredDependencies ?? [];
         if (missing.length) {
-          // The engine reports provider ids; say names (C05), or nothing.
-          const names = await rpc("addons.lookup", {
-            providerId: result.providerId,
-            externalIds: missing,
-          })
-            .then(({ addons }) => addons.map((a) => a.name))
-            .catch(() => [] as string[]);
+          // Say names (C05): the engine's own when it named every failed
+          // dependency (#110), else looked up from the provider ids, or none.
+          const failed = (operation.followUps ?? []).filter((o) => o.status === "failed");
+          const named = failed.map((o) => o.addonName).filter((n): n is string => !!n);
+          const names =
+            named.length === missing.length
+              ? named
+              : await rpc("addons.lookup", {
+                  providerId: result.providerId,
+                  externalIds: missing,
+                })
+                  .then(({ addons }) => addons.map((a) => a.name))
+                  .catch(() => [] as string[]);
+          // Get Addons can't help while the installation needs recovery.
+          const next = failed.some((o) => o.recoveryRequired)
+            ? RECOVERY_NOTE
+            : "Install it from Get Addons.";
           toast(
             `${result.name} may not work`,
             names.length
-              ? `It needs ${names.join(", ")}, which couldn't be installed. Install it from Get Addons.`
-              : "It needs another addon that couldn't be installed. Install it from Get Addons.",
+              ? `It needs ${names.join(", ")}, which couldn't be installed. ${next}`
+              : `It needs another addon that couldn't be installed. ${next}`,
           );
         }
       } catch (e) {
@@ -103,7 +116,10 @@ export function createAddonActions(deps: AddonActionDeps) {
         } else if (operation.status === "current") {
           toast(`${addon.name} is up to date`);
         } else {
-          toast(`Updated ${addon.name}`, after.version ? `Version ${after.version}` : "");
+          toast(
+            `Updated ${addon.name}`,
+            cleanupNote(after.version ? `Version ${after.version}` : "", operation),
+          );
         }
         return operation.status === "current" ? after : afterInstall(after, operation);
       }),
@@ -114,7 +130,7 @@ export function createAddonActions(deps: AddonActionDeps) {
         if (operation.status === "failed") {
           toastError(`Couldn't reinstall ${addon.name}`, operation.error ?? "");
         } else {
-          toast(`Reinstalled ${addon.name}`);
+          toast(`Reinstalled ${addon.name}`, cleanupNote("", operation));
         }
         return afterInstall(after, operation);
       }),
@@ -136,7 +152,7 @@ export function createAddonActions(deps: AddonActionDeps) {
         } else {
           toast(
             `Switched ${addon.name} to ${label}`,
-            after.version ? `Version ${after.version} installed` : "",
+            cleanupNote(after.version ? `Version ${after.version} installed` : "", operation),
           );
         }
         return afterInstall(after, operation);
@@ -205,9 +221,12 @@ export function createAddonActions(deps: AddonActionDeps) {
         }
         toast(
           `${after.name} now updates from ${providerLabel(source.providerId)}`,
-          adopting && after.previousVersion
-            ? `Your files are kept: Roll back returns to ${after.previousVersion}.`
-            : "",
+          cleanupNote(
+            adopting && after.previousVersion
+              ? `Your files are kept: Roll back returns to ${after.previousVersion}.`
+              : "",
+            operation,
+          ),
         );
         return "reload";
       }),
@@ -215,12 +234,14 @@ export function createAddonActions(deps: AddonActionDeps) {
     /** After the view's confirmation. */
     remove: (addon: Addon) =>
       withBusy(addon.id, async () => {
-        if (addon.providerId) {
-          await rpc("addons.remove", { addonId: addon.id });
+        const { operation } = addon.providerId
+          ? await rpc("addons.remove", { addonId: addon.id })
+          : await rpc("addons.removeUnmanaged", { folderName: addon.folderName });
+        if (operation.status === "failed") {
+          toastError(`Couldn't remove ${addon.name}`, operation.error ?? "");
         } else {
-          await rpc("addons.removeUnmanaged", { folderName: addon.folderName });
+          toast(`Removed ${addon.name}`, cleanupNote(followUpNote(operation), operation));
         }
-        toast(`Removed ${addon.name}`);
         // Libraries nothing needs any more go with it, and other rows' Needed by changes.
         return "reload";
       }),
@@ -231,9 +252,7 @@ export function createAddonActions(deps: AddonActionDeps) {
       deps.setUpdatingAll(scope);
       try {
         const { operations } = await rpc("addons.updateAll", { allInstallations: scope === "all" });
-        const failed = operations.filter((o) => o.status === "failed").length;
-        const updated = operations.filter((o) => o.status === "updated").length;
-        toast(...updateAllToast(updated, failed));
+        toast(...updateAllToast(operations));
       } catch (e) {
         toastError("Couldn't update addons", e);
       } finally {

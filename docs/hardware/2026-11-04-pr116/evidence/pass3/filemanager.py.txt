@@ -1,0 +1,11 @@
+import dbus,dbus.service,dbus.mainloop.glib,pathlib,json
+from gi.repository import GLib
+r=pathlib.Path('/home/deck/homebrew/data/wowdeck/hardware-116-pass3')
+dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
+bus=dbus.bus.BusConnection((r/'bus-info').read_text().splitlines()[0]);name=dbus.service.BusName('org.freedesktop.FileManager1',bus=bus)
+class Manager(dbus.service.Object):
+ @dbus.service.method('org.freedesktop.FileManager1',in_signature='ass',out_signature='')
+ def ShowItems(self,uris,startup):
+  assert all(str(u).startswith('file://'+str(r)) for u in uris)
+  (r/'showitems.json').write_text(json.dumps({'uris':list(map(str,uris)),'startup':str(startup)}))
+obj=Manager(bus,'/org/freedesktop/FileManager1');GLib.MainLoop().run()

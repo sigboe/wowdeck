@@ -9,13 +9,10 @@
  */
 
 import { basename, join } from "node:path";
-import type { AddonFolder } from "../models";
-import type { Toc } from "../toc/toc";
 import type { WowClientType } from "../types";
 import { ArchiveError, InstallError } from "../errors";
-import { createDirectory, joinWithin, listDirectory, removeDirectory } from "../fs/safe-fs";
-import { parseTocFile } from "../toc/TocParser";
-import { getTocForGameType2 } from "../utils/toc";
+import { createDirectory, removeDirectory } from "../fs/safe-fs";
+import { checkAddonFolders, readAddonToc } from "./addonFolders";
 import { archiveFormatOf, extractArchive } from "./ArchiveExtractor";
 
 export interface ArchiveInspection {
@@ -29,8 +26,6 @@ export interface ArchiveInspection {
   /** The addon folders the archive installs — top-level folders with a TOC, the installer's own rule. */
   folders: string[];
 }
-
-const TOC_FILE_RE = /\.toc$/i;
 
 /**
  * What the archive holds, for the preview card. `workRoot` is a
@@ -70,24 +65,15 @@ export async function inspectAddonArchive(
     // promise an install that validation would refuse: every top-level
     // folder is installed (the File provider lists no release folders),
     // and every installed folder must contain a TOC.
-    const folderTocs = new Map<string, Toc[]>();
-    const notAddonFolders: string[] = [];
-    for (const dir of topLevelDirs) {
-      const tocs: Toc[] = [];
-      for (const entry of await listDirectory(joinWithin(workDir, dir))) {
-        if (!entry.isDirectory && TOC_FILE_RE.test(entry.name)) {
-          tocs.push(await parseTocFile(entry.path));
-        }
-      }
-      if (tocs.length > 0) {
-        folderTocs.set(dir, tocs);
-      } else {
-        notAddonFolders.push(dir);
-      }
-    }
+    const { addonFolders, notAddonFolders } = await checkAddonFolders(workDir, topLevelDirs);
     // Sorted: readdir order is whatever the filesystem feels like, and a
     // bundle's folder list reaches the preview card verbatim.
-    const folders = [...folderTocs.keys()].sort();
+    const folders = [...addonFolders].sort();
+    // The addon's own TOC, picked the way the installer picks the record's
+    // (all folders' TOCs together, the installation's game version deciding),
+    // here in sorted folder order. A TOC that can't be read fails the
+    // preview, ahead of the structural refusals below.
+    const toc = await readAddonToc(workDir, folders, clientType);
     if (folders.length === 0) {
       throw new ArchiveError("That archive doesn't contain any WoW addon folders", "archive_no_addons");
     }
@@ -98,16 +84,13 @@ export async function inspectAddonArchive(
       );
     }
 
-    // The addon's own TOC, picked the way the installer picks the record's:
-    // all folders' TOCs together, the installation's game version deciding.
-    const tocs = folders.flatMap((f) => folderTocs.get(f)!);
-    const stub: AddonFolder = { name: folders[0]!, path: "", status: "", tocs };
-    const toc = getTocForGameType2(stub, clientType) ?? tocs[0]!;
+    // At least one folder passed the check, so at least one TOC was read.
+    const { title, author, version } = toc!;
     return {
       fileName,
-      name: toc.title || fileName.replace(/\.[^.]+$/, ""),
-      author: toc.author ?? null,
-      version: toc.version ?? null,
+      name: title || fileName.replace(/\.[^.]+$/, ""),
+      author: author ?? null,
+      version: version ?? null,
       folders,
     };
   } finally {

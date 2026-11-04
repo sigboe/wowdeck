@@ -31,6 +31,7 @@ import { QamProgressBar } from "./QamProgressBar";
 import { STEAM, descriptionStyle } from "../steamTheme";
 import { QAM_VIEW } from "../qamState";
 import { addonSession } from "../session";
+import { recoveryNeededFor } from "../addonSession";
 import { settingsStore } from "../settings";
 import { FocusSlot, focusTarget, useRefocusWhenLost, useRestoreFocus } from "./FocusSlot";
 import { openAddonDetailsModal } from "./AddonDetailsModal";
@@ -65,10 +66,10 @@ export function InstalledView({ addons, loading, restoreRows, multipleInstallati
   useRestoreFocus(VIEW, restoreRows);
   // Module scope (addonSession.ts): a context menu or modal unmounts the
   // panel (G4) while the action it started keeps running.
-  const { busy, updatingAll, showIgnored, filter } = useSyncExternalStore(
-    addonSession.subscribe,
-    addonSession.get,
-  );
+  const state = useSyncExternalStore(addonSession.subscribe, addonSession.get);
+  const { busy, updatingAll, showIgnored, filter, addonsUnverified } = state;
+  // Recovery required (#107): the engine refuses addon changes here, so they're off.
+  const locked = recoveryNeededFor(state) !== null;
   const { settings } = useSyncExternalStore(settingsStore.subscribe, settingsStore.get);
   const showLibraries = !settings.hideLibraries;
   const showUnmanaged = !settings.hideUnmanaged;
@@ -121,11 +122,12 @@ export function InstalledView({ addons, loading, restoreRows, multipleInstallati
     };
     openAddonDetailsModal({
       result,
-      installLabel: addon.updateAvailable ? "Update" : null,
+      installLabel: addon.updateAvailable && !locked ? "Update" : null,
       onInstall: () => actions.update(addon),
-      channelMenu: addon.canChangeChannel
-        ? (afterPick) => openChannelMenu(addon, afterPick)
-        : undefined,
+      channelMenu:
+        addon.canChangeChannel && !locked
+          ? (afterPick) => openChannelMenu(addon, afterPick)
+          : undefined,
       dependencies: dependencyNote({
         required: addon.dependencies,
         missing: addon.missingDependencies ?? [],
@@ -245,8 +247,8 @@ export function InstalledView({ addons, loading, restoreRows, multipleInstallati
                 style={{ minWidth: 0, flex: 1 }}
                 // Stays reachable with nothing to update here while ≡ can
                 // still update the other installations.
-                disabled={updates.length === 0 && !multipleInstallations}
-                onClick={() => void actions.updateAll("installation")}
+                disabled={(updates.length === 0 || locked) && !multipleInstallations}
+                onClick={() => !locked && void actions.updateAll("installation")}
                 {...(multipleInstallations
                   ? {
                       onMenuButton: () => void actions.updateAll("all"),
@@ -277,6 +279,8 @@ export function InstalledView({ addons, loading, restoreRows, multipleInstallati
             <AddonRow
               addon={addon}
               busy={!!busy[addon.id]}
+              locked={locked}
+              unverified={addonsUnverified}
               onAction={(action) => run(addon, action)}
             />
           </PanelSectionRow>
@@ -335,10 +339,16 @@ const SEPARATOR = { height: "1px", background: "rgba(255, 255, 255, 0.1)", margi
 function AddonRow({
   addon,
   busy,
+  locked,
+  unverified,
   onAction,
 }: {
   addon: Addon;
   busy: boolean;
+  /** Addon changes are off: the installation is recovery required. */
+  locked: boolean;
+  /** The engine's stored information, not checked against the folders. */
+  unverified: boolean;
   onAction: (action: AddonActionId) => void;
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
@@ -348,12 +358,12 @@ function AddonRow({
   const desc = addonRowDescription(addon);
   // Rows that are never updated read like a row that is switched off (S23).
   const greyed = addon.ignored || isUnmanaged(addon);
-  const quick = rowQuickAction(addon);
+  const quick = locked ? null : rowQuickAction(addon);
   // A git checkout or Raider.IO client folder is listed for information only (no actions, no menu).
   const inert = isNeverTouched(addon);
 
   const openMenu = (target?: EventTarget | null) => {
-    const actions = addonActions(addon, busy, autoUpdate);
+    const actions = addonActions(addon, busy || locked, autoUpdate);
     const destructiveAt = actions.findIndex((a) => a.tone === "destructive");
     showContextMenu(
       <Menu label={addon.name}>
@@ -386,6 +396,7 @@ function AddonRow({
         <span
           style={greyed ? { ...descriptionStyle, color: STEAM.textDisabled } : descriptionStyle}
         >
+          {unverified && <span className="wowdeck-status-tag">Unverified</span>}
           {addon.ignored && <span className="wowdeck-status-tag">Ignored</span>}
           {isUnmanaged(addon) && <span className="wowdeck-status-tag">Unmanaged</span>}
           {/* Its source is turned off or not set up: no checks, no updates. */}

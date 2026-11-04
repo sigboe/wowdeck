@@ -1,0 +1,48 @@
+press b → tree="QuickAccess-NA" focus="Import addon list From another computer or WowUp" tab="Options"
+seek Manage backups --enter → pressed Enter on "Manage backupsRestore, delete or import (WowUp backups too)" (jump) → tree="ModalDialogOverlay_Modal_47" focus="Back up now Save a copy of your settings" tab=null
+seek Import from file --enter → pressed Enter on "Import from file… Add a backup zip made on this or another computer" (jump) → tree="ModalDialogOverlay_Modal_48" focus=""
+seek homebrew --enter → pressed Enter on "homebrew Folder 9/26/2026, 3:24:31 PM" (jump) → focus="settings Folder 10/25/2026, 9:18:37 PM"
+seek data --enter → pressed Enter on "data Folder 10/25/2026, 8:20:16 AM" (jump) → focus=""
+seek wowdeck --enter → pressed Enter on "wowdeck Folder 11/4/2026, 6:32:25 PM" (jump) → focus="wtf-backups Folder 10/14/2026, 3:51:03 PM"
+seek hardware-116-pass2 --enter → pressed Enter on "hardware-116-pass2 Folder 11/4/2026, 6:30:36 PM" (jump) → focus="B Folder 11/4/2026, 6:20:51 PM"
+seek backups --enter → pressed Enter on "backups Folder 11/4/2026, 6:30:02 PM" (jump) → focus="_retail_ Folder 11/4/2026, 6:25:43 PM"
+seek _classic_era_ --enter → pressed Enter on "_classic_era_ Folder 11/4/2026, 6:25:43 PM" (jump) → focus="wtf_1793813024561.zip 1.16 KiB 11/4/2026, 6:23:44 "
+seek wtf_1793813143206.zip --enter → pressed Enter on "wtf_1793813143206.zip 1.16 KiB 11/4/2026, 6:25:43 PM" (jump) → tree="ModalDialogOverlay_Modal_47" focus="Import from file… Add a backup zip made on this or"
+eval@SharedJSContext --file=.scratch/pass2/modalte… → Settings backups: Retail
+WTF is the folder where WoW keeps your addon settings, keybinds, macros and UI layout. Restoring replaces it; a safety backup of your current settings is made first.
+That backup is already in Classic Era's backups. To use it here, choose Copy settings from another version.
+Back up now
+Save a copy of your settings
+Import from file…
+Add a backup zip made on this or another computer
+Copy settings from another version…
+Bring over another WoW version's addon settings, keybinds and layout
+BACKUPS (2)
+3.3 KB in /home/deck/homebrew/data/wowdeck/hardware-116-pass2/backups/_retail_
+10 minutes ago · 1.2 KB
+Safety backup · 2 files
+From another computer
+14 Oct · 2.1 KB
+From WowUp · 3 files
+From another computer (WowUp)
+shot .scratch/pass2/other-version-import.png → .scratch/pass2/other-version-import.png 800x500
+press b → tree="QuickAccess-NA" focus="Manage backups Restore, delete or import (WowUp ba" tab="Options"
+seek Retail --enter → pressed Enter on "Retail" (jump) → tree="ModalDialogOverlay_Modal_49" focus="Retail" tab=null
+seek Classic Era --enter → pressed Enter on "Classic Era" (jump) → tree="QuickAccess-NA" focus="Classic Era" tab="Options"
+seek Manage backups --enter → pressed Enter on "Manage backupsRestore, delete or import (WowUp backups too)" (jump) → tree="ModalDialogOverlay_Modal_50" focus="Back up now Save a copy of your settings" tab=null
+eval@SharedJSContext --file=.scratch/pass2/modalte… → Settings backups: Classic Era
+WTF is the folder where WoW keeps your addon settings, keybinds, macros and UI layout. Restoring replaces it; a safety backup of your current settings is made first.
+Back up now
+Save a copy of your settings
+Import from file…
+Add a backup zip made on this or another computer
+Copy settings from another version…
+Bring over another WoW version's addon settings, keybinds and layout
+BACKUPS (2)
+2.4 KB in /home/deck/homebrew/data/wowdeck/hardware-116-pass2/backups/_classic_era_
+10 minutes ago · 1.2 KB
+Manual · 2 files
+From another computer
+12 minutes ago · 1.2 KB
+Manual · 2 files
+From another computer

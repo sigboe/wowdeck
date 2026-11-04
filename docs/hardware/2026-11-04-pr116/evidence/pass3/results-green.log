@@ -1,0 +1,11 @@
+bun test v1.4.2 (744846f84)
+
+src/importPicker.test.tsx:
+(pass) backup import can reach ZIPs in nested folders and cancellation sends no import [9.97ms]
+(pass) addon list import navigates nested folders and restricts selection to text files [167.29ms]
+(pass) partial import keeps failure details and cleanup warnings after the list refreshes [45.24ms]
+
+ 3 pass
+ 0 fail
+ 17 expect() calls
+Ran 3 tests across 1 file. [785.00ms]

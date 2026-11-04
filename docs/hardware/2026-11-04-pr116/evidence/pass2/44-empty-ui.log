@@ -1,0 +1,6 @@
+open → tree="QuickAccess-NA" focus=null tab="My Addons"
+seek MY ADDONS → found "My Addons" (jump, 4 matches) → focus="MY ADDONS"
+probe text items → text="WoWDeck Manager MY ADDONS FIND WOW Find your WoW installation to start managing addons. Looks in Steam, Lutris and other game folders. Find WoW If WoW isn't found, add its folder in Options. Under Steam library, link WoW or Battle.net to show addon updates on its game page and tile. Open Options" items="MY ADDONS | Find WoW | Open Options"
+shot .scratch/pass2/empty-setup.png → .scratch/pass2/empty-setup.png 800x425
+key right → focus="GET ADDONS" tab="Get Addons"
+probe text items → text="WoWDeck Manager F6 GET ADDONS F7 Search Latest Popular Manual Install" items="GET ADDONS | Search | Latest | Popular | Manual Install"

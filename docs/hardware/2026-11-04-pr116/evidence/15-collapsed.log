@@ -1,0 +1,11 @@
+probe items → items="MY ADDONS | Hardware 116 | All up to date"
+shot .scratch/deck-116/22-myaddons-later.png → .scratch/deck-116/22-myaddons-later.png 800x425
+seek My Addons → found "My Addons" (jump, 4 matches)
+press rb → focus="Hardware 116" tab="Get Addons"
+seek Hardware 116 → found "Hardware 116" (jump, 5 matches)
+press a → tree="ModalDialogOverlay_Modal_18" tab=null
+probe items → items="Hardware 116 | Forever Beta | Classic Era | Forever | Cancel"
+shot .scratch/deck-116/23-collapsed-picker.png → .scratch/deck-116/23-collapsed-picker.png 800x500
+press b → tree="QuickAccess-NA" focus="GET ADDONS" tab="Get Addons"
+probe focus → focus="GET ADDONS"
+shot .scratch/deck-116/24-collapsed-return.png → .scratch/deck-116/24-collapsed-return.png 800x425

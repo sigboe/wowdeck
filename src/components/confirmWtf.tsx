@@ -10,7 +10,7 @@ import {
 /**
  * Confirmations for the two destructive WTF actions (guide A8). Opening a
  * modal unmounts the plugin panel (G4); the WTF job state lives in module
- * scope (wtfBackupState.ts), so nothing is lost.
+ * scope (wtfLifecycle.ts), so nothing is lost.
  */
 /** Restore confirmation: our own dialog, because it carries the per-restore Config.wtf choice. */
 export function confirmRestoreBackup(

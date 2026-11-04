@@ -1,0 +1,15 @@
+open → tree="QuickAccess-NA" focus=null tab="My Addons"
+probe items → items="MY ADDONS | Hardware 116 | Hardware 116 needs recovery An addon cha | All up to date"
+shot .scratch/deck-116/25-recovery-myaddons.png → .scratch/deck-116/25-recovery-myaddons.png 800x425
+seek My Addons → found "My Addons" (jump, 4 matches) → focus="MY ADDONS"
+press rb → focus="Hardware 116" tab="Get Addons"
+probe items → items="GET ADDONS | Hardware 116 needs recovery An addon cha | Hardware 116 | Search | Latest | Popular | Manual Install"
+shot .scratch/deck-116/26-recovery-getaddons.png → .scratch/deck-116/26-recovery-getaddons.png 800x425
+seek Get Addons → found "Get Addons" (jump, 4 matches) → focus="GET ADDONS"
+press rb → focus=null tab="Options"
+probe items → items="OPTIONS | Hardware 116 needs recovery An addon cha | Hardware 116 | Find WoW installations Looks in Steam, L | Auto | Add installation | Export addon list Share it with WowUp or | Import addon list From another computer  | Back up now Last backup 1 minute ago · 5 | Manage backups Restore, delete or import | Backup folder /home/deck/homebrew/data/w | Use default folder | 3 | Clear access token A token is saved (hid | Clear | World of Warcraft in Steam World of Warc | Updates inside WoW Shown in game when th | Third-party notices What WoWDeck is buil | Support WoWDeck Scan a code with your ph"
+shot .scratch/deck-116/27-recovery-options.png → .scratch/deck-116/27-recovery-options.png 800x425
+seek needs recovery → found "Hardware 116 needs recoveryAn addon change couldn't put its files back. Addon ch" (jump, 4 matches) → focus="Hardware 116 needs recovery An addon change couldn"
+press a → tree="ModalDialogOverlay_Modal_19" focus="Hardware 116 An addon change stopped before it cou" tab=null
+probe items → items="Hardware 116 An addon change stopped bef | Install stopped · started 1 Jan 1970 at  | AddOns/Suite Wasn't there before this ad | Close | Retry recovery | Verify recovery"
+shot .scratch/deck-116/28-recovery-details.png → .scratch/deck-116/28-recovery-details.png 800x500

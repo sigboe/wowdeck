@@ -1,0 +1,22 @@
+probe items → items="Back up now Save a copy of your settings | Import from file… Add a backup zip made  | Copy settings from another version… Brin | 5 minutes ago · 1.2 KB Safety backup · 2 | 14 Oct · 2.1 KB From WowUp · 3 files Fro"
+eval@SharedJSContext --file=.scratch/pass2/modalte… → Settings backups: Retail
+WTF is the folder where WoW keeps your addon settings, keybinds, macros and UI layout. Restoring replaces it; a safety backup of your current settings is made first.
+That backup is already in the list.
+Back up now
+Save a copy of your settings
+Import from file…
+Add a backup zip made on this or another computer
+Copy settings from another version…
+Bring over another WoW version's addon settings, keybinds and layout
+BACKUPS (2)
+3.3 KB in /home/deck/homebrew/data/wowdeck/hardware-116-pass2/backups/_retail_
+5 minutes ago · 1.2 KB
+Safety backup · 2 files
+From another computer
+14 Oct · 2.1 KB
+From WowUp · 3 files
+From another computer (WowUp)
+shot .scratch/pass2/import-complete.png → .scratch/pass2/import-complete.png 800x500
+press b → tree="QuickAccess-NA" focus="Manage backups Restore, delete or import (WowUp ba" tab="Options"
+seek Retail --enter → pressed Enter on "Retail" (jump) → tree="ModalDialogOverlay_Modal_36" focus="Retail" tab=null
+probe items → items="Retail | Forever Beta | Classic Era | Forever | Cancel"

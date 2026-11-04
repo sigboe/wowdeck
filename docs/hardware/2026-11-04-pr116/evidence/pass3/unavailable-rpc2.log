@@ -1,0 +1,2 @@
+rpc wtf.list {"installationId": "466ad6594468"} --… → {"wtfExists":true,"backupDir":"/home/deck/homebrew/data/wowdeck/hardware-116-pass3/unavailable/_retail_","dirAvailable":false,"backups":[],"totalBackupBytes":0,"gameRunning":"not_running","job":null}
+rpc wtf.create {"installationId": "466ad6594468"} … → {"jobId":"wtf-1793814780184-1"}

@@ -64,8 +64,14 @@ export class InstallationService {
   constructor(
     /** Settings and installations; addon records change only in AddonService's gate. */
     private store: Omit<StateStore, "addons">,
-    /** Drops an installation's addon records (a gate turn, after any running install). */
-    private dropRecords: (installationId: string) => Promise<void>,
+    /**
+     * Removes an installation: in one turn of AddonService's gate (after any
+     * running or queued addon change), refuses a recovery-required one
+     * (InstallationRecovery), then runs `removeEntry` and drops its addon
+     * records. One turn, so no addon change can stop in the installation
+     * between the check and the removal.
+     */
+    private removeGuarded: (installationId: string, removeEntry: () => void) => Promise<void>,
     /** Called after an installation (and its addon records) was removed. */
     private onRemoved: () => void = () => {},
   ) {}
@@ -225,8 +231,9 @@ export class InstallationService {
     if (!installations.some((i) => i.id === id)) {
       throw new NotFoundError("installation", id);
     }
-    this.store.setInstallations(installations.filter((i) => i.id !== id));
-    await this.dropRecords(id);
+    await this.removeGuarded(id, () =>
+      this.store.setInstallations(this.store.installations.filter((i) => i.id !== id)),
+    );
     if (this.store.settings.selectedInstallationId === id) {
       this.store.updateSettings({ selectedInstallationId: null });
       this.ensureSelection();

@@ -1,0 +1,3 @@
+eval@SharedJSContext --file=.scratch/pass2/hook.js → scoped WoWDeck RPC hook installed
+FAIL rpc params are not JSON: {path:/home/deck/homebrew/data/wowdeck/hardware-116-pass2/A/_retail_,clientType:retail}
+at: tree="QuickAccess-NA" focus="MY ADDONS" route="/routes/library/home" plugin="WoWDeck" tab="My Addons"

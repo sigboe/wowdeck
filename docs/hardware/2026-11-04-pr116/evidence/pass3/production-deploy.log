@@ -1,0 +1,2 @@
+ssh: deck@10.10.1.39
+up: deployed engine · backup /home/deck/homebrew/data/wowdeck/test-backups/2026-11-04-180209-976121 · reloaded 1.0.1, engine pid 51575→51971

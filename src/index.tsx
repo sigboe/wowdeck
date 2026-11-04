@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   ButtonItem,
-  DropdownItem,
   Field,
   Focusable,
   GamepadButton,
@@ -24,14 +23,16 @@ import { pluginToast } from "./toast";
 import { selfUpdateStore } from "./selfUpdate";
 import { pluginUpdateDot } from "./pluginUpdate";
 import { addonSession } from "./session";
+import { InstallationSelect } from "./components/InstallationSelect";
 import { askUntilAnswered } from "./askUntilAnswered";
 import { QAM_TABS, QAM_VIEW, qamState, type QamTab } from "./qamState";
 import { startSourceJump, startInstallationJump } from "./optionsJump";
 import { CURSE_KEY_ROW } from "./components/settings/common";
 import { FocusRow } from "./components/FocusSlot";
+import { RecoveryNotice } from "./components/RecoveryNotice";
 import { QAM_DROPDOWN_BELOW_VALUE } from "./components/dropdownValue";
 import { STEAM_NO_TRANSFORM_SCROLL, useScrollBuffer } from "./components/ScrollBuffer";
-import { handleWtfEvent } from "./wtfBackupState";
+import { wtfLifecycle } from "./wtfSession";
 import { wtfCompletedToast } from "./wtfText";
 import { patchGamePage } from "./steamGamePage";
 import { autoUpdateText } from "./steamLibrary";
@@ -227,12 +228,10 @@ function Content() {
           // div both touched the highlight's edges (guide S27; DEVICE audit).
           <div style={{ padding: "0 16px 8px" }}>
             <FocusRow view={QAM_VIEW.installed} id="installation">
-              <DropdownItem
+              <InstallationSelect
+                session={addonSession}
                 // No label: the button is the whole row (owner, 2026-10-23).
                 menuLabel="Installation"
-                rgOptions={installations.map((i) => ({ data: i.id, label: i.displayName }))}
-                selectedOption={selectedId}
-                onChange={(option) => void addonSession.selectInstallation(option.data as string)}
                 childrenContainerWidth="max"
                 renderButtonValue={QAM_DROPDOWN_BELOW_VALUE}
                 bottomSeparator="none"
@@ -242,6 +241,9 @@ function Content() {
         )}
         {tab === "settings" && <SelfUpdatePanel />}
       </div>
+
+      {/* One recovery notice for all three tabs, from the module session (#107). */}
+      <RecoveryNotice view={QAM_VIEW[tab]} />
 
       {tab === "installed" && (
         <>
@@ -271,7 +273,6 @@ function Content() {
         <GetAddonsBrowseTab
           installations={installations}
           selectedId={selectedId}
-          onSelectInstallation={addonSession.selectInstallation}
           landOnInstallation={bumperEntry.current}
           onExitToNav={() => selectedTabRef.current?.focus()}
           onOpenSources={(providers, marked) => {
@@ -303,7 +304,6 @@ function Content() {
         <SettingsView
           installations={installations}
           selectedId={selectedId}
-          onSelect={addonSession.selectInstallation}
           onChanged={addonSession.reloadAll}
           restoreRows={restoreRows}
         />
@@ -356,9 +356,9 @@ export default definePlugin(() => {
 
   // WTF backup/restore jobs run in the engine and outlive any panel or modal, so their
   // progress/outcome events are subscribed once per plugin load into a module-scope
-  // store (wtfBackupState.ts), not in a component that a modal would unmount.
+  // lifecycle (wtfLifecycle.ts), not in a component that a modal would unmount.
   const offWtfEvents = api.onBackendEvent((event) => {
-    handleWtfEvent(event);
+    wtfLifecycle.handleEvent(event);
     if (event.event === "wtf.completed") {
       const toast = wtfCompletedToast(event.params);
       if (toast) {

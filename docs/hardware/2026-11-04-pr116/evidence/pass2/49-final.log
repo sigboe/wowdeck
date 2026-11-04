@@ -1,0 +1,3 @@
+eval@SharedJSContext --file=.scratch/pass2/clean-p… → {"fixtureHook":"undefined","transportHasFixtureCode":false}
+rpc installations.recoveryStatus --full → {"installations":[{"installationId":"351cab445486","status":"ready"},{"installationId":"032c354a655f","status":"ready"},{"installationId":"5e80311f078e","status":"ready"}],"stateFile":{"status":"readable"}}
+close → no change

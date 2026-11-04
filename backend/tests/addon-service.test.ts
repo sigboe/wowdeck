@@ -1267,26 +1267,25 @@ describe("previous version and rollback (BEYOND-02)", () => {
     expect(toc(f)).toContain("1.0.0");
   });
 
-  test("a keep that fails after the old copy is gone leaves a dead label; the list drops it (#33)", async () => {
+  test("a keep that fails after the old copy is gone reports no Roll back (#33, #101)", async () => {
     const f = localFixture("rollback-keep-fails", [{ id: "800", name: "Roll", version: "1.0.0", releaseId: "r1", folders: ["Roll"] }]);
     const { addon } = await f.service.install({ intent: "install", providerId: "WowUpHub", externalId: "800", installation: f.installation });
     bump(f, "1.1.0", "r2");
     await f.service.refresh(f.installation);
     await f.service.updateAddon(addon.id); // label 1.0.0, copy kept
 
-    // The next keep fails and takes the old copy with it (keepPrevious
-    // removes the old cache entry before writing the new one): make the
-    // cache root something no keep can write to.
+    // The old copy is gone and the next keep fails: make the cache root
+    // something no keep can write to.
     rmSync(join(f.addonsPath, ".wowdeck", "rollback"), { recursive: true, force: true });
     writeFileSync(join(f.addonsPath, ".wowdeck", "rollback"), "not a directory");
     bump(f, "1.2.0", "r3");
     await f.service.refresh(f.installation);
-    const { operation } = await f.service.updateAddon(addon.id);
-    expect(operation.status).toBe("updated"); // the install itself is fine; only the keep failed
-    expect(stored(f, addon.id).rollbackVersion).toBe("1.0.0"); // the failed keep left the old label
-
-    expect((await listed(f, addon.id)).previousVersion).toBeNull(); // the list drops the dead offer
+    const updated = await f.service.updateAddon(addon.id);
+    expect(updated.operation.status).toBe("updated"); // the install itself is fine; only the keep failed
+    expect(updated.addon.previousVersion).toBeNull(); // the outcome says Roll back isn't available
     expect(stored(f, addon.id).rollbackVersion).toBeUndefined();
+
+    expect((await listed(f, addon.id)).previousVersion).toBeNull();
     expect(await f.service.rollbackStatus()).toMatchObject({ count: 0 });
     const back = await f.service.rollback(addon.id);
     expect(back.operation.status).toBe("failed");

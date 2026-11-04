@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { FaClock, FaFileArchive, FaFire, FaSearch } from "react-icons/fa";
 import {
-  DropdownItem,
   Field,
   Focusable,
   GamepadButton,
@@ -43,6 +42,8 @@ import {
 } from "../steamDom/qamWidening";
 import { isVirtualKeyboardShowing } from "../steamDom/qamVisibility";
 import { forgetFocus, rememberFocus, rememberedFocus, restoreFocus } from "../focusMemory";
+import { addonSession } from "../session";
+import { InstallationSelect } from "./InstallationSelect";
 import { ListTab, ManualInstallTab, SearchTab, type SourceControls } from "./browseTabs";
 import { CapabilityGate } from "./ZeroCapabilityScreen";
 import { BrowseBar, SEGMENT_FOCUS, segmentOfFocusKey } from "./BrowseBar";
@@ -74,7 +75,6 @@ const NO_PROVIDERS: ProviderInfo[] = [];
 export function GetAddonsTab({
   installations,
   selectedId,
-  onSelectInstallation,
   landOnInstallation = false,
   onExitToNav,
   onOpenSources,
@@ -82,7 +82,6 @@ export function GetAddonsTab({
 }: {
   installations: Installation[];
   selectedId: string | null;
-  onSelectInstallation: (id: string) => Promise<void>;
   /**
    * Fresh entry by L1/R1 (PC-04): focus lands on the Installation row, not a
    * destination, so the QAM stays collapsed until a destination gets focus.
@@ -514,17 +513,15 @@ export function GetAddonsTab({
             <PanelSectionRow>
               <Focusable ref={installationRef} preferredFocus={landingOnInstallation}>
                 {installations.length > 1 ? (
-                  <DropdownItem
+                  <InstallationSelect
+                    session={addonSession}
                     // No label: the button is the whole row, so a long
                     // installation name has the row's width at the row's
                     // usual height (owner, 2026-10-23); the menu says what it
                     // picks.
                     menuLabel="Installation"
-                    rgOptions={installations.map((i) => ({ data: i.id, label: i.displayName }))}
-                    selectedOption={selectedId}
                     childrenContainerWidth="max"
                     renderButtonValue={QAM_DROPDOWN_BELOW_VALUE}
-                    onChange={(o) => void onSelectInstallation(o.data as string)}
                     onMenuWillOpen={showWithoutClosing}
                     bottomSeparator="none"
                   />

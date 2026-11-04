@@ -99,11 +99,51 @@ export function jobProgressText(job: WtfJobSnapshot): string {
 }
 
 export interface WtfOutcome {
-  kind: WtfCompleted["kind"];
+  /** The job kind, or the import or delete request whose result is unknown. */
+  kind: WtfCompleted["kind"] | "import" | "delete";
   installationId: string;
-  ok: boolean;
+  /** null: the result is unknown (the engine's answer or completion was lost). */
+  ok: boolean | null;
   text: string;
 }
+
+/**
+ * The line for a job whose result can't be established (ADR 0007): its start
+ * answer was lost, or it ended without a completion reaching the UI. Neither
+ * success nor failure; the engine keeps no outcome to look up.
+ */
+export function unknownOutcome(kind: WtfOutcome["kind"], installationId: string): WtfOutcome {
+  const what = {
+    create: "the backup finished. Check the backup list",
+    import: "the import finished. Check the backup list",
+    delete: "the backup was deleted. Check the backup list",
+    restore: "the restore finished. Check your settings in game",
+    copy: "the Settings copy finished. Check your settings in game",
+  }[kind];
+  return {
+    kind,
+    installationId,
+    ok: null,
+    text: `Couldn't tell whether ${what} before trying again.`,
+  };
+}
+
+/** A cancel whose answer was lost: the job runs on until its result arrives. */
+export function unknownCancelOutcome(
+  kind: WtfCompleted["kind"],
+  installationId: string,
+): WtfOutcome {
+  return {
+    kind,
+    installationId,
+    ok: null,
+    text: "Couldn't tell whether Cancel reached the job. Its result shows here when it ends.",
+  };
+}
+
+/** A backup folder or retention write whose answer was lost (Options then shows the engine's). */
+export const UNKNOWN_SETTINGS_WRITE =
+  "Couldn't tell whether that was saved. The settings shown are the ones in use.";
 
 /** Inline result line for a finished job (guide A6: inline, not a toast). */
 export function outcomeOf(c: WtfCompleted): WtfOutcome {

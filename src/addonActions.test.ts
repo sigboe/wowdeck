@@ -160,7 +160,10 @@ describe("addon actions: reinstall, channel, pause, ignore, remove", () => {
   });
 
   test("remove: managed by id, unmanaged by folder", async () => {
-    const h = harness({ "addons.remove": {}, "addons.removeUnmanaged": {} });
+    const h = harness({
+      "addons.remove": { addonId: "a1", operation: op("removed") },
+      "addons.removeUnmanaged": { operation: op("removed") },
+    });
     await h.actions.remove(addon);
     await h.actions.remove({ ...addon, providerId: null, folderName: "Loose" });
     expect(h.calls).toEqual([
@@ -171,6 +174,71 @@ describe("addon actions: reinstall, channel, pause, ignore, remove", () => {
       "toast Removed Details",
       "toast Removed Details",
     ]);
+  });
+
+  test("remove: a failed removal says why and reads the list; a leftover is noted with the success", async () => {
+    const failed = harness({
+      "addons.remove": {
+        addonId: "a1",
+        operation: op("failed", "Couldn't remove the addon's folders. Nothing was changed"),
+      },
+    });
+    await failed.actions.remove(addon);
+    expect(failed.log).toEqual([
+      "busy a1 true",
+      "error Couldn't remove Details | Couldn't remove the addon's folders. Nothing was changed",
+      "busy a1 false",
+      "reload",
+    ]);
+
+    const warned = harness({
+      "addons.removeUnmanaged": {
+        operation: { ...op("removed"), cleanupWarning: "Its temporary files are left." },
+      },
+    });
+    await warned.actions.remove({ ...addon, providerId: null });
+    expect(warned.log).toContain("toast Removed Details | Its temporary files are left.");
+  });
+});
+
+describe("addon actions: remove with its unneeded libraries (#110)", () => {
+  test("names the libraries removed with it and the ones that couldn't be, and a needed recovery", async () => {
+    const lib = (status: OperationResult["status"], addonName: string, extra = {}) => ({
+      ...op(status, status === "failed" ? "nope" : null),
+      addonName,
+      ...extra,
+    });
+    const h = harness({
+      "addons.remove": {
+        addonId: "a1",
+        operation: {
+          ...op("removed"),
+          followUps: [
+            lib("removed", "LibOne"),
+            lib("failed", "LibTwo"),
+            lib("removed", "LibThree"),
+          ],
+        },
+      },
+    });
+    await h.actions.remove(addon);
+    expect(h.log).toContain(
+      "toast Removed Details | Also removed LibOne, LibThree. Couldn't remove LibTwo.",
+    );
+
+    const stopped = harness({
+      "addons.remove": {
+        addonId: "a1",
+        operation: {
+          ...op("removed"),
+          followUps: [lib("failed", "LibOne", { recoveryRequired: true })],
+        },
+      },
+    });
+    await stopped.actions.remove(addon);
+    expect(stopped.log).toContain(
+      "toast Removed Details | Couldn't remove LibOne. This installation needs recovery before its addons can change.",
+    );
   });
 });
 
@@ -277,10 +345,44 @@ describe("addon actions: update all", () => {
     expect(h.calls).toEqual([["addons.updateAll", { allInstallations: true }]]);
     expect(h.log).toEqual([
       "updatingAll all",
-      "toast Updated 2 addons | 1 addon couldn't be updated",
+      "toast Updated 2 addons | 1 addon couldn't be updated.",
       "reload",
       "updatingAll null",
     ]);
+  });
+
+  test("a cleanup warning is said once, after the counts", async () => {
+    const warned = { ...op("updated"), cleanupWarning: "Its temporary files are left." };
+    const h = harness({
+      "addons.updateAll": { operations: [warned, op("updated"), op("failed")] },
+    });
+    await h.actions.updateAll("all");
+    expect(h.log).toContain(
+      "toast Updated 2 addons | 1 addon couldn't be updated. Some temporary files are left; they're removed at the next addon change.",
+    );
+  });
+
+  test("partial results name what wasn't updated and say an installation needs recovery (#110)", async () => {
+    const named = (status: OperationResult["status"], addonName: string, extra = {}) => ({
+      ...op(status),
+      addonName,
+      ...extra,
+    });
+    const h = harness({
+      "addons.updateAll": {
+        operations: [
+          named("updated", "Alpha"),
+          named("failed", "Bravo"),
+          named("failed", "Charlie", { recoveryRequired: true }),
+          named("failed", "Delta", { recoveryRequired: true }),
+          named("updated", "Echo"),
+        ],
+      },
+    });
+    await h.actions.updateAll("all");
+    expect(h.log).toContain(
+      "toast Updated 2 addons | Not updated: Bravo, Charlie +1. An installation needs recovery before its addons can change.",
+    );
   });
 
   test("nothing to do, and a rejected call", async () => {
@@ -306,6 +408,29 @@ describe("addon actions: install", () => {
     expect(h.log).toEqual(["toast Installed Details | Beta release", "reload"]);
   });
 
+  test("a cleanup warning is shown with the success", async () => {
+    const warned = {
+      ...op("installed"),
+      cleanupWarning: "Its temporary files are left in AddOns/.wowdeck/tx-1.",
+    };
+    const h = harness({ "addons.install": { addon, operation: warned } });
+    await h.actions.install(result, "beta");
+    expect(h.log).toEqual([
+      "toast Installed Details | Beta release. Its temporary files are left in AddOns/.wowdeck/tx-1.",
+      "reload",
+    ]);
+    const updated = harness({
+      "addons.update": {
+        addon: { ...addon, version: "2.0" },
+        operation: { ...warned, status: "updated" },
+      },
+    });
+    await updated.actions.update(addon);
+    expect(updated.log).toContain(
+      "toast Updated Details | Version 2.0. Its temporary files are left in AddOns/.wowdeck/tx-1.",
+    );
+  });
+
   test("missing dependencies are named, or described when the names can't be read", async () => {
     const missing = { ...op("installed"), missingRequiredDependencies: ["1", "2"] };
     const named = harness({
@@ -323,6 +448,28 @@ describe("addon actions: install", () => {
     await unnamed.actions.install(result);
     expect(unnamed.log).toContain(
       "toast Details may not work | It needs another addon that couldn't be installed. Install it from Get Addons.",
+    );
+  });
+
+  test("failed dependencies are named from the result, with a needed recovery (#110)", async () => {
+    const h = harness({
+      "addons.install": {
+        addon,
+        operation: {
+          ...op("installed"),
+          missingRequiredDependencies: ["1", "2"],
+          followUps: [
+            { ...op("installed"), addonName: "LibOk" },
+            { ...op("failed", "broke"), addonName: "LibA", recoveryRequired: true },
+            { ...op("failed", "refused"), addonId: null, recoveryRequired: true },
+          ],
+        },
+      },
+      "addons.lookup": { addons: [{ name: "LibA" }, { name: "LibB" }] },
+    });
+    await h.actions.install(result);
+    expect(h.log).toContain(
+      "toast Details may not work | It needs LibA, LibB, which couldn't be installed. This installation needs recovery before its addons can change.",
     );
   });
 
@@ -380,7 +527,7 @@ describe("addon actions: what each one changed in the list", () => {
   });
 
   test("remove reads the list; a failed source change keeps the engine's addon, a failed adopt changes nothing", async () => {
-    const remove = harness({ "addons.remove": {} });
+    const remove = harness({ "addons.remove": { addonId: "a1", operation: op("removed") } });
     await remove.actions.remove(addon);
     expect(last(remove)).toBe("reload");
     const source = harness({ "addons.adopt": { addon, operation: op("failed") } });

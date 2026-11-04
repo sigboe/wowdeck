@@ -1,0 +1,317 @@
+/**
+ * Engine entry point and composition root.
+ *
+ * Wires the JSONL RPC server to the addon services. All logging goes to
+ * stderr (stdout is the protocol stream).
+ */
+
+import { tmpdir } from "node:os";
+import { version } from "/home/sigurdb/project/wowdeck/backend/package.json";
+import { join } from "node:path";
+import type { OperationResult } from "/home/sigurdb/project/wowdeck/backend/src/api/contracts";
+import { JsonlServer } from "/home/sigurdb/project/wowdeck/backend/src/bridge/jsonl";
+import { createStateStore } from "/home/sigurdb/project/wowdeck/backend/src/wow/storage/StateStore";
+import { NetworkClient } from "/home/sigurdb/project/wowdeck/backend/src/wow/net/network";
+import { ProviderRegistry } from "/home/sigurdb/project/wowdeck/backend/src/wow/providers/provider-registry";
+import { WowUpHubProvider } from "/home/sigurdb/project/wowdeck/backend/src/wow/providers/wowup-hub/WowUpHubProvider";
+import { TukUiAddonProvider } from "/home/sigurdb/project/wowdeck/backend/src/wow/providers/tukui/TukUiAddonProvider";
+import { CurseForgeProvider } from "/home/sigurdb/project/wowdeck/backend/src/wow/providers/curseforge/CurseForgeProvider";
+import { GitHubProvider } from "/home/sigurdb/project/wowdeck/backend/src/wow/providers/github/GitHubProvider";
+import { WowInterfaceProvider } from "/home/sigurdb/project/wowdeck/backend/src/wow/providers/wowinterface/WowInterfaceProvider";
+import { ZipProvider } from "/home/sigurdb/project/wowdeck/backend/src/wow/providers/zip/ZipProvider";
+import { FileProvider } from "/home/sigurdb/project/wowdeck/backend/src/wow/providers/file/FileProvider";
+import { DownloadService } from "/home/sigurdb/project/wowdeck/backend/src/wow/downloads/DownloadService";
+import { AddonService } from "/home/sigurdb/project/wowdeck/backend/src/wow/addons/AddonService";
+import { Catalogue } from "/home/sigurdb/project/wowdeck/backend/src/wow/catalogue/Catalogue";
+import { getGameTypeForClientType } from "/home/sigurdb/project/wowdeck/backend/src/wow/utils/gametype";
+import { RecentErrorsBuffer } from "/home/sigurdb/project/wowdeck/backend/src/diagnostics/RecentErrors";
+import { CompanionSyncCoordinator } from "/home/sigurdb/project/wowdeck/backend/src/wow/notifications/CompanionSync";
+import { UpdateToastGate } from "/home/sigurdb/project/wowdeck/backend/src/wow/notifications/UpdateToastGate";
+import { UpdateCheck } from "/home/sigurdb/project/wowdeck/backend/src/wow/notifications/UpdateCheck";
+import { PluginUpdateCheck } from "/home/sigurdb/project/wowdeck/backend/src/wow/notifications/PluginUpdateCheck";
+import { UpdateStager } from "/home/sigurdb/project/wowdeck/backend/src/wow/plugin/UpdateStager";
+import { CurseForgeAuthService } from "/home/sigurdb/project/wowdeck/backend/src/wow/providers/curseforge/CurseForgeKeyAuth";
+import { WtfBackupService } from "/home/sigurdb/project/wowdeck/backend/src/wow/wtf/WtfBackupService";
+import { WtfJobRunner, type WtfJobTarget } from "/home/sigurdb/project/wowdeck/backend/src/wow/wtf/WtfJobRunner";
+import { flavorKeyFor, wtfPathFor } from "/home/sigurdb/project/wowdeck/backend/src/wow/wtf/WtfPaths";
+import type { HandlerDeps } from "/home/sigurdb/project/wowdeck/backend/src/api/handlers/deps";
+import { register as registerAddons } from "/home/sigurdb/project/wowdeck/backend/src/api/handlers/addons";
+import { register as registerInstallations } from "/home/sigurdb/project/wowdeck/backend/src/api/handlers/installations";
+import { register as registerNotifications } from "/home/sigurdb/project/wowdeck/backend/src/api/handlers/notifications";
+import { register as registerProviders } from "/home/sigurdb/project/wowdeck/backend/src/api/handlers/providers";
+import { register as registerSettings } from "/home/sigurdb/project/wowdeck/backend/src/api/handlers/settings";
+import { register as registerSystem } from "/home/sigurdb/project/wowdeck/backend/src/api/handlers/system";
+import { register as registerWtf } from "/home/sigurdb/project/wowdeck/backend/src/api/handlers/wtf";
+import { register as registerAbout } from "/home/sigurdb/project/wowdeck/backend/src/api/handlers/about";
+import { About } from "/home/sigurdb/project/wowdeck/backend/src/about/About";
+
+/** Bundled into the binary from backend/package.json at build time. */
+const BACKEND_VERSION = version;
+/** The WowUp Hub's API and its addon pages share one host (tests point both at a mock). */
+const HUB_URL = process.env.WOWDECK_HUB_URL ?? "https://hub.wowup.io";
+/**
+ * WoWDeck's own update check (tests point it at the mock hub too). Must end in
+ * `/releases/latest`: the Beta channel lists the releases beside it.
+ */
+const RELEASES_URL = process.env.WOWDECK_RELEASES_URL ?? "https://api.github.com/repos/sigboe/wowdeck/releases/latest";
+
+const dataDir = process.env.WOWDECK_DATA_DIR ?? join(tmpdir(), "wowdeck");
+const homeDir = process.env.HOME ?? "/home/deck";
+
+import { readFileSync, unlinkSync, existsSync } from "node:fs";
+import { FaultInjectingFs } from "../../backend/src/wow/fs/StageFs";
+const faultFs = new FaultInjectingFs();
+const store = createStateStore(dataDir, faultFs);
+const network = new NetworkClient();
+const realGet = network.getJson.bind(network);
+network.getJson = async (url: string, opts?: any): Promise<any> => {
+ const answer: any = await realGet(url, opts);
+ const pin = join(dataDir, "release-pin.json");
+ if (url.includes("/repos/Snakybo/Clicked/releases") && Array.isArray(answer) && existsSync(pin)) {
+   const id = JSON.parse(readFileSync(pin, "utf8")).id;
+   return answer.filter((v: any) => v.id === id);
+ }
+ return answer;
+};
+const realBunFile = Bun.file.bind(Bun);
+Bun.file = ((path: any, ...args: any[]) => {
+ if (typeof path === "string" && path.endsWith("Zeta/Zeta.toc") && existsSync(join(dataDir, "toc-fault")))
+   return { text: async () => { throw new Error("EIO: fixture TOC read failed"); } };
+ return (realBunFile as any)(path, ...args);
+}) as typeof Bun.file;
+/**
+ * The optional GitHub token (Options › GitHub), read live: a token saved
+ * later in the session is picked up by the next request. The GitHub addon
+ * source, the WoWDeck update check, its staging and About all share it.
+ */
+const githubToken = (): string | undefined => store.settings.githubAccessToken ?? undefined;
+const registry = new ProviderRegistry();
+registry.register(new WowUpHubProvider(HUB_URL, HUB_URL, network));
+// Unset: api.tukui.org's catalogue (integration tests point it at the mock hub).
+registry.register(new TukUiAddonProvider(network, process.env.WOWDECK_TUKUI_URL));
+
+/**
+ * The bundled CurseForge key arrives only as this env var (main.py reads the
+ * packaged resource and sets it; docs/curseforge-api-key.md). Absent in forks
+ * and dev builds: a supported state, not an error (CurseForgeAuthService).
+ */
+const bundledCurseForgeKey = process.env.WOWDECK_BUNDLED_CURSEFORGE_API_KEY?.trim() || undefined;
+const curseForgeAuth = new CurseForgeAuthService(bundledCurseForgeKey, () => store.settings.curseApiKey ?? undefined);
+const curseForgeProvider = new CurseForgeProvider(
+  network,
+  () => curseForgeAuth.activeKey(),
+  // Unset: the provider's own default API address.
+  process.env.WOWDECK_CF_URL,
+  (err) => curseForgeAuth.recordNormalOutcome(err),
+);
+registry.register(curseForgeProvider);
+registry.register(new GitHubProvider(network, githubToken));
+registry.register(new WowInterfaceProvider(network));
+registry.register(new ZipProvider());
+registry.register(new FileProvider());
+import { AddonProvider } from "../../backend/src/wow/providers/addon-provider";
+import { copyFileSync } from "node:fs";
+class FixtureProvider extends AddonProvider {
+ name = "WowUpHub" as const; enabled = true;
+ override isValidAddonId(id: string) { return /^70[01]$/.test(id); }
+ override async getById(id: string): Promise<any> {
+  if (!this.isValidAddonId(id)) return undefined;
+  const folder = id === "700" ? "Alpha" : "Zeta";
+  return {author:"Fixture",externalId:id,externalUrl:"",name:folder,providerName:this.name,downloadCount:0,
+   files:[{channelType:0,folders:[folder],gameVersion:"12.0",downloadUrl:"https://fixture.invalid/bundle.zip",version:"1",releaseDate:"2026-11-04T00:00:00Z",externalId:"r1"}]};
+ }
+}
+registry.register(new FixtureProvider());
+const realDownload = network.downloadToFile.bind(network);
+network.downloadToFile = async (url: string, dest: string, ...args: any[]): Promise<any> => {
+ if(url === "https://fixture.invalid/bundle.zip") { copyFileSync(join(dataDir,"..","bundle.zip"),dest); return 1024; }
+ return (realDownload as any)(url,dest,...args);
+};
+registry.attachStore(store);
+
+// One dedicated health check at startup, not on every screen open —
+// fire-and-forget so a slow/unreachable CurseForge never delays the
+// engine answering its first RPC. Bundled-key status starts
+// "unvalidated" (a real, reportable state) until this resolves.
+void curseForgeAuth.recheck((key) => curseForgeProvider.testApiKey(key));
+
+const recentErrors = new RecentErrorsBuffer();
+
+const downloadDir = join(dataDir, "downloads");
+const service = new AddonService(
+  store,
+  registry,
+  new DownloadService(network, downloadDir),
+  {
+    addonsChanged: (addonIds) => {
+      server.emit("addons.changed", { addonIds });
+      // Addon install/update/remove/ignore state changes only need a
+      // cheap, local-only regen (no network) — safe to run on every
+      // addon-state change regardless of which installation it touched.
+      // See CompanionSyncCoordinator's own doc comment for why this is
+      // always the cheap path, never the network-refreshing one.
+      void companionCoordinator.regenerate();
+    },
+    autoUpdated: (result) => server.emit("addons.autoUpdated", { result }),
+    operationResult: (result: OperationResult) => {
+      server.emit(result.status === "failed" ? "operation.failed" : "operation.completed", { result });
+      // Surface recent failures in diagnostics — result.error is
+      // already a short, pre-sanitized message (see AddonService's
+      // existing error handling), never raw request/response bodies or
+      // secrets.
+      if (result.status === "failed" && result.error) {
+        recentErrors.record(result.addonId ? `addon:${result.addonId}` : "addons.operation", result.error);
+      }
+    },
+  },
+  // Previews unpack into the plugin's own data dir (like downloads), not
+  // tmp: a big archive on the Deck must not land on a RAM-backed tmpfs.
+  undefined,
+  join(dataDir, "inspect"),
+);
+const catalogue = new Catalogue(registry);
+const installationService = service.installations;
+// Discovery also refreshes Steam attachments while the QAM is closed. It never opts into updates.
+try {
+  await installationService.detect(homeDir);
+} catch {
+  console.error(JSON.stringify({ component: "installation-detection", reason: "startup-scan-failed" }));
+}
+const companionCoordinator = new CompanionSyncCoordinator(service);
+const updateCheck = new UpdateCheck(service, companionCoordinator);
+const updateToastGate = new UpdateToastGate(service, store, updateCheck);
+// main.py passes the installed plugin's folder; unset outside Decky. The
+// fetched files (FUNDING.yml, SUPPORTERS.md) refresh only when the update
+// check below asks GitHub (ADR-0005), with the same optional token, which
+// FetchedFile sends to GitHub hosts only.
+const about = new About({
+  pluginDir: process.env.WOWDECK_PLUGIN_DIR ?? null,
+  dataDir,
+  net: network,
+  rawBaseUrl: process.env.WOWDECK_ABOUT_URL,
+  tokenProvider: githubToken,
+});
+const pluginUpdate = new PluginUpdateCheck(
+  network,
+  BACKEND_VERSION,
+  RELEASES_URL,
+  githubToken,
+  // The once-a-day cap and the failure backoff live in settings, so a
+  // restart inside the interval answers from the stored answer instead of
+  // asking GitHub again, and a restarted engine still honours a backoff
+  // window opened before it. The same store holds the toast gate's
+  // shown-version mark (toastPending), so the once-per-release-version
+  // promise survives engine restarts too.
+  {
+    read: () => store.settings.lastPluginUpdate,
+    write: (snapshot) => store.updateSettings({ lastPluginUpdate: snapshot }),
+    readBackoff: () => store.settings.pluginUpdateBackoff,
+    writeBackoff: (backoff) => store.updateSettings({ pluginUpdateBackoff: backoff }),
+    readToastShown: () => store.settings.pluginUpdateToastShownFor,
+    writeToastShown: (version) => store.updateSettings({ pluginUpdateToastShownFor: version }),
+    readLastRunVersion: () => store.settings.pluginUpdateLastRunVersion,
+    writeLastRunVersion: (version) => store.updateSettings({ pluginUpdateLastRunVersion: version }),
+    readStagedVersion: () => store.settings.pluginUpdateStagedVersion,
+    writeStagedVersion: (version) => store.updateSettings({ pluginUpdateStagedVersion: version }),
+    readChannel: () => store.settings.pluginUpdateChannel,
+    writeChannel: (channel) => store.updateSettings({ pluginUpdateChannel: channel }),
+  },
+  { onGitHubAsk: () => void about.refresh() },
+);
+
+const updateStager = new UpdateStager(network, pluginUpdate, githubToken);
+
+const server = new JsonlServer();
+const originalHandle = server.handleLine.bind(server);
+server.handleLine = async (line: string) => {
+  const config = join(dataDir, "fault.json");
+  if (existsSync(config)) {
+    const spec = JSON.parse(readFileSync(config, "utf8")); unlinkSync(config);
+    faultFs.failAt(spec.stage, { times: 1, after: spec.after ?? 0 });
+  }
+  return originalHandle(line);
+};
+
+const wtfService = new WtfBackupService({
+  backupRoot: () => {
+    const custom = store.settings.wtfBackupDir;
+    return custom ? { path: custom, custom: true } : { path: join(dataDir, "wtf-backups"), custom: false };
+  },
+  pluginVersion: () => process.env.DECKY_PLUGIN_VERSION,
+  deviceId: () => store.deviceId(),
+  keepSnapshots: () => store.settings.wtfKeepSnapshots,
+});
+const wtfJobs = new WtfJobRunner(wtfService, {
+  progress: (payload) => server.emit("wtf.progress", payload),
+  completed: (payload) => server.emit("wtf.completed", payload),
+  failed: (code, message) => recentErrors.record("wtf", `${code}: ${message}`),
+});
+
+function wtfJobTarget(installationId?: string): WtfJobTarget {
+  const installation = installationService.require(installationId);
+  return {
+    installationId: installation.id,
+    flavor: flavorKeyFor(installation.location, getGameTypeForClientType(installation.clientType)),
+    wtfPath: wtfPathFor(installation.location),
+  };
+}
+
+const deps: HandlerDeps = {
+  backendVersion: BACKEND_VERSION,
+  homeDir,
+  store,
+  registry,
+  service,
+  catalogue,
+  installationService,
+  companionCoordinator,
+  updateCheck,
+  updateToastGate,
+  pluginUpdate,
+  updateStager,
+  curseForgeAuth,
+  curseForgeProvider,
+  wtfService,
+  wtfJobs,
+  wtfJobTarget,
+  recentErrors,
+  about,
+};
+for (const register of [
+  registerSystem,
+  registerInstallations,
+  registerAddons,
+  registerProviders,
+  registerSettings,
+  registerWtf,
+  registerNotifications,
+  registerAbout,
+]) {
+  register(server, deps);
+}
+
+console.error(`[engine] wowdeck backend ${BACKEND_VERSION} starting (pid ${process.pid})`);
+console.error(`[engine] data dir: ${dataDir}`);
+// No unconditional startup refresh here — "plugin loads" is owned by
+// the frontend's own call to notifications.checkUpdateToast
+// (src/index.tsx), which runs the same all-installations refresh but
+// rate-limited to once a day.
+// Heal anything an interrupted backup/restore left behind (engine killed mid-job, power loss, sleep) before
+// the first request is served. Never fatal.
+try {
+  const swept = await wtfService.sweepPartials();
+  for (const installation of installationService.list()) {
+    const { restoredPreviousWtf } = await wtfService.recover(wtfJobTarget(installation.id));
+    if (restoredPreviousWtf) {
+      console.error(`[wtf] restored the previous WTF folder of ${installation.displayName} after an interrupted restore`);
+      recentErrors.record("wtf", "recovered: an interrupted restore was rolled back");
+    }
+  }
+  if (swept > 0) {
+    console.error(`[wtf] removed ${swept} unfinished backup file(s)`);
+  }
+} catch (err) {
+  console.error(`[wtf] startup recovery failed: ${String(err)}`);
+}
+
+await server.run();

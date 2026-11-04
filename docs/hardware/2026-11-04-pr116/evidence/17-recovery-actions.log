@@ -1,0 +1,15 @@
+seek Verify recovery → found "Verify recovery" (jump, 2 matches) → focus="Verify recovery"
+press a → no change
+probe items → items="Hardware 116 An addon change stopped bef | Install stopped · started 1 Jan 1970 at  | AddOns/Suite Wasn't there before this ad | Verify recovery found differences The or | Retry recovery | Verify recovery | Close"
+shot .scratch/deck-116/29-verify-refused.png → .scratch/deck-116/29-verify-refused.png 800x500
+seek Retry recovery → found "Retry recovery" (jump, 2 matches) → focus="Retry recovery"
+press a → focus="Close"
+probe items → items="Recovery finished The original files and | Hardware 116 doesn't need recovery | Close"
+shot .scratch/deck-116/30-recovered.png → .scratch/deck-116/30-recovered.png 800x500
+press b → tree="QuickAccess-NA" focus="OPTIONS" tab="Options"
+rpc installations.recoveryStatus → {"installations":[{"installationId":"99bcc997b315","status":"ready"},{"installationId":"351cab445486","status":"ready"},{"installationId":"032c354a655f","status":"ready"},{"installationId":"5e80311f078e","status":"ready"}],"stateFile":{"status":"readable"}}
+seek Options → found "Options" (jump, 5 matches)
+press lb → focus="Hardware 116" tab="Get Addons"
+seek Search → found "Search" (jump, 5 matches) → focus="Search"
+press a → focus=""
+probe items → items="GET ADDONS | Hardware 116 | Search | Latest | Popular | Manual Install"

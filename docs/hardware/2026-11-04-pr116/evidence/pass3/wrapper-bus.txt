@@ -1,0 +1,5 @@
+#!/bin/sh
+export HOME=/home/deck/homebrew/data/wowdeck/hardware-116-pass3/home
+export WOWDECK_DATA_DIR=/home/deck/homebrew/data/wowdeck/hardware-116-pass3/engine
+export DBUS_SESSION_BUS_ADDRESS=unix:path=/home/deck/homebrew/data/wowdeck/hardware-116-pass3/bus
+exec /home/deck/homebrew/data/wowdeck/hardware-116-pass3/fault-engine

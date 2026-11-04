@@ -13,19 +13,39 @@ What's new in each version of WoWDeck Addon Manager. The format follows
 - Find WoW from My Addons when setting up, with a reminder to link its Steam library entry.
 - WoWDeck now installs and runs on arm64 SteamOS devices, from the same zip
   as everyone else.
+- Every tab shows incomplete addon changes and offers recovery or checks your manual repair before allowing further changes.
+- When saved addon information can't be read, every tab explains how to restore it and resume saving settings.
 
 ### Changed
 
+- The installation picker is greyed out while a Get Addons install runs.
 - Installing a beta build switches you to Beta updates; installing a stable build by hand
   switches you back to Stable.
+- Manage backups and Copy settings keep your backups visible and offer Retry when a refresh fails.
+- Backup actions and the backup folder settings turn off while one of them is running.
+- An unknown backup or folder-change result stays visible, so you can check it before repeating the action.
 - On devices it can't run on, WoWDeck now says so instead of telling you to
   try again.
+- When an addon installs or is removed but its temporary files can't be
+  deleted, WoWDeck says so and deletes them at the next addon change.
+- Update all names the addons it couldn't update.
+- Removing an addon names the libraries removed with it or left behind.
 
 ### Fixed
+
+- Load addon lists from files inside nested folders.
+- Keep addon import failures and cleanup warnings visible after the list refreshes.
+
+- Import backup now shows folders so you can reach ZIP files outside your home folder.
+
+- Manual Install can browse folders for archives, and returning from popups restores the full pane width.
 
 - Installing addons without WoW set up now points you to Find WoW installations in Options.
 - Finding WoW is faster on large Steam libraries.
 - WoW installations using Wow-ARM64.exe are now recognized during installation scans and Steam shortcut detection.
+- A Roll back that fails now leaves the addon as it was and keeps the version
+  you can go back to.
+- Get Addons keeps showing an addon as installing, and no longer installs it twice.
 - L1/R1 move one tab at a time instead of sometimes skipping Get Addons.
 - Get Addons opens wide again on newer Steam versions, where Latest, Popular
   and Search stayed out of sight.
@@ -33,6 +53,8 @@ What's new in each version of WoWDeck Addon Manager. The format follows
   up, instead of blaming the addon source.
 - WoWDeck starts after Decky installs or updates it where Decky runs without
   root, such as DroidDeck.
+- An addon install, update or removal that fails part-way puts the old files
+  back, so My Addons matches what WoW loads.
 
 ## [1.0.1] - 2026-10-31
 

@@ -1,0 +1,56 @@
+STAGE folder.install
+seek Install 1 new --enter → pressed Enter on "Install 1 new" (jump) → focus="Install 1 new"
+eval@SharedJSContext --file=.scratch/pass3/tree.js… → Import addon list
+Moves the addon list for Retail, not addon settings or WoW's saved variables. Works with lists exported by WowUp, and the other way round.
+Installation
+Retail
+Export code
+Load from file
+A .txt export from WowUp or WoWDeck Addon Manager
+1 NEW
+Alpha
+New
+Install 1 new
+Close
+STAGE state.write
+seek Install 1 new --enter → pressed Enter on "Install 1 new" (jump)
+eval@SharedJSContext --file=.scratch/pass3/tree.js… → Import addon list
+Moves the addon list for Retail, not addon settings or WoW's saved variables. Works with lists exported by WowUp, and the other way round.
+Installation
+Retail
+Export code
+Load from file
+A .txt export from WowUp or WoWDeck Addon Manager
+1 NEW
+Alpha
+New
+Install 1 new
+Close
+STAGE state.replace
+seek Install 1 new --enter → pressed Enter on "Install 1 new" (jump)
+eval@SharedJSContext --file=.scratch/pass3/tree.js… → Import addon list
+Moves the addon list for Retail, not addon settings or WoW's saved variables. Works with lists exported by WowUp, and the other way round.
+Installation
+Retail
+Export code
+Load from file
+A .txt export from WowUp or WoWDeck Addon Manager
+1 NEW
+Alpha
+New
+Install 1 new
+Close
+STAGE cleanup.remove
+seek Install 1 new --enter → pressed Enter on "Install 1 new" (jump) → focus="Install"
+eval@SharedJSContext --file=.scratch/pass3/tree.js… → Import addon list
+Moves the addon list for Retail, not addon settings or WoW's saved variables. Works with lists exported by WowUp, and the other way round.
+Installation
+Retail
+Export code
+Load from file
+A .txt export from WowUp or WoWDeck Addon Manager
+1 SKIPPED
+Alpha
+Skipped · You have a different version. Update it from My Addons.
+Install
+Close

@@ -21,7 +21,6 @@ import { AboutSection } from "./settings/AboutSection";
 interface Props {
   installations: Installation[];
   selectedId: string | null;
-  onSelect: (id: string) => void;
   /** Reload installations + addons after structural changes. */
   onChanged: () => Promise<void>;
   /** Focus the last used row again on mount (guide S21). */
@@ -36,13 +35,7 @@ interface Props {
  * reads the companion status from them). The section order is the focus
  * order (FocusRow ids, guide S21).
  */
-export function SettingsView({
-  installations,
-  selectedId,
-  onSelect,
-  onChanged,
-  restoreRows,
-}: Props) {
+export function SettingsView({ installations, selectedId, onChanged, restoreRows }: Props) {
   useRestoreFocus(VIEW, restoreRows);
   const { providers } = useSyncExternalStore(sourcesStore.subscribe, sourcesStore.get);
   // Not `providers[…].configured`: that is true for either key, and the
@@ -95,7 +88,6 @@ export function SettingsView({
       <InstallationsSection
         installations={installations}
         selectedId={selectedId}
-        onSelect={onSelect}
         onChanged={onChanged}
       />
       <AddInstallationSection onChanged={onChanged} />

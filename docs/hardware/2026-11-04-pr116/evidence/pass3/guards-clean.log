@@ -1,0 +1,5 @@
+eval@SharedJSContext --file=.scratch/pass3/guard-s… → {"selectionCalls":[{"m":"installations.select","p":{"installationId":"466ad6594468"}}],"heldCount":1}
+eval@SharedJSContext --file=.scratch/pass3/guards-… → {"released":true,"mutations":[{"m":"wtf.create","p":{"installationId":"58c731d9365e"}}]}
+eval@SharedJSContext --file=.scratch/pass3/guards-… → guard hook removed
+press b → tree="QuickAccess-NA" focus="Manage backups Restore, delete or import (WowUp ba" tab="Options"
+press b → focus=null plugin=null tab=null
