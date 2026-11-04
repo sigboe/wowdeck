@@ -1,5 +1,5 @@
 import { useEffect, useRef, useSyncExternalStore } from "react";
-import { FileSelectionType, openFilePicker } from "@decky/api";
+import { openFilePicker } from "@decky/api";
 import { DialogButton, Field, Focusable, PanelSectionRow, Spinner, TextField } from "@decky/ui";
 import type { ArchivePreview, Installation, ProviderInfo, SearchResult } from "../types";
 import * as api from "../services/backend";
@@ -16,7 +16,8 @@ import {
   setUrl,
   urlDestination,
 } from "../browseDestinations";
-import { fileImport, installArchive, pickArchive } from "../fileImportState";
+import { fileImport, installArchive } from "../fileImportState";
+import { browseArchive } from "../archivePicker";
 import { hasMore } from "../loadMore";
 import { addonSession } from "../session";
 import { resultActions, type ResultActionsDeps } from "../resultActions";
@@ -394,23 +395,7 @@ function FileImportSection({
   const pickFailed = file.phase === "error" && !file.preview;
 
   const browse = () => {
-    // Steam's picker hides the QAM window while it is up; that hide is not
-    // a close (browseSessionState's popup hold, like a dropdown's menu).
-    popupOpening();
-    void pickArchive(
-      () =>
-        openFilePicker(
-          FileSelectionType.FILE,
-          "/home/deck",
-          true,
-          false,
-          undefined,
-          ["zip", "rar", "7z"],
-          false,
-          false,
-        ),
-      (path) => api.rpc("addons.inspectArchive", { path }),
-    );
+    void browseArchive(openFilePicker, (path) => api.rpc("addons.inspectArchive", { path }));
   };
 
   const install = () => {

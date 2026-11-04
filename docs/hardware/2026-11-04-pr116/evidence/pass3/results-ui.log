@@ -1,0 +1,25 @@
+open → tree="QuickAccess-NA" focus=null plugin="WoWDeck" tab="My Addons"
+seek My Addons → found "My Addons" (jump, 4 matches) → focus="MY ADDONS"
+key right → focus="GET ADDONS" tab="Get Addons"
+key right → focus="OPTIONS" tab="Options"
+seek Import addon list --enter → pressed Enter on "Import addon listFrom another computer or WowUp" (jump) → tree="ModalDialogOverlay_Modal_70" focus="Retail" tab=null
+seek Load from file --enter → pressed Enter on "Load from file A .txt export from WowUp or WoWDeck Addon Manager" (jump) → tree="ModalDialogOverlay_Modal_71" focus=""
+seek Nested --enter → pressed Enter on "Nested Folder 11/4/2026, 6:50:48 PM" (jump) → focus="list.txt 158 B 11/4/2026, 6:50:48 PM"
+seek list.txt --enter → pressed Enter on "list.txt 158 B 11/4/2026, 6:50:48 PM" (jump) → tree="ModalDialogOverlay_Modal_70" focus=""
+seek Install 2 new --enter → pressed Enter on "Install 2 new" (jump) → focus="Install 1 new"
+eval@SharedJSContext --file=.scratch/pass3/tree.js… → Import addon list
+Moves the addon list for Retail, not addon settings or WoW's saved variables. Works with lists exported by WowUp, and the other way round.
+Installation
+Retail
+Export code
+Load from file
+A .txt export from WowUp or WoWDeck Addon Manager
+1 NEW · 1 SKIPPED
+Alpha
+New
+Zeta
+Skipped · You have a different version. Update it from My Addons.
+Alpha: failed, Couldn't save the addon list. Nothing was changed
+Zeta: installed
+Install 1 new
+Close

@@ -33,6 +33,13 @@ What's new in each version of WoWDeck Addon Manager. The format follows
 
 ### Fixed
 
+- Load addon lists from files inside nested folders.
+- Keep addon import failures and cleanup warnings visible after the list refreshes.
+
+- Import backup now shows folders so you can reach ZIP files outside your home folder.
+
+- Manual Install can browse folders for archives, and returning from popups restores the full pane width.
+
 - Installing addons without WoW set up now points you to Find WoW installations in Options.
 - Finding WoW is faster on large Steam libraries.
 - WoW installations using Wow-ARM64.exe are now recognized during installation scans and Steam shortcut detection.

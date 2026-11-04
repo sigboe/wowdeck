@@ -1,0 +1,5 @@
+owner addon records equal except scan timestamps True
+settings equal True
+installations equal True
+fixtures absent True
+markers 0

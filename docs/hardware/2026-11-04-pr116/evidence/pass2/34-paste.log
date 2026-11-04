@@ -1,0 +1,4 @@
+seek Import addon list --enter → pressed Enter on "Import addon listFrom another computer or WowUp" (jump) → tree="ModalDialogOverlay_Modal_42" focus="Retail" tab=null
+eval@SharedJSContext --file=.scratch/pass2/paste.j… → {"pasted":true,"len":0,"matches":false} → focus=""
+probe text items → text="Import addon list Moves the addon list for Retail, not addon settings or WoW's saved variables. Works with lists exported by WowUp, and the other way round. Installation Retail Export code Load from file A .txt export from WowUp or WoWDeck Addon Manager The list is checked as soon as you paste or load it Install Close" items="Retail | Load from file A .txt export from WowUp  | Install | Close"
+press b → tree="QuickAccess-NA" focus="Import addon list From another computer or WowUp" tab="Options"

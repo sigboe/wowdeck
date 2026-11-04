@@ -26,6 +26,10 @@ plugin, not only the latest change. Written 2026-10-15 after the Steam-native UI
 rework (`dd81038`, `7e66f0d`), which changed nearly every screen and has **not
 yet been run on a Deck**.
 
+Latest partial hardware run: [PR #116, 4 November 2026](hardware/2026-11-04-pr116/README.md).
+It records 30 passed cases, two partial results and eight cases not run.
+The remaining checks still apply.
+
 Related documents:
 
 - `docs/UI_DEVELOPMENT_BEST_PRACTICES.md` §8: test tiers (T1–T6), the rule that
@@ -594,3 +598,45 @@ Regression run <date> — <Smoke|Full>
 - Failed: <id>: <what happened>  (P0/P1/P2)
 - Not run: <ids> and why
 ```
+
+### Manual Install popup restoration, #115
+
+The [4 November Deck run](hardware/2026-11-04-pr116/README.md) checked nested
+selection, five cancellations, inspection failure, Details returns, a collapsed
+installation picker and deliberate QAM close/reopen. DroidDeck, TV layouts and
+all deliberate exit variants still need checking. Compare visible QAM edges
+before and after each popup, rather than relying on widening classes.
+
+| ID | Pri | S | Steps | Expected |
+|---|---|---|---|---|
+| MI-115-1 | P1 | | Open Manual Install, choose From a file, and navigate through nested folders | Folders are visible and navigable. Only .zip, .rar and .7z files can be selected. A folder cannot be selected as an addon archive |
+| MI-115-2 | P1 | | Select an addon archive from a nested folder | The previous full QAM width and Manual Install pane return. The archive preview appears. Nothing installs until confirmed |
+| MI-115-3 | P1 | | Cancel From a file, then repeat five times | The previous full width returns every time. Focus returns to From a file. No error appears |
+| MI-115-4 | P1 | | Select an archive without addon folders | The full pane width returns. The inspection error appears inline and Browse remains available |
+| MI-115-5 | P1 | | Repeat a Details modal round trip from a result row, then open Install into while collapsed | The previous width, destination and focus return for both states. No clipped pane or unwanted widening |
+| MI-115-6 | P1 | | After several popup returns, close the QAM and reopen Get Addons. Repeat after leaving the plugin tab and after Decky's Back button | Each fresh entry lands collapsed on the nav bar |
+
+The automated reproduction uses the shared browse-session and widening
+adapter boundary. While a popup holds the session, Steam's content becomes
+hidden and a widening enforcement collapses the native view. Showing the
+same content again previously left the native width at 348 pixels despite a
+wanted width of 854 pixels. The regression checks the native placeholder's translation
+and ancestor width caps, then repeats through content remounts and a deliberate
+close. Picker selection and cancellation mount Manual Install with its real
+FocusSlot and disabled Browse control. The picker stays pending through the
+remount. After it settles, the test checks that Browse becomes enabled and
+receives focus without the fake picker requesting focus. Existing file-import
+state tests cover inspection errors and state survival.
+
+The layout fixture uses the stylesheet-controlled clipping ancestor documented
+in the UI guide's QAM widening measurements. Its former inline 348px cap
+could never respond to Steam's widening class. The native adapter changes the
+placeholder's Expanded class and CSS translation, as described in ADR 0001
+revision 7. Tests check that translation and every ancestor's max-width after
+popup returns and remounts. Reinstating the inline cap makes these assertions
+fail; disabling pending-focus delivery makes the focus assertions fail.
+Neither finding requires a production DOM change.
+
+These are CSS constraint checks in jsdom, which has no layout engine. They do
+not measure rendered bounds or establish which event order occurs on a
+particular Steam build. The device checks above remain necessary.

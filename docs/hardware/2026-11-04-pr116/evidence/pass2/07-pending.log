@@ -1,0 +1,5 @@
+eval@SharedJSContext --file=.scratch/pass2/hold-in… → holding installs
+seek Auctionator --enter → pressed Enter on "AuctionatorCurseForge · by plusmouse, borjamacare · 341Makes it easier to use th" (jump) → tree="ModalDialogOverlay_Modal_22" focus="Auctionator CurseForge plusmouse, borjamacare 204." tab=null
+probe items → items="Auctionator CurseForge plusmouse, borjam"
+FAIL no match for "Install"; focusables here: Auctionator CurseForge plusmouse, borjam
+at: tree="ModalDialogOverlay_Modal_22" focus="Auctionator CurseForge plusmouse, borjamacare 204." route="/routes/library/home" plugin="WoWDeck" tab=null

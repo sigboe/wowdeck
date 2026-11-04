@@ -1,0 +1,12 @@
+open → tree="QuickAccess-NA" focus=null tab="My Addons"
+seek MY ADDONS → found "My Addons" (jump, 4 matches) → focus="MY ADDONS"
+key right 2 → focus="OPTIONS" tab="Options"
+seek Manage backups --enter → pressed Enter on "Manage backupsRestore, delete or import (WowUp backups too)" (jump) → tree="ModalDialogOverlay_Modal_34" focus="Back up now Save a copy of your settings" tab=null
+seek Import from file --enter → pressed Enter on "Import from file… Add a backup zip made on this or another computer" (jump) → tree="ModalDialogOverlay_Modal_35" focus=""
+seek homebrew --enter → pressed Enter on "homebrew Folder 9/26/2026, 3:24:31 PM" (jump) → focus="settings Folder 10/25/2026, 9:18:37 PM"
+seek data --enter → pressed Enter on "data Folder 10/25/2026, 8:20:16 AM" (jump) → focus=""
+seek wowdeck --enter → pressed Enter on "wowdeck Folder 11/4/2026, 6:30:53 PM" (jump) → focus="wtf-backups Folder 10/14/2026, 3:51:03 PM"
+seek hardware-116-pass2 --enter → pressed Enter on "hardware-116-pass2 Folder 11/4/2026, 6:30:36 PM" (jump) → focus="B Folder 11/4/2026, 6:20:51 PM"
+seek upstream-wowup-backup.zip --enter → pressed Enter on "upstream-wowup-backup.zip 2.02 KiB 11/4/2026, 6:23:43 PM" (jump) → tree="ModalDialogOverlay_Modal_34" focus="Import from file… Add a backup zip made on this or"
+FAIL no match for "Select"; focusables here: Settings backups: Retail WTF is the fold | WTF is the folder where WoW keeps your a | Back up now Save a copy of your settings | Import from file… Add a backup zip made  | Copy settings from another version… Brin | 5 minutes ago · 1.2 KB Safety backup · 2
+at: tree="ModalDialogOverlay_Modal_34" focus="Import from file… Add a backup zip made on this or" route="/routes/library/home" plugin="WoWDeck" tab=null

@@ -1,0 +1,24 @@
+bun test v1.4.2 (744846f84)
+
+src/importPicker.test.tsx:
+(pass) backup import can reach ZIPs in nested folders and cancellation sends no import [9.95ms]
+(pass) addon list import navigates nested folders and restricts selection to text files [155.89ms]
+199 |     await act(async () => loadFile!());
+200 |     const install = dom.window.document.querySelector("button")!;
+201 |     expect(install.textContent).toBe("Install 2 new");
+202 |     await act(async () => install.click());
+203 |     expect(previews).toBe(2);
+204 |     expect(dom.window.document.body.textContent).toContain(
+                                                       ^
+error: expect(received).toContain(expected)
+
+Expected to contain: "Alpha: failed, Couldn't save the addon list"
+Received: "Import addon list.wowdeck-scroll-buffer .Focusable {\n  scroll-margin-top: var(--wowdeck-scroll-margin-top, 0px);\n  scroll-margin-bottom: var(--wowdeck-scroll-margin-bottom, 0px);\n}\n.wowdeck-float-pane {\n  position: sticky; top: var(--wowdeck-pane-top, 0px); z-index: var(--wowdeck-pane-z, 6);\n  background: #0e141b; padding-top: var(--wowdeck-attach-gap, 0px);\n}\n.wowdeck-float-pane::after {\n  content: \"\"; position: absolute; left: 0; right: 0; top: 100%;\n  height: var(--wowdeck-fade-size, 20px); pointer-events: none;\n  background: linear-gradient(#0e141b, rgba(14, 20, 27, 0));\n  opacity: 0; transition: opacity .15s ease;\n}\n[data-wowdeck-scrolled] .wowdeck-float-pane::after { opacity: 1; }Moves the addon list for the selected installation, not addon settings or WoW's saved variables. Works with lists exported by WowUp, and the other way round.Export codeLoad from file1 new · 1 already installedInstall 1 newClose"
+
+      at <anonymous> (/home/sigurdb/project/wowdeck/src/importPicker.test.tsx:204:50)
+(fail) partial import keeps failure details and cleanup warnings after the list refreshes [41.12ms]
+
+ 2 pass
+ 1 fail
+ 13 expect() calls
+Ran 3 tests across 1 file. [757.00ms]

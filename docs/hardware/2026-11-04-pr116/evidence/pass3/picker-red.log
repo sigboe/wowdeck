@@ -1,0 +1,23 @@
+bun test v1.4.2 (744846f84)
+
+src/importPicker.test.tsx:
+(pass) backup import can reach ZIPs in nested folders and cancellation sends no import [18.49ms]
+78 |     await act(async () => root.render(opened!));
+79 |     expect(loadFile).toBeDefined();
+80 |     await act(async () => loadFile!());
+81 |     const [, , files, folders, , extensions, , allFiles] = picks.at(-1)!;
+82 |     expect(files).toBe(true);
+83 |     expect(folders).toBe(true);
+                         ^
+error: expect(received).toBe(expected)
+
+Expected: true
+Received: false
+
+      at <anonymous> (/home/sigurdb/project/wowdeck/src/importPicker.test.tsx:83:21)
+(fail) addon list import navigates nested folders and restricts selection to text files [151.57ms]
+
+ 1 pass
+ 1 fail
+ 8 expect() calls
+Ran 2 tests across 1 file. [716.00ms]

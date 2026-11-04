@@ -213,11 +213,11 @@ function AddonPortabilityModal({
         FileSelectionType.FILE,
         installation?.path ?? "",
         true,
-        false,
+        true,
         undefined,
         ["txt"],
         false,
-        true,
+        false,
       );
     } catch {
       // user cancelled the picker — nothing to report
@@ -246,7 +246,7 @@ function AddonPortabilityModal({
     }
   };
 
-  const runPreviewFor = async (text: string) => {
+  const runPreviewFor = async (text: string, preserveResults = false) => {
     const trimmed = text.trim();
     if (!trimmed) {
       return;
@@ -255,7 +255,7 @@ function AddonPortabilityModal({
     setPreviewing(true);
     setPreviewError(null);
     setSummary(null);
-    setApplyResults(null);
+    if (!preserveResults) setApplyResults(null);
     try {
       const { summary: result, error } = await api.rpc("addons.previewImport", {
         importString: trimmed,
@@ -279,8 +279,6 @@ function AddonPortabilityModal({
       }
     }
   };
-
-  const runPreview = () => runPreviewFor(importText);
 
   /**
    * There's no separate Preview button anymore — pasting/editing the
@@ -341,7 +339,7 @@ function AddonPortabilityModal({
       // Re-preview so the list reflects what's now actually installed
       // (new -> no_change) instead of a stale "new" row for an addon
       // that was just installed.
-      await runPreview();
+      await runPreviewFor(trimmed, true);
     } catch (e) {
       toastError("Couldn't import", e);
     } finally {

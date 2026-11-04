@@ -1,0 +1,23 @@
+press b → tree="QuickAccess-NA" focus="Manage backups Restore, delete or import (WowUp ba" tab="Options"
+eval@SharedJSContext --file=.scratch/pass3/job-res… → {"jobId":"fixture-valid-restore","kind":"restore","installationId":"466ad6594468","phase":"extract","done":20,"total":100}
+seek Manage backups --enter → pressed Enter on "Manage backupsRestore, delete or import (WowUp backups too)" (jump) → tree="ModalDialogOverlay_Modal_61" focus="Cancel Stop the backup" tab=null
+probe text items → text="Settings backups: Retail WTF is the folder where WoW keeps your addon settings, keybinds, macros and UI layout. Restoring replaces it; a safety backup of your current settings is made first. Restoring… 20% Backup created. Back up now Save a copy of your settings Cancel Stop the backup Import from file… Add a backup zip made on this or another computer BACKUPS (2) 5 MB in /home/deck/homebrew/data/w" items="Back up now Save a copy of your settings | Cancel Stop the backup | Import from file… Add a backup zip made  | just now · 951 B Manual · 1 files From t | 7 minutes ago · 5 MB Manual · 25001 file"
+eval@SharedJSContext --file=.scratch/pass3/tree.js… → Settings backups: Retail
+WTF is the folder where WoW keeps your addon settings, keybinds, macros and UI layout. Restoring replaces it; a safety backup of your current settings is made first.
+Restoring… 20%
+Backup created.
+Back up now
+Save a copy of your settings
+Cancel
+Stop the backup
+Import from file…
+Add a backup zip made on this or another computer
+BACKUPS (2)
+5 MB in /home/deck/homebrew/data/wowdeck/hardware-116-pass3/backups/_retail_
+just now · 951 B
+Manual · 1 files
+From this device
+7 minutes ago · 5 MB
+Manual · 25001 files
+From this device
+press b → tree="QuickAccess-NA" focus="Manage backups Restore, delete or import (WowUp ba" tab="Options"

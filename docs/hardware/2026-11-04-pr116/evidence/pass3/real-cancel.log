@@ -1,0 +1,8 @@
+press A → focus=null
+seek Cancel → found "Cancel Stop the backup" (jump) → focus="Cancel Stop the backup"
+press A → focus="Import from file… Add a backup zip made on this or"
+probe items → items="Back up now Save a copy of your settings | Import from file… Add a backup zip made  | 1 minute ago · 5 MB Manual · 25001 files"
+wait items ~ Back up now → items="Back up now Save a copy of your settings | Import from file… Add a backup zip made  | 1 minute ago · 5 MB Manual · 25001 files"
+eval --file=.scratch/pass2/body.js --full
+probe text items → text="Settings backups: Retail WTF is the folder where WoW keeps your addon settings, keybinds, macros and UI layout. Restoring replaces it; a safety backup of your current settings is made first. Cancelled. Nothing was changed. Back up now Save a copy of your settings Import from file… Add a backup zip made on this or another computer BACKUPS (1) 5 MB in /home/deck/homebrew/data/wowdeck/hardware-116-pa" items="Back up now Save a copy of your settings | Import from file… Add a backup zip made  | 1 minute ago · 5 MB Manual · 25001 files"
+press b → tree="ModalDialogOverlay_Modal_51" focus="Back up now Save a copy of your settings"

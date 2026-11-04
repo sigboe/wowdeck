@@ -1,0 +1,25 @@
+probe items focus → items="GET ADDONS | Forever | Search | Latest | Popular | Manual Install | Look up | Browse… | Install" focus="Browse…"
+shot .scratch/deck-116/08-preview.png → .scratch/deck-116/08-preview.png 800x425
+seek Browse → found "Browse…" (jump, 3 matches)
+press a → tree="ModalDialogOverlay_Modal_8" focus="" tab=null
+press b → tree="QuickAccess-NA" focus="Browse…" tab="Get Addons"
+probe focus items → focus="Browse…" items="GET ADDONS | Forever | Search | Latest | Popular | Manual Install | Look up | Browse…"
+shot .scratch/deck-116/09-cancel.png → .scratch/deck-116/09-cancel.png 800x425
+seek Browse → found "Browse…" (jump, 3 matches)
+press a → tree="ModalDialogOverlay_Modal_9" focus="" tab=null
+press b → tree="QuickAccess-NA" focus="Browse…" tab="Get Addons"
+seek Browse → found "Browse…" (jump, 3 matches)
+press a → tree="ModalDialogOverlay_Modal_10" focus="" tab=null
+press b → tree="QuickAccess-NA" focus="Browse…" tab="Get Addons"
+seek Browse → found "Browse…" (jump, 3 matches)
+press a → tree="ModalDialogOverlay_Modal_11" focus="" tab=null
+press b → tree="QuickAccess-NA" focus="Browse…" tab="Get Addons"
+seek Browse → found "Browse…" (jump, 3 matches)
+press a → tree="ModalDialogOverlay_Modal_12" focus="" tab=null
+press b → tree="QuickAccess-NA" focus="Browse…" tab="Get Addons"
+probe focus → focus="Browse…"
+shot .scratch/deck-116/10-five-cancels.png → .scratch/deck-116/10-five-cancels.png 800x425
+close → tree="GamepadUI_Full_Root" focus="" tab=null
+open → tree="QuickAccess-NA" focus="GET ADDONS" tab="Get Addons"
+probe tab focus items → tab="Get Addons" focus="GET ADDONS" items="GET ADDONS | Forever | Search | Latest | Popular | Manual Install"
+shot .scratch/deck-116/11-fresh.png → .scratch/deck-116/11-fresh.png 800x425

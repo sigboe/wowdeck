@@ -108,11 +108,11 @@ function WtfBackupModal({ installation, closeModal }: ModalProps) {
         FileSelectionType.FILE,
         "/home/deck",
         true,
-        false,
+        true,
         undefined,
         ["zip"],
         false,
-        true,
+        false,
       );
     } catch {
       return; // cancelled

@@ -1,0 +1,12 @@
+{"held":"create","stage":"pending answer / stale confirmations","blockedActions":11,"noAdditionalRPC":true}
+{"held":"create","stage":"valid running snapshot / installation B","blockedActions":11,"noAdditionalRPC":true}
+{"held":"create","slotReleased":true}
+{"held":"restore","stage":"pending answer / stale confirmations","blockedActions":11,"noAdditionalRPC":true}
+{"held":"restore","stage":"valid running snapshot / installation B","blockedActions":11,"noAdditionalRPC":true}
+{"held":"restore","slotReleased":true}
+{"held":"import","stage":"pending answer / stale confirmations","blockedActions":11,"noAdditionalRPC":true}
+{"held":"import","slotReleased":true}
+{"held":"delete","stage":"pending answer / stale confirmations","blockedActions":11,"noAdditionalRPC":true}
+{"held":"delete","slotReleased":true}
+{"held":"settings","stage":"pending answer / stale confirmations","blockedActions":11,"noAdditionalRPC":true}
+{"held":"settings","slotReleased":true}

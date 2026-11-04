@@ -1,0 +1,22 @@
+bun test v1.4.2 (744846f84)
+
+src/importPicker.test.tsx:
+37 |   renderToStaticMarkup(opened!);
+38 |   expect(importFile).toBeDefined();
+39 |   await importFile!();
+40 |   const [, , files, folders, , extensions, , allFiles] = picks[0];
+41 |   expect(files).toBe(true);
+42 |   expect(folders).toBe(true);
+                       ^
+error: expect(received).toBe(expected)
+
+Expected: true
+Received: false
+
+      at <anonymous> (/home/sigurdb/project/wowdeck/src/importPicker.test.tsx:42:19)
+(fail) backup import can reach ZIPs in nested folders and cancellation sends no import [10.56ms]
+
+ 0 pass
+ 1 fail
+ 3 expect() calls
+Ran 1 test across 1 file. [70.00ms]

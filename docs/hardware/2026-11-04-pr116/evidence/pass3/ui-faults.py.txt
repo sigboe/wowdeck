@@ -1,0 +1,6 @@
+import subprocess,json
+r='/home/deck/homebrew/data/wowdeck/hardware-116-pass3';host='deck@10.10.1.39'
+for stage in ['folder.install','state.write','state.replace','cleanup.remove']:
+ subprocess.run(['ssh','-o','ControlMaster=no',host,'cat > '+r+'/engine/fault.json'],input=json.dumps({'stage':stage}),text=True,check=True)
+ print('STAGE',stage,flush=True)
+ subprocess.run(['tools/deck-ui/deck','run',"seek 'Install 1 new' --enter; eval@SharedJSContext --file=.scratch/pass3/tree.js --full"],check=True)

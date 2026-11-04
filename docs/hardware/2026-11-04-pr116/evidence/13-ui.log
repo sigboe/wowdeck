@@ -1,0 +1,21 @@
+seek My Addons → found "My Addons" (jump, 4 matches) → focus="MY ADDONS"
+press rb → focus="Hardware 116" tab="Get Addons"
+press rb → focus=null tab="Options"
+seek Back up now → found "Back up nowNo backups yet." (jump, 5 matches) → focus="Back up now No backups yet."
+press a → focus=null
+seek Manage backups → found "Manage backupsRestore, delete or import (WowUp backups too)" (jump, 4 matches) → focus="Manage backups Restore, delete or import (WowUp ba"
+press a → tree="ModalDialogOverlay_Modal_14" focus="Back up now Save a copy of your settings" tab=null
+probe items → items="Back up now Save a copy of your settings | Import from file… Add a backup zip made  | Copy settings from another version… Brin | just now · 532 B Manual · 1 files From t"
+shot .scratch/deck-116/15-backups.png → .scratch/deck-116/15-backups.png 800x500
+press b → tree="QuickAccess-NA" focus="Manage backups Restore, delete or import (WowUp ba" tab="Options"
+seek Manage backups → found "Manage backupsRestore, delete or import (WowUp backups too)" (jump, 4 matches)
+press a → tree="ModalDialogOverlay_Modal_15" focus="Back up now Save a copy of your settings" tab=null
+probe items → items="Back up now Save a copy of your settings | Import from file… Add a backup zip made  | Copy settings from another version… Brin | just now · 532 B Manual · 1 files From t"
+shot .scratch/deck-116/16-backups-reopen.png → .scratch/deck-116/16-backups-reopen.png 800x500
+press b → tree="QuickAccess-NA" focus="Manage backups Restore, delete or import (WowUp ba" tab="Options"
+seek Options → found "Options" (jump, 5 matches) → focus="OPTIONS"
+press lb → focus="Hardware 116" tab="Get Addons"
+seek Latest → found "Latest" (jump, 5 matches) → focus="Latest"
+press a → focus="Xius Threat Meter CurseForge · by Xius · v1.6.1 A "
+probe items → items="GET ADDONS | Hardware 116 | Search | Latest | Popular | Manual Install | CurseForge | Xius Threat Meter CurseForge · by Xius · | GudaChat CurseForge · by Guda · 2.3.1 Gu | Xius XP and Reputation Tracker CurseForg | Grodd Nameplates CurseForge · by grodd19 | Seramate PvP Inspect CurseForge · by Okw | Xius Marks Bar CurseForge · by Xius · 1. | StatCap CurseForge · by Adam5288 · 1.2.0 | Atlas Outdoor Raids CurseForge · by arit | Masque: ElvUI CurseForge · by Lorade · 4 | MapScaler CurseForge · by Lorade · 1.1 M | Load more 10 shown"
+shot .scratch/deck-116/17-latest.png → .scratch/deck-116/17-latest.png 800x425

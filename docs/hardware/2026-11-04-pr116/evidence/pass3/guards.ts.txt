@@ -1,0 +1,32 @@
+import assert from 'node:assert/strict';
+import {createWtfLifecycle} from '../../src/wtfLifecycle';
+import {createDeferredRpc} from '../../src/testSupport/deferredRpc';
+import {createManualClock} from '../../src/testSupport/manualClock';
+import {defaultSettings} from '../../backend/src/wow/storage/settings';
+const restore={fileName:'fixture.zip',acceptUnknownFlavor:false,keepCurrentConfig:false};
+for(const held of ['create','restore','import','delete','settings'] as const){
+ const e=createDeferredRpc();const l=createWtfLifecycle({rpc:e.rpc,clock:createManualClock(),writeSettings:async p=>(await e.rpc('settings.set',{settings:p})).settings,readSettings:async()=>(await e.rpc('settings.get')).settings});
+ const start=held==='create'?l.create('A'):held==='restore'?l.restore('A',restore):held==='import'?l.importBackup('A','/plugin-fixture/x.zip'):held==='delete'?l.deleteBackup('A','fixture.zip'):l.saveSettings({wtfBackupDir:'/plugin-fixture/backups'});
+ const method=held==='settings'?'settings.set':`wtf.${held}` as any;
+ async function blocked(stage:string){
+   const n=e.log.length;
+   for(const id of ['A','B']){
+    assert.equal(await l.create(id),false);assert.equal(await l.restore(id,restore),false);
+    assert.equal(await l.importBackup(id,'/plugin-fixture/stale.zip'),false);assert.equal(await l.deleteBackup(id,'stale.zip'),false);
+    assert.equal(await l.copy(id,{sourceFlavor:'_retail_',sourceInstallationId:'source'}),false);
+   }
+   assert.equal(await l.saveSettings({wtfKeepSnapshots:5}),false);assert.equal(e.log.length,n);
+   console.log(JSON.stringify({held,stage,blockedActions:11,noAdditionalRPC:true}));
+ }
+ await blocked('pending answer / stale confirmations');
+ if(held==='create'||held==='restore'){
+  await e.next(method).resolve({jobId:'valid-job'});await start;
+  l.handleEvent({event:'wtf.progress',params:{job:{jobId:'valid-job',kind:held,installationId:'A',phase:held==='create'?'compress':'extract',done:10,total:100}}});
+  await blocked('valid running snapshot / installation B');
+  l.handleEvent({event:'wtf.completed',params:{jobId:'valid-job',kind:held,installationId:'A',fileName:null,snapshotFileName:null,sourceName:null,error:{code:'cancelled',message:'Cancelled'}}});
+  assert.equal(l.operation.get().activity,null);
+ }else{
+  await e.next(method).resolve(held==='import'?{fileName:'fixture.zip',alreadyPresent:false,otherVersion:null}:held==='delete'?{fileName:'fixture.zip'}:{settings:{...defaultSettings(),wtfBackupDir:'/plugin-fixture/backups'}});assert.equal(await start,true);assert.equal(l.operation.get().activity,null);
+ }
+ console.log(JSON.stringify({held,slotReleased:true}));
+}
