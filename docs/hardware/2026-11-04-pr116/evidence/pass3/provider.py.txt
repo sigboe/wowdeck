@@ -1,0 +1,8 @@
+import subprocess,json
+r='/home/deck/homebrew/data/wowdeck/hardware-116-pass3'
+def rpc(v):subprocess.run(['python3','.scratch/pass3/rpc.py',json.dumps(v)],check=True)
+def pin(n):subprocess.run(['ssh','-o','ControlMaster=no','deck@10.10.1.39','cat > '+r+'/engine/release-pin.json'],input=json.dumps({'id':n}),text=True,check=True)
+pin(401702072)
+rpc([['addons.install',{'providerId':'GitHub','externalId':'Snakybo/Clicked'}],['addons.list',{}]])
+pin(412596157)
+rpc([['addons.refresh',{}],['addons.updateAll',{}],['addons.list',{}]])

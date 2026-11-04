@@ -36,11 +36,12 @@ target (in-memory only).
 The virtual pad's "Controller connected/disconnected" toasts cover ours: poll
 `notificationtoasts` `innerText` every 0.5 s while the press runs.
 
-## Clipboard (Copy path, Copy Diagnostics)
+## Clipboard (Copy path, Copy Diagnostics, Export)
 
-xclip fails with "Maximum number of clients reached" when Steam has leaked X
-connections (count `ss -xpH` peers of `/tmp/.X11-unix/X0`). A Steam restart
-clears it; not our bug.
+The frontend copies with `execCommand("copy")`; there is no clipboard CLI
+on the Deck. Check a copy by pasting it into a
+text field (the **Import addon list** box) and comparing the field's value
+over CDP with the source text, newlines included.
 
 ## File manager (Show in folder)
 

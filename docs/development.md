@@ -44,11 +44,6 @@ targets out of it. They go here.
   `LICENSE`.
 - **fflate.** The npm package, 0.8.x. `backend/src/wow/archives/ArchiveExtractor.ts`
   checks every entry for path traversal before it extracts.
-- **xclip.** `backend/vendor/xclip` is a prebuilt, unmodified binary,
-  copied from the installed Decktation plugin, which bundles the same
-  upstream binary. Its license is `backend/vendor/xclip-LICENSE.txt`.
-  `tools/package.py` copies it into the zip's `bin/`, and `main.py` runs it
-  as a subprocess for Copy diagnostics.
 - **The `unslop` skill.** `.claude/skills/unslop/SKILL.md` is
   `pstack/skills/unslop/SKILL.md` from commit
   `c742dd61706fbacc1b95f1a20b7b988cf096ce6c`. Only the frontmatter
@@ -146,14 +141,34 @@ stable version and the release steps above are unchanged. The version and
 prune choices are `tools/beta-release.ts` (tests beside it); pruning only
 ever matches `v*-beta.*`, and `release.yml` ignores those tags.
 
+### Branch protection
+
+The repository deletes a PR's head branch after merging it. On
+2026-10-31 that deleted `main`: a PR merged `main` back into `next`, and
+GitHub then removed its head branch. Two rulesets now stop that from
+happening again:
+
+- The `main: releases only` ruleset blocks deleting or force-pushing
+  `main`. `main` changes only through a PR that passes the Release gate
+  and merges with a merge commit.
+- The `next: no deletion or force push` ruleset blocks the same two
+  things on `next`.
+
+GitHub doesn't auto-delete a protected head branch, so a PR from `main`
+into `next` is now safe. A hotfix still goes on its own `hotfix/X.Y.Z`
+branch off `main`. Merge it into `main`, then into `next`. Don't remove
+or loosen either ruleset to get a release through. When the gate is red,
+fix the release.
+
 ## Testing on a real Steam Deck
 
 Decky plugins are best verified on real hardware. SSH is enabled by default
 on SteamOS (`deck@<device-ip>`); `docs/steam-deck.md` has device notes.
-Inspect the UI with the Chrome DevTools MCP over an SSH tunnel
-(`docs/remote-browser.md`). Deck rules: `AGENTS.md` ("The owner's Steam
-Deck"); the test procedure is the `deck-test` skill
-(`.claude/skills/deck-test/SKILL.md`).
+Inspect the UI with the `tools/deck-ui/` scripts over an SSH tunnel
+(`tools/deck-ui/README.md`). The Chrome DevTools MCP (`docs/remote-browser.md`)
+covers console and network history and views no script reaches. Deck rules:
+`AGENTS.md` ("The owner's Steam Deck"); the test procedure is the `deck-test`
+skill (`.claude/skills/deck-test/SKILL.md`).
 
 ## Checklists
 

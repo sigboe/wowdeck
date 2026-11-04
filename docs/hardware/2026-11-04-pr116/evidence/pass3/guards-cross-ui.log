@@ -1,0 +1,6 @@
+key up → no change
+key enter → tree="QuickAccess-NA" tab="Options"
+seek Manage backups --enter → pressed Enter on "Manage backupsRestore, delete or import (WowUp backups too)" (jump) → tree="ModalDialogOverlay_Modal_69" focus="6 minutes ago · 951 B Manual · 1 files From this d" tab=null
+probe text items → text="Settings backups: Retail WTF is the folder where WoW keeps your addon settings, keybinds, macros and UI layout. Restoring replaces it; a safety backup of your current settings is made first. Back up now Save a copy of your settings Import from file… Add a backup zip made on this or another computer BACKUPS (2) 5 MB in /home/deck/homebrew/data/wowdeck/hardware-116-pass3/backups/_retail_ 6 minutes a" items="Back up now Save a copy of your settings | Import from file… Add a backup zip made  | 6 minutes ago · 951 B Manual · 1 files F | 13 minutes ago · 5 MB Manual · 25001 fil"
+FAIL could not focus "Back up now Save a copy of your settings"
+at: tree="ModalDialogOverlay_Modal_69" focus="6 minutes ago · 951 B Manual · 1 files From this d" route="/routes/library/home" plugin="WoWDeck" tab=null

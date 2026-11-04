@@ -87,3 +87,31 @@ DEVICE 2026-10-21 (Deck screen; recordings with `tools/deck-ui/capture.mjs`):
 keyboard open/close kept x 0 with only the height changing, like Friends; the
 Details modal round trip slid back to x 0 by Steam alone; collapse slid
 0 → 506 in 200 ms under the held pane; a QAM close cleared the flag.
+
+**Revision 7 (2026-10-31, the placeholder's own class).** Newer Steam honours
+the Friends flag only while the Friends tab is active: Steam's QAM renderer
+reads `qamFriendsExpanded && activeTab == Friends`. On the arm64 Steam client
+under DroidDeck the flag was set, the page went wide, and the view never
+moved, so the pane sat clipped off screen. The flag itself was never the
+lever, though. The lever is the `Expanded` class on the QAM view's
+placeholder: the placeholder measures its own box on every render and calls
+`SetBounds` to match, with Steam's slides. So the plugin now gives the
+placeholder that class itself. `QamExpandHook` patches the QAM renderer the
+way Decky's TabsHook does (found by name, `afterPatch` on `type`, the mounted
+fiber pointed at the patched type) and wraps the placeholder in a component
+that adds `Expanded`, read from Steam's CSS module by its readable key, while
+widened mode is on. The plugin no longer touches Friends' state. Steam still
+adds its own classes next to ours, so the keyboard and modals keep the QAM
+wide as before. The mechanism counts as available only while a wrapped placeholder is
+mounted: a Steam build that renders the QAM differently leaves Get Addons
+collapsed instead of half-widened. DEVICE 2026-10-31 (DroidDeck 0.6.7, Galaxy
+S25, CDP and a virtual pad): focus slid the view from x 715 to 209, a dropdown and the
+keyboard kept it there (`OSKActive` beside `Expanded`), R1 and a QAM close
+collapsed it with nothing left behind, and a plugin reload while wide
+collapsed and re-patched with a single wrapper. A reload with the QAM open
+leaves Steam's rendered QAM alone until Steam renders it again, so the
+wrapper the previous load mounted stays on screen. The expand state is
+therefore kept once per Steam session, not per plugin load, so that wrapper
+follows the new load. DEVICE 2026-10-31 on the Deck (SteamOS 3.9.5) and on
+DroidDeck 0.6.9: before the fix, the next focus after a reload stayed
+collapsed until the QAM closed; after it, focus widens again at once.

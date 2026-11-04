@@ -1,0 +1,2 @@
+seek Export addon list --enter → pressed Enter on "Export addon listShare it with WowUp or another device" (jump) → tree="ModalDialogOverlay_Modal_40" focus="Retail" tab=null
+probe text items → text="Export addon list Moves the addon list for Retail, not addon settings or WoW's saved variables. Works with lists exported by WowUp, and the other way round. Installation Retail Create export code Copy it or save it to a file" items="Retail | Create export code Copy it or save it to"

@@ -481,6 +481,11 @@ describe("detectGameRunning", () => {
     expect(await detectGameRunning(reader({ "1": { comm: "bash", cmdline: "bash\0-c\0echo Wow.exe.txt" }, "2": { comm: "WowUp" } }))).toBe("not_running");
   });
 
+  test("finds Wow-ARM64.exe by process name and Proton command line", async () => {
+    expect(await detectGameRunning(reader({ "1": { comm: "Wow-ARM64.exe" } }))).toBe("running");
+    expect(await detectGameRunning(reader({ "1": { comm: "wine", cmdline: "Z:\\Games\\World of Warcraft\\_forever_\\Wow-ARM64.exe\0" } }))).toBe("running");
+  });
+
   test("unknown when /proc is unreadable", async () => {
     expect(await detectGameRunning(reader(null))).toBe("unknown");
     expect(await detectGameRunning({ pids: async () => ["1"], read: async () => null })).toBe("unknown");

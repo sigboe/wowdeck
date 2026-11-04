@@ -1,0 +1,6 @@
+open → tree="QuickAccess-NA" focus=null tab="My Addons"
+seek MY ADDONS → found "My Addons" (jump, 4 matches) → focus="MY ADDONS"
+key right → focus="GET ADDONS" tab="Get Addons"
+probe tab items → tab="Get Addons" items="GET ADDONS | Retail | Search | Latest | Popular | Manual Install"
+FAIL eval: Error: already hooked
+at: tree="QuickAccess-NA" focus="GET ADDONS" route="/routes/library/home" plugin="WoWDeck" tab="Get Addons"

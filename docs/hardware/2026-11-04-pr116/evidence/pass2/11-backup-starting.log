@@ -1,0 +1,5 @@
+eval@SharedJSContext --file=.scratch/pass2/hold-ba… → hold backup start
+seek Back up now --enter → pressed Enter on "Back up now Save a copy of your settings" (jump) → focus=null
+probe text items → text="Settings backups: Retail WTF is the folder where WoW keeps your addon settings, keybinds, macros and UI layout. Restoring replaces it; a safety backup of your current settings is made first. Back up now Save a copy of your settings Import from file… Add a backup zip made on this or another computer Copy settings from another version… Bring over another WoW version's addon settings, keybinds and la" items="Back up now Save a copy of your settings | Import from file… Add a backup zip made  | Copy settings from another version… Brin"
+FAIL could not focus "Back up now Save a copy of your settings"
+at: tree="ModalDialogOverlay_Modal_26" focus=null route="/routes/library/home" plugin="WoWDeck" tab=null

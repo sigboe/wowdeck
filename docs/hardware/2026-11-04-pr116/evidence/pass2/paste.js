@@ -1,0 +1,1 @@
+(()=>{const r=DFL.getFocusNavController().GetActiveNavTree().m_Root.m_element;const d=r.ownerDocument;const e=r.querySelector('input');if(!e)return {error:'no input'};e.focus();const pasted=d.execCommand('paste');return {pasted,len:e.value.length,matches:e.value===__wd116.exportExpected}})()

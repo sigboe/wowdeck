@@ -104,12 +104,16 @@ describe("buildDataLua", () => {
   });
 
   test("two installations with the same addon name but different versions produce independent rows", () => {
-    const retail = buildDataLua([{ name: "Bagnon", currentVersion: "1.0", newVersion: "2.0" }], new Date());
-    const classic = buildDataLua([{ name: "Bagnon", currentVersion: "9.0", newVersion: "9.1" }], new Date());
+    const generatedAt = new Date("2026-10-11T00:00:00.000Z");
+    const retail = buildDataLua([{ name: "Bagnon", currentVersion: "1.0", newVersion: "2.0" }], generatedAt);
+    const classic = buildDataLua([{ name: "Bagnon", currentVersion: "9.0", newVersion: "9.1" }], generatedAt);
     expect(retail).toContain('{"1.0", "2.0"}');
     expect(classic).toContain('{"9.0", "9.1"}');
-    expect(retail).not.toContain("9.0");
-    expect(classic).not.toContain('{"1.0", "2.0"}');
+    // Compare rows, not whole files: the header carries the caller's
+    // generation time, so a doc-wide "9.0" check also matches a wall-clock
+    // stamp such as 09:52:09.096 and fails at random (CI, 2026-11-01).
+    expect(retail).not.toContain('["Bagnon"] = {"9.0", "9.1"}');
+    expect(classic).not.toContain('["Bagnon"] = {"1.0", "2.0"}');
   });
 });
 

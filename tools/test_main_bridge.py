@@ -10,9 +10,13 @@ process is started: the plugin's backend is replaced with a stub.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import importlib.util
 import logging
+import os
+import stat
 import sys
+import tempfile
 import types
 import unittest
 from pathlib import Path
@@ -57,6 +61,17 @@ def plugin_with(backend: StubBackend) -> Any:
     plugin = main.Plugin()
     plugin.backend = backend
     return plugin
+
+
+@contextlib.contextmanager
+def machine_name(machine: str):
+    """Stubs `platform.machine()` around the block, for `_main`'s engine pick."""
+    real_machine = main.platform.machine
+    main.platform.machine = lambda: machine
+    try:
+        yield
+    finally:
+        main.platform.machine = real_machine
 
 
 class RpcEnvelopeTests(unittest.TestCase):
@@ -107,6 +122,78 @@ class RpcForwarderTests(unittest.TestCase):
         self.assertEqual(backend.calls, [])
 
 
+class EngineSelectionTests(unittest.TestCase):
+    """At load the bridge picks the engine binary from the machine name
+    (`uname -m`) and logs both."""
+
+    def load_on(self, machine: str) -> tuple[Any, list[str]]:
+        with machine_name(machine), self.assertLogs(_decky.logger, level="INFO") as logs:
+            plugin = main.Plugin()
+            asyncio.run(plugin._main())
+        return plugin, logs.output
+
+    def test_x86_64_selects_the_x86_64_engine(self) -> None:
+        plugin, _ = self.load_on("x86_64")
+        self.assertEqual(plugin.backend.binary_path, "/nonexistent/bin/wowdeck-x86_64")
+
+    def test_aarch64_selects_the_aarch64_engine(self) -> None:
+        plugin, _ = self.load_on("aarch64")
+        self.assertEqual(plugin.backend.binary_path, "/nonexistent/bin/wowdeck-aarch64")
+
+    def test_arm64_selects_the_aarch64_engine(self) -> None:
+        plugin, _ = self.load_on("arm64")
+        self.assertEqual(plugin.backend.binary_path, "/nonexistent/bin/wowdeck-aarch64")
+
+    def test_an_unknown_machine_selects_no_engine(self) -> None:
+        plugin, _ = self.load_on("riscv64")
+        self.assertIsNone(plugin.backend)
+
+    def test_the_log_names_the_machine_and_the_engine(self) -> None:
+        _, logs = self.load_on("aarch64")
+        self.assertIn(f"INFO:{_decky.logger.name}:Machine aarch64: engine binary wowdeck-aarch64", logs)
+
+
+class UnsupportedMachineTests(unittest.TestCase):
+    """A machine with no engine binary: every call answers
+    unsupported_architecture, and no process is ever spawned."""
+
+    def plugin_on(self, machine: str) -> Any:
+        with machine_name(machine):
+            plugin = main.Plugin()
+            asyncio.run(plugin._main())
+        return plugin
+
+    def test_get_status_names_the_machine(self) -> None:
+        plugin = self.plugin_on("riscv64")
+        out = asyncio.run(plugin.get_status())
+        self.assertEqual(
+            out,
+            {
+                "ok": False,
+                "code": "unsupported_architecture",
+                "message": "WoWDeck doesn't run on riscv64 devices.",
+            },
+        )
+
+    def test_a_forwarded_rpc_returns_the_same_envelope(self) -> None:
+        plugin = self.plugin_on("riscv64")
+        out = asyncio.run(plugin.rpc("addons.list"))
+        self.assertEqual(
+            out,
+            {
+                "__error": {
+                    "code": "unsupported_architecture",
+                    "message": "WoWDeck doesn't run on riscv64 devices.",
+                }
+            },
+        )
+
+    def test_calls_spawn_nothing(self) -> None:
+        plugin = self.plugin_on("riscv64")
+        asyncio.run(plugin.get_status())
+        asyncio.run(plugin.rpc("addons.list"))
+        self.assertIsNone(plugin.backend)
+
 
 class SystemEnvironTest(unittest.TestCase):
     """The engine gets the system's library path, not PyInstaller's."""
@@ -140,6 +227,31 @@ class SystemEnvironTest(unittest.TestCase):
         env = self.run_frozen({"LD_LIBRARY_PATH": "/opt/lib"}, frozen=False)
         self.assertEqual(env["LD_LIBRARY_PATH"], "/opt/lib")
 
+
+
+class EnsureExecutableTest(unittest.TestCase):
+    """Decky's installer drops file modes; the engine must still start."""
+
+    def binary(self, mode: int) -> str:
+        fd, path = tempfile.mkstemp()
+        os.close(fd)
+        os.chmod(path, mode)
+        self.addCleanup(os.remove, path)
+        return path
+
+    def test_restores_the_execute_bit_the_installer_dropped(self) -> None:
+        path = self.binary(0o600)  # as Decky left it on DroidDeck (DEVICE 2026-10-31)
+        main._ensure_executable(path)
+        self.assertTrue(os.access(path, os.X_OK))
+        self.assertEqual(stat.S_IMODE(os.stat(path).st_mode), 0o711)
+
+    def test_leaves_an_executable_binary_alone(self) -> None:
+        path = self.binary(0o755)
+        main._ensure_executable(path)
+        self.assertEqual(stat.S_IMODE(os.stat(path).st_mode), 0o755)
+
+    def test_a_missing_binary_is_left_to_the_start_to_report(self) -> None:
+        main._ensure_executable("/nonexistent/wowdeck")
 
 if __name__ == "__main__":
     unittest.main()

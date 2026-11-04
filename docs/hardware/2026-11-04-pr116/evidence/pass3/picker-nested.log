@@ -1,0 +1,3 @@
+probe items → items="A-Z | txt | Data Folder 11/4/2026, 6:44:52 PM | Interface Folder 11/4/2026, 6:44:52 PM | Nested Folder 11/4/2026, 6:50:48 PM | WTF Folder 11/4/2026, 6:44:52 PM | Select this file"
+seek Nested --enter → pressed Enter on "Nested Folder 11/4/2026, 6:50:48 PM" (jump) → focus="list.txt 158 B 11/4/2026, 6:50:48 PM"
+probe items → items="A-Z | txt | list.txt 158 B 11/4/2026, 6:50:48 PM | Select this file"

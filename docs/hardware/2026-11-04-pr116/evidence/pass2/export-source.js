@@ -1,0 +1,1 @@
+(()=>{const d=DFL.getFocusNavController().GetActiveNavTree().m_Root.m_element.ownerDocument;const a=[...d.querySelectorAll('textarea,input')];__wd116.exportExpected=a.find(x=>x.value.length>50)?.value;return {length:__wd116.exportExpected?.length,fields:a.map(x=>({tag:x.tagName,len:x.value.length}))}})()

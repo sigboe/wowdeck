@@ -2,6 +2,16 @@ import { afterPatch, appDetailsClasses, createReactTreePatcher, findInReactTree 
 import { routerHook } from "@decky/api";
 import { WowGameSection } from "./components/WowGameSection";
 import { settingsStore } from "./settings";
+import { useSyncExternalStore } from "react";
+import { addonSession } from "./session";
+import { linkedSteamGames } from "./steamLibrary";
+
+function LinkedWowGameSection({ appId }: { appId: number }) {
+  const { settings } = useSyncExternalStore(settingsStore.subscribe, settingsStore.get);
+  const { installations } = useSyncExternalStore(addonSession.subscribe, addonSession.get);
+  const linked = linkedSteamGames(installations, settings.steamGame, settings.steamAutoLink);
+  return linked.some((g) => g.appId === appId) ? <WowGameSection /> : null;
+}
 
 /**
  * Puts the WoW addons section on the linked game's page in Steam's library
@@ -48,8 +58,7 @@ export function patchGamePage(): () => void {
         ],
         (_args: unknown[], ret: any) => {
           try {
-            const linked = settingsStore.get().settings.steamGame;
-            if (!linked || appId !== linked.appId) {
+            if (typeof appId !== "number") {
               return ret;
             }
             const container = findInReactTree(
@@ -64,9 +73,10 @@ export function patchGamePage(): () => void {
               return ret;
             }
             const children = container.props.children as any[];
-            if (!children.some((c) => c?.key === SECTION_KEY)) {
-              children.splice(1, 0, <WowGameSection key={SECTION_KEY} />);
-            }
+            const section = <LinkedWowGameSection key={SECTION_KEY} appId={appId} />;
+            const index = children.findIndex((c) => c?.key === SECTION_KEY);
+            if (index < 0) children.splice(1, 0, section);
+            else children[index] = section;
           } catch (err) {
             warnOnce("insert failed", err);
           }

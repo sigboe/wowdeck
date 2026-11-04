@@ -1,0 +1,1 @@
+(()=>{const r=DFL.getFocusNavController().GetActiveNavTree().m_Root.m_element;const e=r.querySelector('input');e.focus();return {title:e.ownerDocument.title,type:e.type,disabled:e.disabled,readOnly:e.readOnly,placeholder:e.placeholder}})()

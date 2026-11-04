@@ -1,10 +1,21 @@
-// node shot.mjs <targetTitleSubstring> <out.png>  - screenshot one Steam CEF target
+// node shot.mjs <targetTitleSubstring> <out.png> [--timeout=ms]  - screenshot one Steam CEF target
+// A hidden window (the QAM closed) never finishes the capture, so give up after 10 s by default.
 import fs from "node:fs";
-const [,, want, out] = process.argv;
-const targets = await (await fetch("http://localhost:18080/json")).json();
-const t = targets.find(t => t.title.includes(want) && t.webSocketDebuggerUrl);
-const ws = new WebSocket(t.webSocketDebuggerUrl);
-await new Promise(r => ws.onopen = r);
-const res = await new Promise(r => { ws.onmessage = m => r(JSON.parse(m.data)); ws.send(JSON.stringify({id:1,method:"Page.captureScreenshot",params:{format:"png"}})); });
-fs.writeFileSync(out, Buffer.from(res.result.data, "base64"));
-ws.close(); process.exit(0);
+const args = process.argv.slice(2);
+const tArg = args.find((a) => a.startsWith("--timeout="));
+const ms = Number(tArg ? tArg.slice(10) : 10000);
+const [want, out] = args.filter((a) => !a.startsWith("--"));
+import { connect } from "./cdp.mjs";
+const { send, close } = await connect(want);
+try {
+  const res = await send("Page.captureScreenshot", { format: "png" }, ms);
+  if (!res?.result?.data) throw new Error("CEF returned no screenshot");
+  const bytes = Buffer.from(res.result.data, "base64");
+  fs.writeFileSync(out, bytes);
+  console.log(`${out} ${bytes.length} bytes`);
+} catch (e) {
+  console.error(`${e.message}; a hidden window never paints (open the QAM first)`);
+  process.exitCode = 1;
+} finally {
+  close();
+}

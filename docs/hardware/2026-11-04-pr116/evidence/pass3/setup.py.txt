@@ -1,0 +1,9 @@
+import pathlib,zipfile,json
+r=pathlib.Path('/home/deck/homebrew/data/wowdeck/hardware-116-pass3');(r/'home').mkdir(exist_ok=True);(r/'engine').mkdir(exist_ok=True);(r/'backups').mkdir(exist_ok=True)
+# Before any engine mutation: isolated state already names explicit fixture root.
+(r/'engine/state.json').write_text(json.dumps({'installations':[],'addons':[],'settings':{'autoUpdate':False,'checkOnStartup':False,'wtfBackupDir':str(r/'backups'),'enabledProviders':['GitHub','File']}}))
+for n in ['A','B']:
+ p=r/n/'_retail_';(p/'Interface/AddOns').mkdir(parents=True,exist_ok=True);(p/'Data').mkdir(exist_ok=True);(p/'WTF/Account/FIXTURE/SavedVariables').mkdir(parents=True,exist_ok=True);(p/'WTF/Config.wtf').write_text('SET fixture "'+n+'"\n')
+for v in [1,2]:
+ with zipfile.ZipFile(r/f'v{v}.zip','w') as z:z.writestr('Fixture/Fixture.toc',f'## Title: Fixture\n## Version: {v}\n');z.writestr('Fixture/core.lua',f'-- version {v}\n')
+print('isolated explicit backup root',r/'backups')

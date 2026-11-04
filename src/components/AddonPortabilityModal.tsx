@@ -1,5 +1,5 @@
 import { ScrollBuffer } from "./ScrollBuffer";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import {
   DialogBody,
   DialogBodyText,
@@ -20,10 +20,12 @@ import {
 import { FileSelectionType, openFilePicker } from "@decky/api";
 import type { Installation, ImportComparison, ImportSummary, OperationResult } from "../types";
 import * as api from "../services/backend";
+import { addonSession } from "../session";
+import { copyText } from "../services/clipboard";
 import { errorText } from "../errors";
 import { STEAM, descriptionStyle } from "../steamTheme";
 import { pluginToast, toastError } from "../toast";
-import { plural } from "../text";
+import { importResultLine, plural, RECOVERY_NOTE } from "../text";
 import { installationLabel } from "../search";
 import { wowupModalStyleCss } from "../sharedStyles";
 import { ellipsisValue } from "./dropdownValue";
@@ -160,7 +162,7 @@ function AddonPortabilityModal({
       return;
     }
     try {
-      const { ok, message } = await api.copyTextToClipboard(exportPayload);
+      const { ok, message } = await copyText(exportPayload);
       pluginToast(
         ok ? "Export code copied" : "Couldn't copy. Select the text above instead.",
         ok ? "" : message,
@@ -211,11 +213,11 @@ function AddonPortabilityModal({
         FileSelectionType.FILE,
         installation?.path ?? "",
         true,
-        false,
+        true,
         undefined,
         ["txt"],
         false,
-        true,
+        false,
       );
     } catch {
       // user cancelled the picker — nothing to report
@@ -244,7 +246,7 @@ function AddonPortabilityModal({
     }
   };
 
-  const runPreviewFor = async (text: string) => {
+  const runPreviewFor = async (text: string, preserveResults = false) => {
     const trimmed = text.trim();
     if (!trimmed) {
       return;
@@ -253,7 +255,7 @@ function AddonPortabilityModal({
     setPreviewing(true);
     setPreviewError(null);
     setSummary(null);
-    setApplyResults(null);
+    if (!preserveResults) setApplyResults(null);
     try {
       const { summary: result, error } = await api.rpc("addons.previewImport", {
         importString: trimmed,
@@ -277,8 +279,6 @@ function AddonPortabilityModal({
       }
     }
   };
-
-  const runPreview = () => runPreviewFor(importText);
 
   /**
    * There's no separate Preview button anymore — pasting/editing the
@@ -322,7 +322,16 @@ function AddonPortabilityModal({
       const failed = operations.filter((op) => op.status === "failed").length;
       pluginToast(
         installed > 0 ? `Installed ${plural(installed, "addon")}` : "Nothing new to install",
-        failed > 0 ? `${plural(failed, "addon")} couldn't be installed. See the list.` : "",
+        [
+          failed > 0 ? `${plural(failed, "addon")} couldn't be installed. See the list.` : "",
+          operations.some(
+            (op) => op.recoveryRequired || op.followUps?.some((f) => f.recoveryRequired),
+          )
+            ? RECOVERY_NOTE
+            : "",
+        ]
+          .filter(Boolean)
+          .join(" "),
       );
       if (installed > 0) {
         onInstalled();
@@ -330,7 +339,7 @@ function AddonPortabilityModal({
       // Re-preview so the list reflects what's now actually installed
       // (new -> no_change) instead of a stale "new" row for an addon
       // that was just installed.
-      await runPreview();
+      await runPreviewFor(trimmed, true);
     } catch (e) {
       toastError("Couldn't import", e);
     } finally {
@@ -356,7 +365,10 @@ function AddonPortabilityModal({
     />
   );
 
-  const applyDisabled = applying || !summary || summary.addedCt === 0;
+  // Recovery required (#107): the engine refuses installs into it.
+  const { recoveryRequired } = useSyncExternalStore(addonSession.subscribe, addonSession.get);
+  const applyDisabled =
+    applying || !summary || summary.addedCt === 0 || !!recoveryRequired[installationId];
   const summaryParts = summary
     ? [
         summary.addedCt > 0 ? `${summary.addedCt} new` : "",
@@ -504,9 +516,7 @@ function AddonPortabilityModal({
                       }}
                     >
                       {op.addonName ? `${op.addonName}: ` : ""}
-                      {op.status === "failed"
-                        ? `failed, ${op.error ?? "unknown error"}`
-                        : "installed"}
+                      {importResultLine(op)}
                     </DialogBodyText>
                   ))}
                 </DialogControlsSection>

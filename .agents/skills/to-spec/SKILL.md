@@ -28,17 +28,17 @@ The problem that the user is facing, from the user's perspective.
 
 The solution to the problem, from the user's perspective.
 
-## User Stories
+## Scenarios
 
-A LONG, numbered list of user stories. Each user story should be in the format of:
+A numbered list of 3 to 10 scenarios, scaled to the spec: about 3 for a small change, up to 10 for a large feature. Each scenario states a situation and its observable result. No actor, no motive, no "so that":
 
-1. As an <actor>, I want a <feature>, so that <benefit>
+1. <situation or trigger> → <observable result>
 
-<user-story-example>
-1. As a mobile bank customer, I want to see balance on my accounts, so that I can make better informed decisions about my spending
-</user-story-example>
+<scenario-example>
+1. Update check finds a newer release that has not been toasted yet → one toast names the version; later checks for that version show none
+</scenario-example>
 
-This list of user stories should be extremely extensive and cover all aspects of the feature.
+Choose the scenarios that define the feature: the main path, the failure paths, and the edges a reviewer would test. Fold related cases into one scenario instead of listing each. Detail that belongs to one module goes in Implementation Decisions.
 
 ## Implementation Decisions
 

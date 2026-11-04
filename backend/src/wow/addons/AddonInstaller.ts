@@ -7,32 +7,34 @@
  *   download -> temp file
  *   extract  -> staging dir on the SAME filesystem as AddOns
  *   validate -> every planned folder must exist; at least one .toc overall
- *   install  -> rename-based swap with rollback-on-error backups
+ *   install  -> the addon transaction (AddonTransaction.ts): rename-based
+ *               moves and the record commit together
  *
- * A failed install at ANY point leaves the previous state intact. The
- * record is not written here: a successful install returns its changes.
+ * A failed install at ANY point leaves the previous folders and record
+ * intact (or, when even the undo fails, keeps every copy: ADR 0006).
  */
 
-import { join } from "node:path";
-import type { AddonSearchResult, WowInstallation } from "../models";
-import { recordFolders, type AddonPatch, type AddonRecord } from "./AddonRecords";
+import type { AddonSearchResult, AddonSearchResultFile, WowInstallation } from "../models";
+import { recordFolders, type AddonPatch, type AddonRecord, type AddonRecordChange, type AddonRecords } from "./AddonRecords";
 import type { AddonProvider } from "../providers/addon-provider";
-import { InstallError, NotFoundError, ProviderError, plainSystemError, providerDisplayName } from "../errors";
-import { createDirectory, isDirectory, joinWithin, listDirectory, pathExists, removeDirectory, renameSafe } from "../fs/safe-fs";
+import { InstallError, NotFoundError, providerDisplayName } from "../errors";
+import { isDirectory } from "../fs/safe-fs";
 import { getAddonsPath } from "../installation/InstallationDetector";
-import { parseTocFile } from "../toc/TocParser";
-import { getTocForGameType2 } from "../utils/toc";
 import { extractArchive } from "../archives/ArchiveExtractor";
+import { checkAddonFolders, readAddonToc } from "../archives/addonFolders";
 import { PROVIDER_ID } from "../../api/providers";
 import type { DownloadService } from "../downloads/DownloadService";
 import { latestFile } from "./releaseChannel";
-import { STAGING_DIR_NAME, keepPrevious } from "./RollbackCache";
+import { AddonTransactions } from "./AddonTransaction";
+import { realStageFs, type StageFs } from "../fs/StageFs";
 
 
 export interface InstallOptions {
   installation: WowInstallation;
   /** The record as it is to be installed (channel included); never changed here. */
   addon: AddonRecord;
+  /** The stored record the install replaces; absent for a new one. */
+  existing?: AddonRecord;
   /** Provider search result; the file installed is the newest on `addon.channelType`. */
   searchResult: AddonSearchResult;
   provider: AddonProvider;
@@ -44,27 +46,45 @@ export interface InstallOptions {
    * checked on the archive itself: a provider may not list its folders.
    */
   requiredFolder?: string;
+  /** The records the install commits through (the caller's gate turn). */
+  records: AddonRecords;
+  /** The record change the installed files make, given the installer's patch. */
+  recordChange: (patch: AddonPatch) => AddonRecordChange;
 }
 
 export interface InstallOutcome {
-  /** What the install changed on the record; the caller writes it. */
+  /** What the install changed on the record, as committed. */
   patch: AddonPatch;
+  transactionId: string;
+  /** The install committed but its cleanup didn't finish (AddonTransactions). */
+  cleanupWarning?: string;
 }
 
 export class AddonInstaller {
-  constructor(private downloads: DownloadService) {}
+  #transactions: AddonTransactions;
 
+  constructor(
+    private downloads: DownloadService,
+    fs: StageFs = realStageFs,
+    /** The engine's one transaction runner (its recovery guard reads it); a fresh one by default. */
+    transactions: AddonTransactions = new AddonTransactions(fs),
+  ) {
+    this.#transactions = transactions;
+  }
+
+  /**
+   * Download, stage and install the release, committing the record with it
+   * (AddonTransactions). Throws an InstallError, a TransactionFailure once
+   * the transaction has begun, when nothing was committed.
+   */
   async install(opts: InstallOptions): Promise<InstallOutcome> {
     const { installation, addon, searchResult, provider } = opts;
-    const addonsPath = getAddonsPath(installation);
-    const stagingRoot = join(addonsPath, STAGING_DIR_NAME);
-    const stagingDir = join(stagingRoot, `stage-${crypto.randomUUID()}`);
-    const backupDir = join(stagingRoot, `backup-${crypto.randomUUID()}`);
 
     // The installation's own game folder (e.g. _retail_) must exist; only
     // Interface/AddOns below it may be created. Otherwise an installation on
     // a removed SD card would be recreated on internal storage, under the
-    // card's mount path.
+    // card's mount path. Checked before downloading; the transaction checks
+    // again before it touches anything.
     if (!(await isDirectory(installation.location))) {
       throw new InstallError(
         `${installation.displayName} isn't available. Is the SD card inserted?`,
@@ -87,119 +107,122 @@ export class AddonInstaller {
         addon.id,
       );
     }
+    // A reinstall of the SAME release is a repair, not an update: it must
+    // not replace the kept older version (BEYOND-02), or "Roll back" would
+    // offer the version already running. Only a changed release puts its
+    // previous version in the cache.
+    const sameRelease = previous.releaseId != null && previous.releaseId === file?.externalId;
+    const addonsPath = getAddonsPath(installation);
 
     try {
-      // 1. download — or, for the File provider, copy the picked archive
-      //    in: its downloadUrl is a path on this Deck, never a network
-      //    address. Keyed on the provider (which owns that meaning), not
-      //    on the URL's shape; copyLocal re-validates the path itself.
-      const auth = await opts.provider.getDownloadAuth().catch(() => undefined);
-      const handle =
-        provider.name === PROVIDER_ID.File
-          ? await this.downloads.copyLocal(downloadUrl, `${addon.id}.archive`)
-          : await this.downloads.download(downloadUrl, `${addon.id}.archive`, { auth });
-
-      // 2. extract to staging (same fs as AddOns -> atomic renames possible)
-      await createDirectory(stagingRoot);
-      await removeDirectory(stagingDir);
-      const extracted = await extractArchive(handle.filePath, stagingDir);
-
-      // 3. validate structure
-      // The required folder is the addon's main one: it stays first
-      // (recordFolders), whatever order the archive has.
-      const plannedFolders = this.planFolders(extracted.topLevelDirs, file?.folders ?? []).sort(
-        (a, b) => Number(b === opts.requiredFolder) - Number(a === opts.requiredFolder),
-      );
-      if (plannedFolders.length === 0) {
-        throw new InstallError("The archive doesn't contain an addon", addon.id);
-      }
-      if (opts.requiredFolder && !plannedFolders.includes(opts.requiredFolder)) {
-        throw new InstallError(`${searchResult.name} doesn't install the folder ${opts.requiredFolder}`, addon.id);
-      }
-      for (const folder of plannedFolders) {
-        if (!(await this.folderHasToc(stagingDir, folder))) {
-          console.error(`[installer] planned addon folder has no .toc: ${folder}`);
-          throw new InstallError("The archive doesn't contain a valid addon", addon.id);
-        }
-      }
-
-      // 4. install with backups + rollback
-      const { installed, backedUp } = await this.swapFolders(addonsPath, stagingDir, backupDir, plannedFolders);
-
-      // 5. the record's changes, from the installed TOC
-      const toc = await this.readInstalledToc(addonsPath, installed, installation);
-      const patch: AddonPatch = {
-        installedFolderList: installed,
-        installedFolders: installed.join(", "),
-        installedVersion: toc?.version ?? file?.version ?? addon.installedVersion,
-        // The just-installed file is, by definition, the latest known
-        // release — set both sides of the release-id pair from the same file
-        // so needsUpdate()'s release-id check (which takes priority over the
-        // version-string fallback) agrees immediately. Mirrors upstream's
-        // addon-install.service.ts, which does the equivalent assignment in
-        // the other direction (installedExternalReleaseId = externalLatestReleaseId,
-        // relying on it having already been set at search/match time). Without
-        // this, any addon whose TOC version string doesn't match the
-        // provider's reported version (common — "authors push out new builds
-        // without changing the toc version", per upstream's own comment on
-        // needsUpdate) would show a false "update available" forever: nothing
-        // ever updates installedExternalReleaseId to catch up because installs
-        // short-circuit back to the same mismatched version strings.
-        externalLatestReleaseId: file?.externalId ?? addon.externalLatestReleaseId,
-        installedExternalReleaseId: file?.externalId ?? addon.installedExternalReleaseId,
-        latestVersion: file?.version ?? addon.latestVersion,
-        downloadUrl,
-        gameVersion: toc?.interface?.join(", ") ?? addon.gameVersion,
-        author: toc?.author ?? addon.author,
-        // The provider's name, as a scan match keeps it; the TOC title (often
-        // a colour-coded or internal one) only when the provider gives none,
-        // like upstream's zip installs (PC-14); a direct link has neither,
-        // so its folder name is the last resort.
-        name: searchResult.name || toc?.title || addon.name || installed[0]!,
-        installedAt: Date.now(),
-        updatedAt: Date.now(),
-        providerName: searchResult.providerName,
-        externalId: searchResult.externalId,
-        externalUrl: searchResult.externalUrl,
-        // What the provider says about the addon now: after a source change
-        // (WF-12) the old source's picture and summary are not this one's.
-        thumbnailUrl: searchResult.thumbnailUrl,
-        summary: searchResult.summary,
-        warningType: undefined,
-      };
-
-      if (opts.keepPreviousVersion && backedUp.length > 0) {
-        // A reinstall of the SAME release is a repair, not an update: it
-        // must not replace the kept older version (BEYOND-02), or "Roll
-        // back" would offer the version already running. Only a changed
-        // release puts its previous version in the cache.
-        const sameRelease = previous.releaseId != null && previous.releaseId === file?.externalId;
-        if (!sameRelease) {
-          // Keeping it is a nicety: a failure here never fails the install.
-          try {
-            await keepPrevious(installation, addon.id, backupDir, {
-              ...previous,
-              folders: backedUp,
-              savedAt: Date.now(),
-            });
+      const { transactionId, result: patch, cleanupWarning } = await this.#transactions.run(opts.records, {
+        installation,
+        operation: opts.existing ? "update" : "install",
+        addonId: addon.id,
+        originalRecord: opts.existing ?? null,
+        ...(opts.keepPreviousVersion && !sameRelease && { keepPrevious: previous }),
+        stage: (stagingDir) => this.#stage(opts, downloadUrl, file?.folders ?? [], stagingDir),
+        change: async ({ installed, previous: kept }) => {
+          const patch = await this.#patch(opts, addonsPath, installed, file, downloadUrl);
+          if (kept === "kept") {
             patch.rollbackVersion = previous.version ?? "previous version";
-          } catch (err) {
-            console.error(`[installer] could not keep the previous version: ${String(err)}`);
+          } else if (kept === "gone") {
+            patch.rollbackVersion = undefined;
           }
-        }
-      }
-
-      return { patch };
+          return { change: opts.recordChange(patch), result: patch };
+        },
+      });
+      return { patch, transactionId, ...(cleanupWarning && { cleanupWarning }) };
     } finally {
-      await removeDirectory(stagingDir).catch(() => {});
-      await removeDirectory(backupDir).catch(() => {});
-      // remove the staging root when no other operation is using it
-      const remaining = await listDirectory(stagingRoot).catch(() => []);
-      if (remaining.length === 0) {
-        await removeDirectory(stagingRoot).catch(() => {});
-      }
       await this.downloads.cleanup().catch(() => {});
     }
+  }
+
+  /** Download (or copy in) the archive, extract it to `stagingDir` and check it; returns the folders to install. */
+  async #stage(opts: InstallOptions, downloadUrl: string, releaseFolders: string[], stagingDir: string): Promise<string[]> {
+    const { addon, searchResult, provider } = opts;
+    // 1. download — or, for the File provider, copy the picked archive
+    //    in: its downloadUrl is a path on this Deck, never a network
+    //    address. Keyed on the provider (which owns that meaning), not
+    //    on the URL's shape; copyLocal re-validates the path itself.
+    const auth = await provider.getDownloadAuth().catch(() => undefined);
+    const handle =
+      provider.name === PROVIDER_ID.File
+        ? await this.downloads.copyLocal(downloadUrl, `${addon.id}.archive`)
+        : await this.downloads.download(downloadUrl, `${addon.id}.archive`, { auth });
+
+    // 2. extract to staging (same fs as AddOns -> atomic renames possible)
+    const extracted = await extractArchive(handle.filePath, stagingDir);
+
+    // 3. validate structure
+    // The required folder is the addon's main one: it stays first
+    // (recordFolders), whatever order the archive has.
+    const plannedFolders = this.planFolders(extracted.topLevelDirs, releaseFolders).sort(
+      (a, b) => Number(b === opts.requiredFolder) - Number(a === opts.requiredFolder),
+    );
+    if (plannedFolders.length === 0) {
+      throw new InstallError("The archive doesn't contain an addon", addon.id);
+    }
+    if (opts.requiredFolder && !plannedFolders.includes(opts.requiredFolder)) {
+      throw new InstallError(`${searchResult.name} doesn't install the folder ${opts.requiredFolder}`, addon.id);
+    }
+    const { notAddonFolders } = await checkAddonFolders(stagingDir, plannedFolders);
+    if (notAddonFolders.length > 0) {
+      console.error(`[installer] planned addon folder has no .toc: ${notAddonFolders[0]}`);
+      throw new InstallError("The archive doesn't contain a valid addon", addon.id);
+    }
+    return plannedFolders;
+  }
+
+  /** The record's changes, from the installed TOC; a TOC that can't be read leaves the provider's and record's values. */
+  async #patch(
+    opts: InstallOptions,
+    addonsPath: string,
+    installed: string[],
+    file: AddonSearchResultFile | undefined,
+    downloadUrl: string,
+  ): Promise<AddonPatch> {
+    const { addon, searchResult, installation } = opts;
+    const toc = await this.readInstalledToc(addonsPath, installed, installation);
+    return {
+      installedFolderList: installed,
+      installedFolders: installed.join(", "),
+      installedVersion: toc?.version ?? file?.version ?? addon.installedVersion,
+      // The just-installed file is, by definition, the latest known
+      // release — set both sides of the release-id pair from the same file
+      // so needsUpdate()'s release-id check (which takes priority over the
+      // version-string fallback) agrees immediately. Mirrors upstream's
+      // addon-install.service.ts, which does the equivalent assignment in
+      // the other direction (installedExternalReleaseId = externalLatestReleaseId,
+      // relying on it having already been set at search/match time). Without
+      // this, any addon whose TOC version string doesn't match the
+      // provider's reported version (common — "authors push out new builds
+      // without changing the toc version", per upstream's own comment on
+      // needsUpdate) would show a false "update available" forever: nothing
+      // ever updates installedExternalReleaseId to catch up because installs
+      // short-circuit back to the same mismatched version strings.
+      externalLatestReleaseId: file?.externalId ?? addon.externalLatestReleaseId,
+      installedExternalReleaseId: file?.externalId ?? addon.installedExternalReleaseId,
+      latestVersion: file?.version ?? addon.latestVersion,
+      downloadUrl,
+      gameVersion: toc?.interface?.join(", ") ?? addon.gameVersion,
+      author: toc?.author ?? addon.author,
+      // The provider's name, as a scan match keeps it; the TOC title (often
+      // a colour-coded or internal one) only when the provider gives none,
+      // like upstream's zip installs (PC-14); a direct link has neither,
+      // so its folder name is the last resort.
+      name: searchResult.name || toc?.title || addon.name || installed[0]!,
+      installedAt: Date.now(),
+      updatedAt: Date.now(),
+      providerName: searchResult.providerName,
+      externalId: searchResult.externalId,
+      externalUrl: searchResult.externalUrl,
+      // What the provider says about the addon now: after a source change
+      // (WF-12) the old source's picture and summary are not this one's.
+      thumbnailUrl: searchResult.thumbnailUrl,
+      summary: searchResult.summary,
+      warningType: undefined,
+    };
   }
 
   /** Folder names to install: release metadata wins; fallback = all extracted top-level dirs. */
@@ -214,81 +237,13 @@ export class AddonInstaller {
     return [...existing];
   }
 
-  private async folderHasToc(stagingDir: string, folder: string): Promise<boolean> {
-    const folderPath = joinWithin(stagingDir, folder);
-    const entries = await listDirectory(folderPath);
-    return entries.some((e) => !e.isDirectory && e.name.toLowerCase().endsWith(".toc"));
-  }
-
-  /**
-   * Rename-based swap with full rollback. All operations are same-filesystem
-   * renames, so a crash mid-way leaves either old or (partially) hidden
-   * staging folders — never a half-written addon.
-   */
-  private async swapFolders(
-    addonsPath: string,
-    stagingDir: string,
-    backupDir: string,
-    folders: string[],
-  ): Promise<{ installed: string[]; backedUp: string[] }> {
-    const backups: { name: string; from: string }[] = [];
-    const installed: string[] = [];
-
-    try {
-      await createDirectory(backupDir);
-
-      // backup existing target folders
-      for (const folder of folders) {
-        const target = joinWithin(addonsPath, folder);
-        if (await pathExists(target)) {
-          const backupPath = joinWithin(backupDir, folder);
-          await renameSafe(target, backupPath);
-          backups.push({ name: folder, from: backupPath });
-        }
-      }
-
-      // move staged folders into place
-      for (const folder of folders) {
-        const source = joinWithin(stagingDir, folder);
-        const target = joinWithin(addonsPath, folder);
-        await renameSafe(source, target);
-        installed.push(folder);
-      }
-
-      return { installed, backedUp: backups.map((b) => b.name) };
-    } catch (err) {
-      // rollback: remove newly installed, restore backups
-      for (const folder of installed) {
-        await removeDirectory(joinWithin(addonsPath, folder)).catch(() => {});
-      }
-      for (const backup of backups) {
-        await renameSafe(backup.from, joinWithin(addonsPath, backup.name)).catch(() => {});
-      }
-      throw err instanceof InstallError
-        ? err
-        : new InstallError(
-            plainSystemError(err, "Couldn't put the addon's files in place. Nothing was changed", "installer"),
-          );
-    }
-  }
-
   private async readInstalledToc(
     addonsPath: string,
     folders: string[],
     installation: WowInstallation,
   ) {
     try {
-      const tocs = [];
-      for (const folder of folders) {
-        const folderPath = joinWithin(addonsPath, folder);
-        for (const entry of await listDirectory(folderPath)) {
-          if (!entry.isDirectory && entry.name.toLowerCase().endsWith(".toc")) {
-            tocs.push(await parseTocFile(entry.path));
-          }
-        }
-      }
-      const folderStub = { name: folders[0] ?? "", path: "", status: "", tocs };
-      return getTocForGameType2(folderStub, installation.clientType) ?? tocs[0];
+      return await readAddonToc(addonsPath, folders, installation.clientType);
     } catch (err) {
       console.error(`[installer] toc reparse failed: ${String(err)}`);
       return undefined;
@@ -296,55 +251,48 @@ export class AddonInstaller {
   }
 }
 
-/** Remove an addon's folders and record. Transactional: rename-then-delete. */
+/** What a committed removal returns. */
+export interface RemovalOutcome {
+  /** The folders removed (a folder already missing counts). */
+  folders: string[];
+  transactionId: string;
+  /** The removal committed but its cleanup didn't finish (AddonTransactions). */
+  cleanupWarning?: string;
+}
+
+/**
+ * Remove an addon's folders and its record, or an unmanaged folder, through
+ * the engine's addon transaction: the folders and the record go in one
+ * commit, a failure before it puts both back, and an undo that stops keeps
+ * every copy (ADR 0006).
+ */
 export class AddonRemover {
+  constructor(private transactions: AddonTransactions) {}
+
+  /**
+   * Throws a NotFoundError for a record naming no folders, an InstallError
+   * (a TransactionFailure once the transaction has begun) when nothing was
+   * committed.
+   */
   async remove(
+    records: AddonRecords,
     installation: WowInstallation,
-    addon: Pick<AddonRecord, "id" | "installedFolderList" | "installedFolders">,
-    operationId: string,
-  ): Promise<string[]> {
-    const addonsPath = getAddonsPath(installation);
-    const trashDir = join(addonsPath, STAGING_DIR_NAME, `trash-${operationId}`);
-    const folders = recordFolders(addon);
-
+    target: { record: AddonRecord } | { unmanagedFolder: string },
+  ): Promise<RemovalOutcome> {
+    const record = "record" in target ? target.record : null;
+    const folders = "record" in target ? recordFolders(target.record).filter(Boolean) : [target.unmanagedFolder];
+    const addonId = record ? record.id : `unmanaged:${folders[0]}`;
     if (folders.length === 0) {
-      throw new NotFoundError("addon folders for", addon.id);
+      throw new NotFoundError("addon folders for", addonId);
     }
-
-    await createDirectory(trashDir);
-    const removed: string[] = [];
-    try {
-      for (const folder of folders) {
-        if (!folder) {
-          continue;
-        }
-        const target = joinWithin(addonsPath, folder);
-        if (!(await pathExists(target))) {
-          removed.push(folder); // already gone; treat as removed
-          continue;
-        }
-        await renameSafe(target, joinWithin(trashDir, folder));
-        removed.push(folder);
-      }
-    } catch (err) {
-      // restore anything already trashed
-      for (const folder of removed) {
-        const trashed = joinWithin(trashDir, folder);
-        if (await pathExists(trashed)) {
-          await renameSafe(trashed, joinWithin(addonsPath, folder)).catch(() => {});
-        }
-      }
-      await removeDirectory(trashDir).catch(() => {});
-      throw err instanceof ProviderError
-        ? err
-        : new InstallError(plainSystemError(err, "Couldn't remove the addon's folders. Nothing was changed", "remover"), addon.id);
-    }
-    await removeDirectory(trashDir).catch(() => {});
-    const stagingRoot = join(addonsPath, STAGING_DIR_NAME);
-    const remaining = await listDirectory(stagingRoot).catch(() => []);
-    if (remaining.length === 0) {
-      await removeDirectory(stagingRoot).catch(() => {});
-    }
-    return removed;
+    const { transactionId, cleanupWarning } = await this.transactions.run(records, {
+      installation,
+      operation: "remove",
+      addonId,
+      originalRecord: record,
+      folders,
+      change: async () => ({ change: record ? { remove: [record.id] } : {}, result: undefined }),
+    });
+    return { folders, transactionId, ...(cleanupWarning && { cleanupWarning }) };
   }
 }

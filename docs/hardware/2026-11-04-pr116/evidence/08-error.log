@@ -1,0 +1,20 @@
+eval --file=.scratch/deck-116/geometry.js → {"viewport":[854,454],"hidden":false,"controls":[{"tag":"DIV","c":"wowdeck-root wowdeck-scroll-buffer Panel Focusable gpfocuswithin","t":".wowdeck-pane-slot {\n  /* The pane is a column of its o","rect":{"x":48,"y":48,"w":300,"h":282}},{"tag":"DIV","c":"wowdeck-float-pane","t":"Get Addons","rect":{"x":48,"y":48,"w":300,"h":62}},{"tag":"DIV","c":"wowdeck-tab wowdeck-tab-selected Panel Focusable gpfocus gpfocuswithin","t":"Get Addons","rect":{"x":136,"y":64,"w":130.83334350585938,"h":34}},{"tag":"DIV","c":"wowdeck-list-zone Panel Focusable","t":"ForeverSearchLatestPopularManual Install","rect":{"x":48,"y":110,"w":300,"h":220}}]}
+seek Manual Install → found "Manual Install" (jump, 5 matches) → focus="Manual Install"
+press a → focus=""
+seek Browse → found "Browse…" (jump, 3 matches) → focus="Browse…"
+press a → tree="ModalDialogOverlay_Modal_13" focus="" tab=null
+seek homebrew → found "homebrew Folder 9/26/2026, 3:24:31 PM" (jump) → focus="homebrew Folder 9/26/2026, 3:24:31 PM"
+press a → focus="settings Folder 10/25/2026, 9:18:37 PM"
+seek data → found "data Folder 10/25/2026, 8:20:16 AM" (jump, 3 matches) → focus="data Folder 10/25/2026, 8:20:16 AM"
+press a → focus=""
+seek wowdeck → found "wowdeck Folder 11/4/2026, 6:08:19 PM" (jump) → focus="wowdeck Folder 11/4/2026, 6:08:19 PM"
+press a → focus="wtf-backups Folder 10/14/2026, 3:51:03 PM"
+seek hardware-116 → found "hardware-116 Folder 11/4/2026, 6:09:03 PM" (jump, 3 matches) → focus="hardware-116 Folder 11/4/2026, 6:09:03 PM"
+press a → focus="B Folder 11/4/2026, 6:08:19 PM"
+seek nested → found "nested Folder 11/4/2026, 6:08:19 PM" (jump, 3 matches) → focus="nested Folder 11/4/2026, 6:08:19 PM"
+press a → focus="valid.zip 344 B 11/4/2026, 6:09:03 PM"
+seek invalid.zip → found "invalid.zip 138 B 11/4/2026, 6:08:19 PM" (jump, 3 matches) → focus="invalid.zip 138 B 11/4/2026, 6:08:19 PM"
+press a → tree="QuickAccess-NA" focus="Browse…" tab="Get Addons"
+probe focus items → focus="Browse…" items="GET ADDONS | Forever | Search | Latest | Popular | Manual Install | Look up | Browse…"
+shot .scratch/deck-116/13-inspect-error.png → .scratch/deck-116/13-inspect-error.png 800x425
+eval --file=.scratch/deck-116/geometry.js → {"viewport":[854,454],"hidden":false,"controls":[{"tag":"DIV","c":"wowdeck-root wowdeck-scroll-buffer Panel Focusable gpfocuswithin","t":".wowdeck-pane-slot {\n  /* The pane is a column of its o","rect":{"x":48,"y":48,"w":806,"h":306}},{"tag":"DIV","c":"wowdeck-float-pane","t":"Get Addons","rect":{"x":48,"y":48,"w":806,"h":62}},{"tag":"DIV","c":"wowdeck-tab wowdeck-tab-selected Panel Focusable","t":"Get Addons","rect":{"x":136,"y":64,"w":130.83334350585938,"h":34}},{"tag":"DIV","c":"wowdeck-list-zone Panel Focusable gpfocuswithin","t":"ForeverSearchLatestPopularManual InstallFrom a linkLook","rect":{"x":48,"y":110,"w":806,"h":244}},{"tag":"DIV","c":"wowdeck-destination-selected eKmEXJCm_lgme24Fp_HWt _2QgNsvFPYTZ5yRiTm7mUyu _16vVnDqpbNs-zIH-EdV6Vz GxgIyq8R5xTOeu4ftGrgX _3nLNLFMUMSt4jvxIayuPV3 xIITXDcM70faUNqssgUyx _2HuzvKQ2QMUJ-JJOeApaF1 _2HFrmMgB38Ike5w4rVxzEX Panel Focusable","t":"Manual Install","rect":{"x":48,"y":290,"w":300,"h":40}},{"tag":"DIV","c":"wowdeck-pane-slot wowdeck-pane-slot-open","t":"From a linkLook upA GitHub repository URL, owner/reposi","rect":{"x":348,"y":0,"w":506,"h":454}},{"tag":"BUTTON","c":"DialogButton _DialogLayout Secondary cXzBZxhPBl7fZs9LODEnc Focusable gpfocus gpfocuswithin","t":"Browse…","rect":{"x":372.66668701171875,"y":168,"w":115.38542175292969,"h":40}}]}

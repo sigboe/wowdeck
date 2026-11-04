@@ -12,6 +12,7 @@ import {
 } from "@decky/ui";
 import { FaCopy, FaFolderOpen } from "react-icons/fa";
 import * as api from "../services/backend";
+import { copyText } from "../services/clipboard";
 import { STEAM, descriptionStyle } from "../steamTheme";
 import { wowupModalStyleCss } from "../sharedStyles";
 import { ScrollBuffer } from "./ScrollBuffer";
@@ -70,8 +71,7 @@ function FoldersModal({ addon, closeModal }: { addon: Addon; closeModal?: () => 
 
   const copy = async (path: string) => {
     try {
-      // navigator.clipboard is not available here; main.py runs the bundled xclip.
-      const { ok, message } = await api.copyTextToClipboard(path);
+      const { ok, message } = await copyText(path);
       pluginToast(ok ? "Path copied" : "Couldn't copy the path", ok ? homePath(path) : message);
     } catch (e) {
       toastError("Couldn't copy the path", e);

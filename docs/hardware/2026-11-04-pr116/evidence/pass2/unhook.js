@@ -1,0 +1,1 @@
+(()=>{const h=window.__wd116;if(!h)return 'no hook';if(h.held.length)throw Error('unsettled fixture calls');DeckyBackend.call=h.orig;delete window.__wd116;return {hookRemoved:true,pendingFixtureCalls:0}})()

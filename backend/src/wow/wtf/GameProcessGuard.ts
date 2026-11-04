@@ -13,7 +13,7 @@
  */
 
 import { readFile, readdir } from "node:fs/promises";
-import { WOW_EXECUTABLE_NAMES } from "../installation/InstallationDetector";
+import { WOW_EXECUTABLE_NAMES } from "../installation/WowExecutables";
 
 import type { GameRunning } from "../../api/contracts";
 

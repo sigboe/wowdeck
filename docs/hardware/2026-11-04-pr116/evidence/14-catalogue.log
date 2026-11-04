@@ -1,0 +1,16 @@
+press x → no change
+press a → tree="ModalDialogOverlay_Modal_16" focus="Xius Threat Meter INSTALLED CurseForge Xius 20 dow" tab=null
+probe items → items="Xius Threat Meter INSTALLED CurseForge X"
+shot .scratch/deck-116/18-details-install.png → .scratch/deck-116/18-details-install.png 800x500
+press b → tree="QuickAccess-NA" focus="Xius Threat Meter INSTALLED CurseForge · by Xius ·" tab="Get Addons"
+press a → tree="ModalDialogOverlay_Modal_17" focus="Xius Threat Meter INSTALLED CurseForge Xius 20 dow" tab=null
+probe items → items="Xius Threat Meter INSTALLED CurseForge X"
+shot .scratch/deck-116/19-details-reopen.png → .scratch/deck-116/19-details-reopen.png 800x500
+press b → tree="QuickAccess-NA" focus="Xius Threat Meter INSTALLED CurseForge · by Xius ·" tab="Get Addons"
+eval --file=.scratch/deck-116/geometry.js → {"viewport":[854,454],"hidden":false,"controls":[{"tag":"DIV","c":"wowdeck-root wowdeck-scroll-buffer Panel Focusable gpfocuswithin","t":".wowdeck-pane-slot {\n  /* The pane is a column of its o","rect":{"x":48,"y":48,"w":806,"h":306}},{"tag":"DIV","c":"wowdeck-float-pane","t":"Get Addons","rect":{"x":48,"y":48,"w":806,"h":62}},{"tag":"DIV","c":"wowdeck-tab wowdeck-tab-selected Panel Focusable","t":"Get Addons","rect":{"x":136,"y":64,"w":130.83334350585938,"h":34}},{"tag":"DIV","c":"wowdeck-list-zone Panel Focusable gpfocuswithin","t":"Hardware 116SearchLatestPopularManual InstallSourceCurs","rect":{"x":48,"y":110,"w":806,"h":244}}]}
+shot .scratch/deck-116/20-details-return.png → .scratch/deck-116/20-details-return.png 800x425
+rpc addons.list --pick=addons[].id,addons[].name,a… → {"addons[].id":["eb128801-b5b6-4ab4-8c7e-a688ffe71bcc"],"addons[].name":["Xius Threat Meter"],"addons[].version":["1.6.1"]}
+seek Get Addons → found "Get Addons" (jump, 4 matches) → focus="GET ADDONS"
+press lb → focus=null tab="My Addons"
+probe items → items="MY ADDONS | Hardware 116 | All up to date"
+shot .scratch/deck-116/21-myaddons.png → .scratch/deck-116/21-myaddons.png 800x425

@@ -1,0 +1,6 @@
+open → tree="QuickAccess-NA" focus=null tab="My Addons"
+probe items → items="MY ADDONS | Forever | All up to date"
+shot .scratch/deck-116/45-owner-restored.png → .scratch/deck-116/45-owner-restored.png 800x425
+rpc installations.recoveryStatus → {"installations":[{"installationId":"351cab445486","status":"ready"},{"installationId":"032c354a655f","status":"ready"},{"installationId":"5e80311f078e","status":"ready"}],"stateFile":{"status":"readable"}}
+rpc settings.get --pick=settings.autoUpdate,settin… → {"settings.autoUpdate":true,"settings.selectedInstallationId":"5e80311f078e","settings.wtfBackupDir":"/run/media/deck/0ab3c0d5-1c59-44c4-9752-37af079c72f3/wowup-backups"}
+close → tree="GamepadUI_Full_Root" focus="" tab=null

@@ -1,7 +1,7 @@
 /**
  * Manual Install's From a file: the pick → preview → install flow's state,
  * kept at module scope like the browse destinations (browseDestinations.ts)
- * and the WTF job state (wtfBackupState.ts).
+ * and the WTF job state (wtfLifecycle.ts).
  *
  * It must live outside the component: Steam's file picker is its own popup,
  * and opening it unmounts the whole plugin panel (guide G4) — the flow's
@@ -91,9 +91,13 @@ export async function installArchive(
   install: (pair: { providerId: string; externalId: string }) => Promise<{
     operation: OperationResult;
   }>,
+  canInstall: () => boolean,
 ): Promise<void> {
   const { phase, preview } = fileImport.get();
   if (phase !== "ready" || !preview) {
+    return;
+  }
+  if (!canInstall()) {
     return;
   }
   const id = ++turn;

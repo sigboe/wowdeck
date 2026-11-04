@@ -1,0 +1,2 @@
+ssh: deck@10.10.1.39
+up: deployed index.js · backup /home/deck/homebrew/data/wowdeck/test-backups/2026-11-04-173036-948853 · reloaded 1.0.1, engine pid 42821→44123

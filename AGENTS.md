@@ -39,12 +39,22 @@ once goes through `nix shell nixpkgs#<pkg> -c …`; a tool needed again goes int
 Outside a test request, the Deck is read-only.
 
 When the owner asks to test, verify or check anything on the Deck (or "on
-device"), that request is standing approval to deploy our plugin, read state
-remotely, and drive the UI. Run the `deck-test` skill
+device"), that request is standing approval to wake it automatically with
+Wake-on-LAN, deploy our plugin, read state remotely, and drive the UI. Run the `deck-test` skill
 (`.claude/skills/deck-test/SKILL.md`). Changes stay inside the WoW
 installation (`~/Applications/World of Warcraft/`) and our plugin's files
 (`~/homebrew/{plugins,data,logs}/wowdeck/`). Steam, Decky and other
 plugins' settings, system files and sudo stay untouched.
+
+## The owner's DroidDeck phone
+
+The arm64 test device: an Android phone running DroidDeck (Steam and Decky
+in a proot container). The same rule holds: read-only outside a test
+request, and a request to test on the phone, on DroidDeck or on arm64 is
+standing approval to deploy our plugin, read state and drive the UI. Run the
+`droiddeck-test` skill. It is the owner's daily phone: ask before every
+Steam session stop or start. Changes stay inside our plugin's files and data
+in the container.
 
 ## Commits
 
@@ -96,6 +106,17 @@ the branch down to a few meaningful commits with imperative subjects
 messages or PR descriptions — the owner asks for it per PR.
 
 ## Agent skills
+
+### Sub-agents under Codex
+
+Codex here runs on ChatGPT sharing, which rejects Codex's native sub-agents
+(`spawn_agent` and the other multi-agent tools). The rejected item stays in
+the thread's history, so every later turn fails too. Under Codex, never use
+them. Wherever a skill says sub-agent, background agent or subagent:
+
+- use T3 Code's `delegate_task` when it is available, with a self-contained
+  brief; pass `mode: "wait"` when this turn needs the report;
+- otherwise do the work yourself in this thread, one task after another.
 
 ### Writing
 

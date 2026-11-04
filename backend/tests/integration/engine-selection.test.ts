@@ -7,7 +7,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-const BIN = join(import.meta.dir, "..", "..", "out", "wowdeck");
+const BIN = join(import.meta.dir, "..", "..", "out", "wowdeck-x86_64");
 const ROOT = "/tmp/opencode/wowdeck-tests/engine-selection";
 
 let engine: Bun.Subprocess<"pipe"> | undefined;
@@ -78,11 +78,7 @@ function flavor(name: string, version: string): string {
 
 beforeAll(() => {
   rmSync(ROOT, { recursive: true, force: true });
-  const rows = [flavor("_retail_", "11.0.2"), flavor("_classic_era_", "1.15.7")];
-  writeFileSync(
-    join(ROOT, "home/Applications/World of Warcraft", ".build.info"),
-    `Product!STRING:0|Version!STRING:0\n${rows.join("\n")}\n`,
-  );
+  mkdirSync(join(ROOT, "home"), { recursive: true });
   engine = spawnEngine();
 });
 
@@ -94,7 +90,21 @@ afterAll(() => {
 });
 
 describe("engine selection persistence", () => {
+  test("install with an empty store fails before provider lookup or download", async () => {
+    expect((await send("installations.list")).result.installations).toEqual([]);
+    const response = await send("addons.install", { providerId: "WowUpHub", externalId: "111" });
+    expect(response.error).toMatchObject({
+      code: "not_found",
+      message: "That WoW installation isn't available. Check Options",
+    });
+  });
+
   test("detect reports exactly one selected installation", async () => {
+    const rows = [flavor("_retail_", "11.0.2"), flavor("_classic_era_", "1.15.7")];
+    writeFileSync(
+      join(ROOT, "home/Applications/World of Warcraft", ".build.info"),
+      `Product!STRING:0|Version!STRING:0\n${rows.join("\n")}\n`,
+    );
     const res = await send("installations.detect");
     const installs = res.result.installations;
     expect(installs).toHaveLength(2);

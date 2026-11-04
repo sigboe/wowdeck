@@ -90,6 +90,10 @@ export interface PluginUpdateStore {
   /** The owner's update channel; Stable when none was ever picked. */
   readChannel(): UpdateChannel;
   writeChannel(channel: UpdateChannel): void;
+  readLastRunVersion(): string | null;
+  writeLastRunVersion(version: string): void;
+  readStagedVersion(): string | null;
+  writeStagedVersion(version: string): void;
 }
 
 function memoryStore(): PluginUpdateStore {
@@ -97,6 +101,8 @@ function memoryStore(): PluginUpdateStore {
   let backoff: PluginUpdateBackoff | null = null;
   let toastShownFor: string | null = null;
   let channel: UpdateChannel = "stable";
+  let lastRunVersion: string | null = null;
+  let stagedVersion: string | null = null;
   return {
     read: () => stamp,
     write: (snapshot) => {
@@ -109,6 +115,14 @@ function memoryStore(): PluginUpdateStore {
     readToastShown: () => toastShownFor,
     writeToastShown: (version) => {
       toastShownFor = version;
+    },
+    readLastRunVersion: () => lastRunVersion,
+    writeLastRunVersion: (version) => {
+      lastRunVersion = version;
+    },
+    readStagedVersion: () => stagedVersion,
+    writeStagedVersion: (version) => {
+      stagedVersion = version;
     },
     readChannel: () => channel,
     writeChannel: (value) => {
@@ -150,6 +164,21 @@ export class PluginUpdateCheck {
     this.#sources = buildSources(net, releasesUrl, tokenProvider);
     this.#now = now;
     this.#onGitHubAsk = onGitHubAsk;
+    // An installed build chooses its channel once. A restart keeps the
+    // owner's choice; a stable package staged by our updater keeps it too.
+    if (this.store.readLastRunVersion() !== currentVersion) {
+      if (isBetaVersion(currentVersion)) {
+        this.store.writeChannel("beta");
+      } else if (this.store.readStagedVersion() !== currentVersion) {
+        this.store.writeChannel("stable");
+      }
+    }
+    this.store.writeLastRunVersion(currentVersion);
+  }
+
+  /** Record only a package successfully staged and verified for Decky. */
+  recordStagedVersion(version: string): void {
+    this.store.writeStagedVersion(version);
   }
 
   channel(): UpdateChannel {

@@ -25,6 +25,10 @@ export const STEAM = {
   row: "#23262e",
 } as const;
 
+/** A result line: green for success, red for failure, secondary text when unknown. */
+export const outcomeColor = (ok: boolean | null): string =>
+  ok === null ? STEAM.textMuted : ok ? STEAM.positive : STEAM.danger;
+
 /**
  * Decky Loader's own colours, read from its source (decky-loader
  * frontend/src/components/NotificationBadge.tsx).

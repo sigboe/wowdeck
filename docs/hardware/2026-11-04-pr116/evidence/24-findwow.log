@@ -1,0 +1,10 @@
+probe items → items="DBM - Cataclysm mods (Requires Deadly Bo"
+shot .scratch/deck-116/40-dbm-final.png → .scratch/deck-116/40-dbm-final.png 800x500
+press b → tree="QuickAccess-NA" tab="Get Addons"
+rpc addons.list --pick=addons[].id,addons[].name,a… → {"addons[].id":["eb128801-b5b6-4ab4-8c7e-a688ffe71bcc","d3cb3464-d78e-4015-9b0f-09daad4b1333","84103c52-1d19-4eb0-a6f9-25f9a7b6f5b8"],"addons[].name":["Xius Threat Meter","DBM - Cataclysm mods (Requires Deadly Boss Mods) - DBM","DBM - Deadly Boss Mods (DBM-Core)"],"addons[].version":["1.6.1","r264","12.1.19"]}
+seek Get Addons → found "Get Addons" (jump, 4 matches) → focus="GET ADDONS"
+press rb → focus="Manage backups Restore, delete or import (WowUp ba" tab="Options"
+seek Find WoW → found "Find WoW installationsLooks in Steam, Lutris and other game folders" (jump, 4 matches) → focus="Find WoW installations Looks in Steam, Lutris and "
+press a → no change
+probe items → items="OPTIONS | Hardware 116 | Find WoW installations Looks in Steam, L | Auto | Add installation | Export addon list Share it with WowUp or | Import addon list From another computer  | Back up now Last backup 3 minutes ago ·  | Manage backups Restore, delete or import | Backup folder /home/deck/homebrew/data/w | Use default folder | 3 | Clear access token A token is saved (hid | Clear | World of Warcraft in Steam World of Warc | Updates inside WoW Shown in game when th | Support WoWDeck Scan a code with your ph | Third-party notices What WoWDeck is buil"
+shot .scratch/deck-116/41-findwow.png → .scratch/deck-116/41-findwow.png 800x425

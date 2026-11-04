@@ -99,3 +99,18 @@ export class ArchiveError extends ProviderError {
     this.name = "ArchiveError";
   }
 }
+
+/**
+ * Refused because the installation is recovery required (ADR 0006): an
+ * addon transaction's undo stopped, and its recovery copies must stay as
+ * they are until recovery. Wire code `recovery_required`.
+ */
+export class RecoveryRequiredError extends Error {
+  constructor(
+    readonly installationId: string,
+    displayName: string,
+  ) {
+    super(`${displayName} needs recovery first. Its addons can't change until then`);
+    this.name = "RecoveryRequiredError";
+  }
+}

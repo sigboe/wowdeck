@@ -1,5 +1,5 @@
 import { ScrollBuffer } from "./ScrollBuffer";
-import { useState, useSyncExternalStore } from "react";
+import { useState } from "react";
 import {
   DialogBody,
   DialogBodyText,
@@ -14,11 +14,9 @@ import {
 } from "@decky/ui";
 import { FaChevronRight } from "react-icons/fa";
 import { wowupModalStyleCss } from "../sharedStyles";
-import { STEAM } from "../steamTheme";
+import { STEAM, outcomeColor } from "../steamTheme";
 import type { Installation, WtfBackupInfo, WtfCopySource } from "../types";
-import * as api from "../services/backend";
-import { useWtfCopySources } from "../useWtfCopySources";
-import { clearWtfOutcome, getWtfState, subscribeWtfState } from "../wtfBackupState";
+import { useCopySources, useWtfOperation, wtfLifecycle } from "../wtfSession";
 import {
   copyGameRunningNotice,
   copySourceHeader,
@@ -28,7 +26,7 @@ import {
   copySourceStatus,
   currentSettingsDescription,
   currentSettingsSource,
-  friendlyWtfCallError,
+  jobProgressText,
   okActionLabel,
   restoreBlockedReason,
   type RestoreSource,
@@ -38,8 +36,6 @@ import { confirmRestoreBackup } from "./confirmWtf";
 
 interface ModalProps {
   installation: Installation;
-  /** Called once the copy job has started (Manage backups attaches to it). */
-  onStarted: () => void;
   closeModal?: () => void;
 }
 
@@ -55,15 +51,19 @@ interface ModalProps {
  * and its dialog has Copy off.
  * Navigation contract: UI guide §6.6, "Copy settings modal".
  */
-function WtfCopyModal({ installation, onStarted, closeModal }: ModalProps) {
-  const wtf = useSyncExternalStore(subscribeWtfState, getWtfState);
-  const { sources, dirAvailable, gameRunning, error, reload } = useWtfCopySources(
-    installation.id,
-    wtf.listVersion,
-  );
+function WtfCopyModal({ installation, closeModal }: ModalProps) {
+  const op = useWtfOperation();
+  const { data, error, refresh: reload } = useCopySources(installation.id);
+  const sources = data?.sources ?? null;
+  const dirAvailable = data?.dirAvailable ?? true;
+  const gameRunning = data?.gameRunning ?? "unknown";
   const [chosen, setChosen] = useState<string | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
-  const anyJob = wtf.job !== null;
+  const actionError = op.errors[installation.id] ?? null;
+  // A copy whose answer was lost, or a job adopted here, explains why Copy is blocked.
+  const jobHere = op.job && op.job.installationId === installation.id ? op.job : null;
+  const outcome = op.outcome && op.outcome.installationId === installation.id ? op.outcome : null;
+  // The slot is global: a job starting or running anywhere blocks a copy.
+  const anyJob = op.activity !== null;
   const now = Date.now();
 
   const source: WtfCopySource | undefined =
@@ -89,22 +89,18 @@ function WtfCopyModal({ installation, onStarted, closeModal }: ModalProps) {
       installation.displayName,
       gameRunning,
       async (options) => {
-        clearWtfOutcome();
-        setActionError(null);
-        try {
-          await api.rpc("wtf.copy", {
-            installationId: installation.id,
-            sourceFlavor: from.flavor,
-            keepCurrentConfig: options.keepCurrentConfig,
-            // Only a backup can lack its version (desktop WowUp); the dialog then asked to confirm it.
-            ...("fileName" in what
-              ? { ...what, acceptUnknownFlavor: options.acceptUnknownFlavor }
-              : what),
-          });
-          onStarted();
+        // The guard is checked again here: a job may have started while the dialog was open.
+        const started = await wtfLifecycle.copy(installation.id, {
+          sourceFlavor: from.flavor,
+          keepCurrentConfig: options.keepCurrentConfig,
+          // Only a backup can lack its version (desktop WowUp); the dialog then asked to confirm it.
+          ...("fileName" in what
+            ? { ...what, acceptUnknownFlavor: options.acceptUnknownFlavor }
+            : what),
+        });
+        // Manage backups shows the job; a refusal stays here as the action error.
+        if (started) {
           closeModal?.();
-        } catch (e) {
-          setActionError(friendlyWtfCallError(e));
         }
       },
       {
@@ -127,6 +123,17 @@ function WtfCopyModal({ installation, onStarted, closeModal }: ModalProps) {
           </DialogBodyText>
           {runningNotice && (
             <DialogBodyText style={{ color: STEAM.warning }}>{runningNotice}</DialogBodyText>
+          )}
+          {jobHere && (
+            <DialogBodyText style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+              <Spinner style={{ width: "1.2em" }} />
+              <span style={{ flex: 1 }}>{jobProgressText(jobHere)}</span>
+            </DialogBodyText>
+          )}
+          {outcome && (
+            <DialogBodyText style={{ color: outcomeColor(outcome.ok) }}>
+              {outcome.text}
+            </DialogBodyText>
           )}
           {actionError && (
             <DialogBodyText style={{ color: STEAM.danger }}>{actionError}</DialogBodyText>
@@ -205,10 +212,10 @@ function WtfCopyModal({ installation, onStarted, closeModal }: ModalProps) {
   );
 }
 
-export function openWtfCopyModal(installation: Installation, onStarted: () => void): void {
+export function openWtfCopyModal(installation: Installation): void {
   const close = () => modalResult.Close();
   const modalResult = showModal(
-    <WtfCopyModal installation={installation} onStarted={onStarted} closeModal={close} />,
+    <WtfCopyModal installation={installation} closeModal={close} />,
     window,
     { strTitle: "Copy settings", bHideMainWindowForPopouts: false },
   );

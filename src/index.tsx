@@ -1,18 +1,17 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   ButtonItem,
-  DropdownItem,
   Field,
-  findModuleExport,
   Focusable,
   GamepadButton,
+  getFocusNavController,
   PanelSection,
   PanelSectionRow,
-  type GamepadEvent,
 } from "@decky/ui";
 import { definePlugin } from "@decky/api";
 import { FaBoxOpen, FaDiceD6, FaSearch, FaCog } from "react-icons/fa";
 import * as api from "./services/backend";
+import { FindWowWidget } from "./components/FindWowWidget";
 import { InstalledView } from "./components/InstalledView";
 import { GetAddonsTab as GetAddonsBrowseTab } from "./components/GetAddonsTab";
 import { SettingsView } from "./components/SettingsView";
@@ -24,14 +23,16 @@ import { pluginToast } from "./toast";
 import { selfUpdateStore } from "./selfUpdate";
 import { pluginUpdateDot } from "./pluginUpdate";
 import { addonSession } from "./session";
+import { InstallationSelect } from "./components/InstallationSelect";
 import { askUntilAnswered } from "./askUntilAnswered";
 import { QAM_TABS, QAM_VIEW, qamState, type QamTab } from "./qamState";
-import { startSourceJump } from "./optionsJump";
+import { startSourceJump, startInstallationJump } from "./optionsJump";
 import { CURSE_KEY_ROW } from "./components/settings/common";
 import { FocusRow } from "./components/FocusSlot";
+import { RecoveryNotice } from "./components/RecoveryNotice";
 import { QAM_DROPDOWN_BELOW_VALUE } from "./components/dropdownValue";
 import { STEAM_NO_TRANSFORM_SCROLL, useScrollBuffer } from "./components/ScrollBuffer";
-import { handleWtfEvent } from "./wtfBackupState";
+import { wtfLifecycle } from "./wtfSession";
 import { wtfCompletedToast } from "./wtfText";
 import { patchGamePage } from "./steamGamePage";
 import { autoUpdateText } from "./steamLibrary";
@@ -39,10 +40,12 @@ import { settingsStore } from "./settings";
 import { loadSummary } from "./steamUpdates";
 import { startHomeBadge } from "./steamDom/homeBadge";
 import { startPluginExitWatch, startQamVisibilityWatch } from "./steamDom/qamVisibility";
-import { isQamExpandStore, setQamExpandStore, stopQamWidening } from "./steamDom/qamWidening";
-import { registerShoulderNav } from "./shoulderNav";
+import { setQamExpander, stopQamWidening } from "./steamDom/qamWidening";
+import { QamExpandHook } from "./steamDom/qamExpandHook";
+import { createPanelShoulderNavigation } from "./shoulderNav";
 // Decky's plugin name (plugin.json); Decky's state identifies the active plugin by it.
 import { name as PLUGIN_NAME } from "../plugin.json";
+import type { StatusInfo } from "./types";
 
 type Tab = QamTab;
 
@@ -80,14 +83,15 @@ function Content() {
   const selectedTabRef = useRef<HTMLDivElement>(null);
   const remeasureScroll = useScrollBuffer(rootRef, { attach: true });
   // Module scope (addonSession.ts): the panel unmounts for every menu (G4).
-  const { addons, loads, installations, selectedId } = useSyncExternalStore(
-    addonSession.subscribe,
-    addonSession.get,
-  );
+  const { addons, loads, installations, selectedId, findingWow, findWowResult } =
+    useSyncExternalStore(addonSession.subscribe, addonSession.get);
   const [engineOk, setEngineOk] = useState<boolean | null>(null);
+  // Set when the bridge reports this machine has no engine at all: no
+  // amount of retrying helps, so the panel says so instead (no Retry).
+  const [unsupported, setUnsupported] = useState<string | null>(null);
   useEffect(() => {
     (async () => {
-      let status: { ok: boolean };
+      let status: StatusInfo;
       try {
         // A panel opened while Decky reloads the plugin asks the old Python
         // side, which never answers (askUntilAnswered.ts).
@@ -97,10 +101,18 @@ function Content() {
         setEngineOk(false);
         return;
       }
-      setEngineOk(status.ok);
       if (status.ok) {
+        setEngineOk(true);
         await addonSession.reloadAll();
+        return;
       }
+      if (status.code === "unsupported_architecture") {
+        // The bridge's message already names the machine (e.g. "WoWDeck
+        // doesn't run on riscv64 devices.").
+        setUnsupported(status.message || "WoWDeck doesn't run on this device.");
+        return;
+      }
+      setEngineOk(false);
     })();
   }, []);
 
@@ -135,33 +147,17 @@ function Content() {
     bumperEntry.current = true;
     setTab(QAM_TABS[next]!);
   };
-  const onButtonDown = (evt: GamepadEvent) => {
-    const button = evt.detail.button;
-    if (button !== GamepadButton.BUMPER_LEFT && button !== GamepadButton.BUMPER_RIGHT) {
-      return;
-    }
-    evt.preventDefault();
-    evt.stopPropagation();
-    stepTab(button === GamepadButton.BUMPER_LEFT ? -1 : 1);
-  };
-  // L1/R1 also work while focus is outside our content (PC-10): on Decky's
-  // title-bar back button, or nowhere yet right after the plugin opens. Those
-  // presses never reach the root's onButtonDown, so they are read from Steam's
-  // controller input (shoulderNav.ts); inside our content the root handles them.
   const stepTabRef = useRef(stepTab);
   stepTabRef.current = stepTab;
-  useEffect(() => {
-    const outside = (direction: -1 | 1) => {
-      const root = rootRef.current;
-      if (root && !root.contains(root.ownerDocument.activeElement)) {
-        stepTabRef.current(direction);
-      }
-    };
-    return registerShoulderNav(
-      () => outside(-1),
-      () => outside(1),
-    );
-  }, []);
+  const [shoulderNav] = useState(() =>
+    createPanelShoulderNavigation({
+      getRoot: () => rootRef.current,
+      step: (direction) => stepTabRef.current(direction),
+      buttons: { left: GamepadButton.BUMPER_LEFT, right: GamepadButton.BUMPER_RIGHT },
+      activeTreeId: () => getFocusNavController()?.GetActiveNavTree?.()?.m_ID,
+    }),
+  );
+  useEffect(() => shoulderNav.subscribe(), [shoulderNav]);
 
   // Options carries the update dot while a WoWDeck release is available,
   // like the panel's Update button it leads to (same shared state).
@@ -171,6 +167,18 @@ function Content() {
     { id: "browse", label: "Get Addons", icon: <FaSearch /> },
     { id: "settings", label: "Options", icon: <FaCog />, dot: pluginUpdateDot(selfUpdate.info) },
   ];
+
+  if (unsupported !== null) {
+    // A device WoWDeck has no engine for: retrying cannot help, so there is
+    // no Retry button — just the message naming why (the architecture).
+    return (
+      <PanelSection>
+        <PanelSectionRow>
+          <Field label="This device isn't supported" description={unsupported} />
+        </PanelSectionRow>
+      </PanelSection>
+    );
+  }
 
   if (engineOk === false) {
     return (
@@ -194,7 +202,7 @@ function Content() {
     <Focusable
       ref={rootRef}
       className="wowdeck-root wowdeck-scroll-buffer"
-      onButtonDown={onButtonDown}
+      onButtonDown={shoulderNav.onButtonDown}
       onGamepadFocus={remeasureScroll}
       {...STEAM_NO_TRANSFORM_SCROLL}
     >
@@ -220,12 +228,10 @@ function Content() {
           // div both touched the highlight's edges (guide S27; DEVICE audit).
           <div style={{ padding: "0 16px 8px" }}>
             <FocusRow view={QAM_VIEW.installed} id="installation">
-              <DropdownItem
+              <InstallationSelect
+                session={addonSession}
                 // No label: the button is the whole row (owner, 2026-10-23).
                 menuLabel="Installation"
-                rgOptions={installations.map((i) => ({ data: i.id, label: i.displayName }))}
-                selectedOption={selectedId}
-                onChange={(option) => void addonSession.selectInstallation(option.data as string)}
                 childrenContainerWidth="max"
                 renderButtonValue={QAM_DROPDOWN_BELOW_VALUE}
                 bottomSeparator="none"
@@ -236,21 +242,37 @@ function Content() {
         {tab === "settings" && <SelfUpdatePanel />}
       </div>
 
+      {/* One recovery notice for all three tabs, from the module session (#107). */}
+      <RecoveryNotice view={QAM_VIEW[tab]} />
+
       {tab === "installed" && (
         <>
-          <InstalledView
-            addons={addons}
-            loading={loads > 0}
+          <FindWowWidget
+            installationCount={installations.length}
+            detecting={findingWow}
+            result={findWowResult}
+            onDetect={() => void addonSession.findWow()}
+            onOpenOptions={() => {
+              setRestoreRows(true);
+              bumperEntry.current = false;
+              setTab("settings");
+            }}
             restoreRows={restoreRows}
-            multipleInstallations={installations.length > 1}
           />
+          {installations.length > 0 && (
+            <InstalledView
+              addons={addons}
+              loading={loads > 0}
+              restoreRows={restoreRows}
+              multipleInstallations={installations.length > 1}
+            />
+          )}
         </>
       )}
       {tab === "browse" && (
         <GetAddonsBrowseTab
           installations={installations}
           selectedId={selectedId}
-          onSelectInstallation={addonSession.selectInstallation}
           landOnInstallation={bumperEntry.current}
           onExitToNav={() => selectedTabRef.current?.focus()}
           onOpenSources={(providers, marked) => {
@@ -270,13 +292,18 @@ function Content() {
             bumperEntry.current = false;
             setTab("settings");
           }}
+          onOpenInstallations={() => {
+            startInstallationJump();
+            setRestoreRows(true);
+            bumperEntry.current = false;
+            setTab("settings");
+          }}
         />
       )}
       {tab === "settings" && (
         <SettingsView
           installations={installations}
           selectedId={selectedId}
-          onSelect={addonSession.selectInstallation}
           onChanged={addonSession.reloadAll}
           restoreRows={restoreRows}
         />
@@ -313,9 +340,12 @@ export default definePlugin(() => {
   console.log("wowdeck frontend initializing");
 
   // Widened mode has a native half the QAM window cannot reach: Steam moves
-  // the QAM view itself while its Friends store says the QAM is expanded
-  // (see steamDom/qamWidening.ts). Hand the service that store once per load.
-  setQamExpandStore(findModuleExport(isQamExpandStore) ?? null);
+  // the QAM view itself while its placeholder carries Steam's `Expanded`
+  // class (see steamDom/qamExpandHook.tsx). Patch the QAM renderer once per
+  // load and hand the service the hook.
+  const qamExpand = new QamExpandHook();
+  qamExpand.init();
+  setQamExpander(qamExpand);
 
   // Once per plugin load (Decky startup, reload, update): Content() remounts
   // on every modal and tab switch (guide G4), so the toast is not tied to it.
@@ -326,9 +356,9 @@ export default definePlugin(() => {
 
   // WTF backup/restore jobs run in the engine and outlive any panel or modal, so their
   // progress/outcome events are subscribed once per plugin load into a module-scope
-  // store (wtfBackupState.ts), not in a component that a modal would unmount.
+  // lifecycle (wtfLifecycle.ts), not in a component that a modal would unmount.
   const offWtfEvents = api.onBackendEvent((event) => {
-    handleWtfEvent(event);
+    wtfLifecycle.handleEvent(event);
     if (event.event === "wtf.completed") {
       const toast = wtfCompletedToast(event.params);
       if (toast) {
@@ -365,6 +395,7 @@ export default definePlugin(() => {
   // plugin is checked.
   const stopPluginExitWatch = startPluginExitWatch(PLUGIN_NAME);
   void settingsStore.load();
+  void addonSession.reloadInstallations();
 
   // Both notifications also run on wake: an engine session can last weeks on
   // a Deck that sleeps, so the daily cap — not the session — decides whether
@@ -426,6 +457,7 @@ export default definePlugin(() => {
       // Steam's DOM outlives a plugin reload: a reload mid-widened must leave
       // no widened classes behind for the reloaded world to trip over.
       stopQamWidening();
+      qamExpand.deinit();
       resumeRegistration?.unregister();
       console.log("wowdeck frontend unloading");
     },

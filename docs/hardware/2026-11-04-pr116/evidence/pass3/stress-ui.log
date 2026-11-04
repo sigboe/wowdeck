@@ -1,0 +1,8 @@
+open → no change
+seek My Addons → found "My Addons" (jump, 4 matches) → focus="MY ADDONS"
+press A → no change
+probe text → text="WoWDeck Manager MY ADDONS Retail INSTALLED (150) All up to date Stress 000 UNMANAGEDInstalled manually Stress 001 UNMANAGEDInstalled manually Stress 002 UNMANAGEDInstalled manually Stress 003 UNMANAGEDInstalled manually Stress 004 UNMANAGEDInstalled manually Stress 005 UNMANAGEDInstalled manually Stress 006 UNMANAGEDInstalled manually Stress 007 UNMANAGEDInstalled manually Stress 008 UNMANAGEDInst"
+seek Stress 149 → found "Stress 149UnmanagedInstalled manually" (jump) → focus="Stress 149 UNMANAGEDInstalled manually"
+press A → tree="ModalDialogOverlay_Modal_53" focus="Find online source…" tab=null
+probe text → text="Stress 149 Find online source… Folders… Remove folder… Cancel"
+press b → tree="ModalDialogOverlay_Modal_51" focus="Back up now Save a copy of your settings"

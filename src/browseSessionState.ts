@@ -191,6 +191,13 @@ export function qamHidden(): void {
 /** The QAM window is showing again: any popup over it has closed. */
 export function qamShown(): void {
   popupOpen = false;
+  // Steam may hide the content before it unmounts. The widening adapter can
+  // collapse its visible layout then even though the session remains wide.
+  // A return is therefore an enforcement boundary, including when Steam
+  // reuses the mounted content and no attach effect runs again.
+  for (const listener of [...wideningListeners]) {
+    listener(widening.wide);
+  }
 }
 
 /**

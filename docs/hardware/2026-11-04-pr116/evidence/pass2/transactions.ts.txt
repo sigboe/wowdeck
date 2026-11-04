@@ -1,0 +1,197 @@
+/**
+ * Install and update commit their folder changes and addon record together
+ * (ADR 0006, #101), seen through the addon-service operation boundary: real
+ * temporary game folders, generated archives, a fake provider, reopened
+ * state stores, and FaultInjectingFs failing named stages.
+ */
+import assert from "node:assert/strict";
+const expect=(v:any)=>({toBe:(w:any)=>assert.equal(v,w)});
+import { zipSync } from "../../backend/node_modules/fflate";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, relative } from "node:path";
+import { AddonService } from "../../backend/src/wow/addons/AddonService";
+import { AddonTransactions, classifyTransaction } from "../../backend/src/wow/addons/AddonTransaction";
+import { FaultInjectingFs, type FsStage } from "../../backend/src/wow/fs/StageFs";
+import { createStateStore } from "../../backend/src/wow/storage/StateStore";
+import { AddonProvider } from "../../backend/src/wow/providers/addon-provider";
+import { ProviderRegistry } from "../../backend/src/wow/providers/provider-registry";
+import { NetworkClient } from "../../backend/src/wow/net/network";
+import { DownloadService } from "../../backend/src/wow/downloads/DownloadService";
+import type { AddonSearchResult, WowInstallation } from "../../backend/src/wow/models";
+import { WowClientType, type AddonProviderType } from "../../backend/src/wow/types";
+import type { OperationResult } from "../../backend/src/api/contracts";
+
+const roots: string[] = [];
+
+
+interface Release {
+  version: string;
+  releaseId: string;
+  folders: string[];
+}
+
+/** One addon whose current release a test changes (`publish`). */
+class OneAddonProvider extends AddonProvider {
+  name: AddonProviderType = "WowUpHub";
+  enabled = true;
+  release: Release = { version: "1.0", releaseId: "r1", folders: ["Suite", "SuiteLib"] };
+
+  override async getById(id: string): Promise<AddonSearchResult | undefined> {
+    return id === "700" ? this.result() : undefined;
+  }
+
+  override async getAll(_i: WowInstallation, ids: string[]) {
+    return { searchResults: ids.includes("700") ? [this.result()] : [], errors: [] };
+  }
+
+  override isValidAddonId(id: string): boolean {
+    return /^\d+$/.test(id);
+  }
+
+  private result(): AddonSearchResult {
+    const { version, releaseId, folders } = this.release;
+    return {
+      author: "Dev",
+      externalId: "700",
+      externalUrl: "https://fake/700",
+      name: "Suite",
+      providerName: this.name,
+      downloadCount: 1,
+      files: [
+        {
+          channelType: 0,
+          folders,
+          gameVersion: "11.0.2",
+          downloadUrl: `https://fake/dl/700.zip?v=${version}`,
+          version,
+          releaseDate: "2026-06-01T00:00:00.000Z",
+          externalId: releaseId,
+        },
+      ],
+    };
+  }
+}
+
+/** Each folder holds a TOC and a code file that both name the version. */
+function zipOf(release: Release): Uint8Array {
+  const files: Record<string, Uint8Array> = {};
+  for (const folder of release.folders) {
+    files[`${folder}/${folder}.toc`] = new TextEncoder().encode(`## Title: ${folder}\n## Version: ${release.version}\n## Interface: 110005\n`);
+    files[`${folder}/core.lua`] = new TextEncoder().encode(`-- ${folder} ${release.version}\n`);
+  }
+  return zipSync(files);
+}
+
+function fixture(name: string) {
+  const root = mkdtempSync(join(process.env.FIXTURE_ROOT!, `wowdeck-tx-${name}-`));
+  roots.push(root);
+  const location = join(root, "_retail_");
+  const addonsPath = join(location, "Interface", "AddOns");
+  mkdirSync(addonsPath, { recursive: true });
+  const installation: WowInstallation = {
+    id: `inst-${name}`,
+    clientType: WowClientType.Retail,
+    location,
+    label: "_retail_",
+    displayName: "Retail",
+    selected: false,
+    defaultAddonChannelType: 0,
+    source: "detected",
+  };
+  const provider = new OneAddonProvider();
+  const network = {
+    downloadToFile: async (_url: string, dest: string) => {
+      const bytes = zipOf(provider.release);
+      writeFileSync(dest, Buffer.from(bytes));
+      return bytes.length;
+    },
+  } as unknown as NetworkClient;
+  const fs = new FaultInjectingFs();
+  const dataDir = join(root, "data");
+  const registry = new ProviderRegistry();
+  registry.register(provider);
+  const operations: OperationResult[] = [];
+  const open = () => {
+    const store = createStateStore(dataDir, fs);
+    return {
+      store,
+      service: new AddonService(store, registry, new DownloadService(network, join(root, "dl")), {
+        addonsChanged: () => {},
+        operationResult: (op) => operations.push(op),
+      }),
+    };
+  };
+  const first = open();
+  first.store.setInstallations([installation]);
+  first.store.updateSettings({ keepPreviousVersions: true });
+  return {
+    ...first,
+    fs,
+    provider,
+    installation,
+    addonsPath,
+    operations,
+    /** The engine as it is after a restart: storage reopened from disk. */
+    reopen: () => open(),
+    install: () => first.service.install({ intent: "install", providerId: "WowUpHub", externalId: "700", installation }),
+    publish(version: string, releaseId: string, folders = provider.release.folders) {
+      provider.release = { version, releaseId, folders };
+    },
+  };
+}
+
+/** Every file and folder under `dir` with its contents ("<dir>" for a folder). */
+function tree(dir: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  const walk = (at: string) => {
+    for (const name of readdirSync(at).sort()) {
+      const path = join(at, name);
+      const rel = relative(dir, path);
+      if (lstatSync(path).isSymbolicLink()) {
+        out[rel] = "<link>";
+      } else if (lstatSync(path).isDirectory()) {
+        out[rel] = "<dir>";
+        walk(path);
+      } else {
+        out[rel] = readFileSync(path, "utf-8");
+      }
+    }
+  };
+  walk(dir);
+  return out;
+}
+
+/** The live addon folders, without the plugin's own work folder. */
+function live(addonsPath: string): Record<string, string> {
+  return Object.fromEntries(Object.entries(tree(addonsPath)).filter(([p]) => !p.startsWith(".wowdeck")));
+}
+
+type Fixture = ReturnType<typeof fixture>;
+
+/** Installs 1.0 and publishes 2.0; returns the addon's id. */
+async function installedWithUpdate(f: Fixture, folders?: string[]): Promise<string> {
+  const { addon, operation } = await f.install();
+  expect(operation.status).toBe("installed");
+  f.publish("2.0", "r2", folders);
+  await f.service.refresh(f.installation);
+  return addon.id;
+}
+
+
+try {
+for (const stage of ['folder.backup','folder.install','state.write','state.replace','cleanup.remove'] as const) {
+ const f=fixture(stage);const id=await installedWithUpdate(f);const before=live(f.addonsPath);const record=f.reopen().store.addons.get(id);
+ f.fs.failAt(stage,{times:1});const result=await f.service.updateAddon(id);
+ if(stage==='cleanup.remove'){assert.equal(result.operation.status,'updated');assert.ok(result.operation.cleanupWarning);assert.match(readFileSync(join(f.addonsPath,'Suite/core.lua'),'utf8'),/2.0/)}
+ else {assert.equal(result.operation.status,'failed');assert.deepEqual(live(f.addonsPath),before);assert.deepEqual(f.reopen().store.addons.get(id),record)}
+ console.log(JSON.stringify({stage,operation:result.operation,live:live(f.addonsPath),markers:f.reopen().store.addons.markers()}));
+ f.fs.clear();if(stage!=='cleanup.remove')assert.equal((await f.service.updateAddon(id)).operation.status,'updated');
+}
+const f=fixture('bulk');await f.install();
+const location=join(process.env.FIXTURE_ROOT!,'bulk-B');mkdirSync(join(location,'Interface/AddOns'),{recursive:true});roots.push(location);
+const second={...f.installation,id:'bulk-second',location};f.store.setInstallations([f.installation,second]);
+await f.service.install({intent:'install',providerId:'WowUpHub',externalId:'700',installation:second});
+f.publish('2.0','r2');await f.service.refresh(f.installation);await f.service.refresh(second);
+f.fs.failAt('folder.install',{times:1});const operations=await f.service.updateAllInstallations();assert.deepEqual(operations.map(x=>x.status),['failed','updated']);console.log(JSON.stringify({case:'bulk-partial-two-installations',operations}));
+} finally {for(const r of roots)rmSync(r,{recursive:true,force:true})}

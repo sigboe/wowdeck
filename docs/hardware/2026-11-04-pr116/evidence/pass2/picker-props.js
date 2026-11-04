@@ -1,0 +1,1 @@
+(()=>{const t=DFL.getFocusNavController().GetActiveNavTree();const e=t.m_Root.m_element;const out=[];let f=e[Object.keys(e).find(k=>k.startsWith('__reactFiber'))];for(;f;f=f.return){const p=f.memoizedProps;out.push({name:f.type?.name||f.type?.displayName||String(f.type).slice(0,50),keys:Object.keys(p||{})})}return out})()

@@ -1,30 +1,36 @@
-import { useState } from "react";
-import { DropdownItem, Field, PanelSection, PanelSectionRow } from "@decky/ui";
+import { useEffect, useSyncExternalStore } from "react";
+import { Field, PanelSection, PanelSectionRow } from "@decky/ui";
 import { FaSearchLocation } from "react-icons/fa";
 import type { Installation } from "../../types";
 import * as api from "../../services/backend";
 import { descriptionStyle } from "../../steamTheme";
 import { pluginToast, toastError } from "../../toast";
-import { plural } from "../../text";
 import { addonSession } from "../../session";
 import { confirmRemoveInstallation } from "../confirmRemove";
 import { openInstallationDetails } from "../InstallationDetailsModal";
 import { QAM_DROPDOWN_VALUE } from "../dropdownValue";
 import { FactLine } from "../FactLine";
+import { InstallationSelect } from "../InstallationSelect";
 import { FocusRow } from "../FocusSlot";
 import { SettingsRow, VIEW, busyIcon } from "./common";
+import {
+  clearInstallationJump,
+  installationJump,
+  subscribeInstallationJump,
+} from "../../optionsJump";
 
 interface Props {
   installations: Installation[];
   selectedId: string | null;
-  onSelect: (id: string) => void;
   /** Reload installations + addons after structural changes. */
   onChanged: () => Promise<void>;
 }
 
 /** The active installation (its details on the Options button) and detection. */
-export function InstallationsSection({ installations, selectedId, onSelect, onChanged }: Props) {
-  const [detecting, setDetecting] = useState(false);
+export function InstallationsSection({ installations, selectedId, onChanged }: Props) {
+  const { findingWow: detecting } = useSyncExternalStore(addonSession.subscribe, addonSession.get);
+  const jump = useSyncExternalStore(subscribeInstallationJump, installationJump);
+  useEffect(() => clearInstallationJump, []);
   const selected = installations.find((i) => i.id === selectedId) ?? null;
 
   // The module store holds the selected installation's addons (G4); read
@@ -39,6 +45,7 @@ export function InstallationsSection({ installations, selectedId, onSelect, onCh
     openInstallationDetails(selected, addonCounts(), {
       onRescan: () => void rescan(),
       onRemove: removeSelected,
+      recoveryRequired: !!addonSession.get().recoveryRequired[selected.id],
     });
 
   const rescan = async () => {
@@ -70,16 +77,8 @@ export function InstallationsSection({ installations, selectedId, onSelect, onCh
   };
 
   const detect = async () => {
-    setDetecting(true);
-    try {
-      const { installations: found } = await api.rpc("installations.detect");
-      pluginToast(`Found ${plural(found.length, "installation")}`);
-      await onChanged();
-    } catch (e) {
-      toastError("Couldn't find installations", e);
-    } finally {
-      setDetecting(false);
-    }
+    clearInstallationJump();
+    await addonSession.findWow();
   };
 
   return (
@@ -97,7 +96,8 @@ export function InstallationsSection({ installations, selectedId, onSelect, onCh
               : undefined
           }
         >
-          <DropdownItem
+          <InstallationSelect
+            session={addonSession}
             label="Active installation"
             description={
               selected ? (
@@ -113,9 +113,6 @@ export function InstallationsSection({ installations, selectedId, onSelect, onCh
                 />
               ) : undefined
             }
-            rgOptions={installations.map((i) => ({ data: i.id, label: i.displayName }))}
-            selectedOption={selectedId}
-            onChange={(option) => onSelect(option.data as string)}
             renderButtonValue={QAM_DROPDOWN_VALUE}
           />
         </FocusRow>
@@ -124,7 +121,11 @@ export function InstallationsSection({ installations, selectedId, onSelect, onCh
           <div style={descriptionStyle}>No installations yet. Find or add one below.</div>
         </PanelSectionRow>
       )}
-      <SettingsRow id="detect">
+      <SettingsRow
+        id="detect"
+        className={jump !== null ? "wowdeck-source-jump" : undefined}
+        style={jump !== null ? { animationDelay: `${jump - Date.now()}ms` } : undefined}
+      >
         <Field
           focusable
           label="Find WoW installations"

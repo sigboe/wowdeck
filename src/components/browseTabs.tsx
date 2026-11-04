@@ -1,13 +1,7 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { FileSelectionType, openFilePicker } from "@decky/api";
+import { useEffect, useRef, useSyncExternalStore } from "react";
+import { openFilePicker } from "@decky/api";
 import { DialogButton, Field, Focusable, PanelSectionRow, Spinner, TextField } from "@decky/ui";
-import type {
-  ArchivePreview,
-  Installation,
-  ProviderInfo,
-  ReleaseChannel,
-  SearchResult,
-} from "../types";
+import type { ArchivePreview, Installation, ProviderInfo, SearchResult } from "../types";
 import * as api from "../services/backend";
 import { installationLabel, searchHelperText } from "../search";
 import { browseFocusView, popupOpening } from "../browseSessionState";
@@ -22,10 +16,12 @@ import {
   setUrl,
   urlDestination,
 } from "../browseDestinations";
-import { fileImport, installArchive, pickArchive } from "../fileImportState";
+import { fileImport, installArchive } from "../fileImportState";
+import { browseArchive } from "../archivePicker";
 import { hasMore } from "../loadMore";
 import { addonSession } from "../session";
-import { installedAddonFor, resultInstallLabel, resultTags } from "../addonSession";
+import { resultActions, type ResultActionsDeps } from "../resultActions";
+import { resultKey, recoveryNeededFor, type AddonSessionState } from "../addonSession";
 import { STEAM, descriptionStyle } from "../steamTheme";
 import { AddonResultRow } from "./AddonResultRow";
 import { ZeroCapabilityScreen } from "./ZeroCapabilityScreen";
@@ -33,7 +29,7 @@ import { FocusSlot, focusTarget } from "./FocusSlot";
 import { revealRemembered } from "../focusMemory";
 import { openAddonDetailsModal, resultDetails } from "./AddonDetailsModal";
 import { showChoiceMenu } from "./choiceMenu";
-import { installChannelChoices } from "../releaseChannel";
+import { requireInstallation } from "./requireInstallation";
 
 /**
  * The four browse destinations (Search, Latest, Popular, Manual Install) and
@@ -42,9 +38,6 @@ import { installChannelChoices } from "../releaseChannel";
  * owns the destination list and the pane around it.
  */
 
-/** The result's key among the rows. */
-const resultKey = (r: SearchResult) => `${r.providerId}:${r.externalId}`;
-
 /**
  * What Get Addons needs to act on its sources (GetAddonsTab owns them): the
  * list, and the one way out of a source problem — the jump to Options, the
@@ -52,6 +45,7 @@ const resultKey = (r: SearchResult) => `${r.providerId}:${r.externalId}`;
  * Manual Install's off-source notice under a link result).
  */
 export interface SourceControls {
+  openInstallations: () => void;
   providers: ProviderInfo[];
   /** The sources have loaded (or failed to): the capability decision is final. */
   loaded: boolean;
@@ -71,62 +65,61 @@ export function Status({ text, tone }: { text: string; tone?: "error" | "warning
   return <div style={{ ...descriptionStyle, color }}>{text}</div>;
 }
 
-/** Result rows with one install path and per-row busy state. */
-function ResultList({ results, view }: { results: SearchResult[]; view?: string }) {
+/**
+ * Opening the Release channel menu for a result. The menu hides the QAM
+ * window; that is not a close.
+ */
+const resultDeps = (onFindInstallations: () => void): ResultActionsDeps => ({
+  requireInstallation: () => requireInstallation(onFindInstallations),
+  actions: addonSession.actions,
+  showChannelMenu: (choices, pick) => {
+    popupOpening();
+    showChoiceMenu("Release channel", choices, undefined, pick);
+  },
+});
+
+/** Details for a result, following the session's state while it is open. */
+const openResultDetails = (r: SearchResult, onFindInstallations: () => void) => {
+  const live = (state: AddonSessionState) =>
+    resultActions(state, r, resultDeps(onFindInstallations));
+  openAddonDetailsModal({ ...resultDetails(r), ...live(addonSession.get()), live });
+};
+
+/**
+ * Result rows with one install path. Whether a result is installing lives in
+ * the addon session, so it survives Details, menus and a remounted QAM.
+ */
+export function ResultList({
+  results,
+  view,
+  onFindInstallations,
+}: {
+  results: SearchResult[];
+  view?: string;
+  onFindInstallations: () => void;
+}) {
   // My Addons' list says what is installed, however it got there.
-  const { addons, busy } = useSyncExternalStore(addonSession.subscribe, addonSession.get);
-  const [installing, setInstalling] = useState<Record<string, boolean>>({});
-  const install = async (r: SearchResult, channel?: ReleaseChannel) => {
-    const key = resultKey(r);
-    setInstalling((m) => ({ ...m, [key]: true }));
-    await addonSession.actions.install(r, channel);
-    setInstalling((m) => ({ ...m, [key]: false }));
-  };
+  const state = useSyncExternalStore(addonSession.subscribe, addonSession.get);
   return (
     <>
       {results.map((r) => {
         const key = resultKey(r);
-        const installed = installedAddonFor(addons, r);
-        const installLabel = resultInstallLabel(installed);
-        const tags = resultTags(installed);
-        // An installed addon takes My Addons' update or reinstall path.
-        const primary = () =>
-          !installed
-            ? install(r)
-            : installLabel === "Update"
-              ? addonSession.actions.update(installed)
-              : addonSession.actions.reinstall(installed);
-        // Release channel menu (WF-03, Menu button): install from a channel.
-        const choices = installChannelChoices(r);
-        const channelMenu = choices
-          ? (afterPick?: () => void) => {
-              // The menu hides the QAM window; that is not a close.
-              popupOpening();
-              showChoiceMenu("Release channel", choices, undefined, (c) => {
-                afterPick?.();
-                void install(r, c);
-              });
-            }
-          : undefined;
+        const { pending, tags, installLabel, onInstall, channelMenu } = resultActions(
+          state,
+          r,
+          resultDeps(onFindInstallations),
+        );
         return (
           <PanelSectionRow key={key}>
             <AddonResultRow
               memory={view ? focusTarget(view, key) : undefined}
               result={r}
-              installing={!!installing[key] || (!!installed && !!busy[installed.id])}
+              installing={pending}
               tags={tags}
               installLabel={installLabel}
-              onInstall={() => void primary()}
+              onInstall={() => void onInstall()}
               onChannelMenu={channelMenu && (() => channelMenu())}
-              onDetails={() =>
-                openAddonDetailsModal({
-                  ...resultDetails(r),
-                  installLabel,
-                  tags,
-                  onInstall: primary,
-                  channelMenu,
-                })
-              }
+              onDetails={() => openResultDetails(r, onFindInstallations)}
             />
           </PanelSectionRow>
         );
@@ -195,17 +188,25 @@ export function SearchTab({
           </Focusable>
         </Field>
       </PanelSectionRow>
-      {results && <ResultList results={results} view={browseFocusView("search")} />}
+      {results && (
+        <ResultList
+          results={results}
+          view={browseFocusView("search")}
+          onFindInstallations={sources.openInstallations}
+        />
+      )}
     </>
   );
 }
 
 /** A list that loads LOAD_MORE_PAGE_SIZE at a time (browseDestinations.ts). */
 export function ListTab({
+  onFindInstallations,
   destination,
   emptyText = "No addons found.",
   view,
 }: {
+  onFindInstallations: () => void;
   destination: ListDestinationId;
   emptyText?: string;
   /** Focus-memory view (browseSessionState.browseFocusView) to keep the list's place. */
@@ -266,7 +267,7 @@ export function ListTab({
 
   return (
     <div ref={listRef}>
-      <ResultList results={state.results} view={view} />
+      <ResultList results={state.results} view={view} onFindInstallations={onFindInstallations} />
       {error && (
         <PanelSectionRow>
           <Field
@@ -346,8 +347,14 @@ export function ManualInstallTab({ sources }: { sources: SourceControls }) {
           </Focusable>
         </Field>
       </PanelSectionRow>
-      <FileImportSection view={view} />
-      {resolved && <ResultList results={[resolved]} view={view} />}
+      <FileImportSection view={view} onFindInstallations={sources.openInstallations} />
+      {resolved && (
+        <ResultList
+          results={[resolved]}
+          view={view}
+          onFindInstallations={sources.openInstallations}
+        />
+      )}
       {resolved && <SourceOffNotice sources={sources} providerId={resolved.providerId} />}
     </>
   );
@@ -371,8 +378,16 @@ function previewLine(p: ArchivePreview): string {
  * panel — interrupts nothing; every outcome renders inline here, never a
  * modal.
  */
-function FileImportSection({ view }: { view: string }) {
+function FileImportSection({
+  view,
+  onFindInstallations,
+}: {
+  view: string;
+  onFindInstallations: () => void;
+}) {
   const file = useSyncExternalStore(fileImport.subscribe, fileImport.get);
+  const locked =
+    recoveryNeededFor(useSyncExternalStore(addonSession.subscribe, addonSession.get)) !== null;
   const busy =
     file.phase === "picking" || file.phase === "inspecting" || file.phase === "installing";
   // A failed pick has no preview card yet, so its error takes the helper
@@ -380,23 +395,7 @@ function FileImportSection({ view }: { view: string }) {
   const pickFailed = file.phase === "error" && !file.preview;
 
   const browse = () => {
-    // Steam's picker hides the QAM window while it is up; that hide is not
-    // a close (browseSessionState's popup hold, like a dropdown's menu).
-    popupOpening();
-    void pickArchive(
-      () =>
-        openFilePicker(
-          FileSelectionType.FILE,
-          "/home/deck",
-          true,
-          false,
-          undefined,
-          ["zip", "rar", "7z"],
-          false,
-          false,
-        ),
-      (path) => api.rpc("addons.inspectArchive", { path }),
-    );
+    void browseArchive(openFilePicker, (path) => api.rpc("addons.inspectArchive", { path }));
   };
 
   const install = () => {
@@ -404,7 +403,10 @@ function FileImportSection({ view }: { view: string }) {
     if (!preview) {
       return;
     }
-    void installArchive((pair) => api.rpc("addons.install", pair));
+    void installArchive(
+      (pair) => api.rpc("addons.install", pair),
+      () => requireInstallation(onFindInstallations),
+    );
   };
 
   return (
@@ -461,7 +463,7 @@ function FileImportSection({ view }: { view: string }) {
             <FocusSlot view={view} id="file:install">
               <DialogButton
                 style={{ minWidth: 0, width: "auto" }}
-                disabled={busy}
+                disabled={busy || locked}
                 onClick={install}
               >
                 {file.phase === "installing" ? <Spinner style={{ width: "1em" }} /> : "Install"}

@@ -207,8 +207,20 @@ from `onGamepadFocus` never ran; event nodes come from another JS realm so
 
 **G8 [GENERAL] MUST NOT** use `navigator.clipboard`, `window.open`, or the
 browser keyboard-focus model as if this were a normal web page.
-Evidence: project uses a bundled `xclip` via a backend RPC for clipboard;
-`Navigation.NavigateToExternalWeb` for URLs (`AddonDetailsModal.tsx`).
+`navigator.clipboard` is unavailable in Steam's webview. Copy to clipboard
+with `copyText` in `src/services/clipboard.ts`. It copies the same way Steam's
+own UI does in the Steam client's `library.js`. It puts the text in an
+off-screen `<textarea>` in the top window's document, because the QAM and
+modals render in Steam's window and not the plugin's. It selects the text,
+calls `SteamClient.Browser.NotifyUserActivation` when that exists, and then
+calls `execCommand("copy")`. A textarea keeps newlines, and an input would
+drop them. Never read the clipboard. Open URLs with
+`Navigation.NavigateToExternalWeb` (`AddonDetailsModal.tsx`).
+Evidence: DEVICE (2026-10-31, regression plan O-13b): copies from the QAM
+(Diagnostics) and from full-screen dialogs (Folders…, Export) worked with A
+and with touch. The pasted text matched the source byte for byte, newlines
+included, and no textarea stayed in either document. The method matches
+the copy code in the Steam client's `library.js`.
 
 **G9 [GENERAL] SHOULD** prefer `Navigation` over deprecated `Router.*` and
 `@decky/api` over deprecated `@decky/ui` re-exports (the installed type
@@ -282,16 +294,21 @@ all in-memory trials were reverted, nothing persistent was changed):
   placeholder element `._2orc8…`, inside the readable `#MainNavMenu-Rest`,
   carries that `browser` object as a React fiber prop
   (`props.browser.SetBounds/GetBounds`). Nothing in the QAM window can move
-  it. Steam moves it itself while its Friends UI store flag
-  `qamFriendsExpanded` is set (`SetQAMFriendsChatExpanded(bool)`, sp.js): the
-  placeholder gets the CSS-module class `Expanded` and Steam's hook slides the
-  view (animateIn 300 ms, animateOut 200 ms). The plugin sets that flag
-  (DEVICE 2026-10-21). An earlier `executeInTab` script that called
-  `SetBounds` itself lost every Steam re-layout: the on-screen keyboard and a
-  closing modal put the view back at its collapsed x until the script slid it
-  out again. With the flag those re-layouts keep x 0, exactly like Friends. In
-  Big Picture the flag does NOT add `QAMFriendExpanded` inside the QAM window,
-  so lever 1 below is still ours.
+  it. The placeholder measures its own box on every render and calls
+  `SetBounds` to match, with Steam's slides (animateIn 300 ms, animateOut
+  200 ms). Its CSS-module class `Expanded` moves it, from `translateX(506px)` to
+  `0`. Steam adds that class while its Friends UI store flag
+  `qamFriendsExpanded` is set, and newer Steam only while the Friends tab is
+  active as well (DEVICE 2026-10-31, arm64 Steam on DroidDeck: the flag alone
+  left the view where it was). The plugin gives the placeholder `Expanded`
+  itself through `QamExpandHook` (steamDom/qamExpandHook.tsx, ADR 0001
+  revision 7). An earlier `executeInTab` script that called `SetBounds`
+  itself lost every Steam re-layout: the on-screen keyboard and a closing
+  modal put the view back at its collapsed x until the script slid it out
+  again. With the class in the placeholder's own render those re-layouts keep
+  the view wide, exactly like Friends. In Big Picture Steam does NOT add
+  `QAMFriendExpanded` inside the QAM window for us, so lever 1 below is still
+  ours.
 - Every QAM re-show replays the entrance (DEVICE 2026-10-24, PC-20, capture.mjs:
   per-frame bounds + SetBounds stacks). A context-menu popup (any @decky/ui
   Dropdown/showContextMenu) or a modal hides the QAM BrowserView entirely
@@ -545,22 +562,25 @@ project moved URL import inline for exactly this reason (COMMIT 4de2067).
 
 ### 4.4 Global input
 
-- QAM tab switching (L1/R1) is NOT raw input any more (2026-10-15): the panel
-  root is a `Focusable` with `onButtonDown` handling `GamepadButton.BUMPER_LEFT`
-  / `BUMPER_RIGHT`, which is how Steam's own `Tabs` take the bumpers. Gamepad
-  button events travel through the focus tree, so the handler only fires while
-  focus is in the panel. The old global `registerShoulderNav` kept firing while
-  the full-screen Get Addons page was open and silently changed the QAM tab.
-- Raw input (`SteamClient.Input.RegisterForControllerInputMessages`; codes
-  LB=30, RB=31, D-pad Up=20, Down=21, Left=22, Right=23; undocumented,
-  INFERRED stable only by observation) remains only in the Details modal.
-  Open item (audit 2026-10-15): its L1/R1 and Left/Right paging should move to
-  `onButtonDown` on the page `Field` (the one focus target) like every other
-  bumper handler (S15); hold-to-scroll Up/Down has no Steam equivalent for a
-  single focus target and stays raw, implemented to Valve's own measured model
-  (`registerDirectScroll`, `src/valveScroll.ts`; see 6.4 and
-  docs/valve-bpm-scrolling.md). Not changed yet because it cannot be
-  tested without a deploy, and Details paging works today.
+- QAM tab switching has one owner. `createPanelShoulderNavigation` in
+  `src/shoulderNav.ts` advances tabs from Steam's native controller input while
+  the panel is mounted and the active navigation tree is the QAM. The root's
+  focused button handler consumes L1/R1 to
+  prevent Steam from changing QAM sections, and advances tabs itself only when
+  the native bridge or tree lookup is unavailable. This also covers presses on Decky's title
+  bar, outside our content (PC-10).
+- DOM focus cannot decide which of those input paths owns a press. Steam can
+  focus a plugin control in its gamepad tree while `document.activeElement`
+  reports `BODY`. Both handlers then advance the tab if the native fallback
+  uses DOM focus to decide whether the focused handler ran. The controlled
+  device reproduction and regression tests are recorded in §8.4c.
+- The panel's native subscription follows its component lifetime and checks
+  that its root is connected and the active tree id starts with `QuickAccess`.
+  The keyboard uses a different tree while the panel stays mounted, so checking
+  component lifetime alone would still switch tabs behind the keyboard. A QAM
+  close or a modal unmounts the panel. Raw input remains in the
+  Details modal for paging and scrolling, with its own lifetime and ownership
+  rules below.
 - Modals register their own handlers for their lifetime. The Details modal
   uses `galleryOpenRef` so the Details LB/RB handler is inert while the
   stacked Gallery viewer is open (mount/unmount-driven, so it is correct for
@@ -1652,7 +1672,7 @@ needs a human on a controller to confirm.
 
 | Screen | Contract |
 |---|---|
-| Plugin top level | L1/R1 cycle My Addons ↔ Get Addons ↔ Options, clamped, not wrapped. Left/Right on the tab row moves between tabs. (Switching LIVE per commits c77955a, 4881005; the pill look is new, 2026-10-15) |
+| Plugin top level | L1/R1 cycle My Addons ↔ Get Addons ↔ Options, clamped, not wrapped. Each press advances at most one tab even when Steam gamepad focus and DOM focus differ. Left/Right on the tab row moves between tabs. (Switching LIVE per commits c77955a, 4881005; the pill look is new, 2026-10-15) |
 | My Addons list (2026-10-15) | One focus stop per addon. A = Details (unmanaged: menu), X = Update when offered (unmanaged: Find online source, 2026-10-21), Menu = context menu (Update / Details / Ignore / Remove…), footer shows the labels; ⋯ opens the menu by touch. B closes the menu. |
 | Get Addons in the QAM (rev 2, 2026-10-19; device verification pending) | Collapsed: Install into above a vertical destination list (Search, Latest, Popular, From URL), focus on the plugin-tab nav bar, standard width. Focusing a destination widens the QAM and shows that destination's browse UI in the pane beside a ~240 px list; Right/A enters the pane; the pane holds Search, the lists, Popular's Category and From URL. A on a row = Details modal, X = Install, Menu = release channel. B/Left out of the pane collapses to the plugin-tab nav bar; L1/R1 leave and every re-entry lands collapsed. |
 | Details modal | LB/RB cycle Description/Changelog/Gallery (disabled Gallery skipped); Up/Down scroll text; Install and View-on-source reachable; B closes. Gallery thumbnail A opens viewer; viewer Left/Right changes image; B closes viewer only. (Viewer behavior LIVE per `AddonDetailsModal.tsx` comment.) |
@@ -1947,8 +1967,10 @@ maintainer, commit <hash>)`, not as your own verification.
   Targets of interest: `QuickAccess_uid2` (the plugin panel),
   `Steam Big Picture Mode` (where modals render) and `SharedJSContext`.
   `window.DFL` is exposed for inspecting `@decky/ui`.
-  Agents: prefer the Chrome DevTools MCP over that tunnel
-  (`docs/remote-browser.md`) to `ssh` batches and ad-hoc CDP scripts.
+  Agents: drive that tunnel with the `tools/deck-ui/` scripts
+  (`tools/deck-ui/README.md`), not ad-hoc CDP scripts. The Chrome DevTools MCP
+  (`docs/remote-browser.md`) covers console and network history and views no
+  script reaches.
 - `docs/steam-deck.md` gives SSH instructions and the pre-release checklist
   (Game Mode and Desktop Mode, suspend/resume, Wi-Fi loss, Decky reload, SD
   card). Another person's device is read-only.
@@ -2045,6 +2067,28 @@ third-party markup (style, sandbox, srcdoc, handlers, query string) survives.
 The playlist path `videoseries` is rejected. Pointer-only playback is the
 accepted weakness (U-18).
 
+
+### 8.4c One bumper press, two input paths (2026-11-03)
+
+DEVICE, SSH + Steam CEF with a virtual Xbox controller. The original runner
+sequence reproduced an R1 skip from My Addons to Options. Normal repeats
+usually passed. A controlled fixture then kept Steam gamepad focus on My Addons
+while making the QAM document's `activeElement` report `BODY`, a valid platform
+state (§3.1). One R1 produced one raw press/release pair, but both handlers in
+the same panel instance advanced the tab. Changing callback delays alone did
+not reproduce it.
+
+The regression tests dispatch both input paths in both orders and cover a tab
+render removing the DOM-focused control. Before the fix, three tests advanced
+two tabs instead of one. Native input now owns tab changes while the focused
+handler only consumes the event. Nine tests pass, including title-bar input,
+clamping, rapid presses, keyboard and other active trees, unmount cleanup and
+missing-bridge/tree fallbacks. A real on-screen keyboard check then confirmed
+that R1 leaves the plugin tab unchanged while the active tree is `virtual
+keyboard`, and B returns input to the QAM.
+The device fixture and normal runner sequence were repeated against the fix;
+see `docs/regression-test-plan.md`, Q-1c. All temporary input observers and DOM
+fixtures were removed afterward.
 
 ### 8.5 Verification report template
 
@@ -2220,7 +2264,10 @@ verification are those recorded by the committers, not re-observed.
 
 ### Case 10 — Other platform limits recorded
 
-- `navigator.clipboard` unavailable → bundled `xclip` RPC.
+- `navigator.clipboard` is unavailable, so `copyText` copies through a
+  top-window textarea and `execCommand("copy")`, as Steam's UI does (G8).
+  DEVICE (2026-10-31): it works from the QAM and from full-screen dialogs, with
+  A and with touch.
 - Anchors in injected HTML invisible to gamepad → ButtonItems (F5).
 - Bare `div`/`pre` invisible to gamepad → wrap in `Focusable` (G3).
 - `Spinner` and others may be missing after Steam updates (G6).

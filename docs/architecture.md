@@ -32,15 +32,17 @@ engine → electron
 ## Process model
 
 The Decky loader runs `main.py` (Python 3.13 on current SteamOS). The plugin
-spawns `bin/wowdeck`, a self-contained executable produced by
+spawns the engine built for its machine, `bin/wowdeck-<uname -m>` (today only
+`bin/wowdeck-x86_64`), a self-contained executable produced by
 `bun build --compile` (SteamOS ships no Node/Bun runtime, so the engine must
-be self-contained; glibc x86_64 target matches SteamOS).
+be self-contained; glibc x86_64 target matches SteamOS). The plugin log names
+the machine and the engine it chose.
 
 ```
 Decky React plugin
       │ decky RPC (@decky/api)
       ▼
-main.py ── spawn/supervise ──► bin/wowdeck
+main.py ── spawn/supervise ──► bin/wowdeck-x86_64
       │        JSONL stdin/stdout
       ▼
 addon engine (installations, scanner, TOC, providers, downloads, installer)
@@ -50,7 +52,7 @@ Protocol: newline-delimited JSON requests/responses plus engine-initiated
 events (see `backend/src/api/contracts.ts`). The frontend calls every engine
 method through one typed `rpc(method, params)` (`src/services/backend.ts`),
 which `main.py` forwards unchanged; `main.py` keeps only its own methods
-(`get_status`, clipboard, text files). Events are relayed to the frontend as
+(`get_status`, `read_text_file`, `save_text_file`). Events are relayed to the frontend as
 `backend_event` via `decky.emit`.
 
 ## Engine layout
@@ -76,7 +78,7 @@ backend/src/
     ├── toc/             TOC parser
     ├── providers/       provider abstraction, registry + implementations
     ├── downloads/       download service
-    ├── archives/        safe extraction
+    ├── archives/        safe extraction, Addon folder check, TOC metadata
     ├── net/             HTTP client
     ├── storage/         state file and the settings rules table
     ├── notifications/   update check, update toast gate, WowUp companion data
@@ -88,9 +90,17 @@ Addon records are read and written only through `AddonRecords`
 (`store.addons`). A record read from it is read-only (a deep `Readonly`
 type); a change is a patch, persisted before the call returns, and a patch
 merges into the stored record, so two writers never overwrite each other's
-fields. The installer returns its changes instead of writing them, and
-`AddonService` writes them only when the install succeeded: a failed
-install, update or channel switch leaves the record as it was.
+fields.
+
+Install and update change folders and the record through one addon
+transaction (`addons/AddonTransaction.ts`, ADR 0006). The installer
+downloads and stages the release, and the transaction does the rest. It
+stores a marker with content evidence before the first live change, moves
+folders with renames inside `AddOns/.wowdeck/tx-<id>/`, and commits the
+record and its commit evidence in one write. If that fails, it moves
+everything back. A failed install, update or channel switch leaves the
+folders and the record as they were. Tests fail the transaction's steps by
+name through `fs/StageFs.ts`.
 
 Every record change runs in `AddonService`'s gate, one at a time: the gate
 holds the writable `AddonRecords`, and the service and `InstallationService`
@@ -102,6 +112,17 @@ its turn comes.
 The frontend's Steam DOM reach (QAM widening, QAM visibility, the home
 badge, the Details modal chrome) lives in `src/steamDom/`, one file per hack,
 each stating what it depends on, how it fails and its kill switch.
+
+Settings backups have one frontend owner, `src/wtfLifecycle.ts` (ADR 0007).
+It holds the backup lists and copy sources that Options, Manage backups and
+Settings copy show, the actions that change them, and the one operation
+slot. Lists are per-installation resources from `src/keyedResource.ts`,
+which handles viewers, shared polling and stale answers.
+`src/wtfAffected.ts` decides which lists each change makes stale.
+`src/wtfSession.ts` connects the lifecycle to the engine and gives views
+their hooks. The lifecycle reads time through `src/clock.ts`, so tests drive
+it through the typed RPC with a manual clock and a deferred transport
+(`src/testSupport/`).
 
 ## WowUp relationship
 

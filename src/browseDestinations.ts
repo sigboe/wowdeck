@@ -1,6 +1,6 @@
 import { createStore, type Store } from "./store";
 import { appendPage, LOAD_MORE_PAGE_SIZE } from "./loadMore";
-import { friendlySearchError, searchOutcome } from "./search";
+import { friendlySearchError, searchOutcome, setupProblem } from "./search";
 import { friendlyUrlImportError } from "./urlImportErrors";
 import { errorText } from "./errors";
 import { resetFileImport } from "./fileImportState";
@@ -105,10 +105,16 @@ export function runSearch(rpc: Rpc): Promise<void> {
       results,
       outcome: searchOutcome(trimmed, results.length, providerErrors),
     }),
-    (e) => ({
-      searching: false,
-      outcome: { kind: "error", text: `Search ${friendlySearchError(String(e))}.` },
-    }),
+    (e) => {
+      const setup = setupProblem(e);
+      return {
+        searching: false,
+        outcome: {
+          kind: "error",
+          text: setup ? `Couldn't search. ${setup}.` : `Search ${friendlySearchError(String(e))}.`,
+        },
+      };
+    },
   );
 }
 
@@ -197,7 +203,10 @@ export function loadMore(id: ListDestinationId, rpc: Rpc): Promise<void> {
     }),
     (e) => ({
       loading: false,
-      error: `Couldn't load addons. ${providerDisplayName(list.get().sourceId ?? "")} ${friendlySearchError(String(e))}.`,
+      error: `Couldn't load addons. ${
+        setupProblem(e) ??
+        `${providerDisplayName(list.get().sourceId ?? "")} ${friendlySearchError(String(e))}`
+      }.`,
     }),
   );
 }

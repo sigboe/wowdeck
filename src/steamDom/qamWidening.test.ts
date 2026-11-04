@@ -1,6 +1,36 @@
 /// <reference types="bun-types" />
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { JSDOM } from "jsdom";
+import { act, createElement, type ReactNode, type Ref } from "react";
+import { createRoot } from "react-dom/client";
+
+import { deckyUiStub } from "../deckyUiStub";
+
+// Steam controls are the external boundary; retain native focus/disabled behavior.
+mock.module("@decky/api", () => ({
+  callable: () => async () => ({}),
+  addEventListener: () => {},
+  removeEventListener: () => {},
+  toaster: { toast: () => {} },
+  openFilePicker: () => {},
+}));
+mock.module("@decky/ui", () => ({
+  ...deckyUiStub,
+  DialogButton: ({ children, disabled }: { children: ReactNode; disabled?: boolean }) =>
+    createElement("button", { className: "Focusable", disabled }, children),
+  Focusable: ({ children, ref }: { children: ReactNode; ref: Ref<HTMLDivElement> }) =>
+    createElement("div", { ref }, children),
+  PanelSectionRow: ({ children }: { children: ReactNode }) => createElement("div", null, children),
+}));
+const { useRestoreFocus } = await import("../components/FocusSlot");
+const { ManualInstallTab } = await import("../components/browseTabs");
+
+function BrowseControl({ view }: { view: string }) {
+  useRestoreFocus(view);
+  return createElement(ManualInstallTab, {
+    sources: { openInstallations: () => {}, openSources: () => {}, providers: [], loaded: true },
+  });
+}
 
 // The QAM widening service is the only module allowed to know how Steam's QAM
 // widens (UI guide, "QAM widening measurements", DEVICE 2026-10-18): two root
@@ -42,13 +72,13 @@ function buildSteamQam(options?: {
         : `<style>${options.companionRule}</style>`;
   const inner = options?.innerWrapper
     ? `<div id="wide-wrapper" style="width: 806px">
-        <div style="max-width: 348px">
+        <div class="_card1" style="overflow: hidden">
           <div class="${options?.tabClass ?? "tab_undefined"}" style="max-width: 300px">
             <div id="anchor">plugin content</div>
           </div>
         </div>
       </div>`
-    : `<div style="max-width: 348px">
+    : `<div class="_card1" style="overflow: hidden">
         <div class="${options?.tabClass ?? "tab_undefined"}" style="max-width: 300px">
           <div id="anchor">plugin content</div>
         </div>
@@ -66,31 +96,70 @@ function buildSteamQam(options?: {
   };
 }
 
+/**
+ * Steam's native placeholder lives in Big Picture, separately from the QAM
+ * document. Expanded changes its translation, not the QAM document's width.
+ * jsdom has no layout engine: check the CSS constraints on every clipping
+ * ancestor and the native viewport independently, never pretend a command is
+ * a measured rectangle. DEVICE evidence: UI guide, QAM widening measurements.
+ */
+function nativePlaceholder(qam: QamFixture) {
+  const doc = qam.anchor.ownerDocument;
+  const style = doc.createElement("style");
+  style.textContent =
+    ".ViewPlaceholder { transform: translateX(506px); } " +
+    ".ViewPlaceholder.Expanded { transform: translateX(0px); }";
+  doc.head.append(style);
+  const placeholder = doc.createElement("div");
+  placeholder.className = "ViewPlaceholder";
+  doc.body.append(placeholder);
+  setQamExpander({
+    live: true,
+    setExpanded: (wide) => placeholder.classList.toggle("Expanded", wide),
+  });
+  return {
+    visibleWidth: () =>
+      854 -
+      Number(
+        /translateX\((\d+)px\)/.exec(doc.defaultView!.getComputedStyle(placeholder).transform)![1],
+      ),
+    expectUnclipped: () => {
+      expect(doc.defaultView!.getComputedStyle(placeholder).transform).toBe("translateX(0px)");
+      for (let el = qam.anchor.parentElement; el; el = el.parentElement) {
+        const css = doc.defaultView!.getComputedStyle(el);
+        const cap = parseFloat(css.maxWidth);
+        // Every ancestor must permit the 854px QAM, including the clip column.
+        expect(Number.isFinite(cap) ? cap : Infinity).toBeGreaterThanOrEqual(854);
+      }
+    },
+  };
+}
+
 const {
   attachQamWidening,
   COLLAPSE_HOLD_MS,
   detachQamWidening,
   enforceStep,
-  isQamExpandStore,
   qamWideningStatus,
   resetQamWidening,
-  setQamExpandStore,
+  setQamExpander,
   setQamWidening,
   stopQamWidening,
   subscribeQamLayout,
   WIDENING_REAPPLY_MS,
 } = await import("./qamWidening");
 
-/** Every flag Steam's store was sent (lever 2), freshly installed per test. */
+/** Every state lever 2 was sent, freshly installed per test. */
 let expandCalls: boolean[] = [];
+
+/** A live expander (Steam's QAM renders through it) recording what it is sent. */
+function recordingExpander(live = true) {
+  return { live, setExpanded: (expanded: boolean) => void expandCalls.push(expanded) };
+}
 
 beforeEach(() => {
   expandCalls = [];
-  setQamExpandStore({
-    SetQAMFriendsChatExpanded: (expanded: boolean) => {
-      expandCalls.push(expanded);
-    },
-  });
+  setQamExpander(recordingExpander());
 });
 
 /** MutationObserver delivery plus the service's coalescing window. */
@@ -345,6 +414,155 @@ describe("QAM widening follows the browse session state machine", () => {
     machine.pageState.tab = "search";
   });
 
+  test.each(["selection", "cancellation"])(
+    "archive picker %s restores width, pane and focus",
+    async (outcome) => {
+      const machine = await import("../browseSessionState");
+      const { fileImport, resetFileImport } = await import("../fileImportState");
+      const { browseArchive } = await import("../archivePicker");
+      const { rememberFocus, resetFocusMemory } = await import("../focusMemory");
+      const qam = buildSteamQam();
+      const native = nativePlaceholder(qam);
+      const oldWindow = globalThis.window;
+      const oldDocument = globalThis.document;
+      globalThis.window = qam.anchor.ownerDocument.defaultView as unknown as Window &
+        typeof globalThis;
+      globalThis.document = qam.anchor.ownerDocument;
+      const oldAct = Object.getOwnPropertyDescriptor(globalThis, "IS_REACT_ACT_ENVIRONMENT");
+      Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", {
+        configurable: true,
+        value: true,
+      });
+      let control = createRoot(qam.anchor);
+
+      attachQamWidening(qam.anchor);
+      machine.focusDestination("url");
+      machine.enterBrowsePane();
+      resetFocusMemory(() => 0);
+      const view = machine.browseFocusView("url");
+      rememberFocus(view, "file:browse");
+      await act(async () => control.render(createElement(BrowseControl, { view })));
+      const path = "/home/deck/Downloads/nested/Foo.zip";
+      const preview = {
+        fileName: "Foo.zip",
+        name: "Foo",
+        author: "",
+        version: "1",
+        folders: ["Foo"],
+        providerId: "File",
+        externalId: path,
+      };
+      let pickerReturned = false;
+      let finishPicker!: () => void;
+      const pickerPending = new Promise<void>((resolve) => {
+        finishPicker = resolve;
+      });
+      let browsing!: Promise<void>;
+      try {
+        await act(async () => {
+          browsing = browseArchive(
+            async (select, start, files, folders, filter, extensions, hidden, all) => {
+              expect(select).toBe(0); // Steam FILE selection, folders navigate only.
+              expect(start).toBe("/home/deck");
+              expect(files).toBe(true);
+              expect(folders).toBe(true);
+              expect(filter).toBeUndefined();
+              expect(extensions).toEqual(["zip", "rar", "7z"]);
+              expect(hidden).toBe(false);
+              expect(all).toBe(false);
+              await pickerPending;
+              pickerReturned = true;
+              if (outcome === "cancellation") throw new Error("cancelled");
+              return { path, realpath: path };
+            },
+            async (selected) => {
+              expect(selected).toBe(path);
+              return { result: preview, error: null };
+            },
+          );
+        });
+        machine.qamHidden();
+        detachQamWidening();
+        qam.root.className = "BasicUI";
+        await act(async () => control.unmount());
+        const replacement = qam.anchor.ownerDocument.createElement("div");
+        qam.anchor.replaceWith(replacement);
+        qam.anchor = replacement;
+        machine.qamShown();
+        attachQamWidening(replacement);
+        expect(machine.enterBrowseSession()).toBe("pane");
+        control = createRoot(replacement);
+        await act(async () => control.render(createElement(BrowseControl, { view })));
+        const disabledButton = replacement.querySelectorAll("button")[1]!;
+        expect(disabledButton.disabled).toBe(true);
+        expect(replacement.ownerDocument.activeElement).not.toBe(disabledButton);
+
+        await act(async () => {
+          finishPicker();
+          await browsing;
+        });
+        expect(pickerReturned).toBe(true);
+        const button = qam.anchor.querySelectorAll("button")[1]!;
+        expect(button.disabled).toBe(false);
+        expect(button.ownerDocument.activeElement).toBe(button);
+        native.expectUnclipped();
+        expect(qam.root.classList.contains("QAMFriendExpanded")).toBe(true);
+        expect(qam.tabContainer.style.maxWidth).toBe("none");
+        expect(machine.pageState.tab).toBe("url");
+        expect(fileImport.get()).toEqual(
+          outcome === "selection"
+            ? { phase: "ready", preview, error: null }
+            : { phase: "idle", preview: null, error: null },
+        );
+      } finally {
+        await act(async () => control.unmount());
+        resetFileImport();
+        globalThis.window = oldWindow;
+        globalThis.document = oldDocument;
+        if (oldAct) Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", oldAct);
+        else Reflect.deleteProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT");
+      }
+    },
+  );
+
+  test("popup return restores the visible layout when content hides before detaching", async () => {
+    const machine = await import("../browseSessionState");
+    const qam = buildSteamQam();
+    const native = nativePlaceholder(qam);
+    attachQamWidening(qam.anchor);
+    machine.focusDestination("url");
+    machine.enterBrowsePane();
+    for (let round = 0; round < 2; round++) {
+      machine.popupOpening();
+      machine.qamHidden();
+      qam.tabContainer.style.display = "none";
+      // A widening enforcement during Steam's hidden-content render. This is
+      // the same public adapter entry used by its coalesced observer, without
+      // depending on the observer timer's ordering against panel teardown.
+      setQamWidening(true);
+      expect(native.visibleWidth()).toBe(348);
+      qam.tabContainer.style.display = "";
+      machine.qamShown();
+      native.expectUnclipped();
+      expect(qam.root.classList.contains("QAMFriendExpanded")).toBe(true);
+      expect(qam.tabContainer.style.maxWidth).toBe("none");
+      detachQamWidening();
+      const replacement = qam.anchor.ownerDocument.createElement("div");
+      qam.anchor.replaceWith(replacement);
+      qam.anchor = replacement;
+      attachQamWidening(replacement);
+      expect(machine.enterBrowseSession()).toBe("pane");
+      expect(machine.pageState.tab).toBe("url");
+      native.expectUnclipped();
+    }
+    machine.qamHidden();
+    detachQamWidening();
+    machine.qamShown();
+    attachQamWidening(qam.anchor);
+    expect(machine.enterBrowseSession()).toBeNull();
+    expect(native.visibleWidth()).toBe(348);
+  });
+
   test("a QAM close after the panel detached still drops the widened DOM (story 33)", async () => {
     const machine = await import("../browseSessionState");
     const qam = buildSteamQam();
@@ -389,8 +607,8 @@ describe("QAM widening follows the browse session state machine", () => {
   });
 });
 
-describe("QAM widening drives Steam's expand flag only when available", () => {
-  test("sets and clears the flag with the DOM lever", () => {
+describe("QAM widening drives the native expand only when available", () => {
+  test("expands and collapses with the DOM lever", () => {
     const qam = buildSteamQam();
     expect(attachQamWidening(qam.anchor)).toBe(true);
     setQamWidening(true);
@@ -399,25 +617,37 @@ describe("QAM widening drives Steam's expand flag only when available", () => {
     expect(expandCalls).toEqual([true, false]);
   });
 
-  test("never touches the flag when the widening CSS is unavailable", () => {
+  test("never expands when the widening CSS is unavailable", () => {
     const qam = buildSteamQam({ companionRule: null });
     expect(attachQamWidening(qam.anchor)).toBe(false);
     setQamWidening(true);
     expect(expandCalls).toEqual([]);
   });
 
-  test("without Steam's store the mechanism is unavailable and nothing widens", () => {
-    setQamExpandStore(null);
+  test("without an expander the mechanism is unavailable and nothing widens", () => {
+    setQamExpander(null);
     const qam = buildSteamQam();
     expect(attachQamWidening(qam.anchor)).toBe(false);
     setQamWidening(true);
     expect(qam.root.classList.contains("QAMFriendExpanded")).toBe(false);
   });
 
-  test("a throwing store is swallowed to a warning", () => {
-    setQamExpandStore({
-      SetQAMFriendsChatExpanded: () => {
-        throw new Error("store gone");
+  test("an expander Steam's QAM does not render through leaves the page collapsed", () => {
+    // The DroidDeck bug: the page went wide while the view never moved, so
+    // the pane sat clipped off screen. Collapsed browse beats that.
+    setQamExpander(recordingExpander(false));
+    const qam = buildSteamQam();
+    expect(attachQamWidening(qam.anchor)).toBe(false);
+    setQamWidening(true);
+    expect(qam.root.classList.contains("QAMFriendExpanded")).toBe(false);
+    expect(expandCalls).toEqual([]);
+  });
+
+  test("a throwing expander is swallowed to a warning", () => {
+    setQamExpander({
+      live: true,
+      setExpanded: () => {
+        throw new Error("view gone");
       },
     });
     const qam = buildSteamQam();
@@ -426,24 +656,16 @@ describe("QAM widening drives Steam's expand flag only when available", () => {
     expect(qam.root.classList.contains("QAMFriendExpanded")).toBe(true);
   });
 
-  test("stop clears the flag for plugin unload, only if it set it", () => {
+  test("stop collapses for plugin unload, only if it expanded", () => {
     const qam = buildSteamQam();
     attachQamWidening(qam.anchor);
     stopQamWidening();
-    expect(expandCalls).toEqual([]); // Friends may own it: left alone
-    setQamExpandStore({ SetQAMFriendsChatExpanded: (e: boolean) => void expandCalls.push(e) });
+    expect(expandCalls).toEqual([]); // never sent: nothing to take back
+    setQamExpander(recordingExpander());
     attachQamWidening(qam.anchor);
     setQamWidening(true);
     stopQamWidening();
     expect(expandCalls).toEqual([true, false]);
-  });
-
-  test("finds the store by Steam's Friends field, nothing else", () => {
-    const store = { m_bQamFriendsExpanded: false, SetQAMFriendsChatExpanded() {} };
-    expect(isQamExpandStore(store)).toBe(true);
-    expect(isQamExpandStore({ SetQAMFriendsChatExpanded() {} })).toBe(false);
-    expect(isQamExpandStore({ m_bQamFriendsExpanded: false })).toBe(false);
-    expect(isQamExpandStore(null)).toBe(false);
   });
 });
 

@@ -1,10 +1,10 @@
 /**
  * Depends on: Steam's QAM stylesheet rules keyed on `QAMFriendExpanded` and a
  * hashed companion class (read from the sheets, never hardcoded), the QAM's
- * BasicUI root and `tab_*` container, and Steam's Friends UI store
- * (`SetQAMFriendsChatExpanded`, found by index.tsx; see `QamExpandStore`).
- * Fails as: no widening CSS or no store -> `available` false and Get Addons
- * keeps its collapsed layout, one console warning. Never throws.
+ * BasicUI root and `tab_*` container, and a live `QamExpander` (index.tsx
+ * installs `QamExpandHook`, qamExpandHook.tsx).
+ * Fails as: no widening CSS or no live expander -> `available` false and Get
+ * Addons keeps its collapsed layout, one console warning. Never throws.
  * Kill switch: the automatic fallback above; there is no user setting.
  */
 
@@ -23,9 +23,9 @@
  *     the active tab changes).
  *  2. Native view (Big Picture). The QAM is a BrowserView as wide as the
  *     widened QAM (854 px) whose VISIBLE width is its native position:
- *     collapsed 348 px show, widened all of it. Steam moves it itself, with
- *     its own slide, while its Friends store flag says the QAM is expanded
- *     (`QamExpandStore`); this service sets and clears that flag. Lever 1 only
+ *     collapsed 348 px show, widened all of it. Steam's placeholder for it
+ *     moves it, with Steam's own slide, while it carries Steam's `Expanded`
+ *     class (`QamExpander`); this service turns that on and off. Lever 1 only
  *     lifts inner caps; without lever 2 the QAM never visibly slides out.
  *
  * The service reports the mechanism unavailable so Get Addons can fall back to
@@ -74,8 +74,8 @@ interface WideningState {
   /** The collapse slide (PC-08) is running and the clip is held under it. */
   collapsing: boolean;
   collapseTimer: ReturnType<typeof setTimeout> | null;
-  /** Steam's store, lever 2 (none: the mechanism is unavailable). */
-  expandStore: QamExpandStore | null;
+  /** Lever 2 (none, or not live: the mechanism is unavailable). */
+  expander: QamExpander | null;
   /** The QAM DOM observer and its coalescing timer. */
   observer: MutationObserver | null;
   timer: ReturnType<typeof setTimeout> | null;
@@ -94,7 +94,7 @@ function initialState(): WideningState {
     nativeApplied: false,
     collapsing: false,
     collapseTimer: null,
-    expandStore: null,
+    expander: null,
     observer: null,
     timer: null,
     warned: false,
@@ -122,41 +122,35 @@ function warnOnce(what: string, err?: unknown): void {
 }
 
 /**
- * Lever 2's handle (G13): Steam's own Friends UI store. Its
- * `SetQAMFriendsChatExpanded(true)` is how Friends & Chat widens the QAM: the
- * Big Picture placeholder of the QAM BrowserView gets the CSS-module class
- * `Expanded` and Steam's own hook moves the native view (sp.js; animateIn
- * 300 ms, animateOut 200 ms). Because it is Steam's state, every re-layout
- * Steam does on its own (the on-screen keyboard, a modal closing) keeps the
- * QAM widened. LIVE 2026-10-21 (Deck, SteamOS 3.8): with the flag set, Get
- * Addons stayed at x 0 under the keyboard exactly like Friends.
- * Missing (another Steam build): `available` false, Get Addons collapsed.
+ * Lever 2's handle: expands the QAM the way Friends & Chat does, by giving
+ * Steam's view placeholder its `Expanded` class; Steam's own placeholder then
+ * slides the native view (animateIn 300 ms, animateOut 200 ms) and keeps it
+ * there through every re-layout of its own (keyboard, modals).
+ * `QamExpandHook` (qamExpandHook.tsx) is the Steam implementation.
+ *
+ * History: on SteamOS 3.8 the Friends store flag alone did this
+ * (`SetQAMFriendsChatExpanded`, LIVE 2026-10-21). The arm64 Steam client
+ * honours that flag only while the Friends tab is active (DEVICE 2026-10-31,
+ * DroidDeck), so there it widened the page but never the view.
+ * Not live (another Steam build): `available` false, Get Addons collapsed.
  */
-export interface QamExpandStore {
-  SetQAMFriendsChatExpanded(expanded: boolean): void;
-}
-
-/** The `@decky/ui` `findModuleExport` filter for that store (index.tsx runs it). */
-export function isQamExpandStore(e: unknown): e is QamExpandStore {
-  return (
-    !!e &&
-    typeof e === "object" &&
-    "m_bQamFriendsExpanded" in e &&
-    typeof (e as Partial<QamExpandStore>).SetQAMFriendsChatExpanded === "function"
-  );
+export interface QamExpander {
+  setExpanded(expanded: boolean): void;
+  /** Steam's QAM renders through it, so `setExpanded` moves the QAM. */
+  readonly live: boolean;
 }
 
 /**
  * Install the native lever (index.tsx at plugin load). Left unset by default
  * so the module loads and is tested without Steam.
  */
-export function setQamExpandStore(store: QamExpandStore | null): void {
-  state.expandStore = store;
+export function setQamExpander(expander: QamExpander | null): void {
+  state.expander = expander;
 }
 
 function setNativeExpanded(expanded: boolean): void {
   try {
-    state.expandStore?.SetQAMFriendsChatExpanded(expanded);
+    state.expander?.setExpanded(expanded);
   } catch (err) {
     warnOnce("Steam's QAM expand failed", err);
   }
@@ -173,7 +167,7 @@ function applyNative(wide: boolean): void {
 
 /**
  * How long the clip is held under Steam's collapse slide: its animateOut is
- * 200 ms (sp.js), started on the store change's re-render, so one frame more.
+ * 200 ms (sp.js), started on the placeholder's re-render, so one frame more.
  */
 export const COLLAPSE_HOLD_MS = 250;
 
@@ -534,7 +528,7 @@ export interface EnforceInput {
  *  - `revert`: nothing widened is wanted or shown; take everything off;
  *  - `snapCollapse`: detached, and the mode ended meanwhile (a QAM close after
  *    the panel unmounted, story 33): revert and snap the view, nothing to hold for;
- *  - `nativeOff`: no mechanism (Steam's widening CSS or store changed): never leave the
+ *  - `nativeOff`: no mechanism (Steam's widening CSS or QAM view changed): never leave the
  *    native view widened with nothing to show;
  *  - `none`: detached while still wanted (a modal round trip, G4): keep it.
  */
@@ -699,9 +693,9 @@ export function attachQamWidening(anchor: HTMLElement): boolean {
     if (!view) {
       return false;
     }
-    if (!state.expandStore) {
+    if (!state.expander?.live) {
       // Without lever 2 the QAM never visibly widens: stay collapsed.
-      warnOnce("Steam's QAM expand store not found");
+      warnOnce("Steam's QAM view does not take Expanded");
       return false;
     }
     const tab = findTabContainer(anchor, view);

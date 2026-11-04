@@ -1,7 +1,8 @@
 """WoWDeck Addon Manager for Decky.
 
 Thin Decky plugin backend. All addon management logic lives in the standalone
-`wowdeck` engine binary which is spawned and supervised from here.
+engine binary for this machine (`bin/wowdeck-<uname -m>`), which is spawned
+and supervised from here.
 Communication is newline-delimited JSON (JSONL) over the child process
 stdin/stdout.
 
@@ -21,13 +22,24 @@ import asyncio
 import contextlib
 import json
 import os
+import platform
+import stat
 import sys
 import time
 from typing import Any
 
 import decky
 
-BIN_NAME = "wowdeck"
+# Machine name (`uname -m`) to the engine binary in bin/ built for it
+# (tools/package.py ENGINES).
+ENGINE_BINARIES = {
+    "x86_64": "wowdeck-x86_64",
+    # `uname -m` says aarch64 on arm64 Linux; arm64 is platform.machine()'s
+    # name elsewhere. Both start the same engine.
+    "aarch64": "wowdeck-aarch64",
+    "arm64": "wowdeck-aarch64",
+}
+UNSUPPORTED_ARCHITECTURE = "unsupported_architecture"
 START_TIMEOUT = 10.0
 REQUEST_TIMEOUT = 120.0
 RESTART_MIN_DELAY = 1.0
@@ -76,6 +88,25 @@ def _system_environ() -> dict[str, str]:
     return env
 
 
+
+def _ensure_executable(path: str) -> None:
+    """Give the engine binary back the execute bit Decky's installer dropped.
+
+    Decky unpacks a plugin zip with Python's zipfile, which ignores the
+    stored modes; running as root on SteamOS it chmods the plugin afterwards,
+    but an unprivileged Decky (DroidDeck) leaves the binary at 0600 and the
+    engine never starts (DEVICE 2026-10-31). A missing binary is left for the
+    start itself to report.
+    """
+    try:
+        if os.access(path, os.X_OK):
+            return
+        mode = os.stat(path).st_mode
+        os.chmod(path, mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+        decky.logger.info("Engine binary was not executable; restored its execute bit")
+    except OSError as exc:
+        decky.logger.warning("Could not make the engine binary executable: %s", exc)
+
 class BackendError(Exception):
     def __init__(self, code: str, message: str):
         super().__init__(f"[{code}] {message}")
@@ -112,6 +143,7 @@ class BackendProcess:
                 await asyncio.sleep(RESTART_MIN_DELAY - since_last)
             self._last_start = time.monotonic()
             decky.logger.info("Starting engine binary: %s", self.binary_path)
+            _ensure_executable(self.binary_path)
             runtime_dir = getattr(decky, "DECKY_PLUGIN_RUNTIME_DIR", None)
             data_dir = runtime_dir or os.path.join(decky.DECKY_PLUGIN_DIR, "data")
             os.makedirs(data_dir, exist_ok=True)
@@ -252,8 +284,6 @@ class BackendProcess:
         self.proc = None
 
 
-XCLIP_BIN_NAME = "xclip"
-CLIPBOARD_TIMEOUT = 3.0
 # Plenty for an addon list export string (CurseForge ids + names for a
 # very large addon list); guards read_text_file/save_text_file against
 # an unrelated huge file.
@@ -262,6 +292,9 @@ MAX_TEXT_FILE_BYTES = 2 * 1024 * 1024
 
 class Plugin:
     backend: BackendProcess | None = None
+    # The machine name seen at load when it matched no engine binary; the
+    # unsupported-architecture error names it.
+    unsupported_machine: str | None = None
 
     async def _main(self):
         # Self-heal a reload that skipped `_unload` (seen with some
@@ -275,8 +308,22 @@ class Plugin:
         # `self.backend` means a stray process never survives a reload.
         if self.backend is not None:
             await self.backend.stop()
-        binary = os.path.join(decky.DECKY_PLUGIN_DIR, "bin", BIN_NAME)
+        machine = platform.machine()
+        binary_name = ENGINE_BINARIES.get(machine)
+        if binary_name is None:
+            # A machine with no engine binary. `backend` stays None: every
+            # call then answers unsupported_architecture (see _rpc and
+            # get_status), and no process is ever spawned to fail weirdly.
+            self.backend = None
+            self.unsupported_machine = machine
+            decky.logger.warning(
+                "Machine %s has no engine binary; WoWDeck will not start here", machine
+            )
+            return
+        binary = os.path.join(decky.DECKY_PLUGIN_DIR, "bin", binary_name)
         self.backend = BackendProcess(binary)
+        self.unsupported_machine = None
+        decky.logger.info("Machine %s: engine binary %s", machine, binary_name)
         decky.logger.info("WoWDeck Addon Manager loaded (plugin dir: %s)", decky.DECKY_PLUGIN_DIR)
 
     async def _unload(self):
@@ -290,6 +337,23 @@ class Plugin:
 
     # ---- RPC surface (called from the frontend via @decky/api) ----
 
+    def _unsupported_architecture_error(self) -> BackendError:
+        machine = self.unsupported_machine or platform.machine()
+        return BackendError(
+            UNSUPPORTED_ARCHITECTURE,
+            f"WoWDeck doesn't run on {machine} devices.",
+        )
+
+    def _require_backend(self) -> BackendProcess:
+        """The engine supervisor, or the unsupported-machine error.
+
+        A machine with no engine binary leaves `backend` None for the
+        plugin's whole lifetime; every engine call reports that instead.
+        """
+        if self.backend is None:
+            raise self._unsupported_architecture_error()
+        return self.backend
+
     async def _rpc(self, method: str, params: dict[str, Any] | None = None) -> Any:
         """Engine call whose failure is returned, not raised.
 
@@ -299,7 +363,7 @@ class Plugin:
         {"__error": {"code", "message"}} and rethrown by src/services/backend.ts.
         """
         try:
-            return await self.backend.request(method, params)
+            return await self._require_backend().request(method, params)
         except BackendError as exc:
             return {"__error": {"code": exc.code, "message": exc.message}}
 
@@ -317,50 +381,16 @@ class Plugin:
     async def get_status(self) -> dict[str, Any]:
         """Backend health probe. Never raises for a dead engine."""
         try:
-            result = await self.backend.request("system.getStatus")
+            result = await self._require_backend().request("system.getStatus")
             return {"ok": True, **result}
         except BackendError as exc:
             return {"ok": False, "code": exc.code, "message": exc.message}
-
-    async def copy_text_to_clipboard(self, text: str) -> dict[str, Any]:
-        """Write `text` to the system clipboard.
-
-        Neither `navigator.clipboard` nor any SteamClient API is available
-        for plain-text clipboard writes from a Decky plugin's webview, and
-        SteamOS does not ship a clipboard CLI tool system-wide — xclip is
-        bundled (backend/vendor/xclip, GPL-2.0, see THIRD_PARTY_NOTICES.md)
-        the same way the installed Decktation plugin already does for an
-        unrelated feature. Writes only; never reads or restores prior
-        clipboard contents.
-        """
-        xclip = os.path.join(decky.DECKY_PLUGIN_DIR, "bin", XCLIP_BIN_NAME)
-        if not os.path.isfile(xclip):
-            return {"ok": False, "message": "clipboard helper not available on this install"}
-        try:
-            proc = await asyncio.create_subprocess_exec(
-                xclip,
-                "-selection",
-                "clipboard",
-                "-in",
-                stdin=asyncio.subprocess.PIPE,
-                stdout=asyncio.subprocess.DEVNULL,
-                stderr=asyncio.subprocess.PIPE,
-                env={**os.environ, "DISPLAY": os.environ.get("DISPLAY") or ":0"},
-            )
-            _, stderr = await asyncio.wait_for(
-                proc.communicate(text.encode("utf-8")), timeout=CLIPBOARD_TIMEOUT
-            )
-        except (TimeoutError, OSError) as exc:
-            return {"ok": False, "message": f"clipboard write failed: {exc}"}
-        if proc.returncode != 0:
-            return {"ok": False, "message": (stderr or b"").decode(errors="replace").strip() or "clipboard write failed"}
-        return {"ok": True, "message": ""}
 
     async def read_text_file(self, path: str) -> dict[str, Any]:
         """Reads a small text file the user explicitly picked via Decky's
         own openFilePicker — Import Addon List's "load from file" option.
         Pure filesystem I/O, so this lives here rather than round-
-        tripping through the engine, same as copy_text_to_clipboard above."""
+        tripping through the engine."""
         try:
             if not os.path.isfile(path):
                 return {"ok": False, "content": None, "message": "not a file"}

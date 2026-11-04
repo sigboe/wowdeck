@@ -1,0 +1,5 @@
+seek Create export code --enter → pressed Enter on "Create export code Copy it or save it to a file" (jump) → focus=null
+seek Copy export code --enter → pressed Enter on "Copy export code To paste into WowUp or another Deck" (jump) → focus="Copy export code To paste into WowUp or another De"
+eval@SharedJSContext --file=.scratch/pass3/copy-re… → {"pluginCopyCalls":[{"command":"copy","length":208,"selected":true,"readonly":true,"result":true}],"hookRemoved":true}
+probe text → text="Export addon list Moves the addon list for Retail, not addon settings or WoW's saved variables. Works with lists exported by WowUp, and the other way round. Installation Retail Create export code Copy it or save it to a file Export code Copy export code To paste into WowUp or another Deck Save to file wowdeck-addons-retail-2026-11-04.txt 1 addon(s) exported."
+press b → tree="QuickAccess-NA" focus="Export addon list Share it with WowUp or another d" tab="Options"
