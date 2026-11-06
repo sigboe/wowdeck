@@ -30,6 +30,7 @@ import { installationLabel } from "../search";
 import { wowupModalStyleCss } from "../sharedStyles";
 import { ellipsisValue } from "./dropdownValue";
 import { TextRow } from "./TextRow";
+import { pickerStartPath } from "../pickerStart";
 
 type Mode = "export" | "import";
 
@@ -180,7 +181,7 @@ function AddonPortabilityModal({
     try {
       folder = await openFilePicker(
         FileSelectionType.FOLDER,
-        installation?.path ?? "",
+        pickerStartPath(installation?.path),
         false,
         true,
       );
@@ -211,7 +212,7 @@ function AddonPortabilityModal({
     try {
       picked = await openFilePicker(
         FileSelectionType.FILE,
-        installation?.path ?? "",
+        pickerStartPath(installation?.path),
         true,
         true,
         undefined,

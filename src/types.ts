@@ -70,6 +70,8 @@ export interface StatusInfo {
   ok: boolean;
   backendVersion?: string;
   protocolVersion?: number;
+  /** The engine's HOME, where file pickers start (pickerStart.ts). */
+  homeDir?: string;
   code?: string;
   message?: string;
 }

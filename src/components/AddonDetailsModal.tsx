@@ -868,6 +868,7 @@ function GalleryViewerContent({
           style={{ display: "flex", gap: "8px", justifyContent: "center", alignItems: "center" }}
         >
           <DialogButton
+            aria-label="Previous image"
             style={{ minWidth: 0, width: "auto", padding: "10px 16px" }}
             onClick={() => go(-1)}
             onOKActionDescription="Previous image"
@@ -878,6 +879,7 @@ function GalleryViewerContent({
             {index + 1} / {screenshots.length}
           </span>
           <DialogButton
+            aria-label="Next image"
             style={{ minWidth: 0, width: "auto", padding: "10px 16px" }}
             onClick={() => go(1)}
             onOKActionDescription="Next image"

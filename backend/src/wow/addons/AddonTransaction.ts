@@ -61,7 +61,7 @@ import { markerId, markerOwner, type AddonOperation, type AddonRecord, type Addo
 import { folderEvidence, type FolderEvidence } from "./FolderEvidence";
 
 export type { AddonTransactionMarker, PlannedMove } from "./TransactionMarker";
-import { STAGING_DIR_NAME, type PreviousVersion } from "./RollbackCache";
+import { STAGING_DIR_NAME, type KeptRelease, type PreviousVersion } from "./RollbackCache";
 
 /** What happened to the addon's kept previous version (Roll back). */
 export type PreviousOutcome =
@@ -92,7 +92,7 @@ export interface StagedPlan<T> extends PlanBase<T> {
    */
   stage(stageDir: string): Promise<string[]>;
   /** Keep the folders this replaces as the addon's previous version; best-effort. */
-  keepPrevious?: Pick<PreviousVersion, "version" | "releaseId">;
+  keepPrevious?: KeptRelease;
 }
 
 /**
@@ -107,7 +107,7 @@ export interface RollbackPlan<T> extends PlanBase<T> {
   /** The live folders the record names: they leave with the outgoing version. */
   current: string[];
   /** What the outgoing version is, for its meta.json. */
-  outgoing: Pick<PreviousVersion, "version" | "releaseId">;
+  outgoing: KeptRelease;
 }
 
 /**
@@ -438,7 +438,47 @@ export class AddonTransactions {
       const warning = await this.#finish(records, leftover.transactionId, work, pluginDir, leftover.workDir);
       (warning ? left : cleaned).push(leftover.transactionId);
     }
+    try {
+      cleaned.push(...(await this.#discardUnmarked(records, installation, pluginDir)));
+    } catch {
+      // This optional sweep must never prevent the requested addon change.
+      console.error("[transaction] orphan work folder sweep failed");
+    }
     return { cleaned, left };
+  }
+
+  /**
+   * Work folders no marker names and no running transaction owns (#134): an
+   * engine that stopped before writing the marker. Nothing outside the
+   * plugin's folder moves before the marker, so they hold only staging and
+   * are deleted. Markers of every installation count, and one without a
+   * readable id could name any folder, so it stops the sweep.
+   */
+  async #discardUnmarked(records: AddonRecords, installation: WowInstallation, pluginDir: string): Promise<string[]> {
+    if (!isDir(installation.location) || !isPlainDir(pluginDir)) {
+      return [];
+    }
+    const marked = new Set<string>();
+    for (const marker of records.markers()) {
+      const id = markerId(marker);
+      if (id === undefined) {
+        return [];
+      }
+      marked.add(id);
+    }
+    const discarded: string[] = [];
+    for (const name of this.fs.readdirSync("cleanup.list", pluginDir)) {
+      const id = name.slice("tx-".length);
+      if (!name.startsWith("tx-") || !isTransactionId(id) || marked.has(id) || this.#running.has(id)) {
+        continue;
+      }
+      const work = join(pluginDir, name);
+      if (isPlainDir(work) && (await discardWork(this.fs, work, pluginDir))) {
+        console.error(`[transaction] ${id}: removed a work folder left without a marker`);
+        discarded.push(id);
+      }
+    }
+    return discarded;
   }
 
   /**

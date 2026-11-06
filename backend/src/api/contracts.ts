@@ -455,6 +455,47 @@ export interface ArchivePreview {
   providerId: string;
   /** The `addons.install` external id: the archive's canonical path. */
   externalId: string;
+  /** What Install will do with the installed addons (the card's button). */
+  match: ArchiveMatch;
+}
+
+/**
+ * What installing a picked archive does to the installation's records
+ * (`ArchivePreview.match`), by the match rule a direct link's install
+ * follows too: an archive that installs any folder exactly one record owns
+ * goes into that record.
+ *
+ * - "new": no record owns any of its folders; Install adds one.
+ * - "update": it goes into that record in place (id, flags and name kept,
+ *   the files on disk kept as its previous version); the card says
+ *   "Updates <name>".
+ * - "reinstall": the same archive is already installed as that record.
+ * - "takeover": an "update" of a record from a catalogue provider
+ *   (CurseForge, Wago, …; `providerId`). Install switches its source to
+ *   the file or link, so it stops getting update checks from there; the
+ *   card warns before Install. A record from another file or link is a
+ *   plain "update".
+ * - "conflict": two or more records own its folders (`records`, each with
+ *   the folders it shares with the archive, sorted). Install is refused,
+ *   here and on a direct install call, since merging records is
+ *   guesswork; the card offers Remove on each, and with one left the
+ *   archive is an "update" of it.
+ *
+ * A discriminated union so later kinds can join without changing these.
+ */
+export type ArchiveMatch =
+  | { kind: "new" }
+  | { kind: "update"; addonId: string; name: string }
+  | { kind: "reinstall"; addonId: string; name: string }
+  | { kind: "takeover"; addonId: string; name: string; providerId: string }
+  | { kind: "conflict"; records: ArchiveConflict[] };
+
+/** One record an archive conflicts with (ArchiveMatch "conflict"). */
+export interface ArchiveConflict {
+  addonId: string;
+  name: string;
+  /** The record's folders the archive also installs, sorted. */
+  folders: string[];
 }
 
 /** Who/what created a WTF backup. "unknown" = made by desktop WowUp or something else. */
@@ -552,7 +593,16 @@ export interface WtfJobSnapshot {
 export interface MethodMap {
   "system.getStatus": {
     params: Record<string, never>;
-    result: { backendVersion: string; protocolVersion: number; pid: number };
+    result: {
+      backendVersion: string;
+      protocolVersion: number;
+      pid: number;
+      /**
+       * The engine's HOME: the home folder of the user Decky runs Steam for
+       * (main.py sets it from DECKY_USER_HOME). File pickers start here.
+       */
+      homeDir: string;
+    };
   };
   "system.diagnostics": {
     params: Record<string, never>;

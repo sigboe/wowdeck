@@ -6,11 +6,14 @@
  * a dot folder that neither WoW nor our scanner loads. `meta.json` says what
  * the folders are. Keeping a version and Roll back itself move folders only
  * through the addon transaction (AddonTransaction.ts); this module reads,
- * measures and drops the cache.
+ * measures and drops the cache, and says what of the record goes back
+ * with the kept folders (keptRelease, restoredSource).
  */
 import { join } from "node:path";
 import { readFile, readdir, stat } from "node:fs/promises";
 import type { WowInstallation } from "../models";
+import type { AddonPatch, AddonRecord } from "./AddonRecords";
+import { installsByArchive } from "./archiveMatch";
 import { getAddonsPath } from "../installation/InstallationDetector";
 import { joinWithin, removeDirectory } from "../fs/safe-fs";
 
@@ -21,11 +24,94 @@ const CURRENT_MARKER = ".current-";
 const ROLLBACK_DIR_NAME = "rollback";
 const META = "meta.json";
 
+/**
+ * Where the kept version came from: the record's source fields when it was
+ * kept. A file's or link's release is its path or link and its content
+ * hash, so Manual Install's match (archiveMatch.ts) and the next keep need
+ * them back; a file that took over a catalogue addon goes back to that
+ * catalogue. Missing in meta.json written by older builds.
+ */
+export interface KeptSource {
+  providerName?: string;
+  externalId?: string;
+  externalUrl?: string;
+  downloadUrl?: string;
+  thumbnailUrl?: string;
+  summary?: string;
+  archiveHash?: string;
+  latestReleaseId?: string;
+  latestVersion?: string;
+}
+
 export interface PreviousVersion {
   version: string | null;
   releaseId: string | null;
+  source?: KeptSource;
   folders: string[];
   savedAt: number;
+}
+
+/** What an install or a Roll back writes about the version it moves into the cache. */
+export type KeptRelease = Pick<PreviousVersion, "version" | "releaseId" | "source">;
+
+/** The release a record has installed now, for the meta.json of the folders about to be kept. */
+export function keptRelease(addon: AddonRecord): KeptRelease {
+  return {
+    version: addon.installedVersion ?? null,
+    releaseId: addon.installedExternalReleaseId ?? null,
+    // A record the install itself creates (an adopt) has no source yet.
+    ...(addon.providerName && {
+      source: {
+        providerName: addon.providerName,
+        externalId: addon.externalId,
+        externalUrl: addon.externalUrl,
+        downloadUrl: addon.downloadUrl,
+        thumbnailUrl: addon.thumbnailUrl,
+        summary: addon.summary,
+        archiveHash: addon.installedArchiveHash,
+        latestReleaseId: addon.externalLatestReleaseId,
+        latestVersion: addon.latestVersion,
+      },
+    }),
+  };
+}
+
+/**
+ * The source fields a Roll back to `previous` writes on `addon`. A
+ * catalogue addon rolled back on the same source keeps what the last
+ * update check found. A file or link goes back to its own path and
+ * content; another source, to that source. Kept by an older build (no
+ * `source`), a file or link is its release id, and its content unknown:
+ * no hash is better than the outgoing archive's, which would call the
+ * newer file a reinstall.
+ */
+export function restoredSource(addon: AddonRecord, previous: PreviousVersion): AddonPatch {
+  const source = previous.source;
+  if (source) {
+    if (source.providerName === addon.providerName && !installsByArchive(source.providerName ?? "")) {
+      return {};
+    }
+    return {
+      providerName: source.providerName,
+      externalId: source.externalId,
+      externalUrl: source.externalUrl,
+      downloadUrl: source.downloadUrl,
+      thumbnailUrl: source.thumbnailUrl,
+      summary: source.summary,
+      installedArchiveHash: source.archiveHash,
+      externalLatestReleaseId: source.latestReleaseId,
+      latestVersion: source.latestVersion,
+    };
+  }
+  if (!installsByArchive(addon.providerName ?? "")) {
+    return {};
+  }
+  const release = previous.releaseId ?? undefined;
+  return {
+    installedArchiveHash: undefined,
+    externalLatestReleaseId: release,
+    ...(release && { externalId: release, downloadUrl: release }),
+  };
 }
 
 function cacheRoot(installation: WowInstallation): string {

@@ -6,6 +6,22 @@ What's new in each version of WoWDeck Addon Manager. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Manual Install warns before a file replaces an addon from CurseForge or another source, which then stops updating from there.
+- If a file matches two installed addons, Manual Install lets you remove one, even when reusing a filename or link.
+
+### Fixed
+
+- Installing a newer zip of an addon from a file or link updates it instead of adding a second listing.
+- If My Addons lists an addon twice after you installed a newer zip, WoWDeck keeps only the newest install and its Roll back.
+- After you pick a file in Manual Install, focus lands on Install, so A installs it.
+- An addon pack installed from a file or link keeps the name Manual Install showed, not one of its libraries' names.
+- File pickers open in your home folder, also on devices whose Steam user isn't named "deck".
+- If an addon change is cut short during its download, WoWDeck deletes its temporary files at the next addon change.
+- Screen readers now name installation fields, Browse, Check for updates and screenshot arrows.
+- After Use default folder in Options, focus moves to Backup folder instead of disappearing.
+
 ## [1.1.0] - 2026-11-04
 
 ### Added

@@ -225,5 +225,8 @@ export async function inspectExtracted(destinationDir: string): Promise<ExtractR
       topLevelDirs.push(entry.name);
     }
   }
+  // Sorted: readdir order is the filesystem's, and the installer's main
+  // folder (whose TOC names the record) must not depend on it.
+  topLevelDirs.sort();
   return { topLevelDirs, fileCount, totalBytes };
 }
