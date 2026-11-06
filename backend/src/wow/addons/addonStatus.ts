@@ -8,6 +8,7 @@
  */
 
 import type { AddonRecord } from "./AddonRecords";
+import { installsByArchive } from "./archiveMatch";
 import type { ProviderRegistry } from "../providers/provider-registry";
 
 /** Automatic updates paused for this addon (the old skip mark counts too). */
@@ -65,9 +66,17 @@ export function updateStatus(addon: AddonRecord, registry: Pick<ProviderRegistry
  * what the version strings say. Only fall back to the string heuristic
  * when a provider doesn't expose release ids at all (TukUI has no
  * per-file id — see docs/wow-client-identity.md's provider notes).
+ *
+ * Unlike upstream, an addon from a file or a direct link never needs an update.
  */
 export function needsUpdate(addon: AddonRecord): boolean {
   if (addon.isIgnored) {
+    return false;
+  }
+  // A file's or a direct link's addon never checks for updates: its
+  // release ids are paths or links, which differ without anything to
+  // update to.
+  if (installsByArchive(addon.providerName ?? "")) {
     return false;
   }
   if (addon.externalLatestReleaseId && addon.installedExternalReleaseId) {
@@ -75,5 +84,5 @@ export function needsUpdate(addon: AddonRecord): boolean {
   }
   const installedVer = (addon.installedVersion ?? "").trim().replace(/^v/i, "");
   const latestVer = (addon.latestVersion ?? "").trim().replace(/^v/i, "");
-  return installedVer.length > 0 && installedVer !== latestVer;
+  return installedVer.length > 0 && latestVer.length > 0 && installedVer !== latestVer;
 }

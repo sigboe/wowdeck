@@ -659,6 +659,7 @@ picks its category with a `DropdownItem`, so no modal is involved.
 | `AddonResultRow` | One search/latest/popular/URL result, a Steam `Field` row | MUST reuse for any addon-result list |
 | `GetAddonsTab` / `browseTabs.tsx` | The widened QAM tab (ADR-0001): destination list, browse pane beside | Pattern for browsing UI |
 | `UpdateDot`, `updateDot.ts` | Decky's notification-badge dot on a positioned anchor, one semantic colour per kind of news | MUST use for any "news here" marker on a tab pill or button; add a colour to `DotColor`, never a second dot |
+| `Warning` / `WarningLine` (`components/Warning.tsx`) | A warning inside a row's description: amber icon, heading in primary text, indented secondary lines | MUST use for every warning on a card or row (S38, R9) |
 | `steamTheme.ts` | Steam colour and type tokens | MUST use instead of literals (S20) |
 | `pluginToast` | Toast with the plugin icon | MUST use instead of `toaster.toast` (S17) |
 | `addonRow.ts`, `loadMore.ts`, `addonActions.ts` | Pure row text and actions, paging, every addon action with its toast | Extend these; keep them tested |
@@ -990,6 +991,22 @@ same spot"):
   The scrolling itself stays Steam's: the old watcher that scrolled by hand
   (case 8) must not come back. Pure maths in `scrollBuffer.ts` (tested).
 
+**S22 [PROJECT] MUST NOT** put help text at the bottom of a section or page
+(owner, 2026-10-15). A controller user reaches the bottom last or never, and by
+then has already acted. Put an explanation where it is needed: a row's
+`description`, a line above the controls it explains, or the page bar (S18).
+If a bar or row already shows the information (the install target), drop the
+help text instead of moving it. Also drop a section title that repeats the tab
+name (the QAM "Get Addons" tab had a "GET ADDONS" heading under a "GET ADDONS"
+tab).
+
+**S23 [PROJECT] SHOULD** show an inactive item (an ignored addon) the way Steam
+shows a row that is switched off: label and description in Steam's disabled
+grey `#67707b` (the colour of a disabled `Field`), plus a small uppercase status
+tag ("IGNORED", `.wowdeck-status-tag`) so it reads at a glance and not only by
+colour. The row stays fully usable (A, X, Menu); only `disabled` rows are
+unreachable.
+
 **S24 [PROJECT] MUST** make every bar at the top of a view (tab bars, filter
 bars, any navigation) a floating pane BELOW Steam's top bar (clock, battery),
 the way Steam's Library and Store do: the pane stays in view while the list
@@ -1300,21 +1317,20 @@ installation → Installation details) carries it on Y through its focus
 wrapper (`FocusRow actions`) and in the footer hint; it is not repeated as a
 row of its own (owner, 2026-10-17: a duplicate row is clutter).
 
-**S22 [PROJECT] MUST NOT** put help text at the bottom of a section or page
-(owner, 2026-10-15). A controller user reaches the bottom last or never, and by
-then has already acted. Put an explanation where it is needed: a row's
-`description`, a line above the controls it explains, or the page bar (S18).
-If a bar or row already shows the information (the install target), drop the
-help text instead of moving it. Also drop a section title that repeats the tab
-name (the QAM "Get Addons" tab had a "GET ADDONS" heading under a "GET ADDONS"
-tab).
-
-**S23 [PROJECT] SHOULD** show an inactive item (an ignored addon) the way Steam
-shows a row that is switched off: label and description in Steam's disabled
-grey `#67707b` (the colour of a disabled `Field`), plus a small uppercase status
-tag ("IGNORED", `.wowdeck-status-tag`) so it reads at a glance and not only by
-colour. The row stays fully usable (A, X, Menu); only `disabled` rows are
-unreachable.
+**S38 [PROJECT] MUST** write a warning so it works without colour, with the
+`Warning` component (R9). What: the heading says what is happening in plain
+words ("This replaces RestedXP from CurseForge"). The line under it says
+what follows or what to do ("RestedXP will stop updating from CurseForge").
+Amber (`STEAM.warning`) goes on the warning icon only. The heading uses
+Steam's primary text grey and the lines under it the secondary grey. When
+a warning lists several things, such as the addons in a conflict, each thing is a row and its details are indented secondary lines
+under it, never tree connector characters such as `├─`. A warning leaves
+the action enabled unless the action can't succeed. Why: colour-blind
+players and a Deck screen outdoors can't rely on a colour, so the icon and
+the words carry the meaning (spec #131, story 19). Indented rows read the
+same at any width and cost no extra focus stops. Connector characters
+depend on the font and wrap badly at QAM width. First used on the Manual
+Install preview card when a file takes over a catalogue addon (#129).
 
 **Preview without a Deck.** Chromium can render Steam's real stylesheets against
 a static copy of the DOM: copy `css/sp.css` and `library.css`, wrap the markup in
@@ -1418,6 +1434,37 @@ including rows that light up on focus-within. Run both on every view: each
 QAM tab, each page tab, each modal (open with a harmless click, close with
 Escape = B). Calibrate on Steam's own page first (`audit-focus` with the
 `ours` check removed): Valve's rows pass, so a flag on ours is ours.
+
+**R9 — A warning on a card (S38).**
+
+```tsx
+import { Warning, WarningLine } from "./Warning";
+// In a Field's description, after the line that describes the item:
+<Warning heading="This replaces RestedXP from CurseForge">
+  <WarningLine text="RestedXP will stop updating from CurseForge" />
+</Warning>
+// On a conflict card, the heading says how many addons match and the line under it gives the fix.
+<Warning heading="This file matches 2 installed addons">
+  <WarningLine text="Remove one, and the file will update the other" />
+</Warning>
+// Its rows, one per addon with its folders one level in, each have a Remove
+// button, so they go in the Field's children above Install. A description
+// can't hold a focus target.
+<Focusable flow-children="column">
+  <div>
+    <div>RestedXP Guide</div>
+    <WarningLine text="Uses RestedXP, RestedXP_Data" level={1} />
+  </div>
+  <FocusSlot view={view} id={FILE_FOCUS.conflictRemove(addonId)}>
+    <DialogButton>Remove</DialogButton>
+  </FocusSlot>
+  …
+</Focusable>
+```
+
+Build the words in a pure, tested function next to the flow's state, such
+as `takeoverWarning` and `conflictWarning` in `fileImportState.ts`, and
+keep the component for layout only. One-line texts take no period (C03).
 
 **R7 — Find out how Valve does it.**
 

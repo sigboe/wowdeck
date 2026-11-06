@@ -23,8 +23,10 @@ import { getAddonsPath } from "../installation/InstallationDetector";
 import { extractArchive } from "../archives/ArchiveExtractor";
 import { checkAddonFolders, readAddonToc } from "../archives/addonFolders";
 import { PROVIDER_ID } from "../../api/providers";
-import type { DownloadService } from "../downloads/DownloadService";
+import type { DownloadHandle, DownloadService } from "../downloads/DownloadService";
 import { latestFile } from "./releaseChannel";
+import { archiveHash, installsByArchive } from "./archiveMatch";
+import { keptRelease } from "./RollbackCache";
 import { AddonTransactions } from "./AddonTransaction";
 import { realStageFs, type StageFs } from "../fs/StageFs";
 
@@ -46,6 +48,12 @@ export interface InstallOptions {
    * checked on the archive itself: a provider may not list its folders.
    */
   requiredFolder?: string;
+  /**
+   * The release's archive, already fetched (fetchArchive) when the caller
+   * had to look inside it first (the archive match rule); a rejection fails
+   * the install as a failed download would.
+   */
+  fetched?: Promise<DownloadHandle>;
   /** The records the install commits through (the caller's gate turn). */
   records: AddonRecords;
   /** The record change the installed files make, given the installer's patch. */
@@ -94,7 +102,7 @@ export class AddonInstaller {
 
     const file = latestFile(searchResult.files, addon.channelType);
     // What is installed now, for the previous-version cache (BEYOND-02).
-    const previous = { version: addon.installedVersion ?? null, releaseId: addon.installedExternalReleaseId ?? null };
+    const previous = keptRelease(addon);
     const downloadUrl = file?.downloadUrl ?? addon.downloadUrl;
     if (!downloadUrl) {
       // A provider can legitimately return a file with no download URL —
@@ -110,8 +118,17 @@ export class AddonInstaller {
     // A reinstall of the SAME release is a repair, not an update: it must
     // not replace the kept older version (BEYOND-02), or "Roll back" would
     // offer the version already running. Only a changed release puts its
-    // previous version in the cache.
-    const sameRelease = previous.releaseId != null && previous.releaseId === file?.externalId;
+    // previous version in the cache. A file's or link's release id is only
+    // its path or link, so for those the same release is the same content:
+    // the archive is fetched first and hashed (archiveMatch.ts). A fetch
+    // that fails hashes nothing and fails the install in staging.
+    const fetched = installsByArchive(provider.name)
+      ? (opts.fetched ?? this.fetchArchive(provider, downloadUrl, addon.id))
+      : opts.fetched;
+    const hash = fetched && (await fetched.then((handle) => archiveHash(handle.filePath)).catch(() => undefined));
+    const sameRelease = installsByArchive(provider.name)
+      ? hash !== undefined && addon.installedArchiveHash === hash
+      : previous.releaseId != null && previous.releaseId === file?.externalId;
     const addonsPath = getAddonsPath(installation);
 
     try {
@@ -121,9 +138,10 @@ export class AddonInstaller {
         addonId: addon.id,
         originalRecord: opts.existing ?? null,
         ...(opts.keepPreviousVersion && !sameRelease && { keepPrevious: previous }),
-        stage: (stagingDir) => this.#stage(opts, downloadUrl, file?.folders ?? [], stagingDir),
+        stage: (stagingDir) => this.#stage({ ...opts, fetched }, downloadUrl, file?.folders ?? [], stagingDir),
         change: async ({ installed, previous: kept }) => {
           const patch = await this.#patch(opts, addonsPath, installed, file, downloadUrl);
+          patch.installedArchiveHash = hash;
           if (kept === "kept") {
             patch.rollbackVersion = previous.version ?? "previous version";
           } else if (kept === "gone") {
@@ -138,18 +156,30 @@ export class AddonInstaller {
     }
   }
 
+  /**
+   * Download the release's archive — or, for the File provider, copy the
+   * picked archive in: its downloadUrl is a path on this Deck, never a
+   * network address. Keyed on the provider (which owns that meaning), not
+   * on the URL's shape; copyLocal re-validates the path itself. The file
+   * lives until the next fetch or the install's cleanup.
+   */
+  async fetchArchive(provider: AddonProvider, downloadUrl: string, name: string): Promise<DownloadHandle> {
+    const auth = await provider.getDownloadAuth().catch(() => undefined);
+    return provider.name === PROVIDER_ID.File
+      ? this.downloads.copyLocal(downloadUrl, `${name}.archive`)
+      : this.downloads.download(downloadUrl, `${name}.archive`, { auth });
+  }
+
+  /** Remove what fetchArchive left, for a caller that ends before install(). */
+  async discardFetched(): Promise<void> {
+    await this.downloads.cleanup().catch(() => {});
+  }
+
   /** Download (or copy in) the archive, extract it to `stagingDir` and check it; returns the folders to install. */
   async #stage(opts: InstallOptions, downloadUrl: string, releaseFolders: string[], stagingDir: string): Promise<string[]> {
     const { addon, searchResult, provider } = opts;
-    // 1. download — or, for the File provider, copy the picked archive
-    //    in: its downloadUrl is a path on this Deck, never a network
-    //    address. Keyed on the provider (which owns that meaning), not
-    //    on the URL's shape; copyLocal re-validates the path itself.
-    const auth = await provider.getDownloadAuth().catch(() => undefined);
-    const handle =
-      provider.name === PROVIDER_ID.File
-        ? await this.downloads.copyLocal(downloadUrl, `${addon.id}.archive`)
-        : await this.downloads.download(downloadUrl, `${addon.id}.archive`, { auth });
+    // 1. download (or take the archive the caller already fetched)
+    const handle = await (opts.fetched ?? this.fetchArchive(provider, downloadUrl, addon.id));
 
     // 2. extract to staging (same fs as AddOns -> atomic renames possible)
     const extracted = await extractArchive(handle.filePath, stagingDir);

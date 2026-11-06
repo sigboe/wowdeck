@@ -15,9 +15,10 @@ describe("JsonlServer", () => {
       backendVersion: "test",
       protocolVersion: 1,
       pid: 123,
+      homeDir: "/home/test",
     }));
     await server.handleLine('{"id":1,"method":"system.getStatus","params":{}}');
-    expect(lines).toEqual(['{"id":1,"result":{"backendVersion":"test","protocolVersion":1,"pid":123}}']);
+    expect(lines).toEqual(['{"id":1,"result":{"backendVersion":"test","protocolVersion":1,"pid":123,"homeDir":"/home/test"}}']);
   });
 
   test("returns method_not_found for unknown methods", async () => {
@@ -74,7 +75,7 @@ describe("JsonlServer", () => {
     const { server, lines } = makeServer();
     server.on("system.getStatus", async (params) => {
       expect(params).toEqual({});
-      return { backendVersion: "test", protocolVersion: 1, pid: 1 };
+      return { backendVersion: "test", protocolVersion: 1, pid: 1, homeDir: "/home/test" };
     });
     await server.handleLine('{"id":9,"method":"system.getStatus"}');
     expect(JSON.parse(lines[0]!).result.backendVersion).toBe("test");
@@ -84,7 +85,7 @@ describe("JsonlServer", () => {
     const { server, lines } = makeServer();
     let finishSlow!: () => void;
     server.on("addons.install", () => new Promise((resolve) => (finishSlow = () => resolve({} as never))));
-    server.on("system.getStatus", async () => ({ backendVersion: "t", protocolVersion: 1, pid: 1 }));
+    server.on("system.getStatus", async () => ({ backendVersion: "t", protocolVersion: 1, pid: 1, homeDir: "/home/t" }));
     async function* input() {
       yield new TextEncoder().encode('{"id":1,"method":"addons.install","params":{}}\n');
       yield new TextEncoder().encode('{"id":2,"method":"system.getStatus","params":{}}\n');
@@ -99,7 +100,7 @@ describe("JsonlServer", () => {
 
   test("a request split across reads is handled once, whole", async () => {
     const { server, lines } = makeServer();
-    server.on("system.getStatus", async () => ({ backendVersion: "t", protocolVersion: 1, pid: 1 }));
+    server.on("system.getStatus", async () => ({ backendVersion: "t", protocolVersion: 1, pid: 1, homeDir: "/home/t" }));
     const bytes = new TextEncoder().encode('{"id":7,"method":"system.getStatus","params":{"x":"é"}}\n{"id":8,"method":"system.getStatus"}');
     async function* input() {
       // Split inside the line and inside the two-byte "é".

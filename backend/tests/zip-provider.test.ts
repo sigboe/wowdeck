@@ -6,7 +6,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { zipSync } from "fflate";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { identifyUrlImportProvider } from "../src/wow/providers/url-import";
 import { ZipProvider, parseArchiveUrl } from "../src/wow/providers/zip/ZipProvider";
@@ -167,5 +167,96 @@ describe("direct archive links (WF-09)", () => {
     expect(existsSync(join(f.addonsPath, "RXPLite", "libs", "HereBeDragons", "HereBeDragons.toc"))).toBe(true);
     const [addon] = await f.service.listAddons(f.installation);
     expect(addon).toMatchObject({ name: "RXP Lite", version: "4.11.26", folderName: "RXPLite", updateAvailable: false });
+  });
+});
+
+describe("a changed link updates the addon it matches", () => {
+  const NEWER_URL = "https://addons.example.org/files/Foo-1.3.zip";
+  const fooNewer = zipSync({
+    "Foo/Foo.toc": new TextEncoder().encode("## Interface: 110005\n## Title: Foo Addon\n## Version: 1.3\n"),
+    "Foo/Foo.lua": new TextEncoder().encode("print(2)\n"),
+  });
+
+  test("a link whose archive installs a folder one record owns updates that record, downloading once", async () => {
+    const f = fixture("match", { [ZIP_URL]: fooZip, [NEWER_URL]: fooNewer });
+    const { addon: first } = await f.service.install({ intent: "install", providerId: "Zip", externalId: ZIP_URL, installation: f.installation });
+    const { operation, addon } = await f.service.install({ intent: "install", providerId: "Zip", externalId: NEWER_URL, installation: f.installation });
+    expect(operation.status).toBe("installed");
+    expect(addon.id).toBe(first.id);
+    const listed = await f.service.listAddons(f.installation);
+    expect(listed).toHaveLength(1);
+    expect(listed[0]).toMatchObject({ id: first.id, version: "1.3", externalId: NEWER_URL, previousVersion: "1.2" });
+    expect(f.downloads).toEqual([ZIP_URL, NEWER_URL]);
+
+    await f.service.rollback(addon.id);
+    expect(readFileSync(join(f.addonsPath, "Foo", "Foo.lua"), "utf8")).toContain("print(1)");
+  });
+});
+
+describe("a link whose archive matches several addons", () => {
+  const BAR_URL = "https://addons.example.org/files/Bar-3.0.zip";
+  const BOTH_URL = "https://addons.example.org/files/FooBar-2.0.zip";
+  const barZip = zipSync({
+    "Bar/Bar.toc": new TextEncoder().encode("## Interface: 110005\n## Title: Bar Addon\n## Version: 3.0\n"),
+    "Bar/Bar.lua": new TextEncoder().encode("print(3)\n"),
+  });
+  const bothZip = zipSync({
+    "Foo/Foo.toc": new TextEncoder().encode("## Interface: 110005\n## Title: Foo Bar\n## Version: 2.0\n"),
+    "Foo/Foo.lua": new TextEncoder().encode("print(20)\n"),
+    "Bar/Bar.toc": new TextEncoder().encode("## Interface: 110005\n## Title: Foo Bar\n## Version: 2.0\n"),
+    "Bar/Bar.lua": new TextEncoder().encode("print(20)\n"),
+  });
+
+  test("reusing a link still refuses a conflict without changing records or files", async () => {
+    const files = { [ZIP_URL]: fooZip, [BAR_URL]: barZip };
+    const f = fixture("conflict-reused-link", files);
+    const install = (url: string) => f.service.install({ intent: "install", providerId: "Zip", externalId: url, installation: f.installation });
+    await install(ZIP_URL);
+    await install(BAR_URL);
+    const recordsBefore = structuredClone(f.store.addons.all());
+    files[ZIP_URL] = bothZip;
+    await expect(install(ZIP_URL)).rejects.toThrow("This file matches 2 installed addons");
+    expect(f.store.addons.all()).toEqual(recordsBefore);
+    expect(readFileSync(join(f.addonsPath, "Foo", "Foo.lua"), "utf8")).toBe("print(1)\n");
+    expect(readFileSync(join(f.addonsPath, "Bar", "Bar.lua"), "utf8")).toBe("print(3)\n");
+  });
+
+  test("the install is refused with an error naming both addons, and nothing on disk changes", async () => {
+    const f = fixture("conflict", { [ZIP_URL]: fooZip, [BAR_URL]: barZip, [BOTH_URL]: bothZip });
+    const install = (url: string) => f.service.install({ intent: "install", providerId: "Zip", externalId: url, installation: f.installation });
+    await install(ZIP_URL);
+    await install(BAR_URL);
+    const recordsBefore = f.store.addons.all();
+
+    await expect(install(BOTH_URL)).rejects.toThrow("This file matches 2 installed addons (Foo Addon and Bar Addon)");
+
+    expect(f.store.addons.all()).toEqual(recordsBefore);
+    expect(readdirSync(f.addonsPath).sort()).toEqual(["Bar", "Foo"]);
+    expect(readFileSync(join(f.addonsPath, "Foo", "Foo.lua"), "utf8")).toBe("print(1)\n");
+    expect(readFileSync(join(f.addonsPath, "Bar", "Bar.lua"), "utf8")).toBe("print(3)\n");
+  });
+});
+
+describe("a link whose archive changed", () => {
+  const OLDER_URL = "https://addons.example.org/files/Foo-1.1.zip";
+  const release = (version: string) =>
+    zipSync({
+      "Foo/Foo.toc": new TextEncoder().encode(`## Interface: 110005\n## Title: Foo Addon\n## Version: ${version}\n`),
+      "Foo/Foo.lua": new TextEncoder().encode(`-- ${version}\n`),
+    });
+
+  test("installing the same link again with new content keeps the replaced files for Roll back", async () => {
+    const files: Record<string, Uint8Array> = { [OLDER_URL]: release("1.1"), [ZIP_URL]: release("1.2") };
+    const f = fixture("changed", files);
+    const install = (url: string) => f.service.install({ intent: "install", providerId: "Zip", externalId: url, installation: f.installation });
+    await install(OLDER_URL);
+    await install(ZIP_URL);
+
+    // The host now serves a newer build at the same link.
+    files[ZIP_URL] = release("1.3");
+    const { addon } = await install(ZIP_URL);
+    expect(addon).toMatchObject({ version: "1.3", previousVersion: "1.2" });
+    await f.service.rollback(addon.id);
+    expect(readFileSync(join(f.addonsPath, "Foo", "Foo.lua"), "utf8")).toContain("1.2");
   });
 });

@@ -22,6 +22,8 @@ class StubProvider extends AddonProvider {
 const registry = new ProviderRegistry();
 registry.register(new StubProvider("WowUpHub", true));
 registry.register(new StubProvider("TukUI", false));
+registry.register(new StubProvider("File", true));
+registry.register(new StubProvider("Zip", true));
 
 const outdated: WowAddon = {
   id: "a",
@@ -66,6 +68,21 @@ const cases: Array<[string, Partial<WowAddon>, UpdateStatus]> = [
   [
     "one release id missing: the versions decide",
     { latestVersion: "1.0", installedExternalReleaseId: "r1" },
+    blocked("up_to_date"),
+  ],
+  [
+    "catalogue release ids differ without version text: still an update",
+    { latestVersion: "", installedExternalReleaseId: "r1", externalLatestReleaseId: "r2" },
+    can,
+  ],
+  [
+    "from a file: never an update, whatever its release ids say",
+    { providerName: "File", latestVersion: "2.0", installedExternalReleaseId: "/a/Foo-1.0.zip", externalLatestReleaseId: "/a/Foo-2.0.zip" },
+    blocked("up_to_date"),
+  ],
+  [
+    "from a direct link: never an update, whatever its release ids say",
+    { providerName: "Zip", latestVersion: "2.0", installedExternalReleaseId: "https://a/1.zip", externalLatestReleaseId: "https://a/2.zip" },
     blocked("up_to_date"),
   ],
 ];

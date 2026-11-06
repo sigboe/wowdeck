@@ -9,7 +9,7 @@
  */
 
 import type { Addon, AddonOperation, AutoUpdateResult, OperationResult } from "../../api/contracts";
-import type { ArchivePreview, RecoveryRetryResult, RecoveryVerifyResult } from "../../api/contracts";
+import type { ArchiveMatch, ArchivePreview, RecoveryRetryResult, RecoveryVerifyResult } from "../../api/contracts";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { detectGameRunning } from "../wtf/GameProcessGuard";
@@ -18,7 +18,7 @@ import type { AddonFolder, AddonSearchResult, AddonSearchResultFile, WowAddon, W
 import { newAddonRecord } from "../models";
 import { AddonChannelType, AddonDependencyType, type AddonProviderType } from "../types";
 import type { Toc } from "../toc/toc";
-import type { ScanMatch } from "../providers/addon-provider";
+import type { AddonProvider, ScanMatch } from "../providers/addon-provider";
 import type { SourceRequest } from "../catalogue/Catalogue";
 import { InstallError, NotFoundError, RecoveryRequiredError, ValidationError } from "../errors";
 import type { ProviderRegistry } from "../providers/provider-registry";
@@ -34,12 +34,14 @@ import { AddonTransactions, TransactionFailure } from "./AddonTransaction";
 import { InstallationRecovery } from "./InstallationRecovery";
 import { RecoveryActions } from "./RecoveryActions";
 import { hasNewerPrerelease, installsFolder, latestFile, updateCandidate } from "./releaseChannel";
-import { cacheUsage, clearAll, dropPrevious, readPrevious } from "./RollbackCache";
+import { cacheUsage, clearAll, dropPrevious, keptRelease, readPrevious, restoredSource } from "./RollbackCache";
+import { repairSharedFolders } from "./SharedFolderRepair";
 import { AddonListPortability } from "./AddonPortability";
 import { dependantsIndex, libraryFlagsAfterImport, orphanedLibraries } from "./libraries";
-import type { DownloadService } from "../downloads/DownloadService";
+import type { DownloadHandle, DownloadService } from "../downloads/DownloadService";
 import { canonicalLocalArchive } from "../archives/localArchive";
 import { inspectAddonArchive } from "../archives/ArchiveInspector";
+import { archiveHash, archiveTarget, conflictMessage, installsByArchive, type ArchiveTarget } from "./archiveMatch";
 import { getTocForGameType2 } from "../utils/toc";
 import { getClientTypeLabel } from "../utils/gametype";
 import { gameVersionForInstallation } from "../utils/gameversion";
@@ -144,6 +146,26 @@ const INSTALL_INTENTS: Record<
   adopt: { status: "installed", dependencyFlag: "clear", stampUpdate: false, broadcast: true, withDependencies: true, keepPrevious: "always" },
   source: { status: "installed", dependencyFlag: "keep", stampUpdate: false, broadcast: true, withDependencies: true, keepPrevious: "existing" },
 };
+
+/** The preview's answer (ArchivePreview.match) for where an archive installs. */
+function archiveMatchOf(target: ArchiveTarget): ArchiveMatch {
+  if (target.kind === "new") {
+    return { kind: "new" };
+  }
+  if (target.kind === "conflict") {
+    return {
+      kind: "conflict",
+      records: target.owners.map(({ record, folders }) => ({ addonId: record.id, name: record.name, folders })),
+    };
+  }
+  const { id: addonId, name, providerName } = target.record;
+  // Updating a catalogue record from an archive is a source change: the
+  // card warns that it stops updating from there.
+  if (target.kind === "update" && providerName && !installsByArchive(providerName)) {
+    return { kind: "takeover", addonId, name, providerId: providerName };
+  }
+  return { kind: target.kind, addonId, name };
+}
 
 /** A failed operation's result (not broadcast; see AddonService#fail). */
 function failedOperation(operationId: string, addonId: string | null, err: unknown): OperationResult {
@@ -306,6 +328,7 @@ export class AddonService {
   async scanInstallation(installation: WowInstallation): Promise<AddonRecord[]> {
     return this.#gate.run(async (records) => {
       this.recovery.require(installation);
+      await repairSharedFolders(records, installation);
       const folders = await scanAddons(installation);
       await computeWowUpFingerprints(folders);
 
@@ -462,6 +485,7 @@ export class AddonService {
   async #listAddons(records: AddonRecords, installation: WowInstallation): Promise<Addon[]> {
     // Listing reconciles folder state into the records: refused (addonList answers the read-only list).
     this.recovery.require(installation);
+    await repairSharedFolders(records, installation);
     const folders = await scanAddons(installation);
     const present = new Set(folders.map((f) => f.name));
     records.patchMany([
@@ -582,6 +606,15 @@ export class AddonService {
       // provider.
       providerId: PROVIDER_ID.File,
       externalId: canonical,
+      match: archiveMatchOf(
+        archiveTarget(
+          this.addonsFor(installation.id),
+          PROVIDER_ID.File,
+          canonical,
+          inspection.folders,
+          await archiveHash(canonical),
+        ),
+      ),
     };
   }
 
@@ -816,10 +849,11 @@ export class AddonService {
       throw new NotFoundError("addon on provider", externalId);
     }
 
-    const existing = request.replaces ?? records.find(installation.id, providerId, externalId);
     if (request.channel !== undefined && !provider.allowChannelChange) {
       throw new ValidationError(`${provider.name} has no release channels`);
     }
+    const { matched, fetched } = await this.#archiveMatch(records, request, provider, searchResult);
+    const existing = request.replaces ?? matched ?? records.find(installation.id, providerId, externalId);
     // A new source without release channels starts like a fresh install.
     const keptChannel = request.replaces && !provider.allowChannelChange ? undefined : existing?.channelType;
     const channelType = request.channel ?? keptChannel ?? installation.defaultAddonChannelType;
@@ -875,6 +909,9 @@ export class AddonService {
         skipReleaseId: undefined,
         // Every update path (manual, Update all, auto-update) ends here (PC-07).
         ...(intent.stampUpdate ? { lastUpdatedAt: Date.now() } : {}),
+        // An archive matched into a record keeps that record's name: a
+        // clean catalogue name is not replaced by a colour-coded TOC title.
+        ...(matched ? { name: matched.name } : {}),
       };
       return existing ? { patch: [{ id: existing.id, patch: changes }] } : { create: [{ ...addon, ...changes }] };
     };
@@ -893,6 +930,7 @@ export class AddonService {
         keepPreviousVersion:
           intent.keepPrevious === "always" || (!!existing && this.store.settings.keepPreviousVersions),
         requiredFolder: mustInstall,
+        fetched,
         records,
         recordChange,
       }));
@@ -948,6 +986,49 @@ export class AddonService {
     }
     this.events.addonsChanged([addon.id]);
     return { addon: installed, operation };
+  }
+
+  /**
+   * The archive match rule at install time (archiveMatch.ts): a new
+   * install from a file or a direct link that installs a folder exactly
+   * one record owns goes into that record; one whose folders two or more
+   * records own is refused (ValidationError naming them) before anything
+   * is written. Its folders are only known
+   * from the archive itself, so it is fetched here once and handed to the
+   * installer (`fetched`); an archive that cannot be read matches nothing
+   * and fails in the installer with the install's own error.
+   */
+  async #archiveMatch(
+    records: AddonRecords,
+    request: InstallRequest,
+    provider: AddonProvider,
+    searchResult: AddonSearchResult,
+  ): Promise<{ matched?: AddonRecord; fetched?: Promise<DownloadHandle> }> {
+    const { installation, providerId, externalId } = request;
+    const archiveUrl = searchResult.files?.[0]?.downloadUrl;
+    if (
+      request.intent !== "install" ||
+      !installsByArchive(providerId) ||
+      !archiveUrl
+    ) {
+      return {};
+    }
+    const fetched = this.#installer.fetchArchive(provider, archiveUrl, "match");
+    const folders = await fetched
+      .then((handle) => inspectAddonArchive(handle.filePath, installation.clientType, this.#inspectRoot))
+      .then(
+        (inspection) => inspection.folders,
+        () => [],
+      );
+    // Which record it goes into is all that matters here; whether its
+    // content is new (the kept previous version) the installer decides.
+    const target = archiveTarget(records.forInstallation(installation.id), providerId, externalId, folders, undefined);
+    if (target.kind === "conflict") {
+      // Refused before anything is written: merging records is guesswork.
+      await this.#installer.discardFetched();
+      throw new ValidationError(conflictMessage(target.owners));
+    }
+    return { fetched, ...((target.kind === "update" || target.kind === "reinstall") && { matched: target.record }) };
   }
 
   /**
@@ -1187,10 +1268,15 @@ export class AddonService {
           originalRecord: addon,
           previous,
           current: recordFolders(addon),
-          outgoing: { version: addon.installedVersion ?? null, releaseId: addon.installedExternalReleaseId ?? null },
+          outgoing: keptRelease(addon),
           change: async ({ previous: kept }) => {
             const installedExternalReleaseId = previous.releaseId ?? undefined;
+            // The record goes back to where the kept version came from:
+            // its source, and a file's path and content (RollbackCache).
+            const source = restoredSource(addon, previous);
+            const latestReleaseId = "externalLatestReleaseId" in source ? source.externalLatestReleaseId : addon.externalLatestReleaseId;
             const patch: AddonPatch = {
+              ...source,
               rollbackVersion: kept === "kept" ? (addon.installedVersion ?? "previous version") : undefined,
               installedVersion: previous.version ?? addon.installedVersion,
               installedExternalReleaseId,
@@ -1199,7 +1285,7 @@ export class AddonService {
               // Rolled back to an older version: automatic updates pause for this
               // addon until it is updated by hand or resumed (owner, 2026-10-16).
               // Rolled forward to the latest: they resume.
-              autoUpdatePaused: installedExternalReleaseId !== addon.externalLatestReleaseId || undefined,
+              autoUpdatePaused: installedExternalReleaseId !== latestReleaseId || undefined,
               skipReleaseId: undefined,
               warningType: undefined,
               updatedAt: Date.now(),

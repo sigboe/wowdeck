@@ -5,11 +5,12 @@ import type { HandlerDeps } from "./deps";
 import { PROTOCOL_VERSION, UPDATE_CHANNELS } from "../contracts";
 import { ValidationError } from "../../wow/errors";
 
-export function register(server: JsonlServer, { store, registry, service, installationService, companionCoordinator, curseForgeAuth, recentErrors, backendVersion, pluginUpdate, updateStager }: HandlerDeps): void {
+export function register(server: JsonlServer, { store, registry, service, installationService, companionCoordinator, curseForgeAuth, recentErrors, backendVersion, pluginUpdate, updateStager, homeDir }: HandlerDeps): void {
   server.on("system.getStatus", async () => ({
     backendVersion: backendVersion,
     protocolVersion: PROTOCOL_VERSION,
     pid: process.pid,
+    homeDir,
   }));
 
   server.on("system.updateCheck", async (params) =>

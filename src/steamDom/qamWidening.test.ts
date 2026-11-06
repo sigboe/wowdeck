@@ -420,6 +420,8 @@ describe("QAM widening follows the browse session state machine", () => {
       const machine = await import("../browseSessionState");
       const { fileImport, resetFileImport } = await import("../fileImportState");
       const { browseArchive } = await import("../archivePicker");
+      const { rememberEngineHome } = await import("../pickerStart");
+      rememberEngineHome("/home/sigurdb");
       const { rememberFocus, resetFocusMemory } = await import("../focusMemory");
       const qam = buildSteamQam();
       const native = nativePlaceholder(qam);
@@ -442,7 +444,7 @@ describe("QAM widening follows the browse session state machine", () => {
       const view = machine.browseFocusView("url");
       rememberFocus(view, "file:browse");
       await act(async () => control.render(createElement(BrowseControl, { view })));
-      const path = "/home/deck/Downloads/nested/Foo.zip";
+      const path = "/home/sigurdb/Downloads/nested/Foo.zip";
       const preview = {
         fileName: "Foo.zip",
         name: "Foo",
@@ -451,6 +453,7 @@ describe("QAM widening follows the browse session state machine", () => {
         folders: ["Foo"],
         providerId: "File",
         externalId: path,
+        match: { kind: "new" as const },
       };
       let pickerReturned = false;
       let finishPicker!: () => void;
@@ -463,7 +466,7 @@ describe("QAM widening follows the browse session state machine", () => {
           browsing = browseArchive(
             async (select, start, files, folders, filter, extensions, hidden, all) => {
               expect(select).toBe(0); // Steam FILE selection, folders navigate only.
-              expect(start).toBe("/home/deck");
+              expect(start).toBe("/home/sigurdb"); // The engine's HOME (#133).
               expect(files).toBe(true);
               expect(folders).toBe(true);
               expect(filter).toBeUndefined();
@@ -479,6 +482,7 @@ describe("QAM widening follows the browse session state machine", () => {
               expect(selected).toBe(path);
               return { result: preview, error: null };
             },
+            view,
           );
         });
         machine.qamHidden();
@@ -502,9 +506,14 @@ describe("QAM widening follows the browse session state machine", () => {
           await browsing;
         });
         expect(pickerReturned).toBe(true);
-        const button = qam.anchor.querySelectorAll("button")[1]!;
-        expect(button.disabled).toBe(false);
-        expect(button.ownerDocument.activeElement).toBe(button);
+        const buttons = qam.anchor.querySelectorAll("button");
+        const browse = buttons[1]!;
+        expect(browse.disabled).toBe(false);
+        // A preview card's Install takes focus so A installs (#128); a
+        // cancelled pick keeps it on Browse….
+        const focused = outcome === "selection" ? buttons[2]! : browse;
+        expect(focused.textContent).toBe(outcome === "selection" ? "Install" : "Browse…");
+        expect(focused.ownerDocument.activeElement).toBe(focused);
         native.expectUnclipped();
         expect(qam.root.classList.contains("QAMFriendExpanded")).toBe(true);
         expect(qam.tabContainer.style.maxWidth).toBe("none");

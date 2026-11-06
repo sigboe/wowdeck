@@ -3,8 +3,13 @@ import { afterEach, describe, expect, test } from "bun:test";
 import {
   fileImport,
   installArchive as guardedInstallArchive,
+  installLabel,
+  installedLabel,
+  conflictWarning,
   pickArchive,
+  removeConflicting,
   resetFileImport,
+  takeoverWarning,
   type FileImportView,
 } from "./fileImportState";
 import type { ArchivePreview, OperationResult } from "./types";
@@ -28,6 +33,7 @@ const preview: ArchivePreview = {
   folders: ["Foo"],
   providerId: "File",
   externalId: "/home/deck/Downloads/Foo-1.2.zip",
+  match: { kind: "new" },
 };
 
 const initial: FileImportView = fileImport.get();
@@ -178,5 +184,259 @@ describe("installArchive", () => {
       () => Promise.resolve({ result: preview, error: null }),
     );
     expect(fileImport.get()).toEqual({ phase: "ready", preview, error: null });
+  });
+});
+
+describe("installLabel", () => {
+  test("the card's Install button says what the install does to the installed addons", () => {
+    expect(installLabel(preview)).toBe("Install");
+    expect(
+      installLabel({ ...preview, match: { kind: "update", addonId: "a1", name: "RestedXP" } }),
+    ).toBe("Updates RestedXP");
+    expect(
+      installLabel({ ...preview, match: { kind: "reinstall", addonId: "a1", name: "RestedXP" } }),
+    ).toBe("Reinstall");
+  });
+});
+
+/**
+ * A file that takes over an addon from a catalogue (ticket #129): the card
+ * warns, naming the addon and the source it leaves, and Install stays.
+ */
+describe("takeover warning", () => {
+  const takeover: ArchivePreview = {
+    ...preview,
+    match: { kind: "takeover", addonId: "a1", name: "RestedXP", providerId: "Curse" },
+  };
+
+  test("names the addon and its source in words, before Install", () => {
+    expect(takeoverWarning(takeover)).toEqual({
+      heading: "This replaces RestedXP from CurseForge",
+      detail: "RestedXP will stop updating from CurseForge",
+    });
+    expect(installLabel(takeover)).toBe("Install");
+  });
+
+  test("an addon from another file or link, or none at all, gets no warning", () => {
+    expect(takeoverWarning(preview)).toBeNull();
+    expect(
+      takeoverWarning({ ...preview, match: { kind: "update", addonId: "a1", name: "RestedXP" } }),
+    ).toBeNull();
+    expect(
+      takeoverWarning({
+        ...preview,
+        match: { kind: "reinstall", addonId: "a1", name: "RestedXP" },
+      }),
+    ).toBeNull();
+  });
+
+  test("after Install the card says the addon was updated", () => {
+    expect(installedLabel(takeover)).toBe("Updated RestedXP");
+    expect(
+      installedLabel({ ...preview, match: { kind: "update", addonId: "a1", name: "RestedXP" } }),
+    ).toBe("Updated RestedXP");
+    expect(installedLabel(preview)).toBe("Installed");
+  });
+});
+
+/**
+ * Where gamepad focus goes once a pick settles (ticket #128): the preview
+ * card's Install after a preview, Browse… after a cancel or a failed
+ * inspection. The pane's focus memory is injected like the picker and RPC.
+ */
+describe("pickArchive focus", () => {
+  test("a pick that shows a preview card sends focus to Install", async () => {
+    const focused: string[] = [];
+    await pickArchive(
+      () => Promise.resolve({ path: preview.externalId }),
+      () => Promise.resolve({ result: preview, error: null }),
+      (key) => focused.push(key),
+    );
+    expect(focused).toEqual(["file:install"]);
+  });
+
+  test("a cancelled pick leaves focus on Browse…", async () => {
+    const focused: string[] = [];
+    await pickArchive(
+      () => Promise.reject(new Error("cancelled")),
+      () => {
+        throw new Error("inspect must not run");
+      },
+      (key) => focused.push(key),
+    );
+    expect(focused).toEqual(["file:browse"]);
+  });
+
+  test("a pick whose preview fails leaves focus on Browse…, with the error shown", async () => {
+    const focused: string[] = [];
+    await pickArchive(
+      () => Promise.resolve({ path: "/home/deck/Downloads/readme.zip" }),
+      () =>
+        Promise.resolve({
+          result: null,
+          error: { code: "archive_no_addons", message: "backend words" },
+        }),
+      (key) => focused.push(key),
+    );
+    expect(focused).toEqual(["file:browse"]);
+    expect(fileImport.get().error).toMatch(/no installable WoW addon folders/i);
+  });
+
+  test("a superseded pick moves no focus: only the latest turn's does", async () => {
+    const focused: string[] = [];
+    let resolveFirst: (v: { result: ArchivePreview | null; error: null }) => void;
+    const first = pickArchive(
+      () => Promise.resolve({ path: preview.externalId }),
+      () => new Promise((resolve) => (resolveFirst = resolve)),
+      (key) => focused.push(`first:${key}`),
+    );
+    await Promise.resolve();
+    resetFileImport();
+    resolveFirst!({ result: preview, error: null });
+    await first;
+    expect(focused).toEqual([]);
+  });
+});
+
+/**
+ * A file that matches several installed addons (ticket #130): the card
+ * refuses Install, names each addon with the folders it shares, and Remove
+ * on a row re-checks the same file.
+ */
+describe("conflict card", () => {
+  const conflict: ArchivePreview = {
+    ...preview,
+    fileName: "RestedXP-5.0.zip",
+    name: "RestedXP Guide",
+    externalId: "/home/deck/Downloads/RestedXP-5.0.zip",
+    match: {
+      kind: "conflict",
+      records: [
+        { addonId: "rxp", name: "RestedXP Guide", folders: ["RestedXP", "RestedXP_Data"] },
+        {
+          addonId: "rxpc",
+          name: "RXP Classic",
+          folders: ["RXP_A", "RXP_B", "RXP_C", "RXP_D", "RXP_E"],
+        },
+      ],
+    },
+  };
+  const updatesGuide: ArchivePreview = {
+    ...conflict,
+    match: { kind: "update", addonId: "rxp", name: "RestedXP Guide" },
+  };
+  const showConflict = () => fileImport.set({ phase: "ready", preview: conflict, error: null });
+
+  test("says what is happening, how to fix it, and each addon's shared folders, cut off after three", () => {
+    expect(conflictWarning(conflict)).toEqual({
+      heading: "This file matches 2 installed addons",
+      detail: "Remove one, and the file will update the other",
+      rows: [
+        { addonId: "rxp", name: "RestedXP Guide", uses: "Uses RestedXP, RestedXP_Data" },
+        { addonId: "rxpc", name: "RXP Classic", uses: "Uses RXP_A, RXP_B, RXP_C +2 more" },
+      ],
+    });
+  });
+
+  test("three or more addons: the fix leaves one", () => {
+    const three: ArchivePreview = {
+      ...conflict,
+      match: {
+        kind: "conflict",
+        records: [
+          { addonId: "a", name: "A", folders: ["A"] },
+          { addonId: "b", name: "B", folders: ["B"] },
+          { addonId: "c", name: "C", folders: ["C"] },
+        ],
+      },
+    };
+    expect(conflictWarning(three)).toMatchObject({
+      heading: "This file matches 3 installed addons",
+      detail: "Remove all but one, and the file will update the one left",
+    });
+  });
+
+  test("any other preview has no conflict card", () => {
+    expect(conflictWarning(preview)).toBeNull();
+    expect(conflictWarning(updatesGuide)).toBeNull();
+  });
+
+  test("Install stays disabled: pressing it sends nothing", async () => {
+    showConflict();
+    await installArchive(() => {
+      throw new Error("install must not be sent");
+    });
+    expect(fileImport.get().phase).toBe("ready");
+  });
+
+  test("a pick that shows the conflict card sends focus to the first Remove", async () => {
+    const focused: string[] = [];
+    await pickArchive(
+      () => Promise.resolve({ path: conflict.externalId }),
+      () => Promise.resolve({ result: conflict, error: null }),
+      (key) => focused.push(key),
+    );
+    expect(focused).toEqual(["file:conflict:rxp:remove"]);
+  });
+
+  test("after a Remove the card re-checks the same file: one match left is an update, focus on Install", async () => {
+    showConflict();
+    const calls: string[] = [];
+    const focused: string[] = [];
+    await removeConflicting(
+      async () => {
+        calls.push("remove");
+        expect(fileImport.get().preview).toEqual(conflict);
+      },
+      (path) => {
+        calls.push(`inspect ${path}`);
+        return Promise.resolve({ result: updatesGuide, error: null });
+      },
+      (key) => focused.push(key),
+    );
+    expect(calls).toEqual(["remove", `inspect ${conflict.externalId}`]);
+    expect(fileImport.get()).toEqual({ phase: "ready", preview: updatesGuide, error: null });
+    expect(installLabel(updatesGuide)).toBe("Updates RestedXP Guide");
+    expect(focused).toEqual(["file:install"]);
+  });
+
+  test("a Remove that changed nothing keeps the conflict card, focus back on its first Remove", async () => {
+    showConflict();
+    const focused: string[] = [];
+    await removeConflicting(
+      async () => {},
+      () => Promise.resolve({ result: conflict, error: null }),
+      (key) => focused.push(key),
+    );
+    expect(fileImport.get()).toEqual({ phase: "ready", preview: conflict, error: null });
+    expect(focused).toEqual(["file:conflict:rxp:remove"]);
+  });
+
+  test("a Remove that rejects still checks the file again, then passes the error on", async () => {
+    showConflict();
+    const focused: string[] = [];
+    const failure = new Error("engine gone");
+    await expect(
+      removeConflicting(
+        () => Promise.reject(failure),
+        () => Promise.resolve({ result: conflict, error: null }),
+        (key) => focused.push(key),
+      ),
+    ).rejects.toBe(failure);
+    expect(fileImport.get()).toEqual({ phase: "ready", preview: conflict, error: null });
+    expect(focused).toEqual(["file:conflict:rxp:remove"]);
+  });
+
+  test("a file gone by the re-check is the pick's error, focus on Browse…", async () => {
+    showConflict();
+    const focused: string[] = [];
+    await removeConflicting(
+      async () => {},
+      () =>
+        Promise.resolve({ result: null, error: { code: "archive_unreadable", message: "gone" } }),
+      (key) => focused.push(key),
+    );
+    expect(fileImport.get()).toMatchObject({ phase: "error", preview: null });
+    expect(focused).toEqual(["file:browse"]);
   });
 });

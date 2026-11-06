@@ -213,6 +213,8 @@ export function InstalledView({ addons, loading, restoreRows, multipleInstallati
             <Focusable flow-children="row" style={{ display: "flex", gap: "8px", margin: "4px 0" }}>
               <DialogButton
                 style={{ minWidth: 0, width: "auto", flex: "none", padding: "10px 16px" }}
+                // Glyph only: the accessible name says what it does.
+                aria-label="Check for updates"
                 disabled={loading}
                 onClick={() => void addonSession.refreshFromProviders()}
                 onOKActionDescription="Check for updates"
@@ -427,6 +429,7 @@ function AddonRow({
         // Pointer/touch way into the same menu; not a focus stop of its own (S14).
         <DialogButton
           focusable={false}
+          aria-label="Options"
           style={{ minWidth: 0, width: "auto", padding: "6px 12px" }}
           onClick={(e) => {
             e.stopPropagation();
