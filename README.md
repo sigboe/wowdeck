@@ -66,6 +66,23 @@ path.
    setup, and you can set your own CurseForge key in Options if you
    prefer.
 
+## Discover and install addons
+
+Open **Get Addons** and pick the WoW installation you want to add to.
+Browse **Latest** for recently updated addons or **Popular** for the
+source's popular picks, or use **Search** to find an addon by name. The **Source**
+picker lets you choose which addon catalog to browse.
+
+![WoWDeck's Get Addons Latest view with controller glyphs, a source picker and addon results](docs/screenshot-discovery.png)
+
+Open an addon to read its description, then press
+<img src="docs/glyphs/button-x.svg" alt="(X)" height="16"> to install it.
+Installed addons appear in **My Addons**, where you can check for updates
+and manage them.
+
+If you already have an addon link, choose **Manual Install** and paste
+its CurseForge, GitHub or WowInterface URL, or a direct archive link.
+
 ## Updating
 
 The plugin is not in the official Decky store, so updates come from
