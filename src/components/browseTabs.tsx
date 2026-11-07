@@ -28,7 +28,6 @@ import {
   takeOwedFocus,
   takeoverWarning,
 } from "../fileImportState";
-import { removedAlong } from "../addonRow";
 import { requestFocus } from "../focusMemory";
 import { confirmRemoveAddon } from "./confirmRemove";
 import { toastError } from "../toast";
@@ -469,10 +468,9 @@ function FileImportSection({
       return;
     }
     confirmRemoveAddon(
-      addon.name,
-      !!addon.providerId,
-      () => recheck(() => addonSession.actions.remove(addon), addon.name),
-      removedAlong(addon, addonSession.get().addons),
+      addon,
+      (removeLibraries) =>
+        recheck(() => addonSession.actions.remove(addon, removeLibraries), addon.name),
       { holdBrowseSession: true },
     );
   };

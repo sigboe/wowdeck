@@ -217,7 +217,7 @@ describe("WowInterfaceProvider.scan — X-WoWI-ID matching", () => {
           version: "1.0",
           wowInterfaceId: "24449",
           loadOnDemand: undefined,
-          dependencyList: [],
+          dependencyList: [], optionalDependencyList: [],
         },
       ],
     };
@@ -250,7 +250,7 @@ describe("WowInterfaceProvider.scan — X-WoWI-ID matching", () => {
           interface: ["110000"],
           wowInterfaceId: "1",
           loadOnDemand: "1",
-          dependencyList: [],
+          dependencyList: [], optionalDependencyList: [],
         },
       ],
     };
@@ -270,7 +270,7 @@ describe("WowInterfaceProvider.scan — X-WoWI-ID matching", () => {
           fileName: "NoIdAddon.toc",
           filePath: "/x/NoIdAddon.toc",
           interface: ["110000"],
-          dependencyList: [],
+          dependencyList: [], optionalDependencyList: [],
         },
       ],
     };

@@ -219,6 +219,6 @@ missing"; it is read as folders missing and replaced on the next list.
 release again over what is on disk and reports status `installed`. Offered
 when `Addon.canReinstall` (managed, provider enabled and `allowReinstall`).
 Unlike upstream it is allowed while folders are missing, since that is the
-main repair case. It keeps `isDependency`, so autoremove still treats a
-reinstalled dependency as one; a direct install from Get Addons marks a
+main repair case. It keeps `isDependency`, so Remove still offers a
+reinstalled library with its dependant; a direct install from Get Addons marks a
 dependency as the user's own instead.

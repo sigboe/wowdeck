@@ -37,7 +37,7 @@ import { hasNewerPrerelease, installsFolder, latestFile, updateCandidate } from 
 import { cacheUsage, clearAll, dropPrevious, keptRelease, readPrevious, restoredSource } from "./RollbackCache";
 import { repairSharedFolders } from "./SharedFolderRepair";
 import { AddonListPortability } from "./AddonPortability";
-import { dependantsIndex, libraryFlagsAfterImport, orphanedLibraries } from "./libraries";
+import { libraryFlagsAfterImport, libraryNeeds, type LibraryNeeds } from "./libraries";
 import type { DownloadHandle, DownloadService } from "../downloads/DownloadService";
 import { canonicalLocalArchive } from "../archives/localArchive";
 import { inspectAddonArchive } from "../archives/ArchiveInspector";
@@ -258,6 +258,15 @@ export function unmanagedFolders(folders: AddonFolder[], records: AddonRecord[])
   );
 }
 
+/** A managed addon's wire shape with who needs it and what its Remove would leave unneeded. */
+function withNeeds(wire: Addon, record: AddonRecord, needs: LibraryNeeds): Addon {
+  return {
+    ...wire,
+    neededBy: needs.neededBy(record),
+    leavesUnneeded: needs.leftUnneeded([record.id]).map((l) => l.name),
+  };
+}
+
 export class AddonService {
   #installer: AddonInstaller;
   /** The engine's one addon transaction runner: installs, updates, removals and Roll back commit through it. */
@@ -474,9 +483,9 @@ export class AddonService {
     return this.#gate.run(async (records) => {
       if (this.recovery.required(installation.id)) {
         const stored = records.forInstallation(installation.id);
-        const dependants = dependantsIndex(stored);
-        const addons = stored.map((record) => ({ ...this.#wire(record), neededBy: dependants(record).map((r) => r.name) }));
-        return { addons, unverified: true };
+        // No folder scan here, so only the source lists say who needs whom.
+        const needs = libraryNeeds(stored, [], installation.clientType);
+        return { addons: stored.map((record) => withNeeds(this.#wire(record), record, needs)), unverified: true };
       }
       return { addons: await this.#listAddons(records, installation) };
     });
@@ -499,11 +508,10 @@ export class AddonService {
     const unmanaged = unmanagedFolders(folders, listed).map((f) => toWireUnmanaged(f, installation, present));
 
     const folderByName = new Map(folders.map((f) => [f.name, f]));
-    // WF-22: who requires whom, from the dependencies recorded at install.
-    const dependants = dependantsIndex(listed);
+    // WF-22: who needs whom, from the source lists and the TOCs (ADR 0008).
+    const needs = libraryNeeds(listed, folders, installation.clientType);
     const managed = listed.map((record) => {
-      const wire = this.#wire(record);
-      wire.neededBy = dependants(record).map((r) => r.name);
+      const wire = withNeeds(this.#wire(record), record, needs);
       // The record does not keep the TOC; read the main folder's, as for
       // unmanaged rows (WF-11). Dependencies on the addon's own folders
       // (a suite's libraries) are not worth showing.
@@ -512,6 +520,7 @@ export class AddonService {
       if (toc) {
         const own = new Set(record.installedFolderList ?? []);
         wire.dependencies = toc.dependencyList.filter((d) => !own.has(d));
+        wire.optionalDependencies = toc.optionalDependencyList.filter((d) => !own.has(d));
         wire.missingDependencies = missingDependencies(wire.dependencies, present);
         wire.interfaceVersion = toc.interface?.[0] ?? null;
       }
@@ -826,6 +835,8 @@ export class AddonService {
   async #installUnlocked(
     records: AddonRecords,
     request: InstallRequest,
+    /** The provider's answer for `externalId`, when the caller has already read it (a dependency). */
+    prefetched?: AddonSearchResult,
   ): Promise<{ addon: AddonRecord; operation: OperationResult }> {
     const { providerId, externalId, installation } = request;
     const intent = INSTALL_INTENTS[request.intent];
@@ -844,10 +855,7 @@ export class AddonService {
     if (!provider.isValidAddonId(externalId)) {
       throw new ValidationError("That addon id isn't valid");
     }
-    const searchResult = await provider.getById(externalId, installation);
-    if (!searchResult?.files?.length) {
-      throw new NotFoundError("addon on provider", externalId);
-    }
+    const searchResult = prefetched ?? (await this.#readAddon(provider, externalId, installation));
 
     if (request.channel !== undefined && !provider.allowChannelChange) {
       throw new ValidationError(`${provider.name} has no release channels`);
@@ -870,13 +878,13 @@ export class AddonService {
     const decided: AddonPatch = {
       channelType,
       hasNewerPrerelease: hasNewerPrerelease(searchResult.files),
-      // removeAddon()'s autoremove sweep needs to know what's required.
+      // One way an addon needs a library (libraries.ts).
       dependencies: (latestFile(searchResult.files, channelType)?.dependencies ?? []).filter(
         (d) => d.type === AddonDependencyType.Required,
       ),
       // Installing directly an addon that was first pulled in as a
       // dependency makes it the user's choice (apt marks it "manual"), so
-      // autoremove no longer takes it away with its dependent.
+      // Remove no longer offers it with its dependant.
       ...(existing?.isDependency && intent.dependencyFlag === "clear" ? { isDependency: false } : {}),
     };
     const addon: AddonRecord = {
@@ -941,7 +949,7 @@ export class AddonService {
     const installed = records.require(addon.id);
 
     // Required dependencies install with it (apt/pacman-style: marked as
-    // automatically installed, see removeAddon()'s autoremove), one level
+    // automatically installed: a library, see libraries.ts), one level
     // deep only, so this stays bounded however the real graph looks.
     // Each dependency commits on its own (#110): one that fails leaves the
     // addon and the others installed; once one leaves the installation
@@ -953,15 +961,10 @@ export class AddonService {
         if (records.find(installation.id, providerId, dep.externalAddonId)) {
           continue;
         }
-        const result = await this.#installUnlocked(records, {
-          intent: "dependency",
-          providerId,
-          externalId: dep.externalAddonId,
-          installation,
-        }).then(
-          ({ addon: dependency, operation }) => ({ ...operation, addonName: dependency.name }),
-          (err: unknown) => failedOperation(this.nextOperationId(), null, err),
-        );
+        const result = await this.#installDependency(records, provider, dep.externalAddonId, installation);
+        if (!result) {
+          continue;
+        }
         if (result.status === "failed") {
           missingRequiredDependencies.push(dep.externalAddonId);
         }
@@ -986,6 +989,55 @@ export class AddonService {
     }
     this.events.addonsChanged([addon.id]);
     return { addon: installed, operation };
+  }
+
+  /**
+   * One required dependency, read from its provider: skipped (null) when
+   * any folder its latest release installs is already present (a library
+   * from another source, or copied by hand, is never replaced, and its
+   * record stays as it is: ADR 0009), installed as a library otherwise.
+   * A read or install that fails is a failed result.
+   */
+  async #installDependency(
+    records: AddonRecords,
+    provider: AddonProvider,
+    externalId: string,
+    installation: WowInstallation,
+  ): Promise<OperationResult | null> {
+    try {
+      const dependency = await this.#readAddon(provider, externalId, installation);
+      const folders = latestFile(dependency.files, installation.defaultAddonChannelType)?.folders ?? [];
+      const present = await this.#presentFolders(records, installation);
+      if (folders.some((folder) => present.has(folder))) {
+        return null;
+      }
+      const { addon, operation } = await this.#installUnlocked(
+        records,
+        { intent: "dependency", providerId: provider.name, externalId, installation },
+        dependency,
+      );
+      return { ...operation, addonName: addon.name };
+    } catch (err) {
+      return failedOperation(this.nextOperationId(), null, err);
+    }
+  }
+
+  /** An addon as its provider lists it now; one with no files is not there. */
+  async #readAddon(provider: AddonProvider, externalId: string, installation: WowInstallation): Promise<AddonSearchResult> {
+    const searchResult = await provider.getById(externalId, installation);
+    if (!searchResult?.files?.length) {
+      throw new NotFoundError("addon on provider", externalId);
+    }
+    return searchResult;
+  }
+
+  /** The installation's addon folders: every record's, from any source, and the unmanaged ones on disk. */
+  async #presentFolders(records: AddonRecords, installation: WowInstallation): Promise<Set<string>> {
+    const folders = new Set(records.forInstallation(installation.id).flatMap((record) => recordFolders(record)));
+    for (const folder of await scanAddons(installation)) {
+      folders.add(folder.name);
+    }
+    return folders;
   }
 
   /**
@@ -1432,12 +1484,14 @@ export class AddonService {
       }
       operations.push({ ...operation, addonName: c.name });
     }
-    await this.#gate.run((records) => {
+    await this.#gate.run(async (records) => {
       // An entry that left the installation recovery required stops the follow-up write.
       if (this.recovery.required(installation.id)) {
         return;
       }
-      const changes = libraryFlagsAfterImport(records.forInstallation(installation.id), imported);
+      const installed = records.forInstallation(installation.id);
+      const needs = libraryNeeds(installed, await scanAddons(installation), installation.clientType);
+      const changes = libraryFlagsAfterImport(installed, needs, imported);
       records.patchMany(changes.map(({ id, isDependency }) => ({ id, patch: { isDependency } })));
       if (changes.length) {
         this.events.addonsChanged(changes.map((c) => c.id));
@@ -1447,16 +1501,21 @@ export class AddonService {
   }
 
   /**
-   * Remove a managed addon, then the libraries it leaves orphaned, each in
-   * an addon transaction of its own (AddonRemover). A failure that changed
-   * nothing, or whose undo stopped (recovery required), is a failed result.
-   * An orphan whose removal fails stays installed; the removal stands.
+   * Remove a managed addon and, when the user chose `removeLibraries`, the
+   * libraries this removal leaves unneeded (ADR 0008), each in an addon
+   * transaction of its own (AddonRemover). A failure that changed nothing,
+   * or whose undo stopped (recovery required), is a failed result. A
+   * library whose removal fails stays installed; the removal stands.
    */
-  async removeAddon(addonId: string): Promise<OperationResult> {
+  async removeAddon(addonId: string, { removeLibraries = false }: { removeLibraries?: boolean } = {}): Promise<OperationResult> {
     return this.#gate.run(async (records) => {
       const addon = records.require(addonId);
       const installation = this.installations.require(addon.installationId);
       this.recovery.require(installation);
+      // Who needs whom before anything goes: the removed addon's TOC still counts.
+      const needs = removeLibraries
+        ? libraryNeeds(records.forInstallation(installation.id), await scanAddons(installation), installation.clientType)
+        : undefined;
       const operationId = this.nextOperationId();
       let cleanupWarning: string | undefined;
       try {
@@ -1468,28 +1527,8 @@ export class AddonService {
         return this.#fail(operationId, addonId, err);
       }
       await dropPrevious(installation, addonId);
-      const removedIds = [addonId];
-
-      // apt/pacman-style autoremove: a library (isDependency) goes too once
-      // nothing installed requires it, repeated until none is left, so a
-      // library only another library needed goes with it. Each one commits
-      // on its own (#110); one that fails stays installed and is not tried
-      // again, the others still go. Once one leaves the installation
-      // recovery required the rest are refused. Ends: every round tries
-      // at least one library not tried before.
-      const followUps: OperationResult[] = [];
-      const tried = new Set<string>();
-      const nextOrphans = () => orphanedLibraries(this.addonsFor(installation.id)).filter((o) => !tried.has(o.id));
-      for (let orphans = nextOrphans(); orphans.length; orphans = nextOrphans()) {
-        for (const orphan of orphans) {
-          tried.add(orphan.id);
-          const result = await this.#removeOrphan(records, installation, orphan);
-          followUps.push({ ...result, addonName: orphan.name });
-          if (result.status === "removed") {
-            removedIds.push(orphan.id);
-          }
-        }
-      }
+      const followUps = needs ? await this.#removeLeftUnneeded(records, installation, needs, addonId) : [];
+      const removedIds = [addonId, ...followUps.flatMap((f) => (f.status === "removed" && f.addonId ? [f.addonId] : []))];
 
       const operation: OperationResult = {
         operationId,
@@ -1505,20 +1544,45 @@ export class AddonService {
     });
   }
 
-  /** One orphaned library's removal in its own transaction; never throws. Callers hold the gate. */
-  async #removeOrphan(records: AddonRecords, installation: WowInstallation, orphan: AddonRecord): Promise<OperationResult> {
+  /**
+   * The libraries removing `addonId` left unneeded, one at a time, each
+   * committing on its own (#110). One that fails stays installed, so a
+   * library only it needed stays needed and is not tried; the others still
+   * go. Once one leaves the installation recovery required, the rest are
+   * refused. Callers hold the gate.
+   */
+  async #removeLeftUnneeded(
+    records: AddonRecords,
+    installation: WowInstallation,
+    needs: LibraryNeeds,
+    addonId: string,
+  ): Promise<OperationResult[]> {
+    const removed = [addonId];
+    const failed: string[] = [];
+    const followUps: OperationResult[] = [];
+    // Ends: each round removes or fails one library, and neither comes back.
+    for (let library = needs.leftUnneeded(removed)[0]; library; library = needs.leftUnneeded(removed, failed)[0]) {
+      const result = await this.#removeLibrary(records, installation, library);
+      followUps.push({ ...result, addonName: library.name });
+      (result.status === "removed" ? removed : failed).push(library.id);
+    }
+    return followUps;
+  }
+
+  /** One library's removal in its own transaction; never throws. Callers hold the gate. */
+  async #removeLibrary(records: AddonRecords, installation: WowInstallation, library: AddonRecord): Promise<OperationResult> {
     const operationId = this.nextOperationId();
     let cleanupWarning: string | undefined;
     try {
       this.recovery.require(installation);
-      ({ cleanupWarning } = await this.#remover.remove(records, installation, { record: orphan }));
+      ({ cleanupWarning } = await this.#remover.remove(records, installation, { record: library }));
     } catch (err) {
-      console.error(`[addons] orphaned library ${orphan.id} not removed: ${err instanceof Error ? err.message : String(err)}`);
-      return failedOperation(operationId, orphan.id, err);
+      console.error(`[addons] library ${library.id} not removed: ${err instanceof Error ? err.message : String(err)}`);
+      return failedOperation(operationId, library.id, err);
     }
     // Committed: its kept previous version goes as with any removal.
-    await dropPrevious(installation, orphan.id);
-    return { operationId, addonId: orphan.id, status: "removed", error: null, ...(cleanupWarning && { cleanupWarning }) };
+    await dropPrevious(installation, library.id);
+    return { operationId, addonId: library.id, status: "removed", error: null, ...(cleanupWarning && { cleanupWarning }) };
   }
 
   /**

@@ -1,5 +1,5 @@
 /**
- * Managed, unmanaged and orphan removals commit through the addon
+ * Managed, unmanaged and library removals commit through the addon
  * transaction (ADR 0006, #103): the folders go and the record with them, in
  * one commit with evidence that outlives the record. Seen through the
  * addon-service operation boundary with real temporary game folders, a fake
@@ -181,9 +181,10 @@ function expectPreserved(f: Fixture, original: Record<string, string>) {
   }
 }
 
-/** A library record (isDependency) owning the folder `Lib`, which nothing installed requires. */
-function orphanLibrary(f: Fixture, mainId: string): string {
+/** A library record (isDependency) owning the folder `Lib`, which only the suite needs (its TOC names Lib). */
+function suiteLibrary(f: Fixture, mainId: string): string {
   const main = f.store.addons.require(mainId);
+  writeFileSync(join(f.addonsPath, "Suite", "Suite.toc"), "## Title: Suite\n## OptionalDeps: Lib\n");
   mkdirSync(join(f.addonsPath, "Lib"));
   writeFileSync(join(f.addonsPath, "Lib", "Lib.toc"), "## Title: Lib\n");
   writeFileSync(join(f.addonsPath, "Lib", "lib.lua"), "-- Lib\n");
@@ -365,13 +366,13 @@ describe("a removal whose restoration fails (scenario 3)", () => {
   });
 });
 
-describe("orphan removal", () => {
-  test("each orphaned library goes in a transaction of its own, with its own commit evidence", async () => {
+describe("library removal", () => {
+  test("each library the removal left unneeded goes in a transaction of its own, with its own commit evidence", async () => {
     const f = fixture("orphan");
     const id = await f.installSuite();
-    const lib = orphanLibrary(f, id);
+    const lib = suiteLibrary(f, id);
 
-    expect((await f.service.removeAddon(id)).status).toBe("removed");
+    expect((await f.service.removeAddon(id, { removeLibraries: true })).status).toBe("removed");
 
     expect(tree(f.addonsPath)).toEqual({});
     const reopened = stored(f);
@@ -385,16 +386,16 @@ describe("orphan removal", () => {
     expect(evidence[0]!.transactionId).not.toBe(evidence[1]!.transactionId);
   });
 
-  test("an orphan whose removal fails stays as it was; the removal itself stands", async () => {
+  test("a library whose removal fails stays as it was; the removal itself stands", async () => {
     const f = fixture("orphan-fails");
     const id = await f.installSuite();
-    const lib = orphanLibrary(f, id);
+    const lib = suiteLibrary(f, id);
     const libRecord = stored(f).require(lib);
     const libFiles = tree(join(f.addonsPath, "Lib"));
 
     // Suite and SuiteLib move aside; the library's move fails.
     f.fs.failAt("folder.backup", { after: 2 });
-    const operation = await f.service.removeAddon(id);
+    const operation = await f.service.removeAddon(id, { removeLibraries: true });
 
     expect(operation).toMatchObject({ addonId: id, status: "removed" });
     expect(tree(join(f.addonsPath, "Lib"))).toEqual(libFiles);

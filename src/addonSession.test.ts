@@ -302,7 +302,7 @@ describe("addon session: list reads", () => {
       externalId: "1",
       name: "New",
     } as SearchResult);
-    const remove = session.actions.remove(addon());
+    const remove = session.actions.remove(addon(), false);
     // An automatic update finishes meanwhile.
     session.addonsChanged(["a2"]);
     releases.forEach((release) => release());
@@ -558,7 +558,7 @@ describe("addon session: recovery required (#107)", () => {
     const { session } = harness(answers);
     await session.reloadAll();
     answers["installations.recoveryStatus"] = status(["A"]);
-    await session.actions.remove(addon());
+    await session.actions.remove(addon(), false);
     expect(recoveryNeededFor(session.get())?.id).toBe("A");
   });
 

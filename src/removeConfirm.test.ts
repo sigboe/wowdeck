@@ -25,11 +25,26 @@ describe("removeInstallationConfirmation", () => {
   });
 });
 
-describe("removeConfirmation with libraries (WF-22)", () => {
-  test("names what goes along", () => {
-    expect(removeConfirmation("UsesLib", true, ["LibCore"]).description).toContain(
-      "Also removes LibCore, which nothing else needs.",
+describe("removeConfirmation with libraries (ADR 0008)", () => {
+  test("names every library left unneeded and offers to keep them", () => {
+    const c = removeConfirmation("UsesLib", true, ["LibCore", "LibDeep", "LibDeeper"]);
+    expect(c.description).toContain(
+      "Nothing else needs LibCore, LibDeep and LibDeeper: remove them too, or keep them installed.",
     );
-    expect(removeConfirmation("UsesLib", true).description).not.toContain("Also removes");
+    expect(c.okText).toBe("Remove UsesLib only");
+    expect(c.withLibrariesText).toBe("Remove all");
+  });
+  test("one library: Remove both", () => {
+    const c = removeConfirmation("Baganator", true, ["Syndicator"]);
+    expect(c.description).toContain(
+      "Nothing else needs Syndicator: remove it too, or keep it installed.",
+    );
+    expect(c.withLibrariesText).toBe("Remove both");
+  });
+  test("none: a single Remove, as before", () => {
+    const c = removeConfirmation("UsesLib", true);
+    expect(c.okText).toBe("Remove");
+    expect(c.withLibrariesText).toBeUndefined();
+    expect(c.description).not.toContain("Nothing else needs");
   });
 });

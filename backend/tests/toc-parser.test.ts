@@ -48,6 +48,12 @@ describe("TocParser", () => {
     expect(toc.dependencyList).toEqual(["Ace3", "LibSharedMedia-3.0", "SomeRequired"]);
   });
 
+  test("optional dependencies from OptionalDeps, apart from the required ones", () => {
+    const toc = parseTocText("x.toc", "## Dependencies: Ace3\n## OptionalDeps: Syndicator, LibDBIcon-1.0\n");
+    expect(toc.dependencyList).toEqual(["Ace3"]);
+    expect(toc.optionalDependencyList).toEqual(["Syndicator", "LibDBIcon-1.0"]);
+  });
+
   test("load on demand flag", async () => {
     const toc = await parseTocFile(`${FIXTURES}/load-on-demand.toc`);
     expect(toc.loadOnDemand).toBe("1");

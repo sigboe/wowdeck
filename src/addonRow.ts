@@ -50,22 +50,6 @@ export function neededByText(addon: Addon): string | null {
   return `needed by ${names[0]}${names.length > 1 ? ` +${names.length - 1}` : ""}`;
 }
 
-/**
- * Libraries that go along when `addon` is removed: installed only as a
- * dependency and needed by nothing else (the engine's autoremove, WF-22).
- */
-export function removedAlong(addon: Addon, all: Addon[]): string[] {
-  return all
-    .filter(
-      (a) =>
-        a.id !== addon.id &&
-        isLibrary(a) &&
-        (a.neededBy ?? []).length > 0 &&
-        (a.neededBy ?? []).every((n) => n === addon.name),
-    )
-    .map((a) => a.name);
-}
-
 export function providerLabel(providerId: string | null | undefined): string {
   if (!providerId) {
     return "Installed manually";

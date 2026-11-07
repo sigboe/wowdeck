@@ -205,7 +205,7 @@ describe("search results", () => {
 });
 
 describe("findSources", () => {
-  const toc = (fields: Partial<Toc>): Toc => ({ fileName: "x.toc", filePath: "/x.toc", interface: ["110005"], dependencyList: [], ...fields });
+  const toc = (fields: Partial<Toc>): Toc => ({ fileName: "x.toc", filePath: "/x.toc", interface: ["110005"], dependencyList: [], optionalDependencyList: [], ...fields });
 
   test("keeps releases that install the folder: exact name first, then downloads", async () => {
     const hub = new FakeProvider("WowUpHub", [

@@ -85,7 +85,7 @@ describe("TukUiAddonProvider", () => {
             fileName: "ElvUI.toc",
             filePath: "/wow/_retail_/Interface/AddOns/ElvUI/ElvUI.toc",
             interface: ["110005"],
-            dependencyList: [],
+            dependencyList: [], optionalDependencyList: [],
             tukUiProjectId: String(elvui.id),
           },
         ],
@@ -99,7 +99,7 @@ describe("TukUiAddonProvider", () => {
             fileName: "ElvUI_Libraries.toc",
             filePath: "/x/ElvUI_Libraries.toc",
             interface: ["110005"],
-            dependencyList: [],
+            dependencyList: [], optionalDependencyList: [],
           },
         ],
       },
@@ -117,7 +117,7 @@ describe("TukUiAddonProvider", () => {
       name,
       path: `/wow/_retail_/Interface/AddOns/${name}`,
       status: "",
-      tocs: [{ fileName: `${name}.toc`, filePath: `/x/${name}.toc`, interface: ["110005"], dependencyList: [], ...toc }],
+      tocs: [{ fileName: `${name}.toc`, filePath: `/x/${name}.toc`, interface: ["110005"], dependencyList: [], optionalDependencyList: [], ...toc }],
     });
     const matches = await provider.scan(retailInstall, [
       folder("ElvUI_Options", {}),
@@ -142,7 +142,7 @@ describe("TukUiAddonProvider", () => {
             fileName: "DBM-Core.toc",
             filePath: "/wow/_retail_/Interface/AddOns/DeadlyBossMods/DBM-Core.toc",
             interface: ["110005"],
-            dependencyList: [],
+            dependencyList: [], optionalDependencyList: [],
             title: "Deadly Boss Mods",
             // no tukUiProjectId — this folder has no strong identity evidence
           },
