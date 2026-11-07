@@ -2,6 +2,7 @@ import { ConfirmModal, showModal } from "@decky/ui";
 import { useEffect, type ComponentProps } from "react";
 import { holdBrowseSessionForModal } from "../browseSessionState";
 import { removeConfirmation, removeInstallationConfirmation } from "../removeConfirm";
+import type { Addon } from "../types";
 
 function RemoveConfirmModal({
   releaseHold,
@@ -13,30 +14,41 @@ function RemoveConfirmModal({
 
 /**
  * Destructive-action confirmation for Remove (guide U-1). ConfirmModal
- * closes itself after OK/Cancel, and B cancels. Opening it unmounts the
+ * closes itself after any button, and B cancels. Opening it unmounts the
  * panel (guide G4); the removal runs through the module-scope addon
  * session, which reads the list again when it ends, so the remounted
  * panel does not show a stale list. Opened from Get Addons (Manual
  * Install's conflict card), `holdBrowseSession` keeps the browse session
  * open while the modal hides the QAM (PC-09), so the panel comes back in
  * Manual Install with focus where it was.
+ *
+ * When the removal leaves libraries unneeded (`addon.leavesUnneeded`), the
+ * dialog names them and `onRemove` gets the user's choice (ADR 0008):
+ * OK, which has focus when the dialog opens, removes the addon only; the
+ * middle button removes the libraries too.
  */
 export function confirmRemoveAddon(
-  name: string,
-  managed: boolean,
-  onOK: () => void,
-  alsoRemoves: string[] = [],
+  addon: Pick<Addon, "name" | "providerId" | "leavesUnneeded">,
+  onRemove: (removeLibraries: boolean) => void,
   { holdBrowseSession = false }: { holdBrowseSession?: boolean } = {},
 ): void {
-  const text = removeConfirmation(name, managed, alsoRemoves);
+  const text = removeConfirmation(
+    addon.name,
+    !!addon.providerId,
+    addon.providerId ? addon.leavesUnneeded : [],
+  );
   showModal(
     <RemoveConfirmModal
       releaseHold={holdBrowseSession ? holdBrowseSessionForModal() : undefined}
       strTitle={text.title}
       strDescription={text.description}
       strOKButtonText={text.okText}
+      onOK={() => onRemove(false)}
+      {...(text.withLibrariesText && {
+        strMiddleButtonText: text.withLibrariesText,
+        onMiddleButton: () => onRemove(true),
+      })}
       strCancelButtonText="Cancel"
-      onOK={onOK}
     />,
     window,
     { bHideMainWindowForPopouts: false },

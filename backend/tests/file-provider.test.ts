@@ -18,7 +18,7 @@ import { ProviderRegistry } from "../src/wow/providers/provider-registry";
 import { DownloadService } from "../src/wow/downloads/DownloadService";
 import type { NetworkClient } from "../src/wow/net/network";
 import { createStateStore } from "../src/wow/storage/StateStore";
-import { WowClientType } from "../src/wow/types";
+import { AddonDependencyType, WowClientType } from "../src/wow/types";
 import type { WowInstallation } from "../src/wow/models";
 import {
   addonAndDocsZip,
@@ -512,12 +512,13 @@ describe("TOC metadata, preview and install on the same archives", () => {
   });
 });
 
-/** A Foo release as its own archive: the TOC's version and title, and the folders it ships. */
-function fooRelease(version: string, opts: { title?: string; folders?: string[] } = {}): Uint8Array {
+/** A Foo release as its own archive: the TOC's version, title and optional dependencies, and the folders it ships. */
+function fooRelease(version: string, opts: { title?: string; folders?: string[]; optionalDeps?: string } = {}): Uint8Array {
   const files: Record<string, Uint8Array> = {};
   for (const folder of opts.folders ?? ["Foo"]) {
     files[`${folder}/${folder}.toc`] = new TextEncoder().encode(
-      `## Interface: 110005\n## Title: ${opts.title ?? "Foo Addon"}\n## Version: ${version}\n`,
+      `## Interface: 110005\n## Title: ${opts.title ?? "Foo Addon"}\n## Version: ${version}\n` +
+        (opts.optionalDeps ? `## OptionalDeps: ${opts.optionalDeps}\n` : ""),
     );
     files[`${folder}/${folder}.lua`] = new TextEncoder().encode(`-- ${folder} ${version}\n`);
   }
@@ -796,6 +797,39 @@ describe("a file that takes over a catalogue addon", () => {
     expect(f.service.eligibleUpdatesFor(f.installation)).toEqual([]);
     const same = await f.service.inspectArchive(f.archivePath("Foo-1.3.zip"), f.installation);
     expect(same.match).toEqual({ kind: "reinstall", addonId: "curse-foo", name: "Foo Addon" });
+  });
+
+  test("the libraries it needed stay needed, and removing another addon leaves them alone (#135)", async () => {
+    // Foo from CurseForge required Syndicator (CurseForge 4300); its TOC names it optional only.
+    const f = withCurseRecord("takeover-library", {
+      "Foo-1.3.zip": fooRelease("1.3", { optionalDeps: "Syndicator" }),
+      "Bar-3.0.zip": bundleZip,
+    });
+    f.store.addons.patch("curse-foo", { dependencies: [{ externalAddonId: "4300", type: AddonDependencyType.Required }] });
+    mkdirSync(join(f.addonsPath, "Syndicator"));
+    writeFileSync(join(f.addonsPath, "Syndicator", "Syndicator.toc"), "## Interface: 110005\n## Title: Syndicator\n");
+    f.store.addons.create({
+      ...f.store.addons.require("curse-foo"),
+      id: "curse-syndicator",
+      name: "Syndicator",
+      externalId: "4300",
+      isDependency: true,
+      dependencies: [],
+      installedFolders: "Syndicator",
+      installedFolderList: ["Syndicator"],
+    });
+    const { addon: bar } = await installFile(f, "Bar-3.0.zip");
+
+    await installFile(f, "Foo-1.3.zip");
+    expect(f.store.addons.require("curse-foo")).toMatchObject({ providerName: "File", dependencies: [] });
+    const listed = await f.service.listAddons(f.installation);
+    expect(listed.find((a) => a.id === "curse-syndicator")).toMatchObject({ installedAsDependency: true, neededBy: ["Foo Addon"] });
+    expect(listed.find((a) => a.id === "curse-foo")!.leavesUnneeded).toEqual(["Syndicator"]);
+    expect(listed.find((a) => a.id === bar.id)!.leavesUnneeded).toEqual([]);
+
+    const operation = await f.service.removeAddon(bar.id, { removeLibraries: true });
+    expect(operation.followUps).toBeUndefined();
+    expect(f.store.addons.get("curse-syndicator")).toBeDefined();
   });
 
   test("a file matching an addon from a direct link is a plain update", async () => {

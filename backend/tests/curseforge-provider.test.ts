@@ -627,7 +627,7 @@ describe("CurseForge provider", () => {
     });
     const { net, recorded } = fakeNet({ mods: [addon] });
     const provider = new CurseForgeProvider(net, () => key);
-    const toc = (fileName: string, curseProjectId?: string) => ({ fileName, filePath: `/x/${fileName}`, interface: [11505], dependencyList: [], curseProjectId });
+    const toc = (fileName: string, curseProjectId?: string) => ({ fileName, filePath: `/x/${fileName}`, interface: [11505], dependencyList: [], optionalDependencyList: [], curseProjectId });
     const folders = [
       { name: "Details", path: "/x/Details", status: "", tocs: [toc("Details.toc", "61284"), toc("Details_Vanilla.toc")] },
       { name: "Matched", path: "/x/Matched", status: "", tocs: [toc("Matched.toc", "4003")] },

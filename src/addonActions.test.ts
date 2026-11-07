@@ -27,6 +27,7 @@ const addon: Addon = {
   missingDependencies: [],
   installedAsDependency: false,
   neededBy: [],
+  leavesUnneeded: [],
   previousVersion: null,
   autoUpdatePaused: false,
   newlyUpdated: false,
@@ -164,13 +165,16 @@ describe("addon actions: reinstall, channel, pause, ignore, remove", () => {
       "addons.remove": { addonId: "a1", operation: op("removed") },
       "addons.removeUnmanaged": { operation: op("removed") },
     });
-    await h.actions.remove(addon);
-    await h.actions.remove({ ...addon, providerId: null, folderName: "Loose" });
+    await h.actions.remove(addon, false);
+    await h.actions.remove(addon, true);
+    await h.actions.remove({ ...addon, providerId: null, folderName: "Loose" }, false);
     expect(h.calls).toEqual([
-      ["addons.remove", { addonId: "a1" }],
+      ["addons.remove", { addonId: "a1", removeLibraries: false }],
+      ["addons.remove", { addonId: "a1", removeLibraries: true }],
       ["addons.removeUnmanaged", { folderName: "Loose" }],
     ]);
     expect(h.log.filter((l) => l.startsWith("toast"))).toEqual([
+      "toast Removed Details",
       "toast Removed Details",
       "toast Removed Details",
     ]);
@@ -183,7 +187,7 @@ describe("addon actions: reinstall, channel, pause, ignore, remove", () => {
         operation: op("failed", "Couldn't remove the addon's folders. Nothing was changed"),
       },
     });
-    await failed.actions.remove(addon);
+    await failed.actions.remove(addon, false);
     expect(failed.log).toEqual([
       "busy a1 true",
       "error Couldn't remove Details | Couldn't remove the addon's folders. Nothing was changed",
@@ -196,7 +200,7 @@ describe("addon actions: reinstall, channel, pause, ignore, remove", () => {
         operation: { ...op("removed"), cleanupWarning: "Its temporary files are left." },
       },
     });
-    await warned.actions.remove({ ...addon, providerId: null });
+    await warned.actions.remove({ ...addon, providerId: null }, false);
     expect(warned.log).toContain("toast Removed Details | Its temporary files are left.");
   });
 });
@@ -221,7 +225,7 @@ describe("addon actions: remove with its unneeded libraries (#110)", () => {
         },
       },
     });
-    await h.actions.remove(addon);
+    await h.actions.remove(addon, false);
     expect(h.log).toContain(
       "toast Removed Details | Also removed LibOne, LibThree. Couldn't remove LibTwo.",
     );
@@ -235,7 +239,7 @@ describe("addon actions: remove with its unneeded libraries (#110)", () => {
         },
       },
     });
-    await stopped.actions.remove(addon);
+    await stopped.actions.remove(addon, false);
     expect(stopped.log).toContain(
       "toast Removed Details | Couldn't remove LibOne. This installation needs recovery before its addons can change.",
     );
@@ -528,7 +532,7 @@ describe("addon actions: what each one changed in the list", () => {
 
   test("remove reads the list; a failed source change keeps the engine's addon, a failed adopt changes nothing", async () => {
     const remove = harness({ "addons.remove": { addonId: "a1", operation: op("removed") } });
-    await remove.actions.remove(addon);
+    await remove.actions.remove(addon, false);
     expect(last(remove)).toBe("reload");
     const source = harness({ "addons.adopt": { addon, operation: op("failed") } });
     await source.actions.useSource({ ...addon, providerId: null }, {

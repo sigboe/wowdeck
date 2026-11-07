@@ -499,7 +499,7 @@ export function createAddonSession(deps: AddonSessionDeps): AddonSession {
 
 /**
  * Whether an action's answer says an operation is (or was refused as)
- * recovery required, a dependency or orphaned library it ran included
+ * recovery required, a dependency or library it ran included
  * (`followUps`, #110).
  */
 function mentionsRecovery(result: unknown): boolean {
@@ -527,6 +527,7 @@ function keepListFields(row: Addon, returned: Addon): Addon {
     optionalDependencies: row.optionalDependencies,
     missingDependencies: row.missingDependencies,
     neededBy: row.neededBy,
+    leavesUnneeded: row.leavesUnneeded,
     gameVersion: row.gameVersion,
   };
 }

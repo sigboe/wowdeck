@@ -36,6 +36,12 @@ afterEach(() => {
   leaveBrowseSession();
 });
 
+const UNMANAGED = { name: "WDBundle", providerId: null, leavesUnneeded: [] };
+
+/** The ConfirmModal props the shown modal passes on (RemoveConfirmModal wraps it). */
+const shown = () =>
+  modal!.props as Record<string, unknown> & { onOK(): void; onMiddleButton?(): void };
+
 /** Mount the modal confirmRemoveAddon showed; the result unmounts it (OK, Cancel or B). */
 async function showConfirm(): Promise<() => Promise<void>> {
   const root = createRoot(dom.window.document.getElementById("root")!);
@@ -46,7 +52,7 @@ async function showConfirm(): Promise<() => Promise<void>> {
 describe("Remove's confirmation and the browse session (MI-130-1)", () => {
   test("from Manual Install, the modal hiding the QAM is not a close until it shuts", async () => {
     enterBrowsePane();
-    confirmRemoveAddon("WDBundle", false, () => {}, [], { holdBrowseSession: true });
+    confirmRemoveAddon(UNMANAGED, () => {}, { holdBrowseSession: true });
     const close = await showConfirm();
     qamHidden();
     expect(widening.wide).toBe(true);
@@ -60,8 +66,36 @@ describe("Remove's confirmation and the browse session (MI-130-1)", () => {
 
   test("from My Addons, no hold is taken", async () => {
     enterBrowsePane();
-    confirmRemoveAddon("WDBundle", false, () => {});
+    confirmRemoveAddon(UNMANAGED, () => {});
     qamHidden();
     expect(widening.wide).toBe(false);
+  });
+});
+
+describe("Remove's choice about the libraries it leaves unneeded (#135)", () => {
+  test("names them; OK, focused when it opens, keeps them, the middle button removes them too", () => {
+    const chosen: boolean[] = [];
+    confirmRemoveAddon(
+      { name: "Baganator", providerId: "Curse", leavesUnneeded: ["Syndicator"] },
+      (removeLibraries) => chosen.push(removeLibraries),
+    );
+    expect(shown().strDescription).toContain("Nothing else needs Syndicator");
+    // Steam's ConfirmModal starts focus on its OK button.
+    expect(shown().strOKButtonText).toBe("Remove Baganator only");
+    expect(shown().strMiddleButtonText).toBe("Remove both");
+    shown().onOK();
+    shown().onMiddleButton!();
+    expect(chosen).toEqual([false, true]);
+  });
+
+  test("with none, one Remove button, as before", () => {
+    const chosen: boolean[] = [];
+    confirmRemoveAddon({ name: "Bagnon", providerId: "Curse", leavesUnneeded: [] }, (r) =>
+      chosen.push(r),
+    );
+    expect(shown().strOKButtonText).toBe("Remove");
+    expect(shown().strMiddleButtonText).toBeUndefined();
+    shown().onOK();
+    expect(chosen).toEqual([false]);
   });
 });

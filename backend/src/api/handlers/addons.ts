@@ -115,7 +115,7 @@ export function register(server: JsonlServer, { service, catalogue, installation
   server.on("addons.reinstall", async (params) => service.reinstall(params.addonId));
 
   server.on("addons.remove", async (params) => {
-    const operation = await service.removeAddon(params.addonId);
+    const operation = await service.removeAddon(params.addonId, { removeLibraries: params.removeLibraries });
     return { addonId: params.addonId, operation };
   });
 

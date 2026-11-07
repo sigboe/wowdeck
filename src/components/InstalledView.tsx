@@ -22,7 +22,6 @@ import {
   filterAddons,
   isLibrary,
   isUnmanaged,
-  removedAlong,
   rowQuickAction,
   sortAddons,
   type AddonActionId,
@@ -175,13 +174,7 @@ export function InstalledView({ addons, loading, restoreRows, multipleInstallati
         openFindSourceModal(addon, (source) => void actions.useSource(addon, source));
         return;
       case "remove":
-        confirmRemoveAddon(
-          addon.name,
-          !!addon.providerId,
-          () => actions.remove(addon),
-          // The engine removes libraries nothing else needs (WF-22); say so first.
-          removedAlong(addon, addons),
-        );
+        confirmRemoveAddon(addon, (removeLibraries) => void actions.remove(addon, removeLibraries));
         return;
     }
   };

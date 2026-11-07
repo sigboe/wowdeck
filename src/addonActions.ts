@@ -231,18 +231,18 @@ export function createAddonActions(deps: AddonActionDeps) {
         return "reload";
       }),
 
-    /** After the view's confirmation. */
-    remove: (addon: Addon) =>
+    /** After the view's confirmation: `removeLibraries` is the user's answer about `addon.leavesUnneeded` (ADR 0008). */
+    remove: (addon: Addon, removeLibraries: boolean) =>
       withBusy(addon.id, async () => {
         const { operation } = addon.providerId
-          ? await rpc("addons.remove", { addonId: addon.id })
+          ? await rpc("addons.remove", { addonId: addon.id, removeLibraries })
           : await rpc("addons.removeUnmanaged", { folderName: addon.folderName });
         if (operation.status === "failed") {
           toastError(`Couldn't remove ${addon.name}`, operation.error ?? "");
         } else {
           toast(`Removed ${addon.name}`, cleanupNote(followUpNote(operation), operation));
         }
-        // Libraries nothing needs any more go with it, and other rows' Needed by changes.
+        // Libraries the user chose go with it, and other rows' Needed by changes.
         return "reload";
       }),
 

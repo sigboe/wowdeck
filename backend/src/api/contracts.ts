@@ -108,6 +108,7 @@ export interface Addon {
   interfaceVersion: string | null;
   /** Required dependencies from the TOC (`## Dependencies` / `## RequiredDeps`): folder names. */
   dependencies: string[];
+  /** Optional dependencies from the TOC (`## OptionalDeps`): folder names. */
   optionalDependencies: string[];
   /**
    * Required dependencies whose folder is not in AddOns (WF-11): the addon
@@ -115,10 +116,24 @@ export interface Addon {
    * never missing.
    */
   missingDependencies: string[];
-  /** Installed automatically as another addon's required dependency (WF-22): a library; removed with its last dependant. */
+  /**
+   * A library (WF-22): installed only because another addon needs it.
+   * Stays one when nothing needs it any more; removed only when the user
+   * chooses to (ADR 0008).
+   */
   installedAsDependency: boolean;
-  /** Names of installed addons (same installation) that require this one. */
+  /**
+   * Names of installed addons (same installation) that need this one: its
+   * source lists it as required, or their TOC names one of its folders
+   * (required or optional dependency).
+   */
   neededBy: string[];
+  /**
+   * Names of the libraries removing this addon would leave unneeded, those
+   * only they needed included: what Remove offers to remove too
+   * (`addons.remove`'s `removeLibraries`). Empty for unmanaged folders.
+   */
+  leavesUnneeded: string[];
   /** Version kept from before the last update, for addons.rollback (BEYOND-02); null when none. */
   previousVersion: string | null;
   /** Automatic updates paused for this addon (WF-02): after a rollback to an older version, or by hand. */
@@ -954,7 +969,14 @@ export interface MethodMap {
     result: { shown: boolean; steamAppId: number | null };
   };
   "addons.remove": {
-    params: { addonId: string };
+    /**
+     * `removeLibraries`: also remove the libraries this removal leaves
+     * unneeded (the engine's own reckoning, as `Addon.leavesUnneeded`
+     * lists them), each in its own transaction, reported in `followUps`.
+     * Off, they stay installed, still libraries. No other library is ever
+     * removed.
+     */
+    params: { addonId: string; removeLibraries: boolean };
     result: { addonId: string; operation: OperationResult };
   };
   "addons.removeUnmanaged": {

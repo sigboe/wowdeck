@@ -16,6 +16,7 @@ export const TOC_AUTHOR = "Author";
 export const TOC_DEPENDENCIES = "Dependencies";
 export const TOC_INTERFACE = "Interface";
 export const TOC_NOTES = "Notes";
+export const TOC_OPTIONAL_DEPS = "OptionalDeps";
 export const TOC_REQUIRED_DEPS = "RequiredDeps";
 export const TOC_TITLE = "Title";
 export const TOC_VERSION = "Version";
@@ -47,6 +48,8 @@ export interface Toc {
   tukUiProjectFolders?: string;
   loadOnDemand?: string;
   dependencyList: string[];
+  /** `## OptionalDeps`: folder names the addon loads after when present. */
+  optionalDependencyList: string[];
   addonProvider?: string;
   notes?: string;
 }

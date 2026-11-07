@@ -159,7 +159,7 @@ inactive tabs have no text for `seek` to match.
 | M-5 | P1 | S | Menu on an addon | Steam context menu: Update (blue, if offered), Details, Ignore, then a separator and Remove (red). B closes it. **Check where it appears** inside the QAM |
 | M-6 | P1 | | Touch the ⋯ button on a row | Same menu as M-5; tapping it doesn't also open Details |
 | M-7 | P1 | | Touch the row itself | Opens Details |
-| M-8 | P0 | | Menu → Remove → confirm | Folder gone from AddOns; toast "Removed"; a dependency installed only for it is also removed (autoremove), and the toast names it: "Also removed <library>." |
+| M-8 | P0 | | Menu → Remove → confirm | Folder gone from AddOns; toast "Removed". A library only it needed stays unless you chose **Remove both** (LIB-135-2) |
 | M-9 | P1 | | Menu → Remove → cancel | Nothing removed |
 | M-10 | P1 | | A on an unmanaged addon | Opens the menu (no Details for unmanaged); Remove deletes the folder after confirm |
 | M-11 | P1 | | Menu → Ignore | Row disappears; the **Show ignored addons** toggle appears; turning it on shows the row **greyed (Steam's disabled grey) with an IGNORED tag**, still selectable; Unignore brings it back |
@@ -183,7 +183,7 @@ inactive tabs have no text for `seek` to match.
 | M-30 | P2 | | Filter for something that matches nothing; open the filter and press **Show all**; open it and press B | "No addons match …" with what to press; Show all clears it; B keeps the filter as it was |
 | M-31 | P1 | S | With two or more installations, focus **Update all** | Footer shows ≡ **Update all installations**; it runs with "Updating all installations…" (the progress bar stays **inside the panel**, S32; the same for the WTF backup progress in Options) and a toast with the total. With one installation the ≡ action is absent. With nothing to update here, the button stays reachable when other installations exist |
 | M-32 | P2 | | An installation on an SD card that is removed: Update all installations | That installation's updates fail with "… is not available: its folder is missing (is the SD card in?)"; nothing is written under the card's mount path; the other installations still update |
-| M-33 | P1 | S | An addon installed as another's dependency (Syndicator via Baganator) | **LIBRARY** tag and "needed by Baganator" on its row. **Show libraries** (bottom, saved) hides and shows such rows. Remove on Baganator: the confirmation says it also removes Syndicator |
+| M-33 | P1 | S | An addon installed as another's dependency (Syndicator via Baganator) | **LIBRARY** tag and "needed by Baganator" on its row. **Show libraries** (bottom, saved) hides and shows such rows. Remove on Baganator: the confirmation names Syndicator and offers **Remove Baganator only** and **Remove both** |
 | M-34 | P2 | | An addon whose TOC needs a folder that is missing | The row says "missing <name>" and sorts with the other problems |
 | M-35 | P1 | S | Update an addon (or let auto-update do it), then its Options menu | "Roll back to <old version>" right after "Release channel"; it puts the old files back (toast) and offers "Undo rollback (<new version>)"; using it toasts "Returned <name> to <new version>" |
 | M-35b | P2 | | Update an addon, then delete its kept copy under AddOns/.wowdeck/rollback/ over SSH; reopen My Addons and its Options menu | No "Roll back" item; the row is otherwise as it was |
@@ -763,6 +763,21 @@ Steam install, and once on the Deck.
 | FP-133-1 | P1 | S | Get Addons, Manual Install, then **Browse…** | The picker lists the contents of the Steam user's home folder |
 | FP-133-2 | P1 | | Options, **Add installation manually**, then Browse with the path field empty. Then type a folder path and Browse again | With an empty field the picker opens in the home folder. With a typed path it opens there |
 | FP-133-3 | P2 | | Options, WTF backup folder picker with no backup folder set, then with one set. **Import from file…** in Manage backups | The folder picker opens in the home folder, then in the saved backup folder. Import from file opens in the home folder |
+
+### Libraries after a source change, #135
+
+Engine tests cover who needs a library after a takeover and after Change
+source in both directions, and what each Remove choice removes. Frontend
+tests cover the dialog's words and which button OK is. The Deck checks below
+confirm the dialog and its focus. Use a disposable installation with
+Baganator installed from CurseForge (Syndicator comes with it), a zip of the
+same Baganator folder, and one unrelated addon.
+
+| ID | Pri | S | Steps | Expected |
+|---|---|---|---|---|
+| LIB-135-1 | P0 | S | Manual Install, From a file: install the Baganator zip over the CurseForge one. In My Addons, check Syndicator. Then remove the unrelated addon, from My Addons and from the Manual Install conflict card | Syndicator still says "needed by Baganator". Each Remove dialog names only the addon itself, with one Remove button. The toast names no library and Syndicator stays installed |
+| LIB-135-2 | P0 | S | Remove Baganator. Read the dialog and where focus is. Press A. Then reinstall Baganator from CurseForge, remove it again and pick **Remove both** | The dialog names Syndicator and shows **Remove Baganator only**, **Remove both** and **Cancel**, with focus on **Remove Baganator only**. A keeps Syndicator, still tagged LIBRARY, with no "needed by". **Remove both** removes both, and the toast says "Also removed Syndicator". "Remove Baganator only" may wrap onto two lines, which is expected |
+| LIB-135-3 | P1 | | Change source of Baganator to another source, then of Syndicator. Check Syndicator's row after each | Syndicator still says "needed by Baganator" after both |
 
 ### Reused archive conflicts
 

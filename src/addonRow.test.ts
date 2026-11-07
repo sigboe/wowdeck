@@ -10,7 +10,6 @@ import {
   isLibrary,
   isNeverTouched,
   isUnmanaged,
-  removedAlong,
   providerLabel,
   rowQuickAction,
   sortAddons,
@@ -40,6 +39,7 @@ const base: Addon = {
   missingDependencies: [],
   installedAsDependency: false,
   neededBy: [],
+  leavesUnneeded: [],
   previousVersion: null,
   autoUpdatePaused: false,
   newlyUpdated: false,
@@ -328,9 +328,6 @@ describe("libraries (WF-22)", () => {
     expect(isLibrary(user)).toBe(false);
     expect(addonRowDescription(lib).base).toBe("CurseForge · 2024.11.3 · needed by UsesLib");
     expect(addonRowDescription(shared).base).toBe("CurseForge · 2024.11.3 · needed by UsesLib +1");
-  });
-  test("removing an addon names the libraries only it needed", () => {
-    expect(removedAlong(user, [user, lib, shared])).toEqual(["LibCore"]);
   });
   test("a missing dependency is a problem on the row", () => {
     expect(addonProblemText({ ...base, missingDependencies: ["LibStub"] })).toBe("missing LibStub");

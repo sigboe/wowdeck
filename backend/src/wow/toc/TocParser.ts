@@ -3,7 +3,7 @@
  * Upstream: wowup-electron/src/app/services/toc/toc.service.ts
  * Commit: 4fdae600d94ad7dd187a6bc93b517e657100b01a
  * Modified: yes — converted Angular service to pure functions on Bun.file;
- *   FileService dependency removed; behavior identical.
+ *   FileService dependency removed; also reads `## OptionalDeps`.
  * See docs/wowup-provenance.md.
  */
 
@@ -14,6 +14,7 @@ import {
   TOC_DEPENDENCIES,
   TOC_INTERFACE,
   TOC_NOTES,
+  TOC_OPTIONAL_DEPS,
   TOC_REQUIRED_DEPS,
   TOC_TITLE,
   TOC_VERSION,
@@ -68,10 +69,9 @@ function getWebsite(tocText: string): string {
   return getValue(TOC_WEBSITE, tocText) || getValue(TOC_X_WEBSITE, tocText);
 }
 
-function getDependencyList(tocText: string): string[] {
-  const dependencies = getValue(TOC_DEPENDENCIES, tocText);
-  const requiredDeps = getValue(TOC_REQUIRED_DEPS, tocText);
-  return [...dependencies.split(","), ...requiredDeps.split(",")]
+function getDependencyList(tocText: string, ...keys: string[]): string[] {
+  return keys
+    .flatMap((key) => getValue(key, tocText).split(","))
     .map((dep) => dep.trim())
     .filter((dep) => !!dep);
 }
@@ -101,7 +101,8 @@ export function parseTocText(tocPath: string, tocTextRaw: string): Toc {
     wowInterfaceId: maybe(getValue(TOC_X_WOWI_ID, tocText)),
     wagoAddonId: maybe(getValue(TOC_X_WAGO_ID, tocText)),
     dependencies: maybe(dependencies),
-    dependencyList: getDependencyList(tocText),
+    dependencyList: getDependencyList(tocText, TOC_DEPENDENCIES, TOC_REQUIRED_DEPS),
+    optionalDependencyList: getDependencyList(tocText, TOC_OPTIONAL_DEPS),
     tukUiProjectId: maybe(getValue(TOC_X_TUKUI_PROJECTID, tocText)),
     tukUiProjectFolders: maybe(getValue(TOC_X_TUKUI_PROJECTFOLDERS, tocText)),
     loadOnDemand: maybe(getValue(TOC_X_LOADONDEMAND, tocText)),
