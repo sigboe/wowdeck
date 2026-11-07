@@ -14,7 +14,7 @@ import readline from "node:readline";
 import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { connect, evalIn } from "./cdp.mjs";
-import { reactProbe, uiDiagnostics, checkMethods, redact, scrub } from "./diagnostics.mjs";
+import { elementLabel, reactProbe, uiDiagnostics, checkMethods, redact, scrub } from "./diagnostics.mjs";
 import { createConnection, SSH_OPTIONS } from "./connection.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -448,6 +448,9 @@ class Runner {
         const file = path.resolve(ROOT, flagOf(args, "file", "dist/index.js"));
         const bundle = fs.readFileSync(file).toString("base64");
         const before = await look();
+        const savedFocus = before.plugin === "WoWDeck" && before.tree === "QuickAccess-NA"
+          ? await evalIn("SharedJSContext", `(()=>{${NAV}return (${elementLabel})(e)})()`)
+          : null;
         // Import before unloading so a syntax/import error leaves the old frontend intact.
         await evalIn("SharedJSContext", `(async()=>{
           const L=window.DeckyPluginLoader;
@@ -478,8 +481,8 @@ class Runner {
             if (from !== to) await this.step([`key@${target}`, to > from ? "right" : "left", String(Math.abs(to - from))]);
             if (await probe("tab") !== before.tab) fail("frontend reloaded; tab restore did not take effect");
           }
-          if (before.focus) {
-            const focusResult = nodeScript("seek.mjs", [target, before.focus, "--exact"]);
+          if (savedFocus) {
+            const focusResult = nodeScript("seek.mjs", [target, savedFocus, "--exact"]);
             if (!focusResult.ok) fail(`frontend reloaded; focus restore: ${focusResult.text}`);
           }
         }

@@ -90,9 +90,14 @@ const document = {
   },
 };
 const node = {
-  m_element: element("Get Addons"), m_rgChildren: [],
-  BTakeFocus: () => { if (process.env.CEF_REFUSE) return false; focus = "Get Addons"; return true; },
+  m_element: element(process.env.CEF_FOCUS || "Get Addons"), m_rgChildren: [],
+  BTakeFocus: () => { if (process.env.CEF_REFUSE) return false; focus = node.m_element.textContent; tree.m_lastFocusNode = node; return true; },
 };
+if (process.env.CEF_FOCUS) {
+  const tabNode = { m_element: element("Get Addons"), m_rgChildren: [],
+    BTakeFocus: () => { focus = "Get Addons"; tree.m_lastFocusNode = tabNode; return true; } };
+  node.m_rgChildren.push(tabNode);
+}
 const tree = { m_ID: "QuickAccess-NA", Root: node, m_Root: node, m_lastFocusNode: node };
 const context = vm.createContext({
   document, NodeFilter: { SHOW_TEXT: 4 }, location: { pathname: "/wowdeck" },

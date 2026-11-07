@@ -1,3 +1,16 @@
+// Use the same label for focus capture and seek, including controls with help text.
+export function elementLabel(element) {
+  if (!element) return "";
+  const walker = element.ownerDocument.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+  let text = "";
+  while (walker.nextNode()) {
+    const parent = walker.currentNode.parentElement;
+    if (parent && (parent.tagName === "STYLE" || parent.tagName === "SCRIPT")) continue;
+    text += walker.currentNode.nodeValue + " ";
+  }
+  return text.trim().replace(/\s+/g, " ").slice(0, 200);
+}
+
 // Read-only browser probes. Deliberately return names/counts, never props or hook values.
 export function reactProbe(selector, limit) {
   const el = document.querySelector(selector);

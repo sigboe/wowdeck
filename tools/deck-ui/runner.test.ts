@@ -217,3 +217,15 @@ test("frontend reload imports before unloading and never calls the backend reloa
     expect(failed.text).not.toContain("fixture frontend unloaded");
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+test("frontend reload restores a control whose full label exceeds the compact focus probe", async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "wowdeck-long-focus-"));
+  const label = "Find WoW installations Looks in Steam, Lutris and other game folders";
+  try {
+    const file = path.join(root, "bundle.js");
+    writeFileSync(file, 'export default () => ({ title: "fixture" });');
+    const result = await cli("deck.mjs", ["reload-frontend", `--file=${file}`], { CEF_RELOAD_TRACE: "1", CEF_FOCUS: label });
+    expect(result.code).toBe(0);
+    expect(result.text).toContain("frontend reloaded in memory");
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
