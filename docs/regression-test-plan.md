@@ -778,6 +778,7 @@ same Baganator folder, and one unrelated addon.
 | LIB-135-1 | P0 | S | Manual Install, From a file: install the Baganator zip over the CurseForge one. In My Addons, check Syndicator. Then remove the unrelated addon, from My Addons and from the Manual Install conflict card | Syndicator still says "needed by Baganator". Each Remove dialog names only the addon itself, with one Remove button. The toast names no library and Syndicator stays installed |
 | LIB-135-2 | P0 | S | Remove Baganator. Read the dialog and where focus is. Press A. Then reinstall Baganator from CurseForge, remove it again and pick **Remove both** | The dialog names Syndicator and shows **Remove Baganator only**, **Remove both** and **Cancel**, with focus on **Remove Baganator only**. A keeps Syndicator, still tagged LIBRARY, with no "needed by". **Remove both** removes both, and the toast says "Also removed Syndicator". "Remove Baganator only" may wrap onto two lines, which is expected |
 | LIB-135-3 | P1 | | Change source of Baganator to another source, then of Syndicator. Check Syndicator's row after each | Syndicator still says "needed by Baganator" after both |
+| LIB-137-1 | P1 | | Install Syndicator from a file (Manual Install of a Syndicator zip). Change Baganator's source to a file, then back to CurseForge. Then update Baganator | Syndicator stays installed from the file after each step, with one Syndicator row. No toast mentions Syndicator |
 
 ### Reused archive conflicts
 

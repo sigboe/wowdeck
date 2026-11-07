@@ -835,6 +835,8 @@ export class AddonService {
   async #installUnlocked(
     records: AddonRecords,
     request: InstallRequest,
+    /** The provider's answer for `externalId`, when the caller has already read it (a dependency). */
+    prefetched?: AddonSearchResult,
   ): Promise<{ addon: AddonRecord; operation: OperationResult }> {
     const { providerId, externalId, installation } = request;
     const intent = INSTALL_INTENTS[request.intent];
@@ -853,10 +855,7 @@ export class AddonService {
     if (!provider.isValidAddonId(externalId)) {
       throw new ValidationError("That addon id isn't valid");
     }
-    const searchResult = await provider.getById(externalId, installation);
-    if (!searchResult?.files?.length) {
-      throw new NotFoundError("addon on provider", externalId);
-    }
+    const searchResult = prefetched ?? (await this.#readAddon(provider, externalId, installation));
 
     if (request.channel !== undefined && !provider.allowChannelChange) {
       throw new ValidationError(`${provider.name} has no release channels`);
@@ -962,15 +961,10 @@ export class AddonService {
         if (records.find(installation.id, providerId, dep.externalAddonId)) {
           continue;
         }
-        const result = await this.#installUnlocked(records, {
-          intent: "dependency",
-          providerId,
-          externalId: dep.externalAddonId,
-          installation,
-        }).then(
-          ({ addon: dependency, operation }) => ({ ...operation, addonName: dependency.name }),
-          (err: unknown) => failedOperation(this.nextOperationId(), null, err),
-        );
+        const result = await this.#installDependency(records, provider, dep.externalAddonId, installation);
+        if (!result) {
+          continue;
+        }
         if (result.status === "failed") {
           missingRequiredDependencies.push(dep.externalAddonId);
         }
@@ -995,6 +989,55 @@ export class AddonService {
     }
     this.events.addonsChanged([addon.id]);
     return { addon: installed, operation };
+  }
+
+  /**
+   * One required dependency, read from its provider: skipped (null) when
+   * any folder its latest release installs is already present (a library
+   * from another source, or copied by hand, is never replaced, and its
+   * record stays as it is: ADR 0009), installed as a library otherwise.
+   * A read or install that fails is a failed result.
+   */
+  async #installDependency(
+    records: AddonRecords,
+    provider: AddonProvider,
+    externalId: string,
+    installation: WowInstallation,
+  ): Promise<OperationResult | null> {
+    try {
+      const dependency = await this.#readAddon(provider, externalId, installation);
+      const folders = latestFile(dependency.files, installation.defaultAddonChannelType)?.folders ?? [];
+      const present = await this.#presentFolders(records, installation);
+      if (folders.some((folder) => present.has(folder))) {
+        return null;
+      }
+      const { addon, operation } = await this.#installUnlocked(
+        records,
+        { intent: "dependency", providerId: provider.name, externalId, installation },
+        dependency,
+      );
+      return { ...operation, addonName: addon.name };
+    } catch (err) {
+      return failedOperation(this.nextOperationId(), null, err);
+    }
+  }
+
+  /** An addon as its provider lists it now; one with no files is not there. */
+  async #readAddon(provider: AddonProvider, externalId: string, installation: WowInstallation): Promise<AddonSearchResult> {
+    const searchResult = await provider.getById(externalId, installation);
+    if (!searchResult?.files?.length) {
+      throw new NotFoundError("addon on provider", externalId);
+    }
+    return searchResult;
+  }
+
+  /** The installation's addon folders: every record's, from any source, and the unmanaged ones on disk. */
+  async #presentFolders(records: AddonRecords, installation: WowInstallation): Promise<Set<string>> {
+    const folders = new Set(records.forInstallation(installation.id).flatMap((record) => recordFolders(record)));
+    for (const folder of await scanAddons(installation)) {
+      folders.add(folder.name);
+    }
+    return folders;
   }
 
   /**

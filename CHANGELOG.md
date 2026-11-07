@@ -18,6 +18,7 @@ What's new in each version of WoWDeck Addon Manager. The format follows
 ### Fixed
 
 - Libraries stay needed after you change an addon's source or replace it with a file, so removing another addon no longer deletes them.
+- Installing or updating an addon no longer replaces a library you installed from a file, another source or by hand.
 - Installing a newer zip of an addon from a file or link updates it instead of adding a second listing.
 - If My Addons lists an addon twice after you installed a newer zip, WoWDeck keeps only the newest install and its Roll back.
 - After you pick a file in Manual Install, focus lands on Install, so A installs it.

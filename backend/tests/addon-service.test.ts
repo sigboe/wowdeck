@@ -1907,6 +1907,10 @@ describe("libraries through a source change and a Remove (#135, ADR 0008)", () =
       { id: "801", name: "Syndicator", version: "1.0.0", releaseId: "s1", folders: ["Syndicator"] },
       { id: "802", name: "Baganator", version: "1.0.0", releaseId: "b1", folders: ["Baganator"], requiredDependencyIds: ["801"], optionalDeps: ["Syndicator"] },
       { id: "803", name: "Unrelated", version: "1.0.0", releaseId: "u1", folders: ["Unrelated"] },
+      { id: "804", name: "Suite", version: "1.0.0", releaseId: "su1", folders: ["SuiteCore", "SuiteExtra"] },
+      { id: "805", name: "NeedsSuite", version: "1.0.0", releaseId: "ns1", folders: ["NeedsSuite"], requiredDependencyIds: ["804"] },
+      // Its dependency 899 is on no provider: the read fails.
+      { id: "806", name: "NeedsGone", version: "1.0.0", releaseId: "ng1", folders: ["NeedsGone"], requiredDependencyIds: ["899"] },
     ]);
     const tuk = new TukProvider([
       { id: "811", name: "Baganator", version: "1.1.0", releaseId: "tb1", folders: ["Baganator"], optionalDeps: ["Syndicator"] },
@@ -1930,7 +1934,7 @@ describe("libraries through a source change and a Remove (#135, ADR 0008)", () =
       (await service.install({ intent: "install", providerId: "WowUpHub", externalId, installation: localInstallation })).addon;
     const byName = (n: string) => store.addons.forInstallation(localInstallation.id).find((r) => r.name === n);
     const wire = async (n: string) => (await service.listAddons(localInstallation)).find((a) => a.name === n)!;
-    return { service, store, install, byName, wire, addonsPath: join(localRoot, "_retail_", "Interface", "AddOns") };
+    return { service, store, hub, install, byName, wire, addonsPath: join(localRoot, "_retail_", "Interface", "AddOns") };
   }
 
   test("an addon moved off the source that listed its library still needs it", async () => {
@@ -1982,6 +1986,99 @@ describe("libraries through a source change and a Remove (#135, ADR 0008)", () =
     const operation = await both.service.removeAddon(both.byName("Baganator")!.id, { removeLibraries: true });
     expect(operation.followUps).toEqual([expect.objectContaining({ addonName: "Syndicator", status: "removed" })]);
     expect(both.byName("Syndicator")).toBeUndefined();
+  });
+
+  describe("dependencies never replace an installed library (#137, ADR 0009)", () => {
+    const toc = (f: ReturnType<typeof setup>, folder: string) => readFileSync(join(f.addonsPath, folder, `${folder}.toc`), "utf8");
+
+    /** Baganator from the hub, its Syndicator moved to TukUI: the library from another source. */
+    async function withLibraryElsewhere(name: string) {
+      const f = setup(name);
+      const baganator = await f.install("802");
+      await f.service.changeSource(f.byName("Syndicator")!.id, "TukUI", "812");
+      const library = structuredClone(f.byName("Syndicator")!);
+      return { f, baganator, library, libraryToc: toc(f, "Syndicator") };
+    }
+
+    test("a source change back to the source listing the library leaves the library where it is", async () => {
+      const { f, baganator, library, libraryToc } = await withLibraryElsewhere("dep-source-back");
+      await f.service.changeSource(baganator.id, "TukUI", "811");
+
+      const back = await f.service.changeSource(baganator.id, "WowUpHub", "802");
+
+      expect(back.operation.status).toBe("installed");
+      expect(back.operation.followUps).toBeUndefined();
+      expect(back.operation.missingRequiredDependencies).toBeUndefined();
+      expect(f.byName("Syndicator")).toEqual(library);
+      expect(f.byName("Syndicator")).toMatchObject({ providerName: "TukUI", externalId: "812", isDependency: true });
+      expect(toc(f, "Syndicator")).toBe(libraryToc);
+    });
+
+    test("an Update and a Reinstall of the dependant leave the library where it is", async () => {
+      const { f, baganator, library, libraryToc } = await withLibraryElsewhere("dep-update-reinstall");
+      const entry = f.hub.catalog.find((c) => c.id === "802")!;
+      Object.assign(entry, { version: "1.2.0", releaseId: "b2" });
+
+      const updated = await f.service.updateAddon(baganator.id);
+      expect(updated.operation).toMatchObject({ status: "updated" });
+      const reinstalled = await f.service.reinstall(baganator.id);
+      expect(reinstalled.operation).toMatchObject({ status: "installed" });
+
+      for (const { operation } of [updated, reinstalled]) {
+        expect(operation.followUps).toBeUndefined();
+        expect(operation.missingRequiredDependencies).toBeUndefined();
+      }
+      expect(f.byName("Syndicator")).toEqual(library);
+      expect(toc(f, "Syndicator")).toBe(libraryToc);
+    });
+
+    test("an unmanaged library folder is not overwritten and stays unmanaged", async () => {
+      const f = setup("dep-unmanaged");
+      mkdirSync(join(f.addonsPath, "Syndicator"));
+      const handCopied = "## Title: Syndicator\n## Interface: 110005\n## Version: hand-copied\n";
+      writeFileSync(join(f.addonsPath, "Syndicator", "Syndicator.toc"), handCopied);
+
+      const { operation } = await f.service.install({ intent: "install", providerId: "WowUpHub", externalId: "802", installation: f.store.installations[0]! });
+
+      expect(operation.status).toBe("installed");
+      expect(operation.followUps).toBeUndefined();
+      expect(f.byName("Syndicator")).toBeUndefined();
+      expect(toc(f, "Syndicator")).toBe(handCopied);
+    });
+
+    test("a library with one of its folders on disk is skipped, nothing overwritten", async () => {
+      const f = setup("dep-partial");
+      mkdirSync(join(f.addonsPath, "SuiteExtra"));
+      const handCopied = "## Title: SuiteExtra\n## Interface: 110005\n";
+      writeFileSync(join(f.addonsPath, "SuiteExtra", "SuiteExtra.toc"), handCopied);
+
+      const { operation } = await f.service.install({ intent: "install", providerId: "WowUpHub", externalId: "805", installation: f.store.installations[0]! });
+
+      expect(operation.followUps).toBeUndefined();
+      expect(operation.missingRequiredDependencies).toBeUndefined();
+      expect(f.byName("Suite")).toBeUndefined();
+      expect(existsSync(join(f.addonsPath, "SuiteCore"))).toBe(false);
+      expect(toc(f, "SuiteExtra")).toBe(handCopied);
+    });
+
+    test("a library with none of its folders on disk still installs as a library", async () => {
+      const f = setup("dep-absent");
+
+      const { operation } = await f.service.install({ intent: "install", providerId: "WowUpHub", externalId: "805", installation: f.store.installations[0]! });
+
+      expect(operation.followUps).toEqual([expect.objectContaining({ addonName: "Suite", status: "installed" })]);
+      expect(f.byName("Suite")).toMatchObject({ isDependency: true, installedFolderList: ["SuiteCore", "SuiteExtra"] });
+    });
+
+    test("a library its provider cannot read is still reported missing", async () => {
+      const f = setup("dep-unreadable");
+
+      const { operation } = await f.service.install({ intent: "install", providerId: "WowUpHub", externalId: "806", installation: f.store.installations[0]! });
+
+      expect(operation.status).toBe("installed");
+      expect(operation.missingRequiredDependencies).toEqual(["899"]);
+      expect(operation.followUps).toEqual([expect.objectContaining({ status: "failed" })]);
+    });
   });
 });
 
