@@ -6,6 +6,8 @@ What's new in each version of WoWDeck Addon Manager. The format follows
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-11-07
+
 ### Added
 
 - Manual Install warns before a file replaces an addon from CurseForge or another source, which then stops updating from there.
@@ -128,7 +130,8 @@ First release.
 - Back up and restore your WoW settings.
 - Import and export addon lists that WowUp understands.
 
-[Unreleased]: https://github.com/sigboe/wowdeck/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/sigboe/wowdeck/compare/v1.1.1...HEAD
+[1.1.1]: https://github.com/sigboe/wowdeck/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/sigboe/wowdeck/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/sigboe/wowdeck/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/sigboe/wowdeck/compare/v0.2.0...v1.0.0
