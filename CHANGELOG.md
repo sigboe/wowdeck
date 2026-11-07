@@ -1,7 +1,7 @@
 # Changelog
 
 What's new in each version of WoWDeck Addon Manager. The format follows
-[Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions loosely follow
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
