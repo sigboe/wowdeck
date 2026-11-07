@@ -112,3 +112,56 @@ close side menus `window.DFL.Navigation.CloseSideMenus()`, go to a route
   (or the copies under a scratch directory) and search them: hashed class names
   map to readable names in `sp.js` (`Name:"hash"`), and the CSS shows the values.
 - Record what you measured, with date and method, in the guide (DEVICE tag).
+
+## Diagnostics
+
+These commands extend the existing CLI with ideas from
+[Decky Toolkit](https://github.com/jackhric/decky-toolkit). They require no
+additional plugin or MCP server.
+
+```sh
+tools/deck-ui/deck methods-check
+tools/deck-ui/deck diagnose
+tools/deck-ui/deck run 'log-mark; rpc system.getStatus; log 10 error --since=mark'
+tools/deck-ui/deck run 'log-mark; press a; log-wait "failed|complete" --since=mark --t=10000'
+tools/deck-ui/deck react '.wowdeck-root' --depth=12
+tools/deck-ui/deck reload-frontend
+```
+
+`diagnose` reports navigation state, the visible plugin tab, busy indicators,
+alerts, engine connectivity and version, the selected installation, and five
+recent error lines. Each failed probe reports its own error so the other
+results remain available. Busy counts describe visible indicators, not the
+engine's operation queue. A missing panel reports a null busy count.
+
+`log-mark` saves file identities and byte offsets for the current CLI run.
+`--since=mark` reads subsequent content, including new or truncated logs.
+`log-wait` waits on the device through one SSH connection and fails the batch
+on timeout. Without a checkpoint it also accepts matching existing lines.
+Queries inspect at most ten log files and the last 64 KiB of each, return at
+most 100 lines, and wait at most 20 seconds. Use `journalctl -u plugin_loader`
+over SSH for Decky's own logs.
+
+Diagnostic output caps at 6,000 characters and scrubs URLs and common
+credential assignments. Keep secrets out of logs; this filter cannot
+recognize every possible secret. React inspection returns at most 40 ancestor
+names with patch markers. It excludes props, hooks and application state.
+Missing React internals produce `supported: false`.
+
+`methods-check` compares literal frontend bridge calls with public Python
+methods and literal `rpc` calls with the engine contract. It needs no device.
+It does not resolve computed method names or verify runtime handler behavior.
+
+`reload-frontend` imports the local `dist/index.js` bundle into memory, without
+writing device files or restarting the backend. Build it first with
+`make build-frontend`, or select another bundle with `--file=<path>`. It uses
+the in-memory loading approach documented for DroidDeck. Import failures leave
+the old frontend loaded; a factory failure after unloading requires another
+reload. When WoWDeck's panel was open, it reopens the panel and restores the
+plugin tab and focused label. Missing controls fail with a restoration error.
+Other routes stay at their current location. An active WoWDeck panel closes
+before unloading so React can unmount its old controls.
+
+Reloading requires a device-test request under the repository's device policy.
+This command targets the configured Deck CEF tunnel; it does not connect to
+DroidDeck through adb. DroidDeck keeps its existing test workflow.
