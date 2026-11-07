@@ -24,7 +24,8 @@ Background in this repo:
 - `docs/addon-list-format.md`: the wire format and the proof that today's WowUp
   accepts it.
 - `backend/src/wow/addons/libraries.ts`: the library graph rules (pure
-  functions), the reference for both PRs.
+  functions). Since ADR 0008 they also match TOC folders, and Remove takes a
+  library only when the user chooses to; the PR briefs predate that.
 - `backend/src/wow/addons/AddonService.ts`: `INSTALL_INTENTS` (flag set / clear /
   keep per install kind), `#installUnlocked` (dependency install), `removeAddon`
-  (autoremove), `importAddonList` (flags after an import).
+  (libraries by choice), `importAddonList` (flags after an import).

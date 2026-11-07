@@ -1,7 +1,7 @@
 /**
  * Workflows that change several addons (#110, scenario 9): required
- * dependencies, orphaned libraries, addon-list import and Update all commit
- * each addon in a transaction of its own. Completed ones stay committed, the
+ * dependencies, the libraries a removal leaves unneeded, addon-list import
+ * and Update all commit each addon in a transaction of its own. Completed ones stay committed, the
  * result names every addon's outcome, an ordinary failure lets the rest go
  * on, and recovery required stops the rest in that installation only. Seen
  * through the addon-service operation boundary with real temporary game
@@ -230,7 +230,7 @@ describe("required dependencies", () => {
   });
 });
 
-describe("orphaned libraries after a removal", () => {
+describe("libraries a removal leaves unneeded", () => {
   const LIBS = {
     "100": { name: "Main", version: "1.0", dependencies: ["101", "102", "103"] },
     "101": { name: "LibOne", version: "1.0" },
@@ -244,7 +244,7 @@ describe("orphaned libraries after a removal", () => {
     // Main's folder and LibOne's move aside; LibTwo's move fails.
     f.fs.failAt("folder.backup", { after: 2, times: 1 });
 
-    const operation = await f.service.removeAddon(addon.id);
+    const operation = await f.service.removeAddon(addon.id, { removeLibraries: true });
 
     expect(operation).toMatchObject({ addonId: addon.id, status: "removed" });
     expect(operation.followUps).toEqual([
@@ -265,7 +265,7 @@ describe("orphaned libraries after a removal", () => {
     // Main's and LibOne's commits go through; LibTwo's fails and its undo stops.
     f.fs.failAt("state.write", { after: 2, times: 1 }).failAt("folder.restore", { times: 1 });
 
-    const operation = await f.service.removeAddon(addon.id);
+    const operation = await f.service.removeAddon(addon.id, { removeLibraries: true });
 
     expect(operation).toMatchObject({ addonId: addon.id, status: "removed" });
     expect(operation.followUps).toEqual([
@@ -279,7 +279,7 @@ describe("orphaned libraries after a removal", () => {
     // The other installation is untouched and still changes.
     expect(f.store.addons.forInstallation(f.b.id)).toHaveLength(4);
     const inB = f.store.addons.forInstallation(f.b.id).find((r) => r.name === "Main")!;
-    expect((await f.service.removeAddon(inB.id)).followUps).toHaveLength(3);
+    expect((await f.service.removeAddon(inB.id, { removeLibraries: true })).followUps).toHaveLength(3);
   });
 });
 

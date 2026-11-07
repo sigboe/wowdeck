@@ -1,10 +1,34 @@
 # Changelog
 
 What's new in each version of WoWDeck Addon Manager. The format follows
-[Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions loosely follow
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+
+## [1.1.1] - 2026-11-07
+
+### Added
+
+- Manual Install warns before a file replaces an addon from CurseForge or another source, which then stops updating from there.
+- If a file matches two installed addons, Manual Install lets you remove one, even when reusing a filename or link.
+
+### Changed
+
+- Removing an addon asks whether to remove the libraries only it needed too, and names each one.
+
+### Fixed
+
+- Libraries stay needed after you change an addon's source or replace it with a file, so removing another addon no longer deletes them.
+- Installing or updating an addon no longer replaces a library you installed from a file, another source or by hand.
+- Installing a newer zip of an addon from a file or link updates it instead of adding a second listing.
+- If My Addons lists an addon twice after you installed a newer zip, WoWDeck keeps only the newest install and its Roll back.
+- After you pick a file in Manual Install, focus lands on Install, so A installs it.
+- An addon pack installed from a file or link keeps the name Manual Install showed, not one of its libraries' names.
+- File pickers open in your home folder, also on devices whose Steam user isn't named "deck".
+- If an addon change is cut short during its download, WoWDeck deletes its temporary files at the next addon change.
+- Screen readers now name installation fields, Browse, Check for updates and screenshot arrows.
+- After Use default folder in Options, focus moves to Backup folder instead of disappearing.
 
 ## [1.1.0] - 2026-11-04
 
@@ -106,7 +130,8 @@ First release.
 - Back up and restore your WoW settings.
 - Import and export addon lists that WowUp understands.
 
-[Unreleased]: https://github.com/sigboe/wowdeck/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/sigboe/wowdeck/compare/v1.1.1...HEAD
+[1.1.1]: https://github.com/sigboe/wowdeck/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/sigboe/wowdeck/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/sigboe/wowdeck/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/sigboe/wowdeck/compare/v0.2.0...v1.0.0

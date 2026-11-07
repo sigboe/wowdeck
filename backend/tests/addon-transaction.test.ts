@@ -741,6 +741,70 @@ describe("a committed operation whose cleanup fails (scenario 7)", () => {
     expect(f.reopen().store.addons.markers()).toEqual(unfinished);
   });
 
+  test("a work folder left without a marker (#134) goes at the next addon change", async () => {
+    const f = fixture("cleanup-unmarked");
+    const id = await installedWithUpdate(f);
+    // An engine killed while staging: its work folder, never marked.
+    const leftover = join(f.addonsPath, ".wowdeck", `tx-${crypto.randomUUID()}`);
+    mkdirSync(join(leftover, "stage", "Suite"), { recursive: true });
+    mkdirSync(join(leftover, "backup"));
+    writeFileSync(join(leftover, "stage", "Suite", "core.lua"), "-- partly");
+
+    const engine = f.reopen();
+    const { operation } = await engine.service.updateAddon(id);
+
+    expect(operation.status).toBe("updated");
+    expect(existsSync(leftover)).toBe(false);
+    expect(txDirs(f)).toEqual([]);
+    expect(live(f.addonsPath)["Suite/core.lua"]).toBe("-- Suite 2.0\n");
+  });
+
+  test("a failed orphan-sweep listing does not fail the addon update", async () => {
+    const f = fixture("cleanup-list-fails");
+    const id = await installedWithUpdate(f);
+    mkdirSync(join(f.addonsPath, ".wowdeck"), { recursive: true });
+    f.fs.failAt("cleanup.list");
+    const { operation } = await f.service.updateAddon(id);
+    expect(operation.status).toBe("updated");
+    expect(live(f.addonsPath)["Suite/core.lua"]).toBe("-- Suite 2.0\n");
+  });
+
+  test("a running transaction's unmarked work folder is left alone", async () => {
+    const f = fixture("cleanup-running");
+    const transactions = new AddonTransactions(f.store.fs);
+    let staged!: () => void;
+    const staging = new Promise<void>((resolve) => (staged = resolve));
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    const running = transactions.run(f.store.addons, {
+      operation: "install",
+      installation: f.installation,
+      addonId: "unmarked-running",
+      originalRecord: null,
+      stage: async (stageDir) => {
+        mkdirSync(join(stageDir, "Solo"));
+        writeFileSync(join(stageDir, "Solo", "Solo.toc"), "## Title: Solo\n");
+        staged();
+        await held;
+        return ["Solo"];
+      },
+      change: async () => {
+        throw new Error("not committing");
+      },
+    });
+    await staging;
+    const work = txDirs(f);
+    expect(work).toHaveLength(1);
+
+    const outcome = await transactions.cleanUpCommitted(f.store.addons, f.installation);
+
+    expect(outcome.cleaned).toEqual([]);
+    expect(txDirs(f)).toEqual(work);
+    expect(existsSync(join(f.addonsPath, ".wowdeck", work[0]!, "stage", "Solo", "Solo.toc"))).toBe(true);
+    release();
+    await expect(running).rejects.toThrow();
+  });
+
   test("an unreadable marker is never treated as committed", () => {
     const f = fixture("cleanup-unreadable");
     expect(classifyTransaction(f.store.addons, { version: 99 })).toBe("unfinished");

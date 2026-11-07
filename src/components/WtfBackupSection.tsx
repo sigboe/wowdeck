@@ -9,10 +9,12 @@ import { formatBytes, formatWhen } from "../wtfFormat";
 import { jobPercent, jobProgressText } from "../wtfText";
 import { FocusRow } from "./FocusSlot";
 import { QAM_VIEW } from "../qamState";
+import { requestFocus } from "../focusMemory";
 import { QamProgressBar } from "./QamProgressBar";
 import { STEAM, descriptionStyle, outcomeColor } from "../steamTheme";
 
 import { openWtfBackupModal } from "./WtfBackupModal";
+import { pickerStartPath } from "../pickerStart";
 
 const KEEP_OPTIONS = [1, 2, 3, 5, 10].map((n) => ({ data: n, label: String(n) }));
 
@@ -43,7 +45,7 @@ export function WtfBackupSection({ installation }: Props) {
     try {
       picked = await openFilePicker(
         FileSelectionType.FOLDER,
-        settings?.wtfBackupDir || "/home/deck",
+        pickerStartPath(settings?.wtfBackupDir),
         false,
         true,
       );
@@ -51,6 +53,17 @@ export function WtfBackupSection({ installation }: Props) {
       return; // cancelled
     }
     await wtfLifecycle.saveSettings({ wtfBackupDir: picked.path });
+  };
+
+  // Use default folder hides itself once saved, and Steam then leaves focus
+  // on nothing (#132): hand it to Backup folder, the row above. A save that
+  // failed keeps the button, so focus goes back to it. Asked once the save is
+  // done (while it runs both rows are disabled), from the settings it left:
+  // a save with a lost answer is re-read and may have gone through.
+  const resetBackupFolder = async () => {
+    await wtfLifecycle.saveSettings({ wtfBackupDir: null });
+    const gone = !settingsStore.get().settings.wtfBackupDir;
+    requestFocus(QAM_VIEW.settings, gone ? "wtf:folder" : "wtf:defaultFolder");
   };
 
   const jobHere =
@@ -167,7 +180,7 @@ export function WtfBackupSection({ installation }: Props) {
           <ButtonItem
             layout="below"
             disabled={!settingsFree}
-            onClick={() => void wtfLifecycle.saveSettings({ wtfBackupDir: null })}
+            onClick={() => void resetBackupFolder()}
           >
             Use default folder
           </ButtonItem>

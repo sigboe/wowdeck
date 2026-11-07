@@ -16,7 +16,22 @@ import {
   setUrl,
   urlDestination,
 } from "../browseDestinations";
-import { fileImport, installArchive } from "../fileImportState";
+import {
+  FILE_FOCUS,
+  conflictWarning,
+  fileImport,
+  installArchive,
+  installBlocked,
+  installLabel,
+  installedLabel,
+  removeConflicting,
+  takeOwedFocus,
+  takeoverWarning,
+} from "../fileImportState";
+import { requestFocus } from "../focusMemory";
+import { confirmRemoveAddon } from "./confirmRemove";
+import { toastError } from "../toast";
+import { Warning, WarningLine } from "./Warning";
 import { browseArchive } from "../archivePicker";
 import { hasMore } from "../loadMore";
 import { addonSession } from "../session";
@@ -395,7 +410,7 @@ function FileImportSection({
   const pickFailed = file.phase === "error" && !file.preview;
 
   const browse = () => {
-    void browseArchive(openFilePicker, (path) => api.rpc("addons.inspectArchive", { path }));
+    void browseArchive(openFilePicker, (path) => api.rpc("addons.inspectArchive", { path }), view);
   };
 
   const install = () => {
@@ -408,6 +423,73 @@ function FileImportSection({
       () => requireInstallation(onFindInstallations),
     );
   };
+
+  // A settled turn asks for focus before its answer renders. Ask again after
+  // the render that shows it: Install is enabled by then, and a conflict's
+  // rows, one of which may hold Steam's focus, are gone (#132). On mount the
+  // debt is dropped: a remount puts focus back itself (GetAddonsTab), and
+  // entering Manual Install from the list must not pull focus into the pane.
+  const mounted = useRef(false);
+  useEffect(() => {
+    const key = takeOwedFocus();
+    if (mounted.current && key) {
+      requestFocus(view, key);
+    }
+    mounted.current = true;
+  }, [file]);
+
+  const takeover = file.preview && takeoverWarning(file.preview);
+  const conflict = file.preview && file.phase !== "success" ? conflictWarning(file.preview) : null;
+
+  // A conflict row's Remove: the normal Remove flow with its confirmation,
+  // then the card checks the same file again (#130). A rejection the
+  // Remove flow's own toasts did not cover gets a toast here.
+  const removeConflict = async (addonId: string) => {
+    const recheck = (remove: () => Promise<void>, name: string) =>
+      void removeConflicting(
+        remove,
+        (path) => api.rpc("addons.inspectArchive", { path }),
+        (key) => requestFocus(view, key),
+      ).catch((e) => toastError(`Couldn't remove ${name}`, e));
+    const find = () => addonSession.get().addons.find((a) => a.id === addonId);
+    if (!find()) {
+      // Not in the list read yet (My Addons never opened): read it first.
+      try {
+        await addonSession.reloadAddons();
+      } catch (e) {
+        toastError("Couldn't load addons", e);
+        return;
+      }
+    }
+    const addon = find();
+    if (!addon) {
+      // Gone already: the card's answer is out of date, check the file again.
+      recheck(async () => {}, "the addon");
+      return;
+    }
+    confirmRemoveAddon(
+      addon,
+      (removeLibraries) =>
+        recheck(() => addonSession.actions.remove(addon, removeLibraries), addon.name),
+      { holdBrowseSession: true },
+    );
+  };
+
+  const installButton = file.preview && (
+    <FocusSlot view={view} id={FILE_FOCUS.install}>
+      <DialogButton
+        style={{ minWidth: 0, width: "auto" }}
+        disabled={busy || locked || installBlocked(file.preview)}
+        onClick={install}
+      >
+        {file.phase === "installing" ? (
+          <Spinner style={{ width: "1em" }} />
+        ) : (
+          installLabel(file.preview)
+        )}
+      </DialogButton>
+    </FocusSlot>
+  );
 
   return (
     <>
@@ -430,9 +512,9 @@ function FileImportSection({
           childrenLayout="below"
           childrenContainerWidth="max"
         >
-          <FocusSlot view={view} id="file:browse">
+          <FocusSlot view={view} id={FILE_FOCUS.browse}>
             <DialogButton style={{ minWidth: 0, width: "auto" }} disabled={busy} onClick={browse}>
-              {file.phase === "picking" || file.phase === "inspecting" ? (
+              {file.phase === "picking" || (file.phase === "inspecting" && !file.preview) ? (
                 <Spinner style={{ width: "1em" }} />
               ) : (
                 "Browse…"
@@ -448,10 +530,20 @@ function FileImportSection({
             description={
               <>
                 <Status text={previewLine(file.preview)} />
+                {takeover && file.phase !== "success" && (
+                  <Warning heading={takeover.heading}>
+                    <WarningLine text={takeover.detail} />
+                  </Warning>
+                )}
+                {conflict && (
+                  <Warning heading={conflict.heading}>
+                    <WarningLine text={conflict.detail} />
+                  </Warning>
+                )}
                 {file.phase === "error" && file.error && <Status text={file.error} tone="error" />}
                 {file.phase === "success" && (
                   <>
-                    <Status text="Installed" tone="positive" />
+                    <Status text={installedLabel(file.preview)} tone="positive" />
                     <Status text="It shows as a Local file install in My Addons and never checks for updates" />
                   </>
                 )}
@@ -460,15 +552,36 @@ function FileImportSection({
             childrenLayout="below"
             childrenContainerWidth="max"
           >
-            <FocusSlot view={view} id="file:install">
-              <DialogButton
-                style={{ minWidth: 0, width: "auto" }}
-                disabled={busy || locked}
-                onClick={install}
-              >
-                {file.phase === "installing" ? <Spinner style={{ width: "1em" }} /> : "Install"}
-              </DialogButton>
-            </FocusSlot>
+            {/* One column whether or not the file conflicts: Install keeps
+                its place in it, so a Remove that leaves one match enables
+                the same Install Steam already knows instead of mounting a
+                new one (#132). */}
+            <Focusable
+              flow-children="column"
+              style={{ display: "flex", flexDirection: "column", gap: "10px" }}
+            >
+              {conflict?.rows.map((row) => (
+                <div
+                  key={row.addonId}
+                  style={{ display: "flex", alignItems: "center", gap: "8px" }}
+                >
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ ...descriptionStyle, color: STEAM.text }}>{row.name}</div>
+                    <WarningLine text={row.uses} level={1} />
+                  </div>
+                  <FocusSlot view={view} id={FILE_FOCUS.conflictRemove(row.addonId)}>
+                    <DialogButton
+                      style={{ minWidth: 0, width: "auto" }}
+                      disabled={busy || locked}
+                      onClick={() => void removeConflict(row.addonId)}
+                    >
+                      Remove
+                    </DialogButton>
+                  </FocusSlot>
+                </div>
+              ))}
+              {installButton}
+            </Focusable>
           </Field>
         </PanelSectionRow>
       )}

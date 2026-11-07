@@ -4,7 +4,7 @@
  * them in memory only once that succeeded; a failed write throws and leaves
  * both the stored and the in-memory records as they were. A record read
  * from here is read-only — a change only exists once it is written through
- * `create`, `patch`, `remove` or `commit`. A write
+ * `create`, `patch`, `remove`, `removeMany` or `commit`. A write
  * replaces the stored object, so a record read earlier is a snapshot: it
  * never changes under its holder, and a patch merges into whatever is
  * stored when it runs (two writers never overwrite each other's fields).
@@ -291,6 +291,12 @@ export class AddonRecords {
 
   remove(id: string): void {
     this.#removeWhere((a) => a.id === id);
+  }
+
+  /** Several removals, persisted once. */
+  removeMany(ids: readonly string[]): void {
+    const removed = new Set(ids);
+    this.#removeWhere((a) => removed.has(a.id));
   }
 
   removeForInstallation(installationId: string): void {

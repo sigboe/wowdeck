@@ -150,6 +150,7 @@ test("every browse install action and Manual Install warn without sending an ins
       preview: {
         providerId: "File",
         externalId: "/addon.zip",
+        match: { kind: "new" },
         fileName: "addon.zip",
         name: "Example",
         folders: [],

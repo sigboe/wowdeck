@@ -53,6 +53,21 @@ file (a local .zip/.rar/.7z picked with Steam's file picker). Distinct from
 a *manual installation*, which is a WoW install added by hand in Options.
 _Avoid_: From URL (the pre-2026-10-24 name), Install from URL, install from file
 
+**Library**:
+An addon installed only because another addon needs it. An addon needs a
+library when its source lists the library as required, or when its TOC
+names the library's folder as a dependency, optional ones included. A library
+nothing needs is **unneeded**; it is removed only when the user chooses to.
+Installing an addon never replaces a library already on disk, whatever its
+source (ADR 0009).
+_Avoid_: dependency (that is the relation, not the addon), orphan (in UI text)
+
+**Source change**:
+Switching an installed addon to another source while it stays the same
+addon: Change source, or Manual Install replacing a catalogue addon with an
+archive (the takeover). The libraries it needs stay needed.
+_Avoid_: provider switch, reinstall
+
 **Destination list**:
 The vertical list of destinations in the collapsed Get Addons tab, drawn in
 the visual language of the Friends favorites list (icon + label, focused row

@@ -25,7 +25,16 @@ export const deckyUiStub = {
   DialogControlsSectionHeader: ({ children }: Kids) => <h3>{children}</h3>,
   DialogHeader: ({ children }: Kids) => <h2>{children}</h2>,
   DialogFooter: ({ children }: Kids) => <footer>{children}</footer>,
-  DialogButton: ({ children, disabled }: Kids & { disabled?: boolean }) => (
+  DialogButton: ({
+    children,
+    disabled,
+    "aria-label": ariaLabel,
+  }: Kids & { disabled?: boolean; "aria-label"?: string }) => (
+    <button disabled={disabled} aria-label={ariaLabel}>
+      {children}
+    </button>
+  ),
+  ButtonItem: ({ children, disabled }: Kids & { disabled?: boolean }) => (
     <button disabled={disabled}>{children}</button>
   ),
   DialogButtonPrimary: ({ children, disabled }: Kids & { disabled?: boolean }) => (
@@ -61,8 +70,10 @@ export const deckyUiStub = {
   Menu: () => null,
   MenuItem: () => null,
   showContextMenu: () => {},
-  TextField: () => null,
+  TextField: ({ "aria-label": ariaLabel }: { "aria-label"?: string }) =>
+    ariaLabel ? <input aria-label={ariaLabel} /> : null,
   Spinner: () => <span role="progressbar" />,
+  ProgressBarWithInfo: () => <div role="progressbar" />,
   DropdownItem: (p: {
     label?: string;
     menuLabel?: string;
@@ -86,5 +97,8 @@ export const deckyUiStub = {
       {p.description}
     </div>
   ),
+  DialogBodyText: box,
+  MenuSeparator: box,
+  ToggleField: box,
   showModal: () => ({ Close: () => {} }),
 };

@@ -25,6 +25,7 @@ import { confirmDeleteBackup, confirmRestoreBackup } from "./confirmWtf";
 import { BackupRowDescription } from "./BackupRowDescription";
 import { focusTarget } from "./FocusSlot";
 import { openWtfCopyModal } from "./WtfCopyModal";
+import { pickerStartPath } from "../pickerStart";
 
 /** Focus-memory view of the modal's action rows. */
 const VIEW = "modal.wtfBackups";
@@ -106,7 +107,7 @@ function WtfBackupModal({ installation, closeModal }: ModalProps) {
     try {
       picked = await openFilePicker(
         FileSelectionType.FILE,
-        "/home/deck",
+        pickerStartPath(),
         true,
         true,
         undefined,

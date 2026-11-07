@@ -19,6 +19,14 @@ When the suggested next step is better started from a clean context, write
 **`/clear`, then** before it: `**Next:** /clear, then /implement #22: …`.
 Otherwise say nothing about clearing.
 
+Whenever you recommend `/clear` before continuing, automatically settle the
+current T3 Code thread before sending the reply: call the T3 Code MCP tool
+`t3_thread_organize` with `action: "settle"`, omitting `threadId` to target
+this thread. This is authorized by the recommendation itself; no separate
+confirmation is needed. Settling takes effect at turn end. If the tool is
+unavailable or fails, keep the `/clear` recommendation and state that the
+thread could not be settled.
+
 Decide by what the next step works on, not by how full the context is:
 
 - **Keep the context** when the next step works on what is already loaded:

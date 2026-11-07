@@ -224,7 +224,7 @@ describe("jobs over the JSONL server", () => {
       },
     });
     server.on("wtf.create", async () => jobs.startCreate(target));
-    server.on("system.getStatus", async () => ({ backendVersion: "t", protocolVersion: 1, pid: 1 }));
+    server.on("system.getStatus", async () => ({ backendVersion: "t", protocolVersion: 1, pid: 1, homeDir: "/home/t" }));
 
     await server.handleLine(JSON.stringify({ id: 1, method: "wtf.create", params: {} }));
     await server.handleLine(JSON.stringify({ id: 2, method: "system.getStatus", params: {} }));

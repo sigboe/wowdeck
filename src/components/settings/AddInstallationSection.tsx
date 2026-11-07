@@ -28,6 +28,7 @@ import { rememberFocus, requestFocus } from "../../focusMemory";
 import { TextRow } from "../TextRow";
 import { FocusSlot, focusTarget } from "../FocusSlot";
 import { SettingsRow, VIEW } from "./common";
+import { pickerStartPath } from "../../pickerStart";
 
 const CLIENT_TYPE_OPTIONS = [
   // Short, like Valve's dropdown values ("AUTO", "OFF"); the row's
@@ -101,7 +102,7 @@ export function AddInstallationSection({ onChanged }: { onChanged: () => Promise
     try {
       const picked = await openFilePicker(
         FileSelectionType.FOLDER,
-        newPath.trim() || "/home/deck",
+        pickerStartPath(newPath),
         false,
         true,
       );
@@ -132,13 +133,16 @@ export function AddInstallationSection({ onChanged }: { onChanged: () => Promise
             <div style={{ flex: 1, minWidth: 0 }}>
               <FocusSlot view={VIEW} id="folderPath">
                 <TextField
+                  aria-label="WoW folder"
                   value={newPath}
                   onChange={(e) => setNewPath(e.target.value)}
                   onBlur={() => void inspectPicked(newPath)}
                 />
               </FocusSlot>
             </div>
+            {/* Icon only: the accessible name says what it does. */}
             <DialogButton
+              aria-label="Browse for the WoW folder"
               style={{ minWidth: 0, width: "auto", padding: "10px 14px" }}
               onClick={browseForFolder}
               onOKActionDescription="Browse"
@@ -151,7 +155,11 @@ export function AddInstallationSection({ onChanged }: { onChanged: () => Promise
       </PanelSectionRow>
       <SettingsRow id="displayName">
         <TextRow label="Display name">
-          <TextField value={newName} onChange={(e) => setNewName(e.target.value)} />
+          <TextField
+            aria-label="Display name"
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+          />
         </TextRow>
       </SettingsRow>
       <SettingsRow id="gameVersion">

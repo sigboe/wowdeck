@@ -46,6 +46,7 @@ import { createPanelShoulderNavigation } from "./shoulderNav";
 // Decky's plugin name (plugin.json); Decky's state identifies the active plugin by it.
 import { name as PLUGIN_NAME } from "../plugin.json";
 import type { StatusInfo } from "./types";
+import { rememberEngineHome } from "./pickerStart";
 
 type Tab = QamTab;
 
@@ -102,6 +103,7 @@ function Content() {
         return;
       }
       if (status.ok) {
+        rememberEngineHome(status.homeDir);
         setEngineOk(true);
         await addonSession.reloadAll();
         return;

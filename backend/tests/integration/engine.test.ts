@@ -311,6 +311,11 @@ describe("engine JSONL integration", () => {
     expect(res.result.pid).toBeGreaterThan(0);
   });
 
+  test("system.getStatus reports the engine's HOME, where file pickers start (#133)", async () => {
+    const res = await send("system.getStatus");
+    expect(res.result.homeDir).toBe(join(ROOT, "home"));
+  });
+
   test("installations.detect finds the fake WoW", async () => {
     const res = await send("installations.detect");
     const installs = res.result.installations;

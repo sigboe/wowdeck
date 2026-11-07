@@ -74,6 +74,13 @@ export interface WowAddon {
   installedVersion?: string;
   installedAt?: number;
   installedExternalReleaseId?: string;
+  /**
+   * SHA-256 of the archive installed from a file or a direct link (File and
+   * Zip providers), whose release id is only the path or link: a newer zip
+   * saved under the same name keeps it. What "the same archive" means for
+   * a reinstall (archiveMatch.ts); unset for catalogue installs.
+   */
+  installedArchiveHash?: string;
   installedFolders?: string;
   installedFolderList?: string[];
   gameVersion?: string;

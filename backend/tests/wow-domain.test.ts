@@ -50,7 +50,7 @@ describe("getTocForGameType", () => {
       name: "ATT-Classic",
       path: "/x/ATT-Classic",
       status: "",
-      tocs: [{ fileName: "AllTheThings.toc", filePath: "/x/ATT-Classic/AllTheThings.toc", interface: [], dependencyList: [] }],
+      tocs: [{ fileName: "AllTheThings.toc", filePath: "/x/ATT-Classic/AllTheThings.toc", interface: [], dependencyList: [], optionalDependencyList: [] }],
     };
     const toc = getTocForGameType2(folder, WowClientType.Anniversary);
     expect(toc?.fileName).toBe("AllTheThings.toc");

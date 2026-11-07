@@ -10,7 +10,7 @@
  * does.
  */
 
-import { mkdirSync, renameSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, renameSync, writeFileSync } from "node:fs";
 import { readFile, rm } from "node:fs/promises";
 
 /** A named operation stage a test can make fail. */
@@ -39,10 +39,13 @@ export type FsStage =
   | "folder.restore"
   /** Deleting a transaction's disposable leftovers. */
   | "cleanup.remove"
+  /** Listing disposable transaction work folders. */
+  | "cleanup.list"
   /** Writing the note that a transaction's undo finished, when its marker could not be cleared. */
   | "restore.note";
 
 export interface StageFs {
+  readdirSync(stage: FsStage, path: string): string[];
   writeFileSync(stage: FsStage, path: string, data: string): void;
   renameSync(stage: FsStage, from: string, to: string): void;
   readFile(stage: FsStage, path: string): Promise<Buffer>;
@@ -53,6 +56,7 @@ export interface StageFs {
 }
 
 export const realStageFs: StageFs = {
+  readdirSync: (_stage, path) => readdirSync(path),
   writeFileSync: (_stage, path, data) => writeFileSync(path, data),
   renameSync: (_stage, from, to) => renameSync(from, to),
   readFile: (_stage, path) => readFile(path),
@@ -118,6 +122,11 @@ export class FaultInjectingFs implements StageFs {
       this.#faults.delete(stage);
     }
     throw new InjectedFault(stage);
+  }
+
+  readdirSync(stage: FsStage, path: string): string[] {
+    this.#check(stage);
+    return this.base.readdirSync(stage, path);
   }
 
   writeFileSync(stage: FsStage, path: string, data: string): void {

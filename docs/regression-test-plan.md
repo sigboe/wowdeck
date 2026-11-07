@@ -159,7 +159,7 @@ inactive tabs have no text for `seek` to match.
 | M-5 | P1 | S | Menu on an addon | Steam context menu: Update (blue, if offered), Details, Ignore, then a separator and Remove (red). B closes it. **Check where it appears** inside the QAM |
 | M-6 | P1 | | Touch the ⋯ button on a row | Same menu as M-5; tapping it doesn't also open Details |
 | M-7 | P1 | | Touch the row itself | Opens Details |
-| M-8 | P0 | | Menu → Remove → confirm | Folder gone from AddOns; toast "Removed"; a dependency installed only for it is also removed (autoremove), and the toast names it: "Also removed <library>." |
+| M-8 | P0 | | Menu → Remove → confirm | Folder gone from AddOns; toast "Removed". A library only it needed stays unless you chose **Remove both** (LIB-135-2) |
 | M-9 | P1 | | Menu → Remove → cancel | Nothing removed |
 | M-10 | P1 | | A on an unmanaged addon | Opens the menu (no Details for unmanaged); Remove deletes the folder after confirm |
 | M-11 | P1 | | Menu → Ignore | Row disappears; the **Show ignored addons** toggle appears; turning it on shows the row **greyed (Steam's disabled grey) with an IGNORED tag**, still selectable; Unignore brings it back |
@@ -183,7 +183,7 @@ inactive tabs have no text for `seek` to match.
 | M-30 | P2 | | Filter for something that matches nothing; open the filter and press **Show all**; open it and press B | "No addons match …" with what to press; Show all clears it; B keeps the filter as it was |
 | M-31 | P1 | S | With two or more installations, focus **Update all** | Footer shows ≡ **Update all installations**; it runs with "Updating all installations…" (the progress bar stays **inside the panel**, S32; the same for the WTF backup progress in Options) and a toast with the total. With one installation the ≡ action is absent. With nothing to update here, the button stays reachable when other installations exist |
 | M-32 | P2 | | An installation on an SD card that is removed: Update all installations | That installation's updates fail with "… is not available: its folder is missing (is the SD card in?)"; nothing is written under the card's mount path; the other installations still update |
-| M-33 | P1 | S | An addon installed as another's dependency (Syndicator via Baganator) | **LIBRARY** tag and "needed by Baganator" on its row. **Show libraries** (bottom, saved) hides and shows such rows. Remove on Baganator: the confirmation says it also removes Syndicator |
+| M-33 | P1 | S | An addon installed as another's dependency (Syndicator via Baganator) | **LIBRARY** tag and "needed by Baganator" on its row. **Show libraries** (bottom, saved) hides and shows such rows. Remove on Baganator: the confirmation names Syndicator and offers **Remove Baganator only** and **Remove both** |
 | M-34 | P2 | | An addon whose TOC needs a folder that is missing | The row says "missing <name>" and sorts with the other problems |
 | M-35 | P1 | S | Update an addon (or let auto-update do it), then its Options menu | "Roll back to <old version>" right after "Release channel"; it puts the old files back (toast) and offers "Undo rollback (<new version>)"; using it toasts "Returned <name> to <new version>" |
 | M-35b | P2 | | Update an addon, then delete its kept copy under AddOns/.wowdeck/rollback/ over SSH; reopen My Addons and its Options menu | No "Roll back" item; the row is otherwise as it was |
@@ -302,6 +302,7 @@ device-passed 2026-10-23 on the Deck screen, pane 506 CSS px):
 | O-3d | P1 | S | Anywhere in Options (e.g. Safety backups to keep, Active installation, Export): open the dropdown/modal and come back | Focus returns to the same row every time; note any jump |
 | O-3e | P1 | | Scroll far down Options, then Up to the top | Rows stay clear of the title (as M-22) |
 | O-3f | P2 | | Move through every text field in Options (WoW folder, Display name, CurseForge key if shown, GitHub token) and Import/Export | Each is a row with its label above (QAM) or beside (dialogs) the input, and the **whole row lights up** when the field has focus, the same for all of them |
+| O-3g | P2 | | Turn on Steam's screen reader. In **Add installation manually**, move over the WoW folder field, Browse and Display name, then press Up on Display name | The reader says "WoW folder", "Browse for the WoW folder" and "Display name". Up from Display name lands on the WoW folder field or Browse |
 | O-4 | P0 | | **Installation details** → **Remove this installation…** → confirm | Removed from the list; **no files deleted** on disk |
 | O-5 | P1 | | **Installation details** → **Rescan addons** | Addons changed outside WoWDeck show up; toast "Addons rescanned" |
 | O-5b | P1 | S | Options → **Installation details** | A dialog titled with the installation's name: Game version (1.60.1), Build (70338), Game type (Forever Beta, with "World of Warcraft: Forever Beta · _classic_beta_"), Added, Game folder (~/…), Addons ("16 installed, 15 managed"), then Rescan and Remove (red), Close. No AddOns folder row. D-pad reaches every row; B closes |
@@ -495,6 +496,7 @@ or restore strays remain. The pre-test snapshot is
 | W-34 | P1 | | With Retail and Classic installed: open **Manage backups** for Retail and copy Classic's **Current settings** into it. When it finishes, open **Manage backups** for Classic. Then, in Retail's **Manage backups**, import a backup zip made for Classic and open Classic's again | After the copy, Retail lists its new safety backup and Classic lists the backup WoWDeck made of its current settings, with no **Retry** needed. After the import, the zip shows up in Classic's list, not Retail's, and **Copy settings from another version…** in Retail offers it under Classic |
 | W-35 | P1 | | In Options, press **Back up now** on a large WTF folder. Before it finishes, kill the plugin's engine process over SSH and wait for WoWDeck to restart it (within 30 s) | While the engine is down, the progress stays and **Back up now** stays off. Once WoWDeck reaches the engine again, the progress goes and Options reads "Couldn't tell whether the backup finished. Check the backup list before trying again." **Back up now** is on again, and WoWDeck doesn't start the backup again by itself |
 | W-36 | P2 | | In **Copy settings from another version…**, choose a row of a large WTF folder and press **Copy**, then kill the plugin's engine process over SSH before the dialog closes. Then, in Options, pick a new **Backup folder** and kill the engine again before the row changes | The copy screen stays open and reads, in grey like the other description lines and not in red, "Couldn't tell whether the Settings copy finished…"; every row's A label reads Details until WoWDeck reaches the engine again. After the folder kill, Options reads "Couldn't tell whether that was saved…" in grey, and **Backup folder** shows the folder the engine has once it answers |
+| W-37 | P2 | | With a custom **Backup folder** set, move to **Use default folder** with the D-pad and press A | The button goes away, the folder row reads "Internal storage (default)" and focus is on **Backup folder** without another D-pad press |
 
 ## 5. In-game and notifications
 
@@ -521,6 +523,7 @@ or restore strays remain. The pre-test snapshot is
 | R-11 | P1 | | R-9 fixture with both moves done. Repair it by hand over SSH. Delete `AddOns/Suite` (the new files) and move `.wowdeck/tx-fixture/backup/Suite` back to `AddOns/Suite`. Open Recovery details and press Verify recovery | Verify recovery reads "Verifying recovery…" while it runs, and both footer buttons are off until it finishes. Then a toast reads "Verified the repair of Retail" and names `Suite`. The view says the installation doesn't need recovery. `AddOns/Suite` holds the original files, `.wowdeck/tx-fixture` is gone, and the notice has left all three tabs. My Addons shows `Suite` at its old version, without the Unverified tag |
 | R-12 | P1 | | R-9 fixture again, untouched. Press Verify recovery. Then make the R-11 repair, but change one line of a `.lua` file in `AddOns/Suite` and leave the TOC alone, and press it again. Then undo the edit and reload the plugin from Decky to stop the engine. Add `"Extra": {"kind":"absent"}` to the marker's `evidence`, create the folder `AddOns/Extra`, and press Verify recovery once more | Each press shows "Verify recovery found differences". It says the original files aren't all back yet, asks you to put them back and verify again, and says nothing was changed. The first lists `AddOns/Suite` as differing from the original. The second lists `AddOns/Suite` again. The third lists `AddOns/Extra` as not there before the addon change. No file or folder changes, `state.json` keeps the marker as it was, and the notice stays in all three tabs. Deleting `AddOns/Extra` and pressing again verifies as in R-11 |
 | R-13 | P1 | | With the engine stopped, preserve state.json and replace it with truncated JSON containing the key "addonTransactions". Reload WoWDeck and visit My Addons, Get Addons and Options. Restore the preserved file and restart | Every tab says saved addon information cannot be read, addon changes are paused and settings are not saved. The notice explains restoring state.json and restarting. No installation needs to be listed for this notice to appear. The damaged file stays untouched. Restoring it and restarting clears the notice |
+| R-14 | P2 | | Start installing an addon, and reload the plugin from Decky while it downloads, so the engine stops before the change begins. Over SSH, list `AddOns/.wowdeck/` and look for a `tx-…` folder. If the download finished first, make one by hand: `mkdir -p "AddOns/.wowdeck/tx-$(uuidgen)/stage"`. Then install or remove any addon (#134) | No "needs recovery" notice appears. After the second addon change, `AddOns/.wowdeck/` has no `tx-…` folder left, and the log has one line per deleted folder saying it had no marker. Every addon in AddOns is unchanged apart from the one the second change installed or removed |
 
 ## 7. Known risks to look at first
 
@@ -587,6 +590,49 @@ updated for the widened-QAM rework.
 
 ## 8. Result record
 
+### Release 1.1.0, November 4, 2026
+
+DEVICE. The candidate was the v1.0.2-beta.29 release zip (3a241e6), which
+has the same code as v1.1.0; only Markdown and the version changed after it.
+The runs used CDP probes, the virtual pad and engine RPC over SSH, and
+`droiddeckctl` on the phone.
+
+On the Deck (SteamOS 3.9.5), before release:
+
+- Passed: E-1, E-3, R-13, Q-1, Q-4, and PU-20 up to the Switch button.
+- PU-29 passed. Starting from the real v1.0.1 zip with an empty state, the
+  Deck matched 41 addons over 3 installations. After addon changes in 1.0.1,
+  the Beta update to the candidate kept every addon and installation, and no
+  tab showed a recovery notice.
+- Found #122 (P2). The release URL in the WoWDeck row in Options › Updates
+  runs past the QAM's edge.
+- Q-1b showed F6/F7 keycaps after CDP keyboard input. On the phone, real pad
+  input shows L1/R1; recheck on the Deck with the pad.
+
+On DroidDeck 0.6.9 (arm64), before release:
+
+- E-7 passed. The zip installed through Decky's installer with the engine at
+  mode 0600. After the session restart the log names `wowdeck-aarch64` and
+  says the execute bit was restored. The phone now has a real WoW Forever
+  install, which WoWDeck found on its own. MyWheel installed from Latest and
+  Menu › Remove deleted it.
+- GA-27 passed in full, including the Friends check: Friends' own expand
+  still works, and Get Addons widens again afterwards.
+- Decky hung again after the update until the session restarted. The cause
+  is DroidDeck's Decky build, which runs Python 3.14 under proot. It is
+  reported as Droid-Deck/DroidDeck#2103.
+
+On the Deck after publishing, PU-4, PU-11 and PU-12 passed. 1.0.1 on Stable
+was offered 1.1.0 and installed it through Decky's prompt. The staged zip's
+sha256 matched the published asset. Afterwards the channel was still Stable,
+all 3 installations and 45 addons were there, and no tab showed a recovery
+notice.
+
+These did not run before release: R-1, R-2, R-4 and M-45, which need a
+suspend, a Wi-Fi drop or the SD card; R-7 to R-12; E-10 to E-12; PU-23 and
+PU-28; GA-3 on the Deck; and the rest of the full plan. Start the next run
+with them.
+
 ### Device run, November 3, 2026
 
 DEVICE, ticket #64, M-0 and O-2a. Tested through Deck CEF probes and controller
@@ -643,6 +689,7 @@ before and after each popup, rather than relying on widening classes.
 | MI-115-4 | P1 | | Select an archive without addon folders | The full pane width returns. The inspection error appears inline and Browse remains available |
 | MI-115-5 | P1 | | Repeat a Details modal round trip from a result row, then open Install into while collapsed | The previous width, destination and focus return for both states. No clipped pane or unwanted widening |
 | MI-115-6 | P1 | | After several popup returns, close the QAM and reopen Get Addons. Repeat after leaving the plugin tab and after Decky's Back button | Each fresh entry lands collapsed on the nav bar |
+| MI-128-1 | P1 | | Press A on Browse… in From a file, pick an addon archive with A, then press A again | Focus is on the preview card's Install once the card shows, and the second A installs the addon. Cancelling the picker or picking an archive without addon folders leaves focus on Browse… |
 
 The automated reproduction uses the shared browse-session and widening
 adapter boundary. While a popup holds the session, Steam's content becomes
@@ -652,8 +699,9 @@ wanted width of 854 pixels. The regression checks the native placeholder's trans
 and ancestor width caps, then repeats through content remounts and a deliberate
 close. Picker selection and cancellation mount Manual Install with its real
 FocusSlot and disabled Browse control. The picker stays pending through the
-remount. After it settles, the test checks that Browse becomes enabled and
-receives focus without the fake picker requesting focus. Existing file-import
+remount. After it settles, the test checks that Browse becomes enabled. A
+selection then moves focus to the preview card's Install, and a cancellation
+leaves it on Browse. Existing file-import
 state tests cover inspection errors and state survival.
 
 The layout fixture uses the stylesheet-controlled clipping ancestor documented
@@ -668,3 +716,73 @@ Neither finding requires a production DOM change.
 These are CSS constraint checks in jsdom, which has no layout engine. They do
 not measure rendered bounds or establish which event order occurs on a
 particular Steam build. The device checks above remain necessary.
+
+### Manual Install file match, #126
+
+Engine tests cover the match, the update in place, Roll back and the
+match after it. The Deck
+check below confirms that the card and My Addons show the same result. Use
+two RestedXP zips of different versions, or any two releases of one addon
+that share a folder.
+
+| ID | Pri | S | Steps | Expected |
+|---|---|---|---|---|
+| MI-126-1 | P1 | | From a file: install the older zip. Pick the newer zip, read the card's button, then Install. Pick the newer zip again, then the older zip, without installing either. In My Addons, use Roll back on the addon. Then pick the older zip, then the newer zip, and Install the newer one. Open the addon's menu | The newer zip's button says "Updates <name>" and the status says "Updated <name>". My Addons shows one listing with the newer version and the original name. Picking the newer zip again says "Reinstall". Picking the older zip says "Updates <name>", since it is no longer the installed one. Roll back returns to the older version, and Update all doesn't count the addon. After Roll back, the older zip says "Reinstall" and the newer zip says "Updates <name>", not the other way round. Installing the newer zip says "Updated <name>", and the menu offers "Roll back to <older version>" |
+
+### Manual Install catalogue takeover, #129
+
+Engine tests cover the takeover preview and the install that switches the
+addon to a local file. File-import state tests cover the warning's words.
+The Deck check below confirms the card. It needs an addon installed from
+CurseForge or another addon source, and a zip of the same addon.
+
+| ID | Pri | S | Steps | Expected |
+|---|---|---|---|---|
+| MI-129-1 | P1 | | From a file: pick a zip of an addon installed from CurseForge. Read the card, then Install. In My Addons, check the addon and Check for updates. Then pick a newer zip of an addon installed from a file | The card shows an amber warning icon with "This replaces <name> from CurseForge" and "<name> will stop updating from CurseForge" under it, and Install is enabled. The words make sense without the colour. After Install, My Addons shows one listing with the same name as a Local file install, and update checks never offer it. The zip of the file-installed addon shows no warning |
+
+### Manual Install conflict card, #130
+
+Engine tests cover the conflict preview and the refused install, which
+leaves the records and folders unchanged. File-import state tests cover the
+card's words, the "+n more" cut-off, the check after Remove and where focus
+goes. The Deck check below confirms the card. You need two addons installed
+from files and a zip with folders from both. To make one, zip one folder
+from each addon.
+
+| ID | Pri | S | Steps | Expected |
+|---|---|---|---|---|
+| MI-130-1 | P1 | | From a file: pick the zip with both addons' folders. Read the card. Press Remove on the first row, cancel, then press it again and confirm. Install | The card shows an amber warning icon with "This file matches 2 installed addons" and "Remove one, and the file will update the other" under it. Each addon's row names the addon, then lists its shared folders, cut off after three with "+n more". Install is disabled and focus is on the first Remove. Cancel removes nothing. Confirming removes the addon, the card changes to "Updates <the other>" and focus moves to Install. Install leaves one listing in My Addons |
+
+### File picker start folder, #133
+
+Run these on a device whose Steam user isn't `deck`, such as a desktop
+Steam install, and once on the Deck.
+
+| ID | Pri | S | Steps | Expected |
+|---|---|---|---|---|
+| FP-133-1 | P1 | S | Get Addons, Manual Install, then **Browse…** | The picker lists the contents of the Steam user's home folder |
+| FP-133-2 | P1 | | Options, **Add installation manually**, then Browse with the path field empty. Then type a folder path and Browse again | With an empty field the picker opens in the home folder. With a typed path it opens there |
+| FP-133-3 | P2 | | Options, WTF backup folder picker with no backup folder set, then with one set. **Import from file…** in Manage backups | The folder picker opens in the home folder, then in the saved backup folder. Import from file opens in the home folder |
+
+### Libraries after a source change, #135
+
+Engine tests cover who needs a library after a takeover and after Change
+source in both directions, and what each Remove choice removes. Frontend
+tests cover the dialog's words and which button OK is. The Deck checks below
+confirm the dialog and its focus. Use a disposable installation with
+Baganator installed from CurseForge (Syndicator comes with it), a zip of the
+same Baganator folder, and one unrelated addon.
+
+| ID | Pri | S | Steps | Expected |
+|---|---|---|---|---|
+| LIB-135-1 | P0 | S | Manual Install, From a file: install the Baganator zip over the CurseForge one. In My Addons, check Syndicator. Then remove the unrelated addon, from My Addons and from the Manual Install conflict card | Syndicator still says "needed by Baganator". Each Remove dialog names only the addon itself, with one Remove button. The toast names no library and Syndicator stays installed |
+| LIB-135-2 | P0 | S | Remove Baganator. Read the dialog and where focus is. Press A. Then reinstall Baganator from CurseForge, remove it again and pick **Remove both** | The dialog names Syndicator and shows **Remove Baganator only**, **Remove both** and **Cancel**, with focus on **Remove Baganator only**. A keeps Syndicator, still tagged LIBRARY, with no "needed by". **Remove both** removes both, and the toast says "Also removed Syndicator". "Remove Baganator only" may wrap onto two lines, which is expected |
+| LIB-135-3 | P1 | | Change source of Baganator to another source, then of Syndicator. Check Syndicator's row after each | Syndicator still says "needed by Baganator" after both |
+| LIB-137-1 | P1 | | Install Syndicator from a file (Manual Install of a Syndicator zip). Change Baganator's source to a file, then back to CurseForge. Then update Baganator | Syndicator stays installed from the file after each step, with one Syndicator row. No toast mentions Syndicator |
+
+### Reused archive conflicts
+
+Repeat MI-130-1 after overwriting the first addon's original zip with a bundle
+containing both addons. The preview must still show both owners and disable
+Install. Repeat through From a link after replacing the archive at the original
+URL. Installation must refuse the conflict and leave both addons unchanged.
