@@ -14,6 +14,7 @@ import readline from "node:readline";
 import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { connect, evalIn } from "./cdp.mjs";
+import { reactProbe, uiDiagnostics, checkMethods, redact, scrub } from "./diagnostics.mjs";
 import { createConnection, SSH_OPTIONS } from "./connection.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -33,7 +34,14 @@ const HELP = `deck.mjs steps (run several: deck.mjs run 'open; wait plugin = WoW
   eval <expr|file.js> [--full] [--t=ms]    evaluate in the target (default 10000 ms)
   eval --file=path.js | --stdin           literal JavaScript, no run-tokenizer quote stripping
   shot [out.png] [--max=800] [--clip=css] [--full]   screenshot, longest edge capped at --max px
-  audit | tree [--roles=a,b] | state | log [n] [pattern] | sleep <ms> | target <substr>
+  diagnose                                compact UI, engine, installation and recent-error snapshot
+  methods-check                           local frontend/bridge/contract consistency (no device)
+  react <css> [--depth=12]                read-only fiber ancestors and Decky patch markers
+  log-mark                                checkpoint plugin logs for this run
+  log [n] [regex] [--since=mark]           latest log or lines since checkpoint (max 100)
+  log-wait <regex> [--since=mark] [--t=5000]   wait remotely in one SSH call (max 20000 ms)
+  reload-frontend [--file=dist/index.js]   in-memory bundle; restore open panel, tab and focus
+  audit | tree [--roles=a,b] | state | sleep <ms> | target <substr>
   up [--engine] [--no-build] [--no-guard] [--reload] [--dry-run] | down   deploy and reload | restore autoUpdate
 Action steps (open close nav press key seek rpc eval) print what changed once the UI settles.
 A failed seek, wait, expect or rpc stops the run with exit 1.`;
@@ -208,6 +216,24 @@ function pick(v, paths) {
   return list.length === 1 ? one(list[0]) : Object.fromEntries(list.map((p) => [p, one(p)]));
 }
 
+// Bound diagnostics independently of the unbounded escape hatch `eval --full`.
+const diagnosticText = (v) => {
+  const text = show(scrub(v));
+  return text.length > 6000 ? `${text.slice(0, 5970)}… (diagnostic output capped)` : text;
+};
+function integer(value, min, max, name) {
+  const n = Number(value);
+  if (!Number.isSafeInteger(n) || n < min || n > max) fail(`${name} must be an integer from ${min} to ${max}`);
+  return n;
+}
+function readLogs(options) {
+  const config = Buffer.from(JSON.stringify(options)).toString("base64");
+  const source = fs.readFileSync(path.join(HERE, "logs.py"), "utf8");
+  const result = ssh(`python3 -c ${shellQuote(source)} ${shellQuote(config)}`);
+  if (result.code !== 0) fail(`log: ${redact(result.err.trim())}`);
+  return JSON.parse(result.out);
+}
+
 // --- steps ---------------------------------------------------------------------
 
 const flagOf = (args, name, dflt) => {
@@ -261,6 +287,7 @@ async function shot(target, args) {
 class Runner {
   target = "QuickAccess_uid2";
   pad = new Pad();
+  logCheckpoint = null;
 
   // Action steps print what they changed; the rest print their own result.
   // Steps that answer for themselves (seek, rpc, eval) stay quiet when nothing moved.
@@ -375,13 +402,88 @@ class Runner {
       }
       case "state":
         return Object.entries(await look()).map(([k, v]) => `${k}=${JSON.stringify(v)}`).join(" ");
-      case "log": {
-        const n = Number(plain(args)[0] ?? 30);
-        if (!Number.isInteger(n) || n < 1) fail("log [positive line count] [pattern]");
-        const pat = plain(args)[1];
-        const r = ssh(`f=$(ls -t ~/homebrew/logs/wowdeck/*.log | head -1); ${pat ? `grep -i -- ${shellQuote(pat)} "$f" | ` : ""}tail -n ${n}${pat ? "" : ` "$f"`}`);
-        if (r.code !== 0) fail(`log: ${r.err.trim()}`);
-        return r.out.trim() || "(empty)";
+      case "methods-check": {
+        const frontend = fs.readFileSync(path.join(ROOT, "src/services/backend.ts"), "utf8") +
+          fs.readdirSync(path.join(ROOT, "src"), { recursive: true }).filter(f => /\.tsx?$/.test(f)).map(f =>
+            fs.readFileSync(path.join(ROOT, "src", f), "utf8")).join("\n");
+        const result = checkMethods(frontend, fs.readFileSync(path.join(ROOT, "main.py"), "utf8"), methods());
+        if (result.missingBridge.length || result.unknownRpc.length) fail(`methods-check ${show(result)}`);
+        return show(result);
+      }
+      case "react": {
+        const selector = plain(args).join(" ") || fail("react <css>");
+        const depth = integer(flagOf(args, "depth", 12), 1, 40, "react --depth");
+        return diagnosticText(await evalIn(target, `(${reactProbe})(${JSON.stringify(selector)},${depth})`));
+      }
+      case "log-mark":
+        this.logCheckpoint = readLogs({ mode: "mark" });
+        return "log checkpoint saved for this run";
+      case "log":
+      case "log-wait": {
+        const since = flagOf(args, "since", null);
+        if (since && since !== "mark") fail("log --since=mark is the only supported checkpoint");
+        if (since && !this.logCheckpoint) fail("run log-mark before --since=mark in the same run");
+        const wait = verb === "log-wait";
+        const pattern = wait ? plain(args).join(" ") : plain(args).slice(1).join(" ");
+        if (wait && !pattern) fail("log-wait <regex>");
+        const lines = integer(wait ? 10 : plain(args)[0] ?? 30, 1, 100, "log lines");
+        const timeout = integer(flagOf(args, "t", 5000), 1, 20000, "log --t");
+        return diagnosticText(readLogs({ mode: wait ? "wait" : "read", pattern, lines,
+          timeout: wait ? timeout : 0, checkpoint: since ? this.logCheckpoint : null }));
+      }
+      case "diagnose": {
+        const attempt = async (fn) => { try { return await fn(); } catch (e) { return { error: e.message.split("\n")[0] }; } };
+        const [ui, panel, engine, installations, errors] = await Promise.all([
+          attempt(look), attempt(() => evalIn(target, `(${uiDiagnostics})()`)),
+          attempt(async () => pick(await rpc("system.getStatus", {}, 3000), "backendVersion,protocolVersion,pid")),
+          attempt(async () => {
+            const result = await rpc("installations.list", {}, 3000);
+            return { count: result.installations.length, active: result.installations.filter(i => i.selected).map(i => ({ id: i.id, gameType: i.gameType })) };
+          }),
+          attempt(() => readLogs({ mode: "read", pattern: "error|exception|failed", lines: 5 })),
+        ]);
+        return diagnosticText({ ui, panel, engine, installations, errors });
+      }
+      case "reload-frontend": {
+        const file = path.resolve(ROOT, flagOf(args, "file", "dist/index.js"));
+        const bundle = fs.readFileSync(file).toString("base64");
+        const before = await look();
+        // Import before unloading so a syntax/import error leaves the old frontend intact.
+        await evalIn("SharedJSContext", `(async()=>{
+          const L=window.DeckyPluginLoader;
+          if(L.reloadLock)throw new Error('reload in progress');
+          const old=L.plugins.find(p=>p.name==='WoWDeck');
+          if(!old)throw new Error('WoWDeck is not loaded');
+          const m=await import(${JSON.stringify("data:text/javascript;base64," + bundle)});
+          if(typeof m.default!=='function')throw new Error('bundle has no plugin factory');
+          if(L.deckyState._activePlugin?.name==='WoWDeck'){
+            window.DFL.Navigation.CloseSideMenus();
+            L.deckyState.setActivePlugin(null);
+            await new Promise(resolve=>setTimeout(resolve,100));
+          }
+          L.unloadPlugin('WoWDeck',true);
+          L.plugins.push({...m.default(),name:'WoWDeck',version:old.version,loadType:old.loadType});
+          L.deckyState.setPlugins(L.plugins);
+          return true;
+        })()`);
+        if (before.plugin === "WoWDeck" && before.tree === "QuickAccess-NA") {
+          await this.step(["open"]);
+          if (before.tab) {
+            const current = await probe("tab");
+            const tabResult = nodeScript("seek.mjs", [target, current, "--exact"]);
+            if (!tabResult.ok) fail(`frontend reloaded; tab restore: ${tabResult.text}`);
+            const tabs = ["My Addons", "Get Addons", "Options"];
+            const from = tabs.indexOf(current), to = tabs.indexOf(before.tab);
+            if (from < 0 || to < 0) fail("frontend reloaded; unknown tab during restore");
+            if (from !== to) await this.step([`key@${target}`, to > from ? "right" : "left", String(Math.abs(to - from))]);
+            if (await probe("tab") !== before.tab) fail("frontend reloaded; tab restore did not take effect");
+          }
+          if (before.focus) {
+            const focusResult = nodeScript("seek.mjs", [target, before.focus, "--exact"]);
+            if (!focusResult.ok) fail(`frontend reloaded; focus restore: ${focusResult.text}`);
+          }
+        }
+        return `frontend reloaded in memory; backend unchanged; ${changes({}, await settled())}`;
       }
       case "sleep":
         await sleep(Number(args[0] ?? 500));

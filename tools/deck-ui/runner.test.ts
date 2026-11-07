@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 const here = fileURLToPath(new URL(".", import.meta.url));
 async function cli(script: string, args: string[], env: Record<string, string> = {}, input?: string) {
   const proc = Bun.spawn(["node", "--import", `${here}fixtures/cef.mjs`, script.startsWith("/") ? script : `${here}${script}`, ...args], {
-    env: { ...process.env, ...env }, stdin: input === undefined ? "ignore" : new Blob([input]), stdout: "pipe", stderr: "pipe",
+    env: { ...process.env, NODE_OPTIONS: `${process.env.NODE_OPTIONS || ""} --import=${here}fixtures/cef.mjs`, ...env }, stdin: input === undefined ? "ignore" : new Blob([input]), stdout: "pipe", stderr: "pipe",
   });
   const [code, out, err] = await Promise.all([
     proc.exited, new Response(proc.stdout).text(), new Response(proc.stderr).text(),
@@ -73,7 +73,7 @@ for (const mode of ["ok", "guard-fail", "reload-fail"]) {
       mkdirSync(scripts, { recursive: true });
       mkdirSync(path.join(root, "backend/src/api"), { recursive: true });
       mkdirSync(path.join(root, "dist"));
-      for (const name of ["deck.mjs", "cdp.mjs", "connection.mjs"]) copyFileSync(path.join(here, name), path.join(scripts, name));
+      for (const name of ["deck.mjs", "cdp.mjs", "connection.mjs", "diagnostics.mjs"]) copyFileSync(path.join(here, name), path.join(scripts, name));
       copyFileSync(path.join(here, "../../backend/src/api/contracts.ts"), path.join(root, "backend/src/api/contracts.ts"));
       writeFileSync(path.join(root, "dist/index.js"), "fixture frontend");
       writeFileSync(path.join(root, "main.py"), "fixture bridge");
@@ -161,3 +161,59 @@ for (const phase of ["start-stall", "press-stall", "close-stall"]) {
     if (phase !== "close-stall") expect(result.text).toContain("pad SSH timed out");
   });
 }
+
+test("local method consistency check needs no device", async () => {
+  const result = await cli("deck.mjs", ["methods-check"]);
+  expect(result.code).toBe(0);
+  expect(result.text).toContain('"missingBridge":[]');
+  expect(result.text).toContain('"save_text_file"');
+});
+
+test("logs support checkpoints, bounded matching waits and scrubbed diagnostic snapshots", async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "wowdeck-logs-"));
+  try {
+    mkdirSync(path.join(root, "homebrew/logs/wowdeck"), { recursive: true });
+    writeFileSync(path.join(root, "homebrew/logs/wowdeck/fixture.log"), 'error: old failure api_key="PRIVATE"\n');
+    const env = { CEF_LOG_HOME: root, DECK: "fixture", CEF_DIAG: "1" };
+    const read = await cli("deck.mjs", ["log-wait", "failure", "--t=1"], env);
+    expect(read.code).toBe(0);
+    expect(read.text).not.toContain("PRIVATE");
+    const since = await cli("deck.mjs", ["run", "log-mark; log 10 --since=mark; log-wait failure --since=mark --t=1; eval 42"], env);
+    expect(since.code).toBe(1);
+    expect(since.text).toContain("→ []");
+    expect(since.text).toContain("no matching log line before timeout");
+    expect(since.text).not.toContain("→ 42");
+    const diag = await cli("deck.mjs", ["diagnose"], env);
+    expect(diag.code).toBe(0);
+    expect(diag.text).toContain('"active":[{"id":"retail","gameType":"retail"}]');
+    expect(diag.text).not.toContain("PRIVATE");
+    const failed = await cli("deck.mjs", ["diagnose"], { ...env, CEF_DIAG: "", CEF_RPC_ERROR: "1" });
+    expect(failed.code).toBe(0);
+    expect(failed.text).toContain('"engine":{"error":');
+    expect(failed.text).toContain('"ui":');
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("log options fail before contacting a device", async () => {
+  for (const args of [["log", "101"], ["log-wait", "x", "--t=NaN"], ["log", "--since=mark"]]) {
+    const result = await cli("deck.mjs", args);
+    expect(result.code).toBe(1);
+    expect(result.text).toContain("FAIL");
+  }
+});
+
+test("frontend reload imports before unloading and never calls the backend reload route", async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "wowdeck-bundle-"));
+  try {
+    const file = path.join(root, "bundle.js");
+    writeFileSync(file, 'export default () => ({ title: "fixture" });');
+    const result = await cli("deck.mjs", ["reload-frontend", `--file=${file}`], { CEF_RELOAD_TRACE: "1" });
+    expect(result.code).toBe(0);
+    expect(result.text).toContain("frontend reloaded in memory; backend unchanged");
+    writeFileSync(file, 'export default ???');
+    const failed = await cli("deck.mjs", ["reload-frontend", `--file=${file}`], { CEF_RELOAD_TRACE: "1" });
+    expect(failed.code).toBe(1);
+    expect(failed.text).not.toContain("frontend reloaded in memory");
+    expect(failed.text).not.toContain("fixture frontend unloaded");
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});

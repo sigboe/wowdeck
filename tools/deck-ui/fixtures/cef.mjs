@@ -21,7 +21,7 @@ globalThis.setTimeout = (callback, delay, ...args) => {
   return timer;
 };
 
-if (process.env.CEF_DEPLOY || process.env.CEF_PAD) {
+if (process.env.CEF_DEPLOY || process.env.CEF_PAD || process.env.CEF_LOG_HOME) {
   const original = childProcess.spawnSync;
   let uploaded = false;
   childProcess.spawnSync = (cmd, args, opts) => {
@@ -36,6 +36,7 @@ if (process.env.CEF_DEPLOY || process.env.CEF_PAD) {
     }
     const script = args.at(-1);
     if (args.at(-2) === "unreachable") return { status: null, error: new Error("spawnSync ssh ETIMEDOUT"), stdout: "", stderr: "" };
+    if (process.env.CEF_LOG_HOME) return original("sh", ["-c", script], { ...opts, env: { ...process.env, HOME: process.env.CEF_LOG_HOME } });
     console.log(`fixture: ssh ${script}`);
     if (process.env.CEF_DEPLOY === "guard-fail" && script.includes("> ") && script.includes("/guard.json")) {
       return { status: 1, stdout: "", stderr: "guard write failed" };
@@ -96,10 +97,11 @@ const tree = { m_ID: "QuickAccess-NA", Root: node, m_Root: node, m_lastFocusNode
 const context = vm.createContext({
   document, NodeFilter: { SHOW_TEXT: 4 }, location: { pathname: "/wowdeck" },
   window: {
-    DFL: { Navigation: { CloseSideMenus: () => {} }, getFocusNavController: () => ({ GetActiveNavTree: () => tree }) },
-    DeckyPluginLoader: { plugins: [{ name: "WoWDeck" }], deckyState: { _activePlugin: { name: "WoWDeck" } } },
+    DFL: { Navigation: { CloseSideMenus: () => {}, OpenQuickAccessMenu: () => {} }, getFocusNavController: () => ({ GetActiveNavTree: () => tree }) },
+    DeckyPluginLoader: { plugins: [{ name: "WoWDeck" }], unloadPlugin: () => { if (process.env.CEF_RELOAD_TRACE) console.log("fixture frontend unloaded"); }, deckyState: { setPlugins: () => {}, setActivePlugin: () => {}, _activePlugin: { name: "WoWDeck" } } },
   },
   DeckyBackend: { call: async (_loader, _plugin, _rpc, method, params) => {
+    if (process.env.CEF_RELOAD_TRACE) throw new Error("frontend reload must not call the backend");
     if (_loader === "loader/reload_plugin" && process.env.CEF_DEPLOY === "reload-fail") {
       throw new Error("reload rejected");
     }
@@ -108,11 +110,13 @@ const context = vm.createContext({
       if (method === "settings.get") return { settings: { autoUpdate: true } };
       if (method === "system.getStatus") return { pid: 123, backendVersion: "fixture" };
     }
+    if (process.env.CEF_DIAG && method === "system.getStatus") return { pid: 42, backendVersion: "fixture", protocolVersion: 1, homeDir: "PRIVATE" };
+    if (process.env.CEF_DIAG && method === "installations.list") return { installations: [{ id: "retail", gameType: "retail", selected: true, path: "PRIVATE" }] };
     if (process.env.CEF_RPC_ERROR) return { __error: { code: "TEST", message: "rpc failed" } };
     return { method, params, rows: [{ name: "one" }, { name: "two" }] };
   } },
   // Resolve RPCs immediately; the timeout branch never fires in the fixture.
-  setTimeout: () => {},
+  setTimeout: (callback, ms) => { if (ms < 1000) queueMicrotask(callback); },
 });
 globalThis.fetch = async (url) => ({ ok: true, json: async () => String(url).endsWith("/json/version") ? (tunnelOpened ? { webSocketDebuggerUrl: "ws://fixture" } : {}) : [
   { title: "SharedJSContext", webSocketDebuggerUrl: "ws://fixture/shared" },
@@ -139,7 +143,7 @@ globalThis.WebSocket = class extends EventTarget {
           queueMicrotask(lastTimer.callback);
           return;
         }
-        result = { result: { value: vm.runInContext(params.expression, context) } };
+        result = { result: { value: vm.runInContext(params.expression, context, { importModuleDynamically: vm.constants.USE_MAIN_CONTEXT_DEFAULT_LOADER }) } };
       }
     } catch (e) { result = { exceptionDetails: { exception: { description: e.message } } }; }
     const respond = () => {

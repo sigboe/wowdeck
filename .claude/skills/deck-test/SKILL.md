@@ -56,8 +56,11 @@ tools/deck-ui/deck down          # restore autoUpdate
 - `press` drives a real pad that lives for the whole run. B, X, Y, L1/R1 and
   Options (= **Y**) exist only on the pad. Presses on our plugin's controls
   are fine; Steam's and other plugins' controls get navigation only.
-- `log [n] [pattern]` tails the newest plugin log; `journalctl -u
-  plugin_loader` over SSH covers Decky.
+- Start an investigation with `diagnose`; it returns bounded UI, engine,
+  selected-installation and error summaries. `methods-check` runs locally.
+  For reproduction-scoped logs, run `log-mark; <trigger>; log-wait <regex>
+  --since=mark` in one batch. `react <css>` inspects component names and patch
+  markers. Reload details and limits: [tool reference](../../../tools/deck-ui/README.md#diagnostics).
 
 ## Steps
 
