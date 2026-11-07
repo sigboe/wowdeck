@@ -6,6 +6,10 @@ What's new in each version of WoWDeck Addon Manager. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- Focus now lands on Install after you pick a file in Manual Install, even after changing the file picker's sort order.
+
 ## [1.1.1] - 2026-11-07
 
 ### Added
