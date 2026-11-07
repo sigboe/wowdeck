@@ -127,21 +127,22 @@ describe("releaseNotesAction: Y on the panel's Update button", () => {
 });
 
 describe("pluginUpdateRow", () => {
-  test("an offer: current → offered with the release link", () => {
+  test("an offer: the version transition only, so it fits the QAM", () => {
     expect(pluginUpdateRow(UPDATE)).toEqual({
       label: "WoWDeck update available",
-      description: "0.1.1 → 0.2.0 · https://github.com/sigboe/wowdeck/releases/tag/v0.2.0",
+      description: "0.1.1 → 0.2.0",
     });
+    expect(pluginUpdateRow(UPDATE).description).not.toContain("https://");
   });
 
   test("names an offer without its zip too", () => {
     expect(pluginUpdateRow(NO_ZIP).label).toBe("WoWDeck update available");
   });
 
-  test("a switch says Switch to stable X", () => {
+  test("a switch says Switch to stable X and names the versions", () => {
     expect(pluginUpdateRow(SWITCH)).toEqual({
       label: "Switch to stable 0.3.0",
-      description: "0.3.1-beta.57 → 0.3.0 · https://x",
+      description: "0.3.1-beta.57 → 0.3.0",
     });
   });
 

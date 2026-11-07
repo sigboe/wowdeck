@@ -95,16 +95,18 @@ export function pluginUpdateDot(info: PluginUpdateInfo | null): DotColor | null 
 
 /**
  * The Options → Updates row, informational only (the panel holds the
- * button): WoWDeck's own version state. "unknown" (repo unreachable —
- * private beyond the token's reach, offline, rate limited) reads as
- * "couldn't check", never as a failure.
+ * button): WoWDeck's own version state. An offer names just the version
+ * transition — the release URL is one unbreakable token that ran past the
+ * QAM's edge, and the row's Y action already opens the release notes.
+ * "unknown" (repo unreachable — private beyond the token's reach, offline,
+ * rate limited) reads as "couldn't check", never as a failure.
  */
 export function pluginUpdateRow(info: PluginUpdateInfo): { label: string; description: string } {
   const { offer } = info;
   if (offer) {
     return {
       label: offer.rowLabel,
-      description: `${info.currentVersion} → ${offer.version} · ${offer.releaseUrl}`,
+      description: `${info.currentVersion} → ${offer.version}`,
     };
   }
   if (info.status === "current") {
