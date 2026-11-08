@@ -174,6 +174,7 @@ export class TukUiAddonProvider extends AddonProvider {
           folders: addon.directories,
           downloadUrl: addon.url,
           gameVersion: addon.patch[0] ?? "",
+          gameVersions: addon.patch.length > 1 ? addon.patch : undefined,
           version: addon.version,
           releaseDate: new Date(`${addon.last_update} UTC`).toISOString(),
         },

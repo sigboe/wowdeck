@@ -217,6 +217,12 @@ export interface SearchResult {
   latestVersion: string | null;
   /** WoW client the latest file targets (e.g. "11.0.2"), when known. */
   gameVersion: string | null;
+  /**
+   * Every game version the latest file targets, when the provider lists
+   * more than one (CurseForge's per-file list; TukUI's patch list); null
+   * when unknown. `gameVersion` is its first entry.
+   */
+  gameVersions: string[] | null;
   /** Release day (YYYY-MM-DD) of the latest file, when the provider reports a real date. */
   releasedAt: string | null;
   /** Release channel of the latest file, when known. */

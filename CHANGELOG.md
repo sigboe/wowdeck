@@ -9,6 +9,7 @@ What's new in each version of WoWDeck Addon Manager. The format follows
 ### Added
 
 - My Addons marks a library no addon needs and shows it even with libraries hidden, so you can remove it.
+- Addon details show every game version a release supports, so multi-game addons list them all.
 
 ### Fixed
 

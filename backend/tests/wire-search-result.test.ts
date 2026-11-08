@@ -54,6 +54,18 @@ describe("toWireSearchResult release facts", () => {
   });
 });
 
+describe("toWireSearchResult game versions", () => {
+  test("passes the per-file list through when the provider has one", () => {
+    const wire = toWireSearchResult(result([file({ gameVersions: ["11.0.2", "1.15.9"] })]));
+    expect(wire.gameVersion).toBe("11.0.2");
+    expect(wire.gameVersions).toEqual(["11.0.2", "1.15.9"]);
+  });
+
+  test("is null when the file lists none", () => {
+    expect(toWireSearchResult(result([file()])).gameVersions).toBeNull();
+  });
+});
+
 describe("toWireSearchResult required dependencies (WF-11)", () => {
   test("counts the required dependencies of the file that would be installed", () => {
     const deps = [

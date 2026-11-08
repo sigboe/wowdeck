@@ -140,6 +140,8 @@ export interface AddonSearchResultFile {
   version: string;
   folders: string[];
   gameVersion: string;
+  /** Every game version the file targets, when the provider lists them (CurseForge, TukUI). */
+  gameVersions?: string[];
   downloadUrl: string;
   releaseDate: string;
   dependencies?: AddonSearchResultDependency[];

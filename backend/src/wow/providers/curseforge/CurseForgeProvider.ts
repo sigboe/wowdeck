@@ -724,6 +724,9 @@ export class CurseForgeProvider extends AddonProvider {
         downloadUrl: f.downloadUrl ?? websiteDownloadUrl(addon.id, f.id),
         folders: f.modules.map((m) => m.name),
         gameVersion: f.gameVersions[0] ?? "",
+        // The full per-file list (CurseForge wire field): a multi-flavor
+        // release targets retail and classic versions at once.
+        gameVersions: f.gameVersions.length > 1 ? f.gameVersions : undefined,
         releaseDate: f.fileDate,
         // CurseForge relationType: 1 embedded library, 2 optional, 3
         // required (4 tool, 5 incompatible, 6 include are not kept). Only

@@ -20,6 +20,7 @@ function result(overrides: Partial<DetailsResult> = {}): DetailsResult {
     websiteUrl: null,
     latestVersion: null,
     gameVersion: null,
+    gameVersions: null,
     releasedAt: null,
     channel: null,
     screenshots: [],
@@ -84,6 +85,18 @@ describe("headerFacts", () => {
 
   test("does not call out the stable channel", () => {
     expect(headerFacts(result({ channel: "stable" }))).toEqual([]);
+  });
+
+  test("shows every targeted game version of a multi-flavor release, without repeats", () => {
+    expect(
+      headerFacts(result({ gameVersion: "11.0.2", gameVersions: ["11.0.2", "1.15.9", "11.0.2"] })),
+    ).toEqual(["WoW 11.0.2 · 1.15.9"]);
+  });
+
+  test("a single-entry list renders as the plain version", () => {
+    expect(headerFacts(result({ gameVersion: "11.0.2", gameVersions: ["11.0.2"] }))).toEqual([
+      "WoW 11.0.2",
+    ]);
   });
 
   test("skips a zero or null download count", () => {
