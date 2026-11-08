@@ -126,6 +126,14 @@ export function wowdeckSharedStyleCss(): string {
   animation: wowdeck-source-jump-blink .6s ease-in-out 3;
   animation-delay: inherit;
 }
+/* Text that names a glyph-only control for screen readers and the device
+   test tool's seek, which reads text nodes, not aria-label (#146). Kept in
+   the layout tree but drawn nowhere. */
+.wowdeck-visually-hidden {
+  position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
+  overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%);
+  white-space: nowrap; border: 0;
+}
 .wowdeck-glyph { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 32px; }
 .wowdeck-glyph img, .wowdeck-glyph svg { width: 32px; height: auto; }
 /* A browse bar segment's open menu (SegmentMenu; ADR 0002 revision
