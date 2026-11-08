@@ -6,6 +6,10 @@ What's new in each version of WoWDeck Addon Manager. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- My Addons marks a library no addon needs and shows it even with libraries hidden, so you can remove it.
+
 ### Fixed
 
 - The WoWDeck update row in Options shows just the version change and no longer runs off the right edge.

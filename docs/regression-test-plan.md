@@ -183,7 +183,7 @@ inactive tabs have no text for `seek` to match.
 | M-30 | P2 | | Filter for something that matches nothing; open the filter and press **Show all**; open it and press B | "No addons match …" with what to press; Show all clears it; B keeps the filter as it was |
 | M-31 | P1 | S | With two or more installations, focus **Update all** | Footer shows ≡ **Update all installations**; it runs with "Updating all installations…" (the progress bar stays **inside the panel**, S32; the same for the WTF backup progress in Options) and a toast with the total. With one installation the ≡ action is absent. With nothing to update here, the button stays reachable when other installations exist |
 | M-32 | P2 | | An installation on an SD card that is removed: Update all installations | That installation's updates fail with "… is not available: its folder is missing (is the SD card in?)"; nothing is written under the card's mount path; the other installations still update |
-| M-33 | P1 | S | An addon installed as another's dependency (Syndicator via Baganator) | **LIBRARY** tag and "needed by Baganator" on its row. **Show libraries** (bottom, saved) hides and shows such rows. Remove on Baganator: the confirmation names Syndicator and offers **Remove Baganator only** and **Remove both** |
+| M-33 | P1 | S | An addon installed as another's dependency (Syndicator via Baganator) | **LIBRARY** tag and "needed by Baganator" on its row. **Show libraries** (bottom, saved) hides and shows such rows, except a library no addon needs, which stays shown. Remove on Baganator: the confirmation names Syndicator and offers **Remove Baganator only** and **Remove both** |
 | M-34 | P2 | | An addon whose TOC needs a folder that is missing | The row says "missing <name>" and sorts with the other problems |
 | M-35 | P1 | S | Update an addon (or let auto-update do it), then its Options menu | "Roll back to <old version>" right after "Release channel"; it puts the old files back (toast) and offers "Undo rollback (<new version>)"; using it toasts "Returned <name> to <new version>" |
 | M-35b | P2 | | Update an addon, then delete its kept copy under AddOns/.wowdeck/rollback/ over SSH; reopen My Addons and its Options menu | No "Roll back" item; the row is otherwise as it was |
@@ -777,9 +777,20 @@ same Baganator folder, and one unrelated addon.
 | ID | Pri | S | Steps | Expected |
 |---|---|---|---|---|
 | LIB-135-1 | P0 | S | Manual Install, From a file: install the Baganator zip over the CurseForge one. In My Addons, check Syndicator. Then remove the unrelated addon, from My Addons and from the Manual Install conflict card | Syndicator still says "needed by Baganator". Each Remove dialog names only the addon itself, with one Remove button. The toast names no library and Syndicator stays installed |
-| LIB-135-2 | P0 | S | Remove Baganator. Read the dialog and where focus is. Press A. Then reinstall Baganator from CurseForge, remove it again and pick **Remove both** | The dialog names Syndicator and shows **Remove Baganator only**, **Remove both** and **Cancel**, with focus on **Remove Baganator only**. A keeps Syndicator, still tagged LIBRARY, with no "needed by". **Remove both** removes both, and the toast says "Also removed Syndicator". "Remove Baganator only" may wrap onto two lines, which is expected |
+| LIB-135-2 | P0 | S | Remove Baganator. Read the dialog and where focus is. Press A. Then reinstall Baganator from CurseForge, remove it again and pick **Remove both** | The dialog names Syndicator and shows **Remove Baganator only**, **Remove both** and **Cancel**, with focus on **Remove Baganator only**. A keeps Syndicator, still tagged LIBRARY, saying "not needed by any addon". **Remove both** removes both, and the toast says "Also removed Syndicator". "Remove Baganator only" may wrap onto two lines, which is expected |
 | LIB-135-3 | P1 | | Change source of Baganator to another source, then of Syndicator. Check Syndicator's row after each | Syndicator still says "needed by Baganator" after both |
 | LIB-137-1 | P1 | | Install Syndicator from a file (Manual Install of a Syndicator zip). Change Baganator's source to a file, then back to CurseForge. Then update Baganator | Syndicator stays installed from the file after each step, with one Syndicator row. No toast mentions Syndicator |
+
+### Libraries no addon needs, #136
+
+Frontend tests cover the row's words, and that an unverified list marks no
+library. Start where LIB-135-2 leaves off after pressing A, with Syndicator
+installed and Baganator removed.
+
+| ID | Pri | S | Steps | Expected |
+|---|---|---|---|---|
+| LIB-136-1 | P1 | S | Look at Syndicator's row in My Addons. Turn **Show libraries** off | The row shows LIBRARY and "CurseForge · <version> · not needed by any addon". It stays listed with Show libraries off, while libraries that are still needed hide |
+| LIB-136-2 | P1 | | Remove Syndicator from its row | The dialog names only Syndicator, and Remove takes it out |
 
 ### Reused archive conflicts
 

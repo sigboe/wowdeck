@@ -9,6 +9,7 @@ import {
   filterAddons,
   isLibrary,
   isNeverTouched,
+  isUnneededLibrary,
   isUnmanaged,
   providerLabel,
   rowQuickAction,
@@ -328,6 +329,21 @@ describe("libraries (WF-22)", () => {
     expect(isLibrary(user)).toBe(false);
     expect(addonRowDescription(lib).base).toBe("CurseForge · 2024.11.3 · needed by UsesLib");
     expect(addonRowDescription(shared).base).toBe("CurseForge · 2024.11.3 · needed by UsesLib +1");
+  });
+  test("a library nothing needs says so, so it can be spotted and removed (ADR 0008)", () => {
+    const unneeded = { ...lib, neededBy: [] };
+    expect(isUnneededLibrary(unneeded)).toBe(true);
+    expect(isUnneededLibrary(lib)).toBe(false);
+    expect(isUnneededLibrary({ ...user, neededBy: [] })).toBe(false);
+    expect(addonRowDescription(unneeded).base).toBe(
+      "CurseForge · 2024.11.3 · not needed by any addon",
+    );
+  });
+  test("an unverified list leaves who needs a library unknown, so nothing is marked unneeded", () => {
+    expect(isUnneededLibrary({ ...lib, neededBy: [] }, { unverified: true })).toBe(false);
+    expect(addonRowDescription({ ...lib, neededBy: [] }, { unverified: true }).base).toBe(
+      "CurseForge · 2024.11.3",
+    );
   });
   test("a missing dependency is a problem on the row", () => {
     expect(addonProblemText({ ...base, missingDependencies: ["LibStub"] })).toBe("missing LibStub");
