@@ -8,6 +8,7 @@ What's new in each version of WoWDeck Addon Manager. The format follows
 
 ### Fixed
 
+- The WoWDeck update row in Options shows just the version change and no longer runs off the right edge.
 - Focus now lands on Install after you pick a file in Manual Install, even after changing the file picker's sort order.
 
 ## [1.1.1] - 2026-11-07
