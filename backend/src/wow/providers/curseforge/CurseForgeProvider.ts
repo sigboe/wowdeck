@@ -12,6 +12,8 @@
  * - getAll: POST /v1/mods with modIds (upstream getAllIds); missing ids
  *   are reported as errors (SourceRemovedAddonError semantics).
  * - Downloads carry the X-Api-Key header (upstream getDownloadAuth).
+ * - Each file's full gameVersions list is surfaced (upstream 3ee2c948,
+ *   WowUp 2.25.4); the field is CurseForge's own wire API.
  *
  * Deviations (documented):
  * - The API key is user-supplied at runtime (upstream embeds it at build
