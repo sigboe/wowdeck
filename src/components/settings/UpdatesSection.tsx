@@ -150,7 +150,8 @@ export function UpdatesSection() {
                 : undefined
             }
           >
-            <FaEllipsisH />
+            <FaEllipsisH aria-hidden="true" />
+            <span className="wowdeck-visually-hidden">Update channel</span>
           </DialogButton>
         </Field>
       </SettingsRow>
