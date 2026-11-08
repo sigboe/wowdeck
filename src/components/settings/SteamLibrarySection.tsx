@@ -55,7 +55,16 @@ export function SteamLibrarySection() {
                   : "Pick its library entry (WoW or Battle.net) to show addon updates there"}
             </span>
           }
-          onClick={() => openSteamGamePicker(linkedSteamGame, (g) => void linkSteamGame(g))}
+          onClick={() =>
+            openSteamGamePicker(
+              {
+                manual: linkedSteamGame,
+                detected: linkedSteamGames(installations, null),
+                autoLinkOn: settings.steamAutoLink,
+              },
+              (g) => void linkSteamGame(g),
+            )
+          }
         >
           <FaChevronRight />
         </Field>
