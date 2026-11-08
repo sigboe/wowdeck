@@ -41,8 +41,28 @@ export function isLibrary(addon: Addon): boolean {
   return !!addon.installedAsDependency;
 }
 
-/** "needed by DBM - Dungeons" / "needed by A +2": why a library is there. */
-export function neededByText(addon: Addon): string | null {
+/**
+ * A library no installed addon needs (GLOSSARY "Library"). It stays until the
+ * user removes it (ADR 0008), so its row says so. Never true for an
+ * unverified list: that one knows source lists only, not TOCs.
+ */
+export function isUnneededLibrary(addon: Addon, { unverified = false }: ListState = {}): boolean {
+  return !unverified && isLibrary(addon) && (addon.neededBy ?? []).length === 0;
+}
+
+/** Whether My Addons' list is unverified (recovery required, #107). */
+interface ListState {
+  unverified?: boolean;
+}
+
+/**
+ * "needed by DBM - Dungeons" / "needed by A +2": why a library is there, or
+ * "not needed by any addon" when nothing does.
+ */
+export function neededByText(addon: Addon, list: ListState = {}): string | null {
+  if (isUnneededLibrary(addon, list)) {
+    return "not needed by any addon";
+  }
   const names = addon.neededBy ?? [];
   if (!isLibrary(addon) || names.length === 0) {
     return null;
@@ -58,7 +78,10 @@ export function providerLabel(providerId: string | null | undefined): string {
 }
 
 /** The description line of a My Addons row, split so the new version can be coloured. */
-export function addonRowDescription(addon: Addon): {
+export function addonRowDescription(
+  addon: Addon,
+  list: ListState = {},
+): {
   base: string;
   newVersion: string | null;
   flags: string;
@@ -69,7 +92,7 @@ export function addonRowDescription(addon: Addon): {
       : addon.ignoreReason === "raiderio_client"
         ? "Raider.IO client, not managed"
         : addon.providerId
-          ? [providerLabel(addon.providerId), addon.version, neededByText(addon)]
+          ? [providerLabel(addon.providerId), addon.version, neededByText(addon, list)]
               .filter(Boolean)
               .join(" · ")
           : providerLabel(null);

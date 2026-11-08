@@ -21,6 +21,7 @@ import {
   isNeverTouched,
   filterAddons,
   isLibrary,
+  isUnneededLibrary,
   isUnmanaged,
   rowQuickAction,
   sortAddons,
@@ -79,10 +80,13 @@ export function InstalledView({ addons, loading, restoreRows, multipleInstallati
       addons.filter(
         (a) =>
           (showIgnored || !a.ignored) &&
-          (showLibraries || !isLibrary(a)) &&
+          // An unneeded library stays in view: hiding it is how they pile up unseen.
+          (showLibraries ||
+            !isLibrary(a) ||
+            isUnneededLibrary(a, { unverified: addonsUnverified })) &&
           (showUnmanaged || !isUnmanaged(a)),
       ),
-    [addons, showIgnored, showLibraries, showUnmanaged],
+    [addons, showIgnored, showLibraries, showUnmanaged, addonsUnverified],
   );
   const visible = useMemo(() => sortAddons(filterAddons(shown, filter)), [shown, filter]);
 
@@ -350,7 +354,7 @@ function AddonRow({
   // Pause/Resume and the PAUSED tag only mean something with auto-update on.
   const { autoUpdate } = useSyncExternalStore(settingsStore.subscribe, settingsStore.get).settings;
   const memory = focusTarget(VIEW, `addon:${addon.id}`);
-  const desc = addonRowDescription(addon);
+  const desc = addonRowDescription(addon, { unverified });
   // Rows that are never updated read like a row that is switched off (S23).
   const greyed = addon.ignored || isUnmanaged(addon);
   const quick = locked ? null : rowQuickAction(addon);
