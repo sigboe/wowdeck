@@ -1,0 +1,5 @@
+toast-start → observer on notificationtoasts (limit 50; 0 notice(s) displayed)
+sleep 9000
+toast-read → 0 notice(s) []
+toast cleanup → 0 notice(s) []
+toast cleanup: observer removed

@@ -1,0 +1,4 @@
+toast-start → observer on notificationtoasts (limit 50; 0 notice(s) displayed)
+press wait:1000 → focus="Import addon list From another computer or WowUp"
+toast-read → 1 notice(s) ["Controller Connected Xbox 360 controller"]
+toast-stop → observer removed; 1 notice(s) retained ["Controller Connected Xbox 360 controller"]

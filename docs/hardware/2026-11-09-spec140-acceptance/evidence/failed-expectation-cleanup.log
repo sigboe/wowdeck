@@ -1,0 +1,12 @@
+toast-start → observer on notificationtoasts (limit 50; 0 notice(s) displayed)
+seek MY ADDONS → found "My Addons" (jump, 5 matches) → focus="MY ADDONS"
+key right → focus="GET ADDONS" tab="Get Addons"
+key right → focus="OPTIONS" tab="Options"
+wait tab = Options → tab="Options"
+eval --active --file=.scratch/spec140/click-add.js → clicked
+sleep 1500
+FAIL expect tab = My Addons: tab="Options"
+at: tree="QuickAccess-NA" focus="OPTIONS" route="/routes/apprunning" plugin="WoWDeck" tab="Options"
+toast cleanup → 1 notice(s) ["Enter a folder path first"]
+toast cleanup: observer removed
+run2 exit=1

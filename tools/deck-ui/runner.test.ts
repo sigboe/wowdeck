@@ -73,7 +73,7 @@ for (const mode of ["ok", "guard-fail", "reload-fail"]) {
       mkdirSync(scripts, { recursive: true });
       mkdirSync(path.join(root, "backend/src/api"), { recursive: true });
       mkdirSync(path.join(root, "dist"));
-      for (const name of ["deck.mjs", "cdp.mjs", "connection.mjs", "diagnostics.mjs"]) copyFileSync(path.join(here, name), path.join(scripts, name));
+      for (const name of ["deck.mjs", "cdp.mjs", "connection.mjs", "diagnostics.mjs", "toast.mjs", "active.mjs"]) copyFileSync(path.join(here, name), path.join(scripts, name));
       copyFileSync(path.join(here, "../../backend/src/api/contracts.ts"), path.join(root, "backend/src/api/contracts.ts"));
       writeFileSync(path.join(root, "dist/index.js"), "fixture frontend");
       writeFileSync(path.join(root, "main.py"), "fixture bridge");
@@ -216,6 +216,319 @@ test("frontend reload imports before unloading and never calls the backend reloa
     expect(failed.text).not.toContain("frontend reloaded in memory");
     expect(failed.text).not.toContain("fixture frontend unloaded");
   } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("toast capture retains transient notices in order beside controller notifications", async () => {
+  const r = await cli("deck.mjs", ["run", [
+    "toast-start --limit=5",
+    `eval@notificationtoasts '__toast("add","Controller connected")'`,
+    `eval@notificationtoasts '__toast("add","Removed BNetToast")'`,
+    `eval@notificationtoasts '__toast("text","Removed BNetToast","Removed BNetToast 1.2.3")'`,
+    `eval@notificationtoasts '__toast("remove","Removed BNetToast 1.2.3")'`,
+    "toast-read",
+  ].join("; ")]);
+  expect(r.code).toBe(0);
+  expect(r.text).toContain("→ observer on notificationtoasts (limit 5");
+  expect(r.text).toContain('toast-read → 2 notice(s) ["Controller connected","Removed BNetToast 1.2.3"]');
+  expect(r.text).not.toContain("fixture: rpc");
+});
+
+test("removing a notice preserves rendered text without hidden descendants", async () => {
+  const r = await cli("deck.mjs", ["run", [
+    "toast-start",
+    `eval@notificationtoasts '__toast("add","Removed BNetToast"); __toast("hidden","Removed BNetToast"," debug detail")'`,
+    "toast-read",
+    `eval@notificationtoasts '__toast("remove","Removed BNetToast debug detail")'`,
+    "toast-read",
+  ].join("; ")]);
+  expect(r.code).toBe(0);
+  expect(r.text.match(/toast-read → 1 notice\(s\) \["Removed BNetToast"\]/g)).toHaveLength(2);
+});
+
+test("ambiguous batched node reuse reports incomplete instead of inventing text", async () => {
+  const r = await cli("deck.mjs", ["run", [
+    "toast-start",
+    `eval@notificationtoasts '__toast("add","first"); __toast("reuse","first","second")'`,
+    "toast-read",
+  ].join("; ")]);
+  expect(r.code).toBe(1);
+  expect(r.text).toContain("INCOMPLETE: 2 notice(s) missed, 0 retained");
+  expect(r.text).not.toContain('["second","second"]');
+});
+
+test("unseen detached notices report incomplete without claiming CSS-hidden text was displayed", async () => {
+  const r = await cli("deck.mjs", ["run", [
+    "toast-start",
+    `eval@notificationtoasts '__toast("add","Visible"); __toast("css-hidden","Visible"," SECRET"); __toast("remove","Visible SECRET")'`,
+    "toast-read",
+  ].join("; ")]);
+  expect(r.code).toBe(1);
+  expect(r.text).toContain('toast-read → INCOMPLETE: 1 notice(s) missed, 0 retained []');
+  expect(r.text).not.toContain('["Visible SECRET"]');
+});
+
+test("notices that disappear before delivery report incomplete capture", async () => {
+  const r = await cli("deck.mjs", ["run", [
+    "toast-start",
+    `eval@notificationtoasts '__toast("add","Controller connected"); __toast("add","Removed BNetToast"); __toast("remove","Controller connected"); __toast("remove","Removed BNetToast")'`,
+    "toast-read",
+  ].join("; ")]);
+  expect(r.code).toBe(1);
+  expect(r.text).toContain('toast-read → INCOMPLETE: 2 notice(s) missed, 0 retained []');
+});
+
+test("reusing an observed node preserves its prior text and marks lost occurrences incomplete", async () => {
+  const r = await cli("deck.mjs", ["run", [
+    "toast-start",
+    `eval@notificationtoasts '__toast("add","first")'`,
+    `eval@notificationtoasts '__toast("replace","first","second"); __toast("replace","second","third")'`,
+    "toast-read",
+  ].join("; ")]);
+  expect(r.code).toBe(1);
+  expect(r.text).toContain('toast-read → INCOMPLETE: 2 notice(s) missed, 1 retained ["first"]');
+});
+
+test("moving a visible notice within one delivery batch neither duplicates it nor loses capture", async () => {
+  const r = await cli("deck.mjs", ["run", [
+    "toast-start",
+    `eval@notificationtoasts '__toast("add","Installed Baganator")'`,
+    `eval@notificationtoasts '__toast("move","Installed Baganator"); __toast("move","Installed Baganator")'`,
+    "toast-read",
+  ].join("; ")]);
+  expect(r.code).toBe(0);
+  expect(r.text).toContain('toast-read → 1 notice(s) ["Installed Baganator"]');
+});
+
+test("separate identical notices are separate entries; DOM churn alone is not", async () => {
+  const r = await cli("deck.mjs", ["run", [
+    "toast-start --limit=5",
+    `eval@notificationtoasts '__toast("add","Installed Baganator")'`,
+    `eval@notificationtoasts '__toast("churn")'`,
+    `eval@notificationtoasts '__toast("churn")'`,
+    `eval@notificationtoasts '__toast("remove","Installed Baganator")'`,
+    `eval@notificationtoasts '__toast("add","Installed Baganator")'`,
+    "toast-read",
+  ].join("; ")]);
+  expect(r.code).toBe(0);
+  expect(r.text).toContain('toast-read → 2 notice(s) ["Installed Baganator","Installed Baganator"]');
+});
+
+test("reset never lets a still-visible old notice overwrite new evidence", async () => {
+  const r = await cli("deck.mjs", ["run", [
+    "toast-start",
+    `eval@notificationtoasts '__toast("add","old")'`,
+    "toast-reset",
+    `eval@notificationtoasts '__toast("add","new")'`,
+    `eval@notificationtoasts '__toast("remove","new")'`,
+    "toast-read",
+  ].join("; ")]);
+  expect(r.code).toBe(0);
+  expect(r.text).toContain('toast-read → 1 notice(s) ["new"]');
+});
+
+test("toast-reset drops earlier evidence and reports its state", async () => {
+  const r = await cli("deck.mjs", ["run", [
+    "toast-start --limit=5",
+    `eval@notificationtoasts '__toast("add","Removed BNetToast")'`,
+    "toast-reset",
+    `eval@notificationtoasts '__toast("add","Controller disconnected")'`,
+    "toast-read",
+  ].join("; ")]);
+  expect(r.code).toBe(0);
+  expect(r.text).toContain("toast-reset → cleared 1 notice(s)");
+  expect(r.text).toContain('toast-read → 1 notice(s) ["Controller disconnected"]');
+});
+
+test("explicit stop prints unread history and fails an overflowed capture", async () => {
+  const r = await cli("deck.mjs", ["run", [
+    "toast-start --limit=1",
+    `eval@notificationtoasts '__toast("add","first")'`,
+    `eval@notificationtoasts '__toast("add","second")'`,
+    "toast-stop",
+  ].join("; ")]);
+  expect(r.text).toContain('["first"]');
+  expect(r.text).toContain("INCOMPLETE");
+  expect(r.code).toBe(1);
+});
+
+test("overflow reports incomplete evidence and fails the run, never a silent pass", async () => {
+  const r = await cli("deck.mjs", ["run", [
+    "toast-start --limit=2",
+    `eval@notificationtoasts '__toast("add","Removed AtlasLoot")'`,
+    `eval@notificationtoasts '__toast("add","Removed BNetToast")'`,
+    `eval@notificationtoasts '__toast("add","Removed DeadlyBossMods")'`,
+    "toast-read",
+  ].join("; ")]);
+  expect(r.code).toBe(1);
+  expect(r.text).toContain("toast-read → INCOMPLETE: 1 notice(s) missed, 2 retained");
+  expect(r.text).toContain('["Removed AtlasLoot","Removed BNetToast"]');
+  expect(r.text).toContain("toast cleanup → INCOMPLETE: 1 notice(s) missed, 2 retained");
+});
+
+test("toast-stop removes the observer; capture steps without one fail", async () => {
+  const stopped = await cli("deck.mjs", ["run", [
+    "toast-start --limit=5",
+    `eval@notificationtoasts '__toast("add","Removed BNetToast")'`,
+    "toast-stop",
+    "toast-read",
+  ].join("; ")]);
+  expect(stopped.code).toBe(1);
+  expect(stopped.text).toContain("toast-stop → observer removed; 1 notice(s) retained");
+  expect(stopped.text).toContain("FAIL toast-read: no observer; run toast-start first");
+  for (const step of ["toast-read", "toast-reset", "toast-stop"]) {
+    const r = await cli("deck.mjs", [step]);
+    expect(r.code).toBe(1);
+    expect(r.text).toContain(`FAIL ${step}: no observer; run toast-start first`);
+  }
+}, 15000);
+
+test("cleanup emits the final stop snapshot and fails overflow arriving after its read", async () => {
+  for (const limit of [1, 2]) {
+    const r = await cli("deck.mjs", ["run", [
+      `toast-start --limit=${limit}`,
+      `eval@notificationtoasts '__toast("add","first")'`,
+    ].join("; ")], { CEF_TOAST_ON_STOP: "1" });
+    expect(r.code).toBe(limit === 1 ? 1 : 0);
+    expect(r.text).toContain(limit === 1 ?
+      'toast cleanup → INCOMPLETE: 1 notice(s) missed, 1 retained ["first"]' :
+      'toast cleanup → 2 notice(s) ["first","late notice"]');
+  }
+}, 15000);
+
+test("a normal batch exit cleans up the observer and emits the captured history", async () => {
+  const r = await cli("deck.mjs", ["run", [
+    "toast-start --limit=5",
+    `eval@notificationtoasts '__toast("add","Removed BNetToast")'`,
+    `eval@notificationtoasts '__toast("add","Controller connected")'`,
+  ].join("; ")]);
+  expect(r.code).toBe(0);
+  expect(r.text).toContain('toast cleanup → 2 notice(s) ["Removed BNetToast","Controller connected"]');
+  expect(r.text).toContain("toast cleanup: observer removed");
+});
+
+test("a failed check cleans up and keeps the collected evidence in the output", async () => {
+  const r = await cli("deck.mjs", ["run", [
+    "toast-start --limit=5",
+    `eval@notificationtoasts '__toast("add","Removed BNetToast")'`,
+    "expect route = /wrong",
+  ].join("; ")]);
+  expect(r.code).toBe(1);
+  expect(r.text).toContain("FAIL expect route");
+  expect(r.text).toContain('toast cleanup → 1 notice(s) ["Removed BNetToast"]');
+  expect(r.text).toContain("toast cleanup: observer removed");
+});
+
+test("interruptions during the final step or cleanup never report success", async () => {
+  for (const sig of ["SIGINT", "SIGTERM"]) {
+    const r = await cli("deck.mjs", ["run", `toast-start; eval@notificationtoasts '__interrupt("${sig}")'`]);
+    expect(r.code).toBe(130);
+    expect(r.text).toContain(`FAIL interrupted by ${sig}`);
+    expect(r.text).toContain("toast cleanup: observer removed");
+  }
+  const cleanup = await cli("deck.mjs", ["toast-start"], { CEF_TOAST_INTERRUPT_STOP: "1" });
+  expect(cleanup.code).toBe(130);
+  expect(cleanup.text).toContain("FAIL interrupted by SIGTERM");
+  expect(cleanup.text).toContain("toast cleanup: observer removed");
+}, 15000);
+
+test("a handled interruption stops the batch, cleans up and emits the evidence", async () => {
+  const r = await cli("deck.mjs", ["run", [
+    "toast-start --limit=5",
+    `eval@notificationtoasts '__toast("add","Removed BNetToast")'`,
+    `eval@notificationtoasts '__interrupt()'`,
+    "toast-read",
+  ].join("; ")]);
+  expect(r.code).toBe(130);
+  expect(r.text).toContain("FAIL interrupted by SIGINT");
+  expect(r.text).not.toContain("toast-read →");
+  expect(r.text).toContain('toast cleanup → 1 notice(s) ["Removed BNetToast"]');
+  expect(r.text).toContain("toast cleanup: observer removed");
+});
+
+test("a lost CEF connection reports an incomplete capture, not a pass", async () => {
+  const r = await cli("deck.mjs", ["run", [
+    "toast-start --limit=5",
+    `eval@notificationtoasts '__toast("add","Removed BNetToast")'`,
+    "toast-read",
+  ].join("; ")], { CEF_TOAST_CLOSE_AFTER: "2" });
+  expect(r.code).toBe(1);
+  expect(r.text).toContain("FAIL toast-read");
+  expect(r.text).toContain("toast cleanup incomplete: could not read history");
+  expect(r.text).toContain("toast cleanup incomplete: observer not removed");
+  expect(r.text).not.toContain("toast cleanup → 1 notice(s)");
+});
+
+test("cleanup failures are reported even when the history was read", async () => {
+  const r = await cli("deck.mjs", ["run", [
+    "toast-start --limit=5",
+    `eval@notificationtoasts '__toast("add","Removed BNetToast")'`,
+  ].join("; ")], { CEF_TOAST_STOP_FAIL: "1" });
+  expect(r.code).toBe(1);
+  expect(r.text).toContain('toast cleanup → 1 notice(s) ["Removed BNetToast"]');
+  expect(r.text).toContain("toast cleanup incomplete: observer not removed (fixture: observer stuck)");
+});
+
+test("active-document evaluation follows the focus navigation document across QAM and modal changes", async () => {
+  const r = await cli("deck.mjs", ["run", [
+    `eval --active 'doc.marker + " doc"'`,
+    `eval --active 'doc === window.DFL.getFocusNavController().GetActiveNavTree().Root.m_element.ownerDocument'`,
+    `eval@SharedJSContext '__nav("modal")'`,
+    `eval --active 'doc.marker + " doc"'`,
+    `eval@SharedJSContext '__nav("qam")'`,
+    `eval --active 'doc.marker + " doc"'`,
+  ].join("; ")]);
+  expect(r.code).toBe(0);
+  expect(r.text).toContain("→ quickaccess doc");
+  expect(r.text).toContain("→ true");
+  expect(r.text).toContain("→ modal doc");
+});
+
+test("no active document fails explicitly instead of evaluating a fallback document", async () => {
+  const r = await cli("deck.mjs", ["run", [
+    `eval@SharedJSContext '__nav("none")'`,
+    `eval --active 'throw new Error("fallback document evaluated")'`,
+  ].join("; ")]);
+  expect(r.code).toBe(1);
+  expect(r.text).toContain("FAIL eval: no active document");
+  expect(r.text).not.toContain("fallback document evaluated");
+});
+
+test("explicit-target evaluation keeps its target selection beside active mode", async () => {
+  const r = await cli("deck.mjs", ["run", [
+    `eval@QuickAccess_uid2 'document.querySelector(".wowdeck-tab-selected").textContent'`,
+    `eval@notificationtoasts '1 + 1'`,
+  ].join("; ")]);
+  expect(r.code).toBe(0);
+  expect(r.text).toContain("→ Get Addons");
+  expect(r.text).toContain("→ 2");
+  const mixed = await cli("deck.mjs", ["run", `eval@QuickAccess_uid2 --active 'doc.marker'`]);
+  expect(mixed.code).toBe(1);
+  expect(mixed.text).toContain("FAIL eval");
+  expect(mixed.text).toContain("--active");
+});
+
+test("active-document evaluation accepts literal file and stdin input", async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "wowdeck-active-eval-"));
+  try {
+    const file = path.join(root, "script.js");
+    writeFileSync(file, `doc.marker + " from file"`);
+    const fromFile = await cli("deck.mjs", ["eval", "--active", `--file=${file}`]);
+    expect(fromFile.code).toBe(0);
+    expect(fromFile.text).toContain("quickaccess from file");
+    const fromStdin = await cli("deck.mjs", ["eval", "--active", "--stdin"], {}, `doc.marker + " from stdin"`);
+    expect(fromStdin.code).toBe(0);
+    expect(fromStdin.text).toContain("quickaccess from stdin");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("active-document evaluation timeout keeps the page-side-work warning", async () => {
+  const r = await cli("deck.mjs", ["eval", "--active", `42 /* fixture timeout */`, "--t=120000"]);
+  expect(r.code).toBe(1);
+  expect(r.text).toContain("timed out after 120000 ms");
+  expect(r.text).toContain("page-side work may still be running");
+  expect(r.text).toContain("inspect before retrying");
 });
 
 test("frontend reload restores a control whose full label exceeds the compact focus probe", async () => {

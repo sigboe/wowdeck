@@ -1,0 +1,6 @@
+toast-start → observer on notificationtoasts (limit 50; 0 notice(s) displayed)
+sleep 13000
+FAIL no match for "GET"; focusables here: 20:04 Notifications Quick Settings Perfo | 20:04 | Notifications Quick Settings Performance | WoWDeck Manager My Addons Retail Install | WoWDeck Manager | My Addons Retail Installed (3) All up to
+at: tree="QuickAccess-NA" focus="MY ADDONS" route="/routes/apprunning" plugin="WoWDeck" tab="My Addons"
+toast cleanup → 0 notice(s) []
+toast cleanup: observer removed

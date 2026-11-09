@@ -1,0 +1,9 @@
+$ tools/deck-ui/deck run 'toast-read'
+FAIL toast-read: no observer; run toast-start first
+leftover exit=1
+$ tools/deck-ui/deck run 'toast-start; toast-stop; toast-read'
+toast-start → observer on notificationtoasts (limit 50; 1 notice(s) displayed)
+toast-stop → observer removed; 1 notice(s) retained
+FAIL toast-read: no observer; run toast-start first
+at: tree="QuickAccess-NA" focus="OPTIONS" route="/routes/apprunning" plugin="WoWDeck" tab="Options"
+stop exit=1

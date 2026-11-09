@@ -1,0 +1,6 @@
+toast-start → observer on notificationtoasts (limit 50; 0 notice(s) displayed)
+press wait:1000 → no change
+FAIL expect route = /deliberately-wrong: route="/routes/apprunning"
+at: tree="QuickAccess-NA" focus="Import addon list From another computer or WowUp" route="/routes/apprunning" plugin="WoWDeck" tab="Options"
+toast cleanup → 2 notice(s) ["Controller Connected Xbox 360 controller","Controller Disconnected Xbox 360 controller"]
+toast cleanup: observer removed

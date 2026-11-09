@@ -16,6 +16,8 @@ import { fileURLToPath } from "node:url";
 import { connect, evalIn } from "./cdp.mjs";
 import { elementLabel, reactProbe, uiDiagnostics, checkMethods, redact, scrub } from "./diagnostics.mjs";
 import { createConnection, SSH_OPTIONS } from "./connection.mjs";
+import { TOAST_TARGET, TOAST_SELECTOR, TOAST_LIMIT, toastStartExpr, toastReadExpr, toastResetExpr, toastStopExpr } from "./toast.mjs";
+import { ACTIVE_TARGET, activeDocExpr } from "./active.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, "../..");
@@ -33,6 +35,8 @@ const HELP = `deck.mjs steps (run several: deck.mjs run 'open; wait plugin = WoW
   rpc <method> ['{json}'] [--pick=a.b[].c,d] [--full] [--t=ms]   engine call; rpc --list
   eval <expr|file.js> [--full] [--t=ms]    evaluate in the target (default 10000 ms)
   eval --file=path.js | --stdin           literal JavaScript, no run-tokenizer quote stripping
+  eval --active <expr|file.js|…>          evaluate in the focus-navigation document, exposed as
+                                          doc (re-resolved per call; no active document fails)
   shot [out.png] [--max=800] [--clip=css] [--full]   screenshot, longest edge capped at --max px
   diagnose                                compact UI, engine, installation and recent-error snapshot
   methods-check                           local frontend/bridge/contract consistency (no device)
@@ -42,9 +46,16 @@ const HELP = `deck.mjs steps (run several: deck.mjs run 'open; wait plugin = WoW
   log-wait <regex> [--since=mark] [--t=5000]   wait remotely in one SSH call (max 20000 ms)
   reload-frontend [--file=dist/index.js]   in-memory bundle; restore open panel, tab and focus
   audit | tree [--roles=a,b] | state | sleep <ms> | target <substr>
+  toast-start [--selector=css] [--limit=n]   watch the notification DOM before an action
+  toast-read | toast-reset | toast-stop      history in order (overflow or unobservable text = incomplete) · drop earlier · remove observer
+                                             the runner owns the observer: every exit (end, failed check, Ctrl-C)
+                                             cleans it up and prints the captured history; a lost CEF connection
+                                             reports an incomplete capture, never a pass; a failed removal can leave
+                                             the observer in the notification page until reload — a later
+                                             toast-stop removes it
   up [--engine] [--no-build] [--no-guard] [--reload] [--dry-run] | down   deploy and reload | restore autoUpdate
 Action steps (open close nav press key seek rpc eval) print what changed once the UI settles.
-A failed seek, wait, expect or rpc stops the run with exit 1.`;
+A failed seek, wait, expect or rpc stops the run with exit 1; an incomplete toast capture exits 1 too.`;
 
 // --- environment ---------------------------------------------------------------
 
@@ -284,10 +295,62 @@ async function shot(target, args) {
   return `${out} ${px(box.w)}x${px(box.h)}`;
 }
 
+// Run a toast expression in the notification page and parse its JSON report;
+// a failed evaluation fails the step by name, and a missing observer
+// (the `on`/`stopped` flag) fails with the toast-start hint.
+async function runToastExpr(step, expr, okField = "on") {
+  const v = await evalIn(TOAST_TARGET, expr).catch((e) => fail(`${step}: ${e.message.split("\n")[0]}`));
+  const r = JSON.parse(v);
+  if (!r[okField]) fail(`${step}: no observer; run toast-start first`);
+  return r;
+}
+// The INCOMPLETE/count summary over a captured history read.
+const toastHead = (r) => (r.incomplete ? `INCOMPLETE: ${r.missed} notice(s) missed, ${r.count} retained` : `${r.count} notice(s)`);
+
 class Runner {
   target = "QuickAccess_uid2";
   pad = new Pad();
   logCheckpoint = null;
+  // The toast observer is owned by this runner session: whichever way the
+  // batch ends, cleanup() stops it and emits what it captured.
+  toastOn = false;
+  cleanupRan = false;
+
+  // Read the captured history, then remove the observer. Returns true when
+  // the capture could not be completed or it overflowed (report an
+  // incomplete capture, never a pass). Idempotent: manual `toast-stop` or a
+  // second call is a no-op.
+  async cleanup() {
+    if (this.cleanupRan) return false;
+    this.cleanupRan = true;
+    if (!this.toastOn) return false;
+    this.toastOn = false;
+    let incomplete = false;
+    let fallback;
+    try {
+      fallback = JSON.parse(await evalIn(TOAST_TARGET, toastReadExpr()));
+    } catch (e) {
+      console.log(`toast cleanup incomplete: could not read history (${e.message.split("\n")[0]}); the observer may still be installed`);
+      incomplete = true;
+    }
+    try {
+      const r = JSON.parse(await evalIn(TOAST_TARGET, toastStopExpr()));
+      if (!r.stopped) {
+        console.log("toast cleanup incomplete: no observer found; run toast-start again before relying on capture");
+        incomplete = true;
+      } else {
+        console.log(`toast cleanup → ${toastHead(r)} ${JSON.stringify(r.entries)}`);
+        incomplete = incomplete || Boolean(r.incomplete);
+        fallback = null;
+        console.log("toast cleanup: observer removed");
+      }
+    } catch (e) {
+      console.log(`toast cleanup incomplete: observer not removed (${e.message.split("\n")[0]}); the observer may still be installed`);
+      incomplete = true;
+    }
+    if (fallback?.on) console.log(`toast cleanup → ${toastHead(fallback)} ${JSON.stringify(fallback.entries)}`);
+    return incomplete;
+  }
 
   // Action steps print what they changed; the rest print their own result.
   // Steps that answer for themselves (seek, rpc, eval) stay quiet when nothing moved.
@@ -377,15 +440,17 @@ class Runner {
         }, true);
       }
       case "eval": {
+        const active = hasFlag(args, "active");
         const file = flagOf(args, "file", null);
         const stdin = hasFlag(args, "stdin");
         const src = plain(args).join(" ");
         if (Number(!!file) + Number(stdin) + Number(!!src) !== 1) fail("eval <expr|file.js> or --file=path.js or --stdin");
+        if (active && at) fail("eval --active resolves the active navigation tree itself; it cannot also name a CEF target");
         const timeout = Number(flagOf(args, "t", 10000));
         if (!Number.isSafeInteger(timeout) || timeout <= 0 || timeout > 2147483647) fail("eval --t must be an integer from 1 to 2147483647 milliseconds");
         const expr = stdin ? fs.readFileSync(0, "utf8") : file ? fs.readFileSync(file, "utf8") : fs.existsSync(src) ? fs.readFileSync(src, "utf8") : src;
         return this.action(async () => {
-          const v = await evalIn(target, expr, timeout).catch((e) => fail(`eval: ${e.message.split("\n")[0]}`));
+          const v = await evalIn(active ? ACTIVE_TARGET : target, active ? activeDocExpr(expr) : expr, timeout).catch((e) => fail(`eval: ${e.message.split("\n")[0]}`));
           return hasFlag(args, "full") ? show(v) : clip(show(v ?? "undefined"), 1500);
         }, true);
       }
@@ -487,6 +552,30 @@ class Runner {
           }
         }
         return `frontend reloaded in memory; backend unchanged; ${changes({}, await settled())}`;
+      }
+      case "toast-start": {
+        const selector = flagOf(args, "selector", TOAST_SELECTOR);
+        const limit = integer(flagOf(args, "limit", TOAST_LIMIT), 1, 500, "toast-start --limit");
+        const r = await evalIn(TOAST_TARGET, toastStartExpr(selector, limit)).catch((e) => fail(`toast-start: ${e.message.split("\n")[0]}`))
+          .then((v) => JSON.parse(v));
+        this.toastOn = true;
+        if (!r.installed) return `toast observer already on (limit ${r.limit ?? limit})`;
+        return `observer on ${TOAST_TARGET} (limit ${r.limit}; ${r.active} notice(s) displayed)`;
+      }
+      case "toast-read": {
+        const r = await runToastExpr("toast-read", toastReadExpr());
+        return `${toastHead(r)} ${JSON.stringify(r.entries)}`;
+      }
+      case "toast-reset": {
+        const r = await runToastExpr("toast-reset", toastResetExpr());
+        return `cleared ${r.cleared} notice(s); ${r.active} still displayed`;
+      }
+      case "toast-stop": {
+        const r = await runToastExpr("toast-stop", toastStopExpr(), "stopped");
+        this.toastOn = false;
+        const evidence = `${toastHead(r)} ${JSON.stringify(r.entries)}`;
+        if (r.incomplete) fail(`toast-stop: observer removed; ${evidence}`);
+        return `observer removed; ${r.retained} notice(s) retained ${JSON.stringify(r.entries)}`;
       }
       case "sleep":
         await sleep(Number(args[0] ?? 500));
@@ -690,18 +779,31 @@ if (argv[0] === "run") {
 
 const runner = new Runner();
 let code = 0;
+// A second signal during cleanup means it: exit immediately.
+let interrupted = null;
+for (const sig of ["SIGINT", "SIGTERM"]) process.on(sig, () => {
+  if (interrupted) process.exit(130);
+  interrupted = sig;
+});
 try {
   for (const words of steps) {
+    if (interrupted) fail(`interrupted by ${interrupted}`);
     const out = await runner.step(words);
+    if (interrupted) fail(`interrupted by ${interrupted}`);
     const label = words.join(" ");
     if (steps.length === 1) console.log(out || "ok");
     else console.log(`${label.length > 50 ? `${label.slice(0, 50)}…` : label}${out ? ` → ${out}` : ""}`);
   }
 } catch (e) {
-  code = 1;
+  code = interrupted ? 130 : 1;
   console.log(e instanceof StepError ? `FAIL ${e.message}` : `FAIL ${e.stack ?? e}`);
   if (steps.length > 1) await look().then((v) => console.log(`at: ${changes({}, v)}`)).catch(() => {});
 } finally {
+  if (await runner.cleanup()) code = code || 1;
   await runner.pad.close();
+}
+if (interrupted) {
+  if (code !== 130) console.log(`FAIL interrupted by ${interrupted}`);
+  code = 130;
 }
 process.exit(code);
