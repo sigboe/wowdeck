@@ -1,0 +1,25 @@
+toast-start → observer on notificationtoasts (limit 50; 0 notice(s) displayed)
+seek OPTIONS → found "Options" (jump, 6 matches)
+key left → focus="MY ADDONS" tab="My Addons"
+key left → focus=""
+wait tab = My Addons → tab="My Addons"
+sleep 800
+seek Speedy AutoLoot → found "Speedy AutoLootUnmanagedInstalled manually" (jump, 4 matches) → focus="Speedy AutoLoot UNMANAGEDInstalled manually"
+press x → tree="ModalDialogOverlay_Modal_74" focus="Speedy AutoLoot CurseForge · by Yuyuli · 125 Loot " tab=null
+wait tree ~ Modal --t=10000 → tree="ModalDialogOverlay_Modal_74"
+eval --active --file=.scratch/spec140/read-control… → focused control "Speedy AutoLootCurseForge · by Yuyuli · 125Loot at ludicrous speed. 11.8M 729 4 Nov" in doc "Steam Big Picture Mode"
+press x → tree="QuickAccess-NA" focus=null tab="My Addons"
+sleep 3000
+wait tree !~ Modal --t=20000 → tree="QuickAccess-NA"
+seek BNetToast → found "BNetToastLocal file · 1.0" (jump, 5 matches) → focus="BNetToast Local file · 1.0"
+press menu → tree="ModalDialogOverlay_Modal_75" focus="Details" tab=null
+sleep 1000
+seek Remove --enter → pressed Enter on "Remove…" (jump) → tree="ModalDialogOverlay_Modal_76" focus="Remove"
+sleep 1000
+seek Remove --enter → pressed Enter on "Remove" (jump) → tree="QuickAccess-NA" focus=null tab="My Addons"
+sleep 2000
+sleep 2500
+probe toasts → toasts="Removed BNetToast"
+toast-read → 2 notice(s) ["Speedy AutoLoot now updates from CurseForge Your files are kept: Roll back returns to 1.0.0.","Removed BNetToast"]
+toast cleanup → 2 notice(s) ["Speedy AutoLoot now updates from CurseForge Your files are kept: Roll back returns to 1.0.0.","Removed BNetToast"]
+toast cleanup: observer removed

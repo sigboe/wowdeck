@@ -79,9 +79,9 @@ jobs:
         working-directory: backend
       - run: bun test
         working-directory: backend
-      # The beta workflow's version and prune decisions (tools/beta-release.ts)
-      # and the release gate (tools/release-check.ts).
-      - run: bun test ./tools
+      # These release helpers need no frontend dependencies. The frontend
+      # job runs all tools tests, including the jsdom-backed Deck runner.
+      - run: bun test ./tools/beta-release.test.ts ./tools/release-check.test.ts ./tools/release-notes.test.ts
       # The tests run the engine at its committed version: they mock that
       # version as the latest stable release, which a beta version can never
       # be. A beta build then stamps its version and rebuilds the engine

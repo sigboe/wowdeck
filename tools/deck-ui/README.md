@@ -50,6 +50,16 @@ JS
 The default evaluation budget is 10 seconds. A timeout stops waiting, not the
 page-side operation. Inspect its state before retrying an install or scan.
 
+`deck eval --active '<expr>'` evaluates against the document focus navigation
+uses: the document that owns the root of the active navigation tree, whether
+the QAM panel or a modal holds focus. The runner resolves it when the
+expression runs and exposes it as `doc`, so `doc.querySelector(...)` reaches
+the same controls `seek` walks. Each call resolves the tree again, so a later
+call after navigation sees the new document. When nothing has an active
+navigation tree the command fails instead of evaluating some other document.
+`--file`, `--stdin`, `--full` and `--t=ms` work the same as for a named
+target.
+
 For a manual debugger connection without deployment:
 
 1. On the Deck: Decky → Settings → Developer → enable "Allow Remote CEF Debugging".
@@ -165,3 +175,20 @@ before unloading so React can unmount its old controls.
 Reloading requires a device-test request under the repository's device policy.
 This command targets the configured Deck CEF tunnel; it does not connect to
 DroidDeck through adb. DroidDeck keeps its existing test workflow.
+
+Toast capture includes the notification alert container's children, including
+controller notices with hashed classes, and plugin toast elements. Nested
+matching elements count as one notice. Reset discards earlier history while
+ignoring notices that remain displayed until they leave. Explicit stop prints
+unread history and exits with failure if capture overflowed. Automatic cleanup
+uses the final stop response for history and completeness, with an earlier
+read available as fallback if stopping fails. Interruptions during the last
+step or cleanup exit nonzero.
+
+Notices removed before their text could be observed report incomplete capture.
+Detached DOM text cannot establish which descendants were displayed. A node
+reused within a delivery batch can also lose its earlier contents, so capture
+reports those occurrences as missed. Moving an unchanged previously observed
+notice within one batch preserves its existing entry. If that movement also
+changes its text, earlier evidence stays retained and the uncertain new
+occurrences report incomplete capture.
