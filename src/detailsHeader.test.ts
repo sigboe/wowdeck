@@ -21,6 +21,7 @@ function result(overrides: Partial<DetailsResult> = {}): DetailsResult {
     latestVersion: null,
     gameVersion: null,
     gameVersions: null,
+    gameVersionClients: null,
     releasedAt: null,
     channel: null,
     screenshots: [],

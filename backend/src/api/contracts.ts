@@ -204,6 +204,24 @@ export interface SearchResultScreenshot {
   title: string | null;
 }
 
+/**
+ * The client/flavor a game version belongs to, as the provider identifies
+ * it. CurseForge reports this per version (its own gameVersionTypeId), so a
+ * version number never has to be guessed into a flavor: 3.80.x is Titan
+ * Reforged because the provider says so, not because 3.80 means anything to
+ * us. `retail` still spans expansions, which the version's major.minor
+ * names (11.x = The War Within, 12.x = Midnight, …).
+ */
+export type GameVersionClient =
+  | "retail"
+  | "classic_era"
+  | "anniversary"
+  | "wrath"
+  | "cataclysm"
+  | "mists"
+  | "titan_reforged"
+  | "forever";
+
 export interface SearchResult {
   providerId: string;
   externalId: string;
@@ -223,6 +241,12 @@ export interface SearchResult {
    * when unknown. `gameVersion` is its first entry.
    */
   gameVersions: string[] | null;
+  /**
+   * The client/flavor of the entries in `gameVersions` the provider
+   * identifies, keyed by version (CurseForge's per-file type ids). Null
+   * when the provider doesn't say, as with TukUI's patch list.
+   */
+  gameVersionClients: Record<string, GameVersionClient> | null;
   /** Release day (YYYY-MM-DD) of the latest file, when the provider reports a real date. */
   releasedAt: string | null;
   /** Release channel of the latest file, when known. */

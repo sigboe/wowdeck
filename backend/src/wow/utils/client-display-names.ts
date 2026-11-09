@@ -1,3 +1,5 @@
+import type { GameVersionClient } from "../../api/contracts";
+
 /**
  * The editable tables of WoW client names: CLIENT_DISPLAY_NAMES, the
  * short player-facing name used everywhere (CurseForge's style),
@@ -57,6 +59,28 @@ export const GAME_VERSION_TAGS: Record<string, { label: string; color: string }>
   "11": { label: "War Within", color: "#B15B5E" },
   "12": { label: "Midnight", color: "#6F5BC7" },
   "13": { label: "Last Titan", color: "#D6AB4B" },
+};
+
+/**
+ * Tags for a version whose client the provider identified, keyed by that
+ * client (see GameVersionClient in api/contracts.ts). Retail is absent on
+ * purpose: it spans expansions, so its tag comes from the version's
+ * major.minor in GAME_VERSION_TAGS above (11.x = War Within, 12.x =
+ * Midnight, …). Titan Reforged (the China-only Classic+ built on Wrath
+ * that CurseForge lists as 3.80.x) shares Wrath's ice blue until it gets a
+ * color of its own.
+ */
+export const GAME_VERSION_CLIENT_TAGS: Record<
+  Exclude<GameVersionClient, "retail">,
+  { label: string; color: string }
+> = {
+  classic_era: GAME_VERSION_TAGS["1.15"]!,
+  anniversary: GAME_VERSION_TAGS["2.5"]!,
+  wrath: GAME_VERSION_TAGS["3.4"]!,
+  cataclysm: GAME_VERSION_TAGS["4.4"]!,
+  mists: GAME_VERSION_TAGS["5.5"]!,
+  titan_reforged: { label: "Titan Reforged", color: "#68B7DA" },
+  forever: GAME_VERSION_TAGS["1.60"]!,
 };
 
 /**

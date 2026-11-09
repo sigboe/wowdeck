@@ -63,6 +63,7 @@ import type {
   CfSearchModsResponse,
 } from "./curseforge-models";
 import { PROVIDER_ID } from "../../../api/providers";
+import type { GameVersionClient } from "../../../api/contracts";
 
 const CF_API_BASE_DEFAULT = "https://api.curseforge.com/v1";
 /** CurseForge's WoW "Addons" content class (gameId=1's only class, confirmed live via classesOnly=true). */
@@ -132,6 +133,43 @@ const GAME_TYPE_LISTS: Array<{ flavor: string; typeId: number; matches: WowClien
   { flavor: "wow-wrath-titan", typeId: 81212, matches: [] },
   { flavor: "wow-forever", typeId: 88568, matches: [WowClientType.Forever, WowClientType.ClassicBeta] },
 ];
+
+/**
+ * CurseForge's gameVersionTypeId → the client/flavor we name and color it
+ * by. The ids are the ones in GAME_TYPE_LISTS above (upstream's list); the
+ * flavor is what lets the Details header label a version by the client the
+ * provider says it belongs to instead of guessing from its number. Adding a
+ * patch ("3.80.3") needs no entry — the type id already covers it.
+ */
+const CURSEFORGE_CLIENT_TYPES: Record<number, GameVersionClient> = {
+  517: "retail",
+  67408: "classic_era",
+  73246: "anniversary",
+  73713: "wrath",
+  77522: "cataclysm",
+  79434: "mists",
+  81212: "titan_reforged",
+  88568: "forever",
+};
+
+/**
+ * Pair a file's versions with the clients CurseForge identified. The live
+ * API's sortableGameVersions carry gameVersion and line up with
+ * gameVersions; fixtures may omit gameVersion, in which case index order
+ * is the same pairing.
+ */
+function gameVersionClients(file: CfFile): Record<string, GameVersionClient> | undefined {
+  const clients: Record<string, GameVersionClient> = {};
+  const sortable = file.sortableGameVersions ?? [];
+  file.gameVersions.forEach((version, index) => {
+    const client = sortable.find((sv) => sv.gameVersion === version) ?? sortable[index];
+    const flavor = client ? CURSEFORGE_CLIENT_TYPES[client.gameVersionTypeId] : undefined;
+    if (flavor) {
+      clients[version] = flavor;
+    }
+  });
+  return Object.keys(clients).length > 0 ? clients : undefined;
+}
 
 /** CurseForge FileRelationType → the dependency kinds we keep. */
 const CF_RELATION: Record<number, AddonDependencyType | undefined> = {
@@ -729,6 +767,9 @@ export class CurseForgeProvider extends AddonProvider {
         // The full per-file list (CurseForge wire field): a multi-flavor
         // release targets retail and classic versions at once.
         gameVersions: f.gameVersions.length > 1 ? f.gameVersions : undefined,
+        // Which client each listed version belongs to, from CurseForge's
+        // own type ids — never guessed from the version number.
+        gameVersionClients: gameVersionClients(f),
         releaseDate: f.fileDate,
         // CurseForge relationType: 1 embedded library, 2 optional, 3
         // required (4 tool, 5 incompatible, 6 include are not kept). Only

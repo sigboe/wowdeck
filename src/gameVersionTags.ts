@@ -1,4 +1,8 @@
-import { GAME_VERSION_TAGS } from "../backend/src/wow/utils/client-display-names";
+import {
+  GAME_VERSION_CLIENT_TAGS,
+  GAME_VERSION_TAGS,
+} from "../backend/src/wow/utils/client-display-names";
+import type { GameVersionClient } from "../backend/src/api/contracts";
 
 /**
  * A Details header tag: its label and, for game versions, the expansion's
@@ -9,10 +13,15 @@ export type VersionTag = { label: string; color: string | null };
 
 /**
  * The Details header's version tags (owner, 2026-11-09: tags below the
- * facts, short names, one color per expansion). The version-to-name table
- * lives with the other hand-edited name tables in client-display-names.ts
- * (GAME_VERSION_TAGS). A version with no entry keeps its raw string and
- * the neutral tag color rather than a guessed name.
+ * facts, short names, one color per expansion). The names and colors live
+ * with the other hand-edited tables in client-display-names.ts.
+ *
+ * A version is matched by the client the provider identified first (its
+ * CurseForge type id), so any new patch of a known client matches without
+ * a new entry — 3.80.0/1/2 all take Titan Reforged. Only versions with no
+ * client id (TukUI, installed addons) or Retail's per-expansion names
+ * fall back to reading the version number. A version that still matches
+ * nothing keeps its raw string and the neutral tag color.
  */
 
 /** `major` or `major.minor` of a version string, when it starts with one. */
@@ -25,14 +34,18 @@ function versionKey(version: string): { exact: string; major: string } | null {
 }
 
 /** The flavor tag for one version: its friendly name and color, or the raw string. */
-export function gameVersionTag(version: string): VersionTag {
-  const key = versionKey(version);
-  if (!key) {
-    return { label: version, color: null };
+export function gameVersionTag(version: string, client?: GameVersionClient | null): VersionTag {
+  if (client && client !== "retail") {
+    return GAME_VERSION_CLIENT_TAGS[client];
   }
-  return (
-    GAME_VERSION_TAGS[key.exact] ?? GAME_VERSION_TAGS[key.major] ?? { label: version, color: null }
-  );
+  const key = versionKey(version);
+  if (key) {
+    const tag = GAME_VERSION_TAGS[key.exact] ?? GAME_VERSION_TAGS[key.major];
+    if (tag) {
+      return tag;
+    }
+  }
+  return { label: version, color: null };
 }
 
 /**
@@ -43,6 +56,7 @@ export function gameVersionTag(version: string): VersionTag {
 export function gameVersionTagList(result: {
   gameVersion: string | null;
   gameVersions: string[] | null;
+  gameVersionClients?: Record<string, GameVersionClient> | null;
 }): VersionTag[] {
   const versions =
     result.gameVersions && result.gameVersions.length > 0
@@ -51,11 +65,13 @@ export function gameVersionTagList(result: {
         ? [result.gameVersion]
         : [];
   const seen = new Set<string>();
-  return versions.map(gameVersionTag).filter((tag) => {
-    if (seen.has(tag.label)) {
-      return false;
-    }
-    seen.add(tag.label);
-    return true;
-  });
+  return versions
+    .map((version) => gameVersionTag(version, result.gameVersionClients?.[version]))
+    .filter((tag) => {
+      if (seen.has(tag.label)) {
+        return false;
+      }
+      seen.add(tag.label);
+      return true;
+    });
 }

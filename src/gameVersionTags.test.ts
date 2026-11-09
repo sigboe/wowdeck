@@ -19,6 +19,14 @@ describe("gameVersionTag", () => {
     expect(gameVersionTag("13.0.1")).toEqual({ label: "Last Titan", color: "#D6AB4B" });
   });
 
+  test("matches by the provider's client id, so a new patch of a known client still matches", () => {
+    expect(gameVersionTag("3.80.1", "titan_reforged")).toEqual({
+      label: "Titan Reforged",
+      color: "#68B7DA",
+    });
+    expect(gameVersionTag("12.1.5", "retail")).toEqual({ label: "Midnight", color: "#6F5BC7" });
+  });
+
   test("keeps an unknown version raw, with the neutral color", () => {
     expect(gameVersionTag("3.80.2")).toEqual({ label: "3.80.2", color: null });
     expect(gameVersionTag("14.0.1")).toEqual({ label: "14.0.1", color: null });
@@ -40,6 +48,20 @@ describe("gameVersionTagList", () => {
       { label: "Classic Era", color: "#C39B52" },
       { label: "Anniversary", color: "#4FAF58" },
     ]);
+  });
+
+  test("names every patch of a client the provider identifies", () => {
+    expect(
+      gameVersionTagList({
+        gameVersion: "3.80.2",
+        gameVersions: ["3.80.0", "3.80.1", "3.80.2"],
+        gameVersionClients: {
+          "3.80.0": "titan_reforged",
+          "3.80.1": "titan_reforged",
+          "3.80.2": "titan_reforged",
+        },
+      }),
+    ).toEqual([{ label: "Titan Reforged", color: "#68B7DA" }]);
   });
 
   test("collapses versions of one flavor into one tag", () => {

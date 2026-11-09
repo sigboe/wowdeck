@@ -63,6 +63,19 @@ describe("toWireSearchResult game versions", () => {
 
   test("is null when the file lists none", () => {
     expect(toWireSearchResult(result([file()])).gameVersions).toBeNull();
+    expect(toWireSearchResult(result([file()])).gameVersionClients).toBeNull();
+  });
+
+  test("passes the provider's client ids through", () => {
+    const wire = toWireSearchResult(
+      result([
+        file({
+          gameVersions: ["12.1.5", "3.80.2"],
+          gameVersionClients: { "12.1.5": "retail", "3.80.2": "titan_reforged" },
+        }),
+      ]),
+    );
+    expect(wire.gameVersionClients).toEqual({ "12.1.5": "retail", "3.80.2": "titan_reforged" });
   });
 });
 

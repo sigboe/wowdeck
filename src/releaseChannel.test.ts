@@ -15,6 +15,7 @@ const result = (channelReleases: SearchResult["channelReleases"]): SearchResult 
   latestVersion: "1.0",
   gameVersion: null,
   gameVersions: null,
+  gameVersionClients: null,
   releasedAt: null,
   channel: "stable",
   channelReleases,

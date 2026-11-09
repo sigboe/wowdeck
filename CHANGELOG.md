@@ -9,7 +9,7 @@ What's new in each version of WoWDeck Addon Manager. The format follows
 ### Added
 
 - My Addons marks a library no addon needs and shows it even with libraries hidden, so you can remove it.
-- Addon details show every game version a release supports as colored tags with friendly names, so multi-game addons list them all.
+- Addon details show every game version a release supports as colored tags with friendly names, including Titan Reforged, so multi-game addons list them all.
 
 ### Fixed
 

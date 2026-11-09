@@ -197,6 +197,7 @@ export function toWireSearchResult(
     latestVersion: file?.version ?? null,
     gameVersion: file?.gameVersion || null,
     gameVersions: file?.gameVersions?.length ? file.gameVersions : null,
+    gameVersionClients: file?.gameVersionClients ?? null,
     releasedAt: dateLabel(file?.releaseDate) ?? null,
     channel: file ? channelToWire(file.channelType) : null,
     channelReleases:

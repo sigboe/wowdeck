@@ -161,6 +161,33 @@ describe("CurseForge provider", () => {
     expect(recorded.gets[0]).toContain("sortField=1");
   });
 
+  test("labels each game version with the client its type id names", async () => {
+    const addon = cfAddon({
+      id: 77,
+      name: "Multi",
+      latestFiles: [
+        cfFile({
+          id: 7700,
+          gameVersions: ["12.1.5", "3.80.2", "1.15.9"],
+          sortableGameVersions: [
+            { gameVersionTypeId: 517, name: "Retail" },
+            { gameVersionTypeId: 81212, name: "Wrath Titan" },
+            { gameVersionTypeId: 67408, name: "Classic" },
+          ],
+        }),
+      ],
+    });
+    const { net } = fakeNet({ mod: { "77": addon } });
+    const provider = new CurseForgeProvider(net, () => key);
+
+    const result = await provider.getById("77", retail);
+    expect(result!.files![0]!.gameVersionClients).toEqual({
+      "12.1.5": "retail",
+      "3.80.2": "titan_reforged",
+      "1.15.9": "classic_era",
+    });
+  });
+
   test("files without sortableGameVersions are incompatible (upstream semantics)", async () => {
     const addon = cfAddon({
       id: 1,

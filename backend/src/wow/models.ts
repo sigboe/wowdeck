@@ -11,7 +11,7 @@
  */
 
 import type { Toc } from "./toc/toc";
-import type { SteamGameLink } from "../api/contracts";
+import type { GameVersionClient, SteamGameLink } from "../api/contracts";
 import { AddonChannelType, type AddonIgnoreReason, type AddonProviderType, AddonDependencyType, WowClientType } from "./types";
 
 /** Serializable stand-in for fs.Stats. */
@@ -142,6 +142,11 @@ export interface AddonSearchResultFile {
   gameVersion: string;
   /** Every game version the file targets, when the provider lists them (CurseForge, TukUI). */
   gameVersions?: string[];
+  /**
+   * The client/flavor of entries in `gameVersions` that the provider
+   * identifies, keyed by version (CurseForge's per-file type ids).
+   */
+  gameVersionClients?: Record<string, GameVersionClient>;
   downloadUrl: string;
   releaseDate: string;
   dependencies?: AddonSearchResultDependency[];
