@@ -46,6 +46,8 @@ describe("manual-add game types (api/gameTypes)", () => {
       ["classic", "Classic"],
       ["forever", "Forever"],
       ["classic_beta", "Forever Beta"],
+      ["classic_titan", "Titan Reforged"],
+      ["cn_beta", "China Beta"],
       ["beta", "Retail Beta"],
       ["ptr", "Retail PTR"],
     ]);

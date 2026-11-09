@@ -31,6 +31,8 @@ export const CLIENT_DISPLAY_NAMES: Record<string, string> = {
   ClassicEra: "Classic Era",
   ClassicEraPtr: "Classic Era PTR",
   Anniversary: "Anniversary",
+  ClassicTitan: "Titan Reforged",
+  ClassicCnBeta: "China Beta",
 };
 
 /**
@@ -112,6 +114,7 @@ export const CLIENT_FULL_NAMES: Record<string, string> = {
   ClassicEra: "World of Warcraft Classic",
   ClassicEraPtr: "PTR (Classic Era)",
   Anniversary: "Burning Crusade Anniversary",
+  ClassicTitan: "World of Warcraft Titan Reforged Classic",
 };
 
 /**

@@ -43,4 +43,6 @@ export enum WowClientType {
   Anniversary,
   Forever,
   None,
+  ClassicTitan,
+  ClassicCnBeta,
 }

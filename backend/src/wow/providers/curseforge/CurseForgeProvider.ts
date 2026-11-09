@@ -130,7 +130,7 @@ const GAME_TYPE_LISTS: Array<{ flavor: string; typeId: number; matches: WowClien
     typeId: 79434,
     matches: [WowClientType.Classic, WowClientType.ClassicPtr],
   },
-  { flavor: "wow-wrath-titan", typeId: 81212, matches: [] },
+  { flavor: "wow-wrath-titan", typeId: 81212, matches: [WowClientType.ClassicTitan] },
   { flavor: "wow-forever", typeId: 88568, matches: [WowClientType.Forever, WowClientType.ClassicBeta] },
 ];
 

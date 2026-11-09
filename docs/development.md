@@ -7,6 +7,7 @@
 - [Toolchain](#toolchain)
 - [Common tasks](#common-tasks)
 - [Testing on a real Steam Deck](#testing-on-a-real-steam-deck)
+- [Fixture installations](#fixture-installations)
 - [Checklists](#checklists)
   - [Add an RPC method](#add-an-rpc-method)
   - [Add a setting](#add-a-setting)
@@ -169,6 +170,26 @@ Inspect the UI with the `tools/deck-ui/` scripts over an SSH tunnel
 covers console and network history and views no script reaches. Deck rules:
 `AGENTS.md` ("The owner's Steam Deck"); the test procedure is the `deck-test`
 skill (`.claude/skills/deck-test/SKILL.md`).
+
+## Fixture installations
+
+`tools/wow-fixtures.sh` builds fake WoW installations, one per client folder,
+so every client type can be tested without the real game. The executables
+are empty files; each fixture reports game version `1.0.0.99999`.
+
+```sh
+tools/wow-fixtures.sh                       # all clients under ~/wowdeck-fixtures
+tools/wow-fixtures.sh --only wow_cn_beta,_classic_titan_
+tools/wow-fixtures.sh --root DIR --clean    # rebuild from scratch
+```
+
+Fixtures live in their own root, apart from any real install. Register that
+root with `installations.add {"path": "<root>"}`; `installations.remove`
+takes each one out again. On a device, run the script there, with the root
+inside the plugin's data directory:
+`ssh <host> 'bash -s -- --root ~/homebrew/data/wowdeck/fixtures' < tools/wow-fixtures.sh`.
+A new client folder goes into the script's `CLIENTS` list too; the test
+`backend/tests/wow-fixtures-script.test.ts` fails until it does.
 
 ## Checklists
 
