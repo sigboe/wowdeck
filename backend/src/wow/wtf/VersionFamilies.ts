@@ -13,6 +13,8 @@ const FAMILIES: readonly (readonly string[])[] = [
   ["_classic_", "_classic_ptr_"],
   ["_classic_era_", "_classic_era_ptr_", "_anniversary_"],
   ["_forever_", "_classic_beta_"],
+  ["_classic_titan_"],
+  ["_cn_beta_"],
 ];
 
 function familyOf(flavor: string): number {

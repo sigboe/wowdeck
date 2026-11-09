@@ -31,7 +31,10 @@ export function getWowGameType(clientType: WowClientType): WowGameType {
       return WowGameType.Mists;
     case WowClientType.Forever:
     case WowClientType.ClassicBeta:
+    case WowClientType.ClassicCnBeta:
       return WowGameType.Forever;
+    case WowClientType.ClassicTitan:
+      return WowGameType.WOTLK;
     case WowClientType.Anniversary:
       return WowGameType.BurningCrusade;
     case WowClientType.Retail:
@@ -125,6 +128,10 @@ export function getGameTypeForClientType(clientType: WowClientType): GameType {
       return "forever";
     case WowClientType.ClassicBeta:
       return "classic_beta";
+    case WowClientType.ClassicTitan:
+      return "classic_titan";
+    case WowClientType.ClassicCnBeta:
+      return "cn_beta";
     case WowClientType.ClassicEra:
     case WowClientType.ClassicEraPtr:
     case WowClientType.Anniversary:
@@ -148,6 +155,10 @@ export function getClientTypeForGameType(gameType: string): WowClientType {
       return WowClientType.Forever;
     case "classic_beta":
       return WowClientType.ClassicBeta;
+    case "classic_titan":
+      return WowClientType.ClassicTitan;
+    case "cn_beta":
+      return WowClientType.ClassicCnBeta;
     case "ptr":
       return WowClientType.RetailPtr;
     case "beta":
