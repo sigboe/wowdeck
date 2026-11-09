@@ -15,7 +15,7 @@ import type { DetailsResult, SearchResult, SearchResultScreenshot } from "../typ
 import * as api from "../services/backend";
 import { useLazyResource } from "../useLazyResource";
 import { dependencyNote, headerFacts, type DependencyNote } from "../detailsHeader";
-import { gameVersionTagList } from "../gameVersionTags";
+import { gameVersionTagList, type VersionTag } from "../gameVersionTags";
 import { providerLabel } from "../addonRow";
 import { FactLine } from "./FactLine";
 import {
@@ -159,11 +159,11 @@ function AddonDetailsIdentity({
   const facts = headerFacts(result);
   // One tag line below the facts (owner, 2026-11-09): the provider label,
   // every game version's flavor and the status tags — version labels are
-  // tags, never inline facts.
-  const allTags = [
-    providerLabel(result.providerId),
+  // tags, never inline facts. Only version tags carry the expansion color.
+  const allTags: VersionTag[] = [
+    { label: providerLabel(result.providerId), color: null },
     ...gameVersionTagList(result),
-    ...(tags ?? []),
+    ...(tags ?? []).map((label) => ({ label, color: null })),
   ];
   return (
     <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
@@ -188,8 +188,12 @@ function AddonDetailsIdentity({
         </div>
         <div style={{ margin: "2px 0" }}>
           {allTags.map((t) => (
-            <span key={t} className="wowdeck-status-tag">
-              {t}
+            <span
+              key={t.label}
+              className="wowdeck-status-tag"
+              style={t.color ? { background: `${t.color}2e`, color: t.color } : undefined}
+            >
+              {t.label}
             </span>
           ))}
         </div>

@@ -3,8 +3,10 @@
  * short player-facing name used everywhere (CurseForge's style),
  * CLIENT_FULL_NAMES below, WowUp's full strings ("World of Warcraft:
  * Forever Beta") shown in Installation details, and
- * FORMER_CLIENT_NAMES, the names a renamed client used to carry. Edit
- * them by hand whenever WowUp/CurseForge rename a client: move the old
+ * FORMER_CLIENT_NAMES, the names a renamed client used to carry, and
+ * GAME_VERSION_TAGS, the expansion name and color of each game version
+ * for the Details header's version tags. Edit them by hand whenever
+ * WowUp/CurseForge rename a client or an expansion opens: move the old
  * names into FORMER_CLIENT_NAMES; nothing else needs to change.
  *
  * `ClassicBeta` -> "Forever Beta" matches WowUp's own rename in v2.24.1
@@ -27,6 +29,34 @@ export const CLIENT_DISPLAY_NAMES: Record<string, string> = {
   ClassicEra: "Classic Era",
   ClassicEraPtr: "Classic Era PTR",
   Anniversary: "Anniversary",
+};
+
+/**
+ * The expansion each game version belongs to, for the Details header's
+ * version tags: the short label to show and the expansion's color. Keyed
+ * by version prefix, so "11" covers every 11.x release. Retail spans
+ * several expansions, so its versions take the expansion's name instead
+ * of the client's ("War Within", "Midnight"); the classic flavors reuse
+ * the short client names above. Edit by hand when Blizzard opens a new
+ * expansion. A version with no entry keeps its raw string and the
+ * neutral tag color (see src/gameVersionTags.ts).
+ */
+export const GAME_VERSION_TAGS: Record<string, { label: string; color: string }> = {
+  "1.14": { label: CLIENT_DISPLAY_NAMES.ClassicEra, color: "#C39B52" },
+  "1.15": { label: CLIENT_DISPLAY_NAMES.ClassicEra, color: "#C39B52" },
+  "1.60": { label: CLIENT_DISPLAY_NAMES.Forever, color: "#178CA8" },
+  "2.5": { label: CLIENT_DISPLAY_NAMES.Anniversary, color: "#4FAF58" },
+  "3.4": { label: "Wrath", color: "#68B7DA" },
+  "4.4": { label: "Cataclysm", color: "#D65A3A" },
+  "5.5": { label: "MoP", color: "#5CA48A" },
+  "6": { label: "Warlords", color: "#9C6551" },
+  "7": { label: "Legion", color: "#91C83E" },
+  "8": { label: "BfA", color: "#3679A8" },
+  "9": { label: "Shadowlands", color: "#9885C5" },
+  "10": { label: "Dragonflight", color: "#B98154" },
+  "11": { label: "War Within", color: "#B15B5E" },
+  "12": { label: "Midnight", color: "#6F5BC7" },
+  "13": { label: "Last Titan", color: "#D6AB4B" },
 };
 
 /**

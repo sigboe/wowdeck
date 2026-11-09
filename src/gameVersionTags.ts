@@ -1,27 +1,19 @@
-import { CLIENT_DISPLAY_NAMES } from "../backend/src/wow/utils/client-display-names";
+import { GAME_VERSION_TAGS } from "../backend/src/wow/utils/client-display-names";
 
 /**
- * A patch version's friendly flavor name, for the Details header's
- * game-version tags (owner, 2026-11-09: tags below the facts, friendly
- * short names only). Names come from our client-name tables where a
- * client exists; Wrath, Cataclysm and MoP carry short CurseForge-style
- * names of their own. 1.60.x is Forever (the classic-branch client that
- * launched 2026-11-04), and 11.x/12.x is Retail (Midnight) — the live
- * Retail expansion, not Forever (owner's correction, 2026-11-09). A
- * version with no entry (CurseForge's 3.80.2) keeps its raw string
- * rather than a guessed name.
+ * A Details header tag: its label and, for game versions, the expansion's
+ * color (owner, 2026-11-09). Provider and status tags pass no color and
+ * keep the neutral tag style.
  */
-const FLAVOR_NAMES: Record<string, string> = {
-  "1.14": CLIENT_DISPLAY_NAMES.ClassicEra,
-  "1.15": CLIENT_DISPLAY_NAMES.ClassicEra,
-  "1.60": CLIENT_DISPLAY_NAMES.Forever,
-  "2.5": CLIENT_DISPLAY_NAMES.Anniversary,
-  "3.4": "Wrath",
-  "4.4": "Cataclysm",
-  "5.5": "MoP",
-  "11": CLIENT_DISPLAY_NAMES.Retail,
-  "12": CLIENT_DISPLAY_NAMES.Retail,
-};
+export type VersionTag = { label: string; color: string | null };
+
+/**
+ * The Details header's version tags (owner, 2026-11-09: tags below the
+ * facts, short names, one color per expansion). The version-to-name table
+ * lives with the other hand-edited name tables in client-display-names.ts
+ * (GAME_VERSION_TAGS). A version with no entry keeps its raw string and
+ * the neutral tag color rather than a guessed name.
+ */
 
 /** `major` or `major.minor` of a version string, when it starts with one. */
 function versionKey(version: string): { exact: string; major: string } | null {
@@ -32,13 +24,15 @@ function versionKey(version: string): { exact: string; major: string } | null {
   return { exact: m[2] !== undefined ? `${m[1]}.${m[2]}` : m[1], major: m[1] };
 }
 
-/** The flavor tag for one version: its friendly name, or the raw string when unknown. */
-export function gameVersionTag(version: string): string {
+/** The flavor tag for one version: its friendly name and color, or the raw string. */
+export function gameVersionTag(version: string): VersionTag {
   const key = versionKey(version);
   if (!key) {
-    return version;
+    return { label: version, color: null };
   }
-  return FLAVOR_NAMES[key.exact] ?? FLAVOR_NAMES[key.major] ?? version;
+  return (
+    GAME_VERSION_TAGS[key.exact] ?? GAME_VERSION_TAGS[key.major] ?? { label: version, color: null }
+  );
 }
 
 /**
@@ -49,12 +43,19 @@ export function gameVersionTag(version: string): string {
 export function gameVersionTagList(result: {
   gameVersion: string | null;
   gameVersions: string[] | null;
-}): string[] {
+}): VersionTag[] {
   const versions =
     result.gameVersions && result.gameVersions.length > 0
       ? result.gameVersions
       : result.gameVersion
         ? [result.gameVersion]
         : [];
-  return [...new Set(versions.map(gameVersionTag))];
+  const seen = new Set<string>();
+  return versions.map(gameVersionTag).filter((tag) => {
+    if (seen.has(tag.label)) {
+      return false;
+    }
+    seen.add(tag.label);
+    return true;
+  });
 }
