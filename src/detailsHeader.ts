@@ -41,13 +41,8 @@ export function headerFacts(result: DetailsResult): string[] {
   if (result.channel === "beta" || result.channel === "alpha") {
     facts.push(result.channel === "beta" ? "Beta" : "Alpha");
   }
-  if (result.gameVersions?.length) {
-    // A multi-flavor release lists every game version it targets
-    // (CurseForge's per-file list); one flavor renders as before.
-    facts.push(`WoW ${[...new Set(result.gameVersions)].join(" · ")}`);
-  } else if (result.gameVersion) {
-    facts.push(`WoW ${result.gameVersion}`);
-  }
+  // Game versions are not facts: they render as tags on their own line
+  // above (gameVersionTagList, owner 2026-11-09).
   const released = shortReleaseDate(result.releasedAt, new Date());
   if (released) {
     facts.push(`Updated ${released}`);

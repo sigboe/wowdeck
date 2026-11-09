@@ -15,6 +15,7 @@ import type { DetailsResult, SearchResult, SearchResultScreenshot } from "../typ
 import * as api from "../services/backend";
 import { useLazyResource } from "../useLazyResource";
 import { dependencyNote, headerFacts, type DependencyNote } from "../detailsHeader";
+import { gameVersionTagList } from "../gameVersionTags";
 import { providerLabel } from "../addonRow";
 import { FactLine } from "./FactLine";
 import {
@@ -139,8 +140,9 @@ type LiveInstall = Pick<
 >;
 
 /**
- * The identity block of the details header: logo, name, provider pill and
- * facts, and the dependencies line — the modal's own header content, shared
+ * The identity block of the details header: logo, name, the tag line
+ * (status tags and game-version flavor tags) and facts, and the
+ * dependencies line — the modal's own header content, shared
  * with the widened QAM's detail pane (UI-02 ticket 03, glossary "Identity
  * strip"). It owns no chrome: the modal wraps it in .wowdeck-details-header
  * under the per-page headline, the pane in its own strip.
@@ -155,6 +157,9 @@ function AddonDetailsIdentity({
   dependencies?: DependencyNote | null;
 }) {
   const facts = headerFacts(result);
+  // Status tags and game-version tags share the tag line under the name
+  // (owner, 2026-11-09): version labels are tags, never inline facts.
+  const allTags = [...(tags ?? []), ...gameVersionTagList(result)];
   return (
     <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
       {result.thumbnailUrl && (
@@ -172,9 +177,9 @@ function AddonDetailsIdentity({
       )}
       <div style={{ minWidth: 0 }}>
         <div style={{ fontWeight: 500, fontSize: STEAM_FONT.body }}>{result.name}</div>
-        {tags && tags.length > 0 && (
+        {allTags.length > 0 && (
           <div style={{ margin: "2px 0" }}>
-            {tags.map((t) => (
+            {allTags.map((t) => (
               <span key={t} className="wowdeck-status-tag">
                 {t}
               </span>
