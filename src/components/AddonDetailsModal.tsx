@@ -159,11 +159,11 @@ function AddonDetailsIdentity({
   const facts = headerFacts(result);
   // One tag line below the facts (owner, 2026-11-09): the provider label,
   // every game version's flavor and the status tags — version labels are
-  // tags, never inline facts. Only version tags carry the expansion color.
+  // tags, never inline facts. Only version tags carry the expansion palette.
   const allTags: VersionTag[] = [
-    { label: providerLabel(result.providerId), color: null },
+    { label: providerLabel(result.providerId), primary: null, secondary: null },
     ...gameVersionTagList(result),
-    ...(tags ?? []).map((label) => ({ label, color: null })),
+    ...(tags ?? []).map((label) => ({ label, primary: null, secondary: null })),
   ];
   return (
     <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
@@ -191,7 +191,9 @@ function AddonDetailsIdentity({
             <span
               key={t.label}
               className="wowdeck-status-tag"
-              style={t.color ? { background: `${t.color}2e`, color: t.color } : undefined}
+              style={
+                t.primary && t.secondary ? { background: t.primary, color: t.secondary } : undefined
+              }
             >
               {t.label}
             </span>
