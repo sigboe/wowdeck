@@ -9,6 +9,8 @@
 export interface CfSortableGameVersion {
   gameVersionTypeId: number;
   name: string;
+  /** The version string ("3.80.2"); present on the live API, optionally in fixtures. */
+  gameVersion?: string;
 }
 
 export interface CfModule {

@@ -20,6 +20,8 @@ function result(overrides: Partial<DetailsResult> = {}): DetailsResult {
     websiteUrl: null,
     latestVersion: null,
     gameVersion: null,
+    gameVersions: null,
+    gameVersionClients: null,
     releasedAt: null,
     channel: null,
     screenshots: [],
@@ -61,7 +63,7 @@ describe("headerFacts", () => {
           gameVersion: "11.0.2",
         }),
       ),
-    ).toEqual(["Crieve", "1.2M downloads", "v1.2.3", "WoW 11.0.2"]);
+    ).toEqual(["Crieve", "1.2M downloads", "v1.2.3"]);
   });
 
   test("adds a non-stable channel and the release day", () => {
@@ -74,16 +76,17 @@ describe("headerFacts", () => {
           releasedAt: "2026-09-01",
         }),
       ),
-    ).toEqual([
-      "2.0",
-      "Beta",
-      "WoW 11.0.2",
-      `Updated ${shortReleaseDate("2026-09-01", new Date())}`,
-    ]);
+    ).toEqual(["2.0", "Beta", `Updated ${shortReleaseDate("2026-09-01", new Date())}`]);
   });
 
   test("does not call out the stable channel", () => {
     expect(headerFacts(result({ channel: "stable" }))).toEqual([]);
+  });
+
+  test("never lists game versions as facts: they are tags, not facts", () => {
+    expect(
+      headerFacts(result({ gameVersion: "11.0.2", gameVersions: ["11.0.2", "1.15.9"] })),
+    ).toEqual([]);
   });
 
   test("skips a zero or null download count", () => {

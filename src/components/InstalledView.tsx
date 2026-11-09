@@ -119,6 +119,8 @@ export function InstalledView({ addons, loading, restoreRows, multipleInstallati
       websiteUrl: addon.externalUrl,
       latestVersion: addon.availableVersion ?? addon.version,
       gameVersion: addon.gameVersion,
+      gameVersions: addon.gameVersion ? [addon.gameVersion] : null,
+      gameVersionClients: null,
       releasedAt: null,
       channel: null,
       screenshots: [],
