@@ -7,7 +7,7 @@ import { pluginToast, toastError } from "../../toast";
 import { lastAutoUpdateLine } from "../../text";
 import { formatBytes } from "../../wtfFormat";
 import { settingsStore } from "../../settings";
-import { panelOffer, pluginUpdateRow, releaseNotesAction } from "../../pluginUpdate";
+import { panelOffer, isTestBuild, pluginUpdateRow, releaseNotesAction } from "../../pluginUpdate";
 import { selfUpdateStore } from "../../selfUpdate";
 import { openReleaseNotesModal } from "../ReleaseNotesModal";
 import { openUpdateChannelModal } from "../UpdateChannelModal";
@@ -54,11 +54,17 @@ export function UpdatesSection() {
   };
 
   // The checkmark is the engine's stored channel, read on each open; the
-  // switch's answer lands in the self-update store (panel, dot, row).
+  // switch's answer lands in the self-update store (panel, dot, row). A
+  // test build checks no row: picking either channel is its way out, so
+  // the pick goes through even when it matches the stored channel.
+  const test = isTestBuild(pluginUpdate);
   const openChannelModal = async () => {
     const channel = await selfUpdateStore.getChannel();
     if (channel !== null) {
-      openUpdateChannelModal(channel, (next) => void selfUpdateStore.setChannel(next));
+      openUpdateChannelModal(
+        test ? null : channel,
+        (next) => void selfUpdateStore.setChannel(next),
+      );
     }
   };
 
@@ -141,8 +147,13 @@ export function UpdatesSection() {
           <DialogButton
             style={{ minWidth: 0, width: "auto", padding: "8px 16px" }}
             onClick={() => void openChannelModal()}
-            onSecondaryActionDescription="Check again"
-            onSecondaryButton={() => void selfUpdateStore.checkAgain()}
+            // A test build has no Check again: the stored answer always
+            // offers the channel's newest build, so a forced re-ask can
+            // only say the same. The channel modal is the way forward.
+            {...(!test && {
+              onSecondaryActionDescription: "Check again",
+              onSecondaryButton: () => void selfUpdateStore.checkAgain(),
+            })}
             onOptionsActionDescription={releaseNotes?.label}
             onOptionsButton={
               releaseNotes && offer
