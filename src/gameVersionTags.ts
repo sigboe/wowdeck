@@ -1,27 +1,26 @@
-import {
-  CLIENT_DISPLAY_NAMES,
-  CLIENT_FULL_NAMES,
-} from "../backend/src/wow/utils/client-display-names";
+import { CLIENT_DISPLAY_NAMES } from "../backend/src/wow/utils/client-display-names";
 
 /**
  * A patch version's friendly flavor name, for the Details header's
- * game-version tags (owner, 2026-11-09: tags on their own line, friendly
- * names only). Names come from our client-name tables where a client
- * exists; Wrath and Cataclysm have no client of ours and carry
- * CurseForge-style names. The live client's patch (11.x, 12.x) is Forever,
- * the live client (GLOSSARY "Forever"). A version with no entry — TukUI's
- * 1.60.1, CurseForge's 3.80.2 — keeps its raw string rather than a
- * guessed name.
+ * game-version tags (owner, 2026-11-09: tags below the facts, friendly
+ * short names only). Names come from our client-name tables where a
+ * client exists; Wrath, Cataclysm and MoP carry short CurseForge-style
+ * names of their own. 1.60.x is Forever (the classic-branch client that
+ * launched 2026-11-04), and 11.x/12.x is Retail (Midnight) — the live
+ * Retail expansion, not Forever (owner's correction, 2026-11-09). A
+ * version with no entry (CurseForge's 3.80.2) keeps its raw string
+ * rather than a guessed name.
  */
 const FLAVOR_NAMES: Record<string, string> = {
   "1.14": CLIENT_DISPLAY_NAMES.ClassicEra,
   "1.15": CLIENT_DISPLAY_NAMES.ClassicEra,
-  "2.5": CLIENT_FULL_NAMES.Anniversary,
-  "3.4": "Wrath of the Lich King Classic",
-  "4.4": "Cataclysm Classic",
-  "5.5": CLIENT_FULL_NAMES.Classic,
-  "11": CLIENT_DISPLAY_NAMES.Forever,
-  "12": CLIENT_DISPLAY_NAMES.Forever,
+  "1.60": CLIENT_DISPLAY_NAMES.Forever,
+  "2.5": CLIENT_DISPLAY_NAMES.Anniversary,
+  "3.4": "Wrath",
+  "4.4": "Cataclysm",
+  "5.5": "MoP",
+  "11": CLIENT_DISPLAY_NAMES.Retail,
+  "12": CLIENT_DISPLAY_NAMES.Retail,
 };
 
 /** `major` or `major.minor` of a version string, when it starts with one. */
