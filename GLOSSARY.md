@@ -13,6 +13,12 @@ glossary fixes the language used across UI, engine and docs.
 
 ## Language
 
+**Engine**:
+The standalone process that holds WoWDeck's addon logic; `main.py` starts and
+supervises it and forwards every call. WoWDeck's own update check and download
+normally run here.
+_Avoid_: backend, server
+
 **QAM**:
 Steam's Quick Access Menu: the overlay panel on the right edge of the screen,
 hosting Valve's sections and this plugin.
@@ -151,6 +157,13 @@ on the WoWDeck row under Options › Updates). Unlike the automatic checks, it
 asks GitHub right away, even when the daily check already ran or a failed
 check is waiting to retry.
 _Avoid_: refresh, force check (in the UI).
+
+**Recovery screen**:
+The plugin's "WoWDeck Addon Manager couldn't start" state, shown when the
+engine fails to start but the rest of the plugin runs. It offers Retry and the
+latest Stable and Beta builds, so a broken release can be replaced without
+reinstalling by hand.
+_Avoid_: landing page, error page, fallback page.
 
 **Status tag**:
 A small uppercase chip on an addon row stating its state at a glance
