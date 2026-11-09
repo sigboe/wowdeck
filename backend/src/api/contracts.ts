@@ -683,7 +683,7 @@ export interface MethodMap {
      * failures are visible only in the engine's structured stderr log.
      * "available" carries the `offer`; whether it is installable says
      * whether the release has the WoWDeck.zip system.updateStage downloads.
-     * On a test build (X.Y.Z-test.N) the channel's newest build is always
+     * On a test build (X.Y.Z-test.N or X.Y.Z-pr.N) the channel's newest build is always
      * offered (`leaveTest`, older or not), so a test build's owner has the
      * way back to a published channel; a genuinely newer build still offers
      * as `update`.
@@ -1484,7 +1484,7 @@ export type UpdateChannel = (typeof UPDATE_CHANNELS)[number];
  * engine-side. "update" offers a newer build; "switchToStable" offers the
  * latest stable, older than the running beta, to an owner who left Beta;
  * "leaveTest" offers the channel's newest build, older or not, to an owner
- * running a test build (X.Y.Z-test.N) — the way out of a test build.
+ * running a test build (X.Y.Z-test.N or X.Y.Z-pr.N) — the way out of a test build.
  */
 export interface PluginUpdateOffer {
   kind: "update" | "switchToStable" | "leaveTest";

@@ -128,8 +128,12 @@ describe("releaseNotesAction: Y on the panel's Update button", () => {
 });
 
 describe("isTestBuild", () => {
-  test("true only for a test build's answer (X.Y.Z-test.N)", () => {
+  test("true only for a test or pr build's answer (X.Y.Z-test.N, X.Y.Z-pr.N)", () => {
     expect(isTestBuild(info({ currentVersion: "1.0.2-test.114" }))).toBe(true);
+  });
+
+  test("true for a pr build's answer (X.Y.Z-pr.N)", () => {
+    expect(isTestBuild(info({ currentVersion: "1.0.2-pr.117" }))).toBe(true);
   });
 
   test("false for a release, a beta and a failed answer", () => {

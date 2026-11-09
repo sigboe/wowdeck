@@ -190,12 +190,25 @@ describe("compareVersions", () => {
     expect(compareVersions("0.3.0-test.114", "0.3.0-beta.400")).toBe(1);
   });
 
-  test("null for pre-releases other than -beta.N and -test.N", () => {
+  test("a pr build sorts like a test build: above every beta, below the release, by N", () => {
+    const ordered = ["0.3.0-beta.40", "0.3.0-pr.9", "0.3.0-pr.117", "0.3.0"];
+    for (let i = 0; i < ordered.length - 1; i++) {
+      expect(compareVersions(ordered[i]!, ordered[i + 1]!)).toBe(-1);
+      expect(compareVersions(ordered[i + 1]!, ordered[i]!)).toBe(1);
+    }
+    expect(compareVersions("0.3.0-pr.9", "0.3.0-pr.10")).toBe(-1);
+    expect(compareVersions("0.3.0-pr.117", "0.3.0-pr.117")).toBe(0);
+    expect(compareVersions("0.3.0-pr.117", "0.3.0-beta.400")).toBe(1);
+  });
+
+  test("null for pre-releases other than -beta.N, -test.N and -pr.N", () => {
     expect(compareVersions("1.2.3-rc.1", "0.1.1")).toBeNull();
     expect(compareVersions("1.2.3-beta", "0.1.1")).toBeNull();
     expect(compareVersions("1.2.3-beta.x", "0.1.1")).toBeNull();
     expect(compareVersions("1.2.3-test", "0.1.1")).toBeNull();
     expect(compareVersions("1.2.3-alpha.1", "0.1.1")).toBeNull();
+    expect(compareVersions("1.2.3-pr", "0.1.1")).toBeNull();
+    expect(compareVersions("1.2.3-pr.x", "0.1.1")).toBeNull();
   });
 });
 
@@ -1326,6 +1339,18 @@ describe("a test build checks like any other, and always has the way out (establ
     const result = await h.check.check({ force: true });
     expect(result.status).toBe("available");
     expect(result.offer).toMatchObject({ kind: "update", version: "1.0.3-beta.1" });
+  });
+
+  test("a pr build checks like a test build: leave-test offer, no Check again state", async () => {
+    const h = makeCheck({
+      currentVersion: "1.0.2-pr.117",
+      channel: "beta",
+      respond: () => [withZip("v1.0.2-beta.27")],
+    });
+    const result = await h.check.check({ force: true });
+    expect(result.status).toBe("available");
+    expect(result.failed).toBe(false);
+    expect(result.offer).toMatchObject({ kind: "leaveTest", version: "1.0.2-beta.27" });
   });
 
   test("a test-tagged release on the list is never offered to Beta", async () => {
