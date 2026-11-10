@@ -29,13 +29,16 @@ export interface AuctionSnapshot {
 
 export type ApplyResult = { ok: true } | { ok: false; step: "read" | "write" | "rename" };
 
-export interface AuctionDataFiles {
+export interface AuctionDataFile {
   /** Throws on read errors other than a missing file. */
   read(path: string): AuctionSnapshot;
   /** Prunes keys outside `allowed`, applies `updates` in place and swaps the file in atomically. */
   apply(path: string, allowed: ReadonlySet<string>, updates: readonly AuctionEntry[]): ApplyResult;
-  /** The app info entry for a pushed payload, at `now` (seconds). */
-  appInfoEntry(payload: Record<string, any>, now: number): AuctionEntry;
+}
+
+/** Whether `entries` hold one with this tag and key at least this new. */
+export function covers(entries: readonly AuctionEntry[], tag: string, key: string, time: number): boolean {
+  return entries.some((e) => e.tag === tag && e.keys.includes(key) && e.time >= time);
 }
 
 /** Tags WoWDeck manages; lines with any other tag stay as they are. */
@@ -94,7 +97,7 @@ function parse(text: string): { entries: AuctionEntry[]; raw: string[] } {
   }
   return { entries, raw };
 }
-function load(path: string) {
+function parseFile(path: string) {
   try {
     return parse(readFileSync(path, "utf8"));
   } catch (error) {
@@ -104,7 +107,7 @@ function load(path: string) {
 }
 
 function read(path: string): AuctionSnapshot {
-  const { entries } = load(path);
+  const { entries } = parseFile(path);
   return {
     latest: (key, tag) =>
       Math.max(
@@ -113,7 +116,7 @@ function read(path: string): AuctionSnapshot {
           .filter((e) => e.tag !== "APP_INFO" && e.keys.includes(key) && (tag === undefined || e.tag === tag))
           .map((e) => e.time),
       ) || null,
-    covers: (tag, key, time) => entries.some((e) => e.tag === tag && e.keys.includes(key) && e.time >= time),
+    covers: (tag, key, time) => covers(entries, tag, key, time),
   };
 }
 
@@ -131,7 +134,7 @@ function apply(path: string, allowed: ReadonlySet<string>, updates: readonly Auc
   };
   let state: ReturnType<typeof parse>;
   try {
-    state = load(path);
+    state = parseFile(path);
   } catch {
     return failed("read");
   }
@@ -170,7 +173,8 @@ function apply(path: string, allowed: ReadonlySet<string>, updates: readonly Auc
   }
 }
 
-function appInfoEntry(payload: Record<string, any>, now: number): AuctionEntry {
+/** The app info entry for a pushed payload, at `now` (seconds). */
+export function appInfoEntry(payload: Record<string, any>, now: number): AuctionEntry {
   const number = (v: unknown) => (Number.isFinite(Number(v)) ? Number(v) : 0);
   const message = payload.message ?? {};
   const news = Array.isArray(payload.news) ? payload.news : [];
@@ -178,4 +182,4 @@ function appInfoEntry(payload: Record<string, any>, now: number): AuctionEntry {
   return { tag: "APP_INFO", keys: ["Global"], time: now, data };
 }
 
-export const auctionDataFile: AuctionDataFiles = { read, apply, appInfoEntry };
+export const auctionDataFile: AuctionDataFile = { read, apply };

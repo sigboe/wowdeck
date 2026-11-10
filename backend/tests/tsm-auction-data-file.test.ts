@@ -2,7 +2,7 @@ import { test, expect } from "bun:test";
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync, lstatSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { auctionDataFile, type AuctionEntry } from "../src/wow/tsm/AuctionDataFile";
+import { appInfoEntry, auctionDataFile, type AuctionEntry } from "../src/wow/tsm/AuctionDataFile";
 
 const KEY = "Stormrage-Alliance";
 const OTHER = "Area 52-Horde";
@@ -164,6 +164,7 @@ test("read errors other than a missing file throw and apply reports the read ste
   expect(() => auctionDataFile.read(underAFile)).toThrow();
 });
 
+// A rename-only failure is unreachable without root: a directory at the target fails at read first.
 test("a directory where the temp file goes fails the write; the file stays and an independent target still writes", () => {
   const blocked = file(line(REGION, "US", 100));
   mkdirSync(join(blocked + ".wowdeck-tmp", "occupied"), { recursive: true });
@@ -214,7 +215,7 @@ test("freshness excludes app info and takes the latest time per key across tags"
 });
 
 test("the app info entry escapes the payload and round-trips through the file", () => {
-  const info = auctionDataFile.appInfoEntry(
+  const info = appInfoEntry(
     {
       message: { id: "x", msg: 'Say "hi"]]\n' },
       news: [{ title: "A\\B", content: "c", timestamp: 5, link: "l" }],
@@ -230,7 +231,7 @@ test("the app info entry escapes the payload and round-trips through the file", 
   const path = file();
   expect(auctionDataFile.apply(path, new Set(), [info])).toEqual({ ok: true });
   expect(auctionDataFile.read(path).covers("APP_INFO", "Global", 1700000000)).toBe(true);
-  expect(auctionDataFile.appInfoEntry({}, 1).data).toBe(
+  expect(appInfoEntry({}, 1).data).toBe(
     '{version="1.0.9",lastSync=1,message={id=0,msg=""},news={}}',
   );
 });

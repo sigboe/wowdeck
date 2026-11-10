@@ -11,7 +11,7 @@ import type { StateStore } from "../storage/StateStore";
 import type { TradeSkillMasterAuth } from "./TradeSkillMasterAuth";
 import type { TradeSkillMasterProvider } from "./TradeSkillMasterProvider";
 import { tradeSkillMasterFolders } from "./TradeSkillMasterFolders";
-import { auctionDataFile, auctionDataTags, type AuctionDataFiles, type AuctionEntry } from "./AuctionDataFile";
+import { appInfoEntry, auctionDataFile, auctionDataTags, covers, type AuctionDataFile, type AuctionEntry } from "./AuctionDataFile";
 
 import { discoverCharacters, matchesFlavor, regionKey, realmKey, realmFolders } from "./CharacterDiscovery";
 
@@ -72,7 +72,7 @@ export class TradeSkillMasterData {
     private dir: string,
     public changed: () => void,
     private candidates: (installationId: string) => TsmCandidate[] = () => [],
-    private files: AuctionDataFiles = auctionDataFile,
+    private files: AuctionDataFile = auctionDataFile,
   ) {
     try {
       this.#cache = JSON.parse(readFileSync(join(dir, "tsm-catalogue.json"), "utf8"));
@@ -436,7 +436,7 @@ export class TradeSkillMasterData {
     this.changed();
   }
   private appInfo(payload: Record<string, any>): void {
-    const entry = this.files.appInfoEntry(payload, Math.floor((this.auth.sessionClock.now?.() ?? Date.now()) / 1000));
+    const entry = appInfoEntry(payload, Math.floor((this.auth.sessionClock.now?.() ?? Date.now()) / 1000));
     for (const path of this.paths())
       this.#pending.set(path, [
         ...(this.#pending.get(path) ?? []),
@@ -493,9 +493,7 @@ export class TradeSkillMasterData {
       keys.some(
         (key) =>
           !this.files.read(path).covers(p.stringType, key, p.lastModified) &&
-          !(this.#pending.get(path) ?? []).some(
-            (e) => e.tag === p.stringType && e.keys.includes(key) && e.time >= p.lastModified,
-          ),
+          !covers(this.#pending.get(path) ?? [], p.stringType, key, p.lastModified),
       ),
     );
     if (!targets.length) {
