@@ -1,4 +1,4 @@
-import { describe, expect, test, beforeAll, afterAll, beforeEach, afterEach } from "bun:test";
+import { describe, expect, test, beforeAll, afterAll, beforeEach, afterEach, spyOn } from "bun:test";
 import { zipSync } from "fflate";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -442,6 +442,74 @@ describe("AddonService lifecycle", () => {
 });
 
 describe("newly updated window (PC-07)", () => {
+  test.each(["manual", "all", "automatic"])("discovery clears Updated until a successful %s update", async (mode) => {
+    const clock = spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
+    try {
+      const f = localFixture(`updated-invalidated-${mode}`, [
+        { id: "990", name: "Recent", version: "1.0", releaseId: "r1", folders: ["Recent"], prereleases: [{ channelType: AddonChannelType.Beta, version: "4.0-beta", releaseId: "b4", releaseDate: "2026-07-01T00:00:00.000Z" }] },
+      ]);
+      f.store.updateSettings({ newlyUpdatedHours: 1 });
+      const { addon } = await f.service.install({ intent: "install", providerId: "WowUpHub", externalId: "990", installation: f.installation });
+      const release = (version: string, releaseId: string) => {
+        Object.assign(f.provider.catalog[0]!, { version, releaseId });
+        f.versions["990"] = version;
+      };
+      release("2.0", "r2");
+      expect((await f.service.updateAddon(addon.id)).addon.newlyUpdated).toBe(true);
+      await f.service.refresh(f.installation);
+      expect((await listed(f, addon.id)).newlyUpdated).toBe(true);
+      const getAll = f.provider.getAll.bind(f.provider);
+      f.provider.getAll = async () => { throw new Error("provider down"); };
+      await f.service.refresh(f.installation);
+      expect((await listed(f, addon.id)).newlyUpdated).toBe(true);
+      f.provider.getAll = getAll;
+      clock.mockReturnValue(1_800_000_000_000 + 3_600_000);
+      expect((await listed(f, addon.id)).newlyUpdated).toBe(false);
+      clock.mockReturnValue(1_800_000_000_000);
+      release("3.0", "r3");
+      await f.service.refresh(f.installation);
+      expect(await listed(f, addon.id)).toMatchObject({ newlyUpdated: false, updateAvailable: true });
+      const registry = new ProviderRegistry();
+      registry.register(f.provider);
+      const restart = () => new AddonService(createStateStore(dirname(f.installation.location)), registry,
+        new DownloadService(makeNetwork(f.provider.catalog, f.versions), join(dirname(f.installation.location), "restart-dl")),
+        { addonsChanged: () => {}, operationResult: () => {} });
+      expect((await restart().listAddons(f.installation))[0]!.newlyUpdated).toBe(false);
+      renameSync(f.installation.location, `${f.installation.location}.away`);
+      try {
+        const failed = await f.service.updateAddon(addon.id);
+        expect(failed.operation.status).toBe("failed");
+        expect(failed.addon.newlyUpdated).toBe(false);
+      } finally {
+        renameSync(`${f.installation.location}.away`, f.installation.location);
+      }
+      release("2.0", "r2");
+      await f.service.refresh(f.installation);
+      expect((await f.service.updateAddon(addon.id)).addon.newlyUpdated).toBe(false);
+      const switched = await f.service.setChannel(addon.id, AddonChannelType.Beta);
+      expect(switched.operation.status).toBe("installed");
+      expect(switched.addon).toMatchObject({ channel: "beta", newlyUpdated: false });
+      expect((await restart().listAddons(f.installation))[0]!.newlyUpdated).toBe(false);
+      await f.service.setChannel(addon.id, AddonChannelType.Stable);
+      clock.mockReturnValue(1_800_000_000_000 + 1_800_000);
+      release("3.0", "r3");
+      await f.service.refresh(f.installation);
+      if (mode === "manual") await f.service.updateAddon(addon.id);
+      else if (mode === "all") await f.service.updateAll(f.installation);
+      else {
+        f.store.updateSettings({ autoUpdate: true });
+        await f.service.autoUpdate(async () => "not_running");
+      }
+      expect((await listed(f, addon.id)).newlyUpdated).toBe(true);
+      clock.mockReturnValue(1_800_000_000_000 + 3_600_000);
+      expect((await listed(f, addon.id)).newlyUpdated).toBe(true);
+      clock.mockReturnValue(1_800_000_000_000 + 5_400_000);
+      expect((await listed(f, addon.id)).newlyUpdated).toBe(false);
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
   test("an addon counts as newly updated until the window has passed", () => {
     const addon = {
       id: "a",

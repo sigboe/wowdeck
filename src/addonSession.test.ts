@@ -416,6 +416,15 @@ describe("Get Addons results against My Addons' list", () => {
     expect(resultInstallLabel(ignored)).toBe("Reinstall");
   });
 
+  test("a cleared Updated status stays absent after the offered update disappears", () => {
+    expect(resultTags(addon({ newlyUpdated: false, updateAvailable: true }))).toEqual([
+      "Update available",
+    ]);
+    expect(resultTags(addon({ newlyUpdated: false, updateAvailable: false }))).toEqual([
+      "Installed",
+    ]);
+  });
+
   test("recently updated adds Updated", () => {
     expect(resultTags(addon({ newlyUpdated: true }))).toEqual(["Installed", "Updated"]);
   });

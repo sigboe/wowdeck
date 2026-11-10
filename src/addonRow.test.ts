@@ -273,6 +273,15 @@ describe("sortAddons (WF-06)", () => {
     ]);
     expect(sorted.map((a) => a.id)).toEqual(["4", "3", "2", "1", "5"]);
   });
+  test("a cleared Updated status returns to name sorting when an offer disappears", () => {
+    expect(
+      sortAddons([
+        row("1", "Zeta", { newlyUpdated: false }),
+        row("2", "Alpha"),
+        row("3", "Recent", { newlyUpdated: true }),
+      ]).map((a) => a.id),
+    ).toEqual(["3", "2", "1"]);
+  });
   test("does not change the input array", () => {
     const input = [row("1", "b"), row("2", "a")];
     sortAddons(input);

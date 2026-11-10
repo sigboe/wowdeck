@@ -52,7 +52,7 @@ export function toWireAddon(
     leavesUnneeded: [],
     previousVersion: addon.rollbackVersion ?? null,
     autoUpdatePaused: isAutoUpdatePaused(addon),
-    newlyUpdated: addon.lastUpdatedAt !== undefined && now - addon.lastUpdatedAt < newlyUpdatedMs,
+    newlyUpdated: !addon.newlyUpdatedInvalidated && addon.lastUpdatedAt !== undefined && now - addon.lastUpdatedAt < newlyUpdatedMs,
     loadOnDemand: addon.isLoadOnDemand,
     providerId: addon.providerName ?? null,
     externalId: addon.externalId ?? null,

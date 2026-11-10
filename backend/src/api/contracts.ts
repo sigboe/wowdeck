@@ -140,7 +140,9 @@ export interface Addon {
   autoUpdatePaused: boolean;
   /**
    * Updated within the last `newlyUpdatedHours` (PC-07; any successful
-   * update: manual, Update all, auto-update). My Addons tags and sorts it.
+   * update: manual, Update all, auto-update), unless a newer update has been
+   * discovered since. Discovery clears this durably until another successful
+   * update. Shared by status tags and My Addons sorting.
    */
   newlyUpdated: boolean;
   loadOnDemand: boolean;

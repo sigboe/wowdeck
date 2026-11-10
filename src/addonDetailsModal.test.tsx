@@ -93,6 +93,21 @@ describe("Details modal follows the shared session", () => {
     expect(landed).not.toContain("…");
   });
 
+  test("Updated follows the engine state when a newer update is discovered and withdrawn", async () => {
+    installedNow = true;
+    installedRow.newlyUpdated = true;
+    await session.reloadAddons();
+    expect(details()).toContain("Updated");
+    installedRow.newlyUpdated = false;
+    installedRow.updateAvailable = true;
+    await session.reloadAddons();
+    expect(details()).not.toContain("Updated");
+    expect(details()).toContain("Update available");
+    installedRow.updateAvailable = false;
+    await session.reloadAddons();
+    expect(details()).not.toContain("Updated");
+  });
+
   test("a new install is not offered while an installation switch is underway", async () => {
     installedNow = false;
     await session.reloadAddons();
