@@ -195,7 +195,7 @@ class BackendProcess:
                 except json.JSONDecodeError:
                     decky.logger.warning("Engine sent invalid JSON: %.200s", line)
                     continue
-                if "id" in msg and (msg.get("result") is not None or "error" in msg):
+                if "id" in msg and ("result" in msg or "error" in msg):
                     self._resolve(msg)
                 elif "event" in msg:
                     await decky.emit("backend_event", msg)
