@@ -29,6 +29,7 @@ import type { Diagnostics } from "./types";
 export function diagnosticsText(diagnostics: Diagnostics): string {
   return JSON.stringify(
     {
+      tradeSkillMaster: diagnostics.tradeSkillMaster,
       backendVersion: diagnostics.backendVersion,
       deckyVersion: diagnostics.deckyVersion,
       pluginVersion: diagnostics.pluginVersion,

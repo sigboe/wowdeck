@@ -71,8 +71,8 @@ describe("resetBrowseSessionState", () => {
 });
 
 describe("browse session state machine", () => {
-  test("the destinations are the four Get Addons entries in list order", () => {
-    expect(BROWSE_TABS).toEqual(["search", "latest", "popular", "url"]);
+  test("the destinations are the Get Addons entries in list order", () => {
+    expect(BROWSE_TABS).toEqual(["search", "latest", "popular", "url", "tsm"]);
   });
 
   test("entering Get Addons lands the focus zone on the nav bar", () => {

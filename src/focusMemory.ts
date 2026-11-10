@@ -136,6 +136,22 @@ export function requestFocus(view: string, key: string): boolean {
  * row that is not a focus target. Focusing such an element did nothing and
  * the restore was lost (DEVICE 2026-10-17: Export/Import, Manage backups).
  */
+/**
+ * Focus `key`'s control in `view` now when it is mounted and can take focus
+ * (not disabled). Unlike `requestFocus` it never waits for the control, so a
+ * missing one changes nothing: the caller falls back to its own move.
+ */
+export function focusIfReady(view: string, key: string): boolean {
+  const entry = elements.get(slot(view, key));
+  const target = entry ? focusableTarget(entry) : null;
+  if (!target) {
+    return false;
+  }
+  rememberFocus(view, key);
+  target.focus();
+  return true;
+}
+
 function focusableTarget(entry: {
   el: FocusableElement;
   wrapper: boolean;

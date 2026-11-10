@@ -1,3 +1,5 @@
+import { loadSources } from "./sourcesStore";
+import { tsmSession, readTsmSession, tsmActionRequired } from "./tsmSession";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   ButtonItem,
@@ -76,6 +78,22 @@ function Content() {
   // Widened mode (Get Addons) is module state owned by the widening service;
   // the tab bar mirrors it to stay at its collapsed width instead of
   // stretching across the widened panel.
+  const tsm = useSyncExternalStore(tsmSession.subscribe, tsmSession.get);
+  useEffect(() => {
+    const read = () => {
+      const previous = tsmSession.get().state;
+      void readTsmSession(api.rpc, () =>
+        pluginToast("TradeSkillMaster session ended", "Sign in again in Options."),
+      )
+        .then(() => {
+          if (previous !== tsmSession.get().state) void loadSources(api.rpc);
+        })
+        .catch(() => {});
+    };
+    read();
+    const timer = setInterval(read, 1000);
+    return () => clearInterval(timer);
+  }, []);
   const [wide, setWide] = useState(widening.wide);
   useEffect(() => subscribeWidening(setWide), []);
   // Valve's scroll buffer below Decky's sticky title, re-measured on every
@@ -167,7 +185,12 @@ function Content() {
   const tabs: NavTab[] = [
     { id: "installed", label: "My Addons", icon: <FaDiceD6 /> },
     { id: "browse", label: "Get Addons", icon: <FaSearch /> },
-    { id: "settings", label: "Options", icon: <FaCog />, dot: pluginUpdateDot(selfUpdate.info) },
+    {
+      id: "settings",
+      label: "Options",
+      icon: <FaCog />,
+      dot: tsmActionRequired(tsm) ? "action" : pluginUpdateDot(selfUpdate.info),
+    },
   ];
 
   if (unsupported !== null) {
@@ -407,6 +430,7 @@ export default definePlugin(() => {
   let resumeRegistration: { unregister(): void } | null = null;
   if (typeof SteamClient?.System?.RegisterForOnResumeFromSuspend === "function") {
     resumeRegistration = SteamClient.System.RegisterForOnResumeFromSuspend(() => {
+      void api.rpc("tradeskillmaster.wake").catch(() => {});
       void checkUpdateToast();
       void selfUpdateStore.refresh({ toast: true, bypassWindow: true });
     });

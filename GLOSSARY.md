@@ -34,7 +34,8 @@ or last plugin tab.
 _Avoid_: tab row, pill row, browse nav bar
 
 **Destination**:
-One of the four Get Addons lists: Search, Latest, Popular, Manual Install.
+One of the Get Addons lists: Search, Latest, Popular, Manual Install, and
+the TradeSkillMaster destination while that source is on.
 _Avoid_: browse tab, sub-tab, category
 
 **Catalogue**:
@@ -52,6 +53,47 @@ Its pane holds two labeled paths — From a link (a pasted URL) and From a
 file (a local .zip/.rar/.7z picked with Steam's file picker). Distinct from
 a *manual installation*, which is a WoW install added by hand in Options.
 _Avoid_: From URL (the pre-2026-10-24 name), Install from URL, install from file
+
+**TradeSkillMaster**:
+An addon source like the others, for the TradeSkillMaster addon and its
+TradeSkillMaster_AppHelper library (the source lists the library as required
+by the addon). Shown in Options' addon sources, off until the user turns it
+on, and usable only while the user is also signed in to a TradeSkillMaster
+account. Turning it on starts sign-in; successful sign-in turns the source
+on. While usable it owns the
+TradeSkillMaster and TradeSkillMaster_AppHelper folders: no other source
+can claim or take them. A source left on while its session ended elsewhere
+(revoked, password changed) is **signed out**: a blue dot on Options and on
+its source row asks the user to sign in again, and its destination offers an
+Options jump to that row.
+_Avoid_: TSM app, TSM provider (in UI text), logged out
+
+**Developer addon**:
+A TradeSkillMaster or TradeSkillMaster_AppHelper folder that is a git
+checkout or carries a development version instead of a release. WoWDeck
+never matches or replaces it, whether the TradeSkillMaster source is on or
+not. Other addons' git checkouts are left alone as ignored addons.
+_Avoid_: dev build, dev copy
+
+**TradeSkillMaster destination**:
+The destination listed after Manual Install, present only while the
+TradeSkillMaster source is on, whether usable or signed out. It installs
+the addon for the active installation and shows the state of its auction
+data; while signed out it offers the way back to signing in instead.
+_Avoid_: TSM page, TSM tab
+
+**Auction data**:
+The price data TradeSkillMaster publishes per auction house and per region,
+written where the AppHelper library hands it to the addon. It belongs to the
+followed realms of the signed-in account.
+_Avoid_: TSM data, AppData, price strings
+
+**Followed realm**:
+An auction house on the signed-in TradeSkillMaster account's list: a realm,
+or one faction's house on a realm with separate faction houses. The list is
+the account's, shared with TradeSkillMaster's own app on other computers,
+and its length is capped by the account's tier.
+_Avoid_: tracked realm, subscribed realm, server
 
 **Library**:
 An addon installed only because another addon needs it. An addon needs a
@@ -89,9 +131,9 @@ _Avoid_: detail pane, chat pane, sidebar
 **Browse bar**:
 The single picker row of the pane: one self-contained component rendered above
 the result lists. It decides which of its segments exist for the active
-destination (Popular → Source, Category; Latest → Source; Search and Manual
-Install have no bar), draws them in the fixed order Source then Category, and
-hides
+destination (Popular → Source, Category; Latest → Source; Search, Manual
+Install and TradeSkillMaster have no bar), draws them in the fixed order
+Source then Category, and hides
 whatever the current sources cannot act on — disappearing entirely when
 nothing can be chosen. There is at most one bar row, ever; entering a
 destination lands focus on the first result row, never the bar.
@@ -103,7 +145,7 @@ Category segment (narrows the active source's list). Segments close up to the
 left when one of them is hidden. A segment's choices open in an in-pane menu
 (a list inside the pane, never a Steam popup — ADR 0002 revision 2026-10-24).
 A category is the active source's content grouping with provider-specific
-ids — it is never one of the four destinations.
+ids — it is never a destination.
 _Avoid_: menu, picker, dropdown row, tab
 
 **Options jump**:
@@ -124,7 +166,8 @@ the word stays for Steam-surface talk.
 A 10 px dot pinned to the top-right corner of a tab pill or button, saying
 "news here" in a semantic colour (`UpdateDot`, `updateDot.ts`). Orange, Decky's
 own notification-badge colour, marks a WoWDeck update: on the Options tab and
-the panel's Update button. No counts.
+the panel's Update button. Blue marks something the user must do: a signed-out
+source, on the Options tab and the source's row. No counts.
 _Avoid_: badge (that is the Steam library tile's).
 
 **Update channel**:
@@ -137,6 +180,11 @@ stable"). Set under Options › Updates › WoWDeck. Installing a beta selects B
 installing a stable zip by hand selects Stable. An in-app stable update keeps
 Beta selected. A channel chosen in Options stays selected across restarts.
 _Avoid_: release channel (that is an addon's Stable/Beta/Alpha).
+
+**Test build**:
+A WoWDeck build made by hand on a developer's machine, versioned
+`X.Y.Z-test.N`. It sits on no update channel; neither channel offers one.
+_Avoid_: PR build (that one comes from CI).
 
 **Release notes**:
 What the offered WoWDeck build brings, written for players from our

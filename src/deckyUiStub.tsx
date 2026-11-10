@@ -29,13 +29,29 @@ export const deckyUiStub = {
     children,
     disabled,
     "aria-label": ariaLabel,
-  }: Kids & { disabled?: boolean; "aria-label"?: string }) => (
-    <button disabled={disabled} aria-label={ariaLabel}>
+    onClick,
+  }: Kids & { disabled?: boolean; "aria-label"?: string; onClick?: () => void }) => (
+    <button disabled={disabled} aria-label={ariaLabel} onClick={onClick}>
       {children}
     </button>
   ),
-  ButtonItem: ({ children, disabled }: Kids & { disabled?: boolean }) => (
-    <button disabled={disabled}>{children}</button>
+  ButtonItem: ({
+    children,
+    label,
+    description,
+    disabled,
+    onClick,
+  }: Kids & {
+    label?: ReactNode;
+    description?: ReactNode;
+    disabled?: boolean;
+    onClick?: () => void;
+  }) => (
+    <button disabled={disabled} onClick={onClick}>
+      {label && <span>{label}: </span>}
+      {children}
+      {description && <small>{description}</small>}
+    </button>
   ),
   DialogButtonPrimary: ({ children, disabled }: Kids & { disabled?: boolean }) => (
     <button disabled={disabled}>{children}</button>

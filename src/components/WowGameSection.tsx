@@ -1,13 +1,11 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { DialogButton, Focusable, Navigation, QuickAccessTab } from "@decky/ui";
+import { DialogButton, Focusable } from "@decky/ui";
 import { FaBoxOpen } from "react-icons/fa";
 import * as api from "../services/backend";
 import { pluginToast, toastError } from "../toast";
 import { createAddonActions } from "../addonActions";
 import { settingsStore } from "../settings";
-// Decky's plugin name (plugin.json); Decky's state identifies the active plugin by it.
-import { name as PLUGIN_NAME } from "../../plugin.json";
-import { qamState } from "../qamState";
+import { openPanel } from "../openPanel";
 import { STEAM, descriptionStyle } from "../steamTheme";
 import { updateSummaryText } from "../steamLibrary";
 import {
@@ -51,18 +49,7 @@ export function WowGameSection() {
   });
   const updateAll = () => actions.updateAll("all");
 
-  const open = () => {
-    qamState.tab = "installed";
-    Navigation.OpenQuickAccessMenu(QuickAccessTab.Decky);
-    try {
-      // Decky's own state: show our panel rather than the last one used.
-      (
-        window as { DeckyPluginLoader?: { deckyState?: { setActivePlugin?: (n: string) => void } } }
-      ).DeckyPluginLoader?.deckyState?.setActivePlugin?.(PLUGIN_NAME);
-    } catch {
-      // The QAM still opens on the Decky tab.
-    }
-  };
+  const open = () => openPanel("installed");
 
   const busy = checking || updating;
   const total = summary?.reduce((n, i) => n + i.updates, 0) ?? 0;

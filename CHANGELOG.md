@@ -8,10 +8,19 @@ What's new in each version of WoWDeck Addon Manager. The format follows
 
 ### Added
 
+- TradeSkillMaster shows auction prices for locally saved characters' realms, with account-wide follow management.
+- Install or uninstall both TradeSkillMaster addons beside auction refresh, with optional cleanup of eligible account follows.
+
 - My Addons marks a library no addon needs and shows it even with libraries hidden, so you can remove it.
 - The Steam picker shows each game's icon and app id, and whether it's linked by hand or automatically.
 
+### Changed
+
+- TradeSkillMaster has its own icon in Get Addons and account headings.
+
 ### Fixed
+
+- TradeSkillMaster confirmations restore focus; uninstall progress stays visible during loading, and cleanup reports successful removals when account reads fail.
 
 - The WoWDeck update row in Options shows just the version change and no longer runs off the right edge.
 - Focus now lands on Install after you pick a file in Manual Install, even after changing the file picker's sort order.
