@@ -13,6 +13,9 @@ The MIT notice is in `THIRD_PARTY_NOTICES.md`.
 The auction writer in `backend/src/wow/tsm/TradeSkillMasterData.ts` adapts
 `tsm/wow/lua_writer.py` and `tsm/core/services/auction.py` at the same commit.
 It uses Bun file transactions, the shared socket and plugin catalogue storage.
+The auction data file format (line rendering, parsing, pruning and in-place
+replacement) lives in `backend/src/wow/tsm/AuctionDataFile.ts`, adapted from
+the same two upstream files at the same commit.
 The auction fixture follows the recorded event and metadata formats in
 upstream `docs/api.md`, with synthetic prices, ids and local download URLs.
 

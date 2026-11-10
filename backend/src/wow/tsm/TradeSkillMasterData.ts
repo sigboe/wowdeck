@@ -3,7 +3,7 @@
  * and tsm/core/services/auction.py, plus account API in docs/api.md, commit 1908e34930f742a3a9ce754faf4e1839431fff3a.
  * See docs/tsm-provenance.md and THIRD_PARTY_NOTICES.md.
  */
-import { existsSync, readFileSync, writeFileSync, renameSync, rmSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, renameSync } from "node:fs";
 import { join } from "node:path";
 import { gunzipSync } from "fflate";
 import type { TradeSkillMasterDestination } from "../../api/contracts";
@@ -11,6 +11,7 @@ import type { StateStore } from "../storage/StateStore";
 import type { TradeSkillMasterAuth } from "./TradeSkillMasterAuth";
 import type { TradeSkillMasterProvider } from "./TradeSkillMasterProvider";
 import { tradeSkillMasterFolders } from "./TradeSkillMasterFolders";
+import { auctionDataFile, auctionDataTags, type AuctionDataFiles, type AuctionEntry } from "./AuctionDataFile";
 
 import { discoverCharacters, matchesFlavor, regionKey, realmKey, realmFolders } from "./CharacterDiscovery";
 
@@ -42,67 +43,6 @@ interface Cache {
   gameVersions: unknown[];
   follows: Follow[];
 }
-interface Entry {
-  tag: string;
-  keys: string[];
-  time: number;
-  ah?: number;
-  data: string;
-  forced?: boolean;
-}
-const tags = new Set([
-  "AUCTIONDB_NON_COMMODITY_DATA",
-  "AUCTIONDB_NON_COMMODITY_SCAN_STAT",
-  "AUCTIONDB_NON_COMMODITY_HISTORICAL",
-  "AUCTIONDB_COMMODITY_SCAN_STAT",
-  "AUCTIONDB_COMMODITY_HISTORICAL",
-  "AUCTIONDB_COMMODITY_DATA",
-  "AUCTIONDB_REGION_STAT",
-  "AUCTIONDB_REGION_HISTORICAL",
-  "AUCTIONDB_REGION_SALE",
-  "SHOPPING",
-  "APP_INFO",
-]);
-function quote(value: unknown): string {
-  return (
-    '"' +
-    String(value ?? "").replace(
-      /[\\"\]\x00-\x1f\x7f]/g,
-      (ch) => "\\" + ch.charCodeAt(0).toString().padStart(3, "0"),
-    ) +
-    '"'
-  );
-}
-function wrap(e: Entry): string {
-  const code =
-    e.keys.length === 1
-      ? `select(2, ...).LoadData("${e.tag}",${quote(e.keys[0])},[[return ${e.data}]])`
-      : `for _,r in ipairs({${e.keys.map(quote).join(",")}}) do select(2, ...).LoadData("${e.tag}",r,[[return ${e.data}]]) end`;
-  return `${code} --<${e.tag},${e.keys.join("|")},${e.time}${e.ah === undefined ? "" : "," + e.ah}>\n`;
-}
-function parse(text: string): { entries: Entry[]; raw: string[] } {
-  const entries: Entry[] = [],
-    raw: string[] = [];
-  for (const line of text.match(/[^\n]*\n|[^\n]+$/g) ?? []) {
-    const m = line.trimEnd().match(/^(.*?) --<([A-Z_]+),([^,]+),(\d+)(?:,(\d+))?>$/);
-    if (m && tags.has(m[2]!)) {
-      const data = m[1]!.match(/\[\[return (.*)\]\]/)?.[1];
-      const entry = {
-        tag: m[2]!,
-        keys: m[3]!.split("|"),
-        time: Number(m[4]),
-        ah: m[5] ? Number(m[5]) : undefined,
-        data: data ?? "",
-      };
-      if (data && wrap(entry).trimEnd() === line.trimEnd()) {
-        entries.push(entry);
-        continue;
-      }
-    }
-    raw.push(line);
-  }
-  return { entries, raw };
-}
 class FollowRefused extends Error {}
 
 export class TradeSkillMasterData {
@@ -111,7 +51,7 @@ export class TradeSkillMasterData {
   #scanTimer?: unknown;
   #mutations: Promise<unknown> = Promise.resolve();
   #choices: Record<string, { declined: boolean; owned: boolean; account?: string }> = {};
-  #pending = new Map<string, Entry[]>();
+  #pending = new Map<string, AuctionEntry[]>();
   #timer?: unknown;
   #periodic?: unknown;
   #appInfo: Record<string, any> = {};
@@ -132,6 +72,7 @@ export class TradeSkillMasterData {
     private dir: string,
     public changed: () => void,
     private candidates: (installationId: string) => TsmCandidate[] = () => [],
+    private files: AuctionDataFiles = auctionDataFile,
   ) {
     try {
       this.#cache = JSON.parse(readFileSync(join(dir, "tsm-catalogue.json"), "utf8"));
@@ -372,14 +313,6 @@ export class TradeSkillMasterData {
         ];
       });
   }
-  private read(path: string) {
-    try {
-      return parse(readFileSync(path, "utf8"));
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") return parse("");
-      throw error;
-    }
-  }
   private async load(token: string, generation: number, required = false, notify = true): Promise<void> {
     const endpoints = this.auth.apiEndpoints;
     if (!endpoints.realms || !endpoints.regions || !endpoints.gameVersions || !endpoints.userRealms)
@@ -496,65 +429,18 @@ export class TradeSkillMasterData {
       const r = this.#cache.realms.find((r) => r.realmId === f.realmId);
       return r ? [realmKey(r.localizedName, f.auctionHouseType)] : [];
     }));
-    for (const [path, pending] of this.#pending) {
-      const tmp = path + ".wowdeck-tmp";
-      try {
-        const state = this.read(path);
-        state.entries = state.entries.flatMap((e) => {
-          if (
-            e.ah === undefined &&
-            !e.tag.startsWith("AUCTIONDB_NON_COMMODITY") &&
-            e.tag !== "SHOPPING"
-          )
-            return [e];
-          const keys = e.keys.filter((k) => allowed.has(k));
-          return keys.length ? [{ ...e, keys }] : [];
-        });
-        for (const update of pending) {
-          const keys = update.keys.filter(
-            (key) =>
-              (update.ah === undefined || allowed.has(key)) &&
-              (update.forced || !state.entries.some(
-                (e) => e.tag === update.tag && e.keys.includes(key) && e.time > update.time,
-              )),
-          );
-          state.entries = state.entries.flatMap((e) => {
-            if (e.tag !== update.tag) return [e];
-            const remaining = e.keys.filter((k) => !keys.includes(k));
-            return remaining.length ? [{ ...e, keys: remaining }] : [];
-          });
-          if (keys.length) state.entries.push({ ...update, keys });
-        }
-        const raw = state.raw.join("");
-        const content =
-          raw + (raw && !raw.endsWith("\n") ? "\n" : "") + state.entries.map(wrap).join("");
-        /* The suffix is ours alone: a leftover from an interrupted write is safe to drop.
-           rmSync unlinks a link rather than its target, and refuses a directory. */
-        rmSync(tmp, { force: true });
-        writeFileSync(tmp, content, { flag: "wx" });
-        renameSync(tmp, path);
-        this.#pending.delete(path);
-      } catch {
-        /* Previous file stays intact; retain pending writes. */
-        try {
-          rmSync(tmp, { force: true });
-        } catch {
-          /* Not a file we can remove (a directory in the way); the next flush retries. */
-        }
-      }
+    for (const [path, pending] of [...this.#pending]) {
+      // A failed path keeps its pending writes; the previous file stays intact.
+      if (this.files.apply(path, allowed, pending).ok) this.#pending.delete(path);
     }
     this.changed();
   }
   private appInfo(payload: Record<string, any>): void {
-    const number = (v: unknown) => (Number.isFinite(Number(v)) ? Number(v) : 0);
-    const message = payload.message ?? {};
-    const news = Array.isArray(payload.news) ? payload.news : [];
-    const now = Math.floor((this.auth.sessionClock.now?.() ?? Date.now()) / 1000);
-    const data = `{version="1.0.9",lastSync=${now},message={id=${number(message.id)},msg=${quote(message.msg)}},news={${news.map((n) => `{title=${quote(n.title)},content=${quote(n.content)},timestamp=${number(n.timestamp)},link=${quote(n.link)}}`).join(",")}}}`;
+    const entry = this.files.appInfoEntry(payload, Math.floor((this.auth.sessionClock.now?.() ?? Date.now()) / 1000));
     for (const path of this.paths())
       this.#pending.set(path, [
         ...(this.#pending.get(path) ?? []),
-        { tag: "APP_INFO", keys: ["Global"], time: now, data },
+        entry,
       ]);
     this.schedule();
   }
@@ -581,7 +467,7 @@ export class TradeSkillMasterData {
     if (!region && !realm) return skip(name === "region_auctiondb" ? "unknown region" : "not a followed auction house");
     p.lastModified = Number(p.lastModified);
     if (
-      !tags.has(p.stringType) ||
+      !auctionDataTags.has(p.stringType) ||
       p.stringType === "APP_INFO" ||
       !Number.isSafeInteger(p.lastModified) ||
       p.lastModified <= 0 ||
@@ -606,7 +492,8 @@ export class TradeSkillMasterData {
     const targets = this.paths().filter((path) => this.store.installations.some((i) => path.startsWith(i.location + "/") && matchesFlavor(i, version))).filter((path) => forced(path) ||
       keys.some(
         (key) =>
-          ![...this.read(path).entries, ...(this.#pending.get(path) ?? [])].some(
+          !this.files.read(path).covers(p.stringType, key, p.lastModified) &&
+          !(this.#pending.get(path) ?? []).some(
             (e) => e.tag === p.stringType && e.keys.includes(key) && e.time >= p.lastModified,
           ),
       ),
@@ -659,11 +546,10 @@ export class TradeSkillMasterData {
     const installation = this.store.installations.find((i) => i.id === installationId);
     const path =
       installation && this.paths().find((p) => p.startsWith(installation.location + "/"));
-    const entries = path ? this.read(path).entries : [];
+    const snapshot = path ? this.files.read(path) : undefined;
     // The scan time, as the official client's "last updated": historical
     // and sale data have their own, older schedules.
-    const updated = (key: string, tag: string) =>
-      Math.max(0, ...entries.filter((e) => e.keys.includes(key) && e.tag === tag).map((e) => e.time)) || null;
+    const updated = (key: string, tag: string) => snapshot?.latest(key, tag) ?? null;
     const tier = this.auth.status().tier ?? this.#cache.tier ?? "free";
     const local = [...this.candidates(installationId), ...this.discovered(installationId)];
     const localRegions = new Set(local.map((c) => this.#cache.realms.find((r) => r.realmId === c.realmId)!.regionId));
