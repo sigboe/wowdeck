@@ -26,6 +26,8 @@ What's new in each version of WoWDeck Addon Manager. The format follows
 
 ### Fixed
 
+- Addons lose the Updated tag when a newer update is found, until another update succeeds.
+
 - TradeSkillMaster confirmations restore focus; uninstall progress stays visible during loading, and cleanup reports successful removals when account reads fail.
 
 - The WoWDeck update row in Options shows just the version change and no longer runs off the right edge.

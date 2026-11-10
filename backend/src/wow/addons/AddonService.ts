@@ -187,11 +187,15 @@ function releaseMetadata(
   files: AddonSearchResultFile[] | undefined,
   file: AddonSearchResultFile | undefined,
 ): AddonPatch {
-  return {
+  const metadata: AddonPatch = {
     hasNewerPrerelease: hasNewerPrerelease(files),
     latestVersion: file?.version ?? addon.latestVersion,
     externalLatestReleaseId: file?.externalId ?? addon.externalLatestReleaseId,
   };
+  if (file && addon.lastUpdatedAt !== undefined && needsUpdate({ ...addon, ...metadata })) {
+    metadata.newlyUpdatedInvalidated = true;
+  }
+  return metadata;
 }
 
 function isTradeSkillMasterDevelopmentFolder(folder: AddonFolder): boolean {
@@ -966,7 +970,7 @@ export class AddonService {
         autoUpdatePaused: undefined,
         skipReleaseId: undefined,
         // Every update path (manual, Update all, auto-update) ends here (PC-07).
-        ...(intent.stampUpdate ? { lastUpdatedAt: Date.now() } : {}),
+        ...(intent.stampUpdate ? { lastUpdatedAt: Date.now(), newlyUpdatedInvalidated: undefined } : {}),
         // An archive matched into a record keeps that record's name: a
         // clean catalogue name is not replaced by a colour-coded TOC title.
         ...(matched ? { name: matched.name } : {}),
@@ -1186,6 +1190,10 @@ export class AddonService {
     }
     const metadata = releaseMetadata(addon, searchResult.files, updateCandidate(searchResult.files, addon));
     const latest: AddonRecord = { ...addon, ...metadata };
+    // Discovery survives even when downloading or installing the update fails.
+    if (metadata.newlyUpdatedInvalidated && !addon.newlyUpdatedInvalidated) {
+      records.patch(addonId, { newlyUpdatedInvalidated: true });
+    }
 
     if (!needsUpdate(latest)) {
       // Nothing to install, but what the provider said is kept, as a

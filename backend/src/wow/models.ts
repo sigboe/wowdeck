@@ -117,6 +117,8 @@ export interface WowAddon {
    * `updatedAt` is not usable for this: provider scans rewrite it.
    */
   lastUpdatedAt?: number;
+  /** A newer update was discovered after the last successful update. */
+  newlyUpdatedInvalidated?: boolean;
 }
 
 /**
