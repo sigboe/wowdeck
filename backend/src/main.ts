@@ -5,6 +5,8 @@
  * stderr (stdout is the protocol stream).
  */
 
+import { TradeSkillMasterData } from "./wow/tsm/TradeSkillMasterData";
+import { TradeSkillMasterAuth, TradeSkillMasterProvider } from "./wow/tsm/TradeSkillMasterAuth";
 import { tmpdir } from "node:os";
 import { version } from "../package.json";
 import { join } from "node:path";
@@ -90,7 +92,12 @@ registry.register(new GitHubProvider(network, githubToken));
 registry.register(new WowInterfaceProvider(network));
 registry.register(new ZipProvider());
 registry.register(new FileProvider());
+const tsmAuth = new TradeSkillMasterAuth(dataDir, BACKEND_VERSION, registry);
+const tsmProvider = new TradeSkillMasterProvider(tsmAuth);
+registry.register(tsmProvider);
+const tsmData = new TradeSkillMasterData(tsmAuth, tsmProvider, store, dataDir, () => server.emit("tradeskillmaster.changed", {}));
 registry.attachStore(store);
+void tsmAuth.restore();
 
 // One dedicated health check at startup, not on every screen open —
 // fire-and-forget so a slow/unreachable CurseForge never delays the
@@ -132,6 +139,7 @@ const service = new AddonService(
   undefined,
   join(dataDir, "inspect"),
 );
+service.onFoldersChanged = (id, folders) => tsmData.foldersChanged(id, folders);
 const catalogue = new Catalogue(registry);
 const installationService = service.installations;
 // Discovery also refreshes Steam attachments while the QAM is closed. It never opts into updates.
@@ -211,6 +219,8 @@ function wtfJobTarget(installationId?: string): WtfJobTarget {
 }
 
 const deps: HandlerDeps = {
+  tsmAuth,
+  tsmData,
   backendVersion: BACKEND_VERSION,
   homeDir,
   store,

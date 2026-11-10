@@ -165,6 +165,7 @@ export interface ProviderCategory {
 }
 
 export interface AddonSearchResult {
+  allowedChannels?: AddonChannelType[];
   author: string;
   downloadCount?: number;
   favoriteCount?: number;

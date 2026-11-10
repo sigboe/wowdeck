@@ -48,6 +48,8 @@ export interface InstallOptions {
    * checked on the archive itself: a provider may not list its folders.
    */
   requiredFolder?: string;
+  /** Source ownership checked after extraction, before any live folder changes. */
+  validateFolders?: (folders: string[]) => Promise<void>;
   /**
    * The release's archive, already fetched (fetchArchive) when the caller
    * had to look inside it first (the archive match rule); a rejection fails
@@ -190,6 +192,7 @@ export class AddonInstaller {
     const plannedFolders = this.planFolders(extracted.topLevelDirs, releaseFolders).sort(
       (a, b) => Number(b === opts.requiredFolder) - Number(a === opts.requiredFolder),
     );
+    await opts.validateFolders?.(plannedFolders);
     if (plannedFolders.length === 0) {
       throw new InstallError("The archive doesn't contain an addon", addon.id);
     }
@@ -217,7 +220,7 @@ export class AddonInstaller {
     return {
       installedFolderList: installed,
       installedFolders: installed.join(", "),
-      installedVersion: toc?.version ?? file?.version ?? addon.installedVersion,
+      installedVersion: opts.provider.normalizeVersion?.(toc?.version ?? file?.version ?? addon.installedVersion ?? "") ?? toc?.version ?? file?.version ?? addon.installedVersion,
       // The just-installed file is, by definition, the latest known
       // release — set both sides of the release-id pair from the same file
       // so needsUpdate()'s release-id check (which takes priority over the

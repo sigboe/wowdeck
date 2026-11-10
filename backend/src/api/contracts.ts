@@ -185,6 +185,8 @@ export interface Addon {
    * the addon already follows Beta/Alpha.
    */
   canChangeChannel: boolean;
+  /** When provided, only these account-permitted channels may be chosen. */
+  allowedChannels?: ReleaseChannel[];
   /** For the My Addons Details action's result header — the backend's own WowAddon model already carries this. */
   thumbnailUrl: string | null;
 }
@@ -605,7 +607,40 @@ export interface WtfJobSnapshot {
 // Method parameter/result contracts
 // ---------------------------------------------------------------------------
 
+export interface TradeSkillMasterAccount {
+  account: string | null;
+  followedCount: number;
+  allowance: number | null;
+  follows: { realmId: number; name: string; region: string; gameVersion: string; auctionHouseType: string }[];
+}
+export interface TradeSkillMasterDestination {
+  tier: "free" | "gold" | "platinum";
+  followedCount: number;
+  allowance: number | null;
+  realms: { id: number; name: string; auctionHouseType: string; followed: boolean; owned: boolean; declined: boolean; updated: number | null }[];
+  regions: { id: number; name: string; updated: number | null }[];
+}
+export interface TradeSkillMasterAuthStatus {
+  state: "off" | "signingIn" | "signedIn" | "signedOut";
+  tier?: "free" | "gold" | "platinum";
+  channels?: string[];
+  account: string | null;
+}
+
 export interface MethodMap {
+  /** Local removal and optional account cleanup have independent outcomes. */
+  "tradeskillmaster.cleanupPreview": { params: { installationId: string }; result: TradeSkillMasterAccount["follows"] };
+  "tradeskillmaster.removeAddons": { params: { installationId: string; cleanupFollows?: boolean; cleanupPreview?: TradeSkillMasterAccount["follows"] }; result: { operations: OperationResult[]; cleanup?: { removed: TradeSkillMasterAccount["follows"]; leftBehind: TradeSkillMasterAccount["follows"]; error?: string } } };
+  "tradeskillmaster.account": { params: Record<string, never>; result: TradeSkillMasterAccount };
+  "tradeskillmaster.unfollow": { params: { realmId: number; auctionHouseType: string }; result: TradeSkillMasterAccount };
+  "tradeskillmaster.refresh": { params: { installationId?: string }; result: void };
+  "tradeskillmaster.wake": { params: Record<string, never>; result: void };
+  "tradeskillmaster.setFollow": { params: { installationId?: string; realmId: number; auctionHouseType: string; followed: boolean }; result: TradeSkillMasterDestination };
+  "tradeskillmaster.destination": { params: { installationId?: string }; result: TradeSkillMasterDestination };
+  "tradeskillmaster.status": { params: Record<string, never>; result: TradeSkillMasterAuthStatus };
+  "tradeskillmaster.signIn": { params: Record<string, never>; result: { authorizeUrl: string } };
+  "tradeskillmaster.cancel": { params: Record<string, never>; result: TradeSkillMasterAuthStatus };
+  "tradeskillmaster.signOut": { params: Record<string, never>; result: TradeSkillMasterAuthStatus };
   "system.getStatus": {
     params: Record<string, never>;
     result: {
@@ -826,7 +861,7 @@ export interface MethodMap {
    * files may not match them). Unmanaged folders are not listed then.
    */
   "addons.list": {
-    params: Record<string, never>;
+    params: { installationId?: string };
     result: { addons: Addon[]; unverified?: true };
   };
   "addons.refresh": {
@@ -903,7 +938,7 @@ export interface MethodMap {
   };
   "addons.install": {
     /** `channel`: install from that release channel and follow it (providers with channels only). */
-    params: { providerId: string; externalId: string; channel?: ReleaseChannel };
+    params: { providerId: string; externalId: string; channel?: ReleaseChannel; installationId?: string };
     result: AddonOperation;
   };
   /**
@@ -1346,7 +1381,17 @@ export interface PluginSettings {
   newlyUpdatedHours: number;
 }
 
+export interface TradeSkillMasterDiagnostics {
+  enabled: boolean;
+  signedIn: boolean;
+  tier: "free" | "gold" | "platinum" | null;
+  connected: boolean;
+  lastPush: number | null;
+  followedCount: number;
+}
+
 export interface Diagnostics {
+  tradeSkillMaster?: TradeSkillMasterDiagnostics;
   backendVersion: string;
   protocolVersion: number;
   platform: string;
@@ -1514,6 +1559,7 @@ export interface EventMap {
   "addons.autoUpdated": { result: AutoUpdateResult };
   "operation.completed": { result: OperationResult };
   "operation.failed": { result: OperationResult };
+  "tradeskillmaster.changed": Record<string, never>;
   "addons.changed": { addonIds: string[] };
   "wtf.progress": { job: WtfJobSnapshot };
   "wtf.completed": {

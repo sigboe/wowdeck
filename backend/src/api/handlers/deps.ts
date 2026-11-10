@@ -18,6 +18,8 @@ import type { RecentErrorsBuffer } from "../../diagnostics/RecentErrors";
 import type { About } from "../../about/About";
 
 export interface HandlerDeps {
+  tsmData: import("../../wow/tsm/TradeSkillMasterData").TradeSkillMasterData;
+  tsmAuth: import("../../wow/tsm/TradeSkillMasterAuth").TradeSkillMasterAuth;
   backendVersion: string;
   homeDir: string;
   store: StateStore;
