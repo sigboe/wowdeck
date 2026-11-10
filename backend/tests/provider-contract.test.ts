@@ -124,7 +124,8 @@ for (const scenario of scenarios) {
       expect(info.catalogSearch).toBe(scenario.capabilities.includes("search"));
     });
 
-    for (const capability of scenario.capabilities) {
+    // Authenticated socket catalogues need the endpoint/RPC fixture, not an HTTP cassette.
+    for (const capability of scenario.sessionRequired ? [] : scenario.capabilities) {
       test(`${provider.name} ${capability} is well-formed`, async () => {
         const { network, provider: fresh } = await setUp(scenario);
         const answer = await exercise[capability](fresh, scenario);

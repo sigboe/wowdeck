@@ -97,7 +97,7 @@ export function InstalledView({ addons, loading, restoreRows, multipleInstallati
 
   const openChannelMenu = (addon: Addon, afterPick?: () => void) => {
     const current = addon.channel ?? "stable";
-    showChoiceMenu("Release channel", followChannelChoices(), current, (c) => {
+    showChoiceMenu("Release channel", followChannelChoices(addon.allowedChannels), current, (c) => {
       afterPick?.();
       // The marked channel is already followed: nothing to install.
       if (c !== current) {

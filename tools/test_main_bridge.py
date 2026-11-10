@@ -97,6 +97,30 @@ class RpcEnvelopeTests(unittest.TestCase):
         self.assertEqual(out, {"ok": True, "backendVersion": "0.1.0", "protocolVersion": 1, "pid": 7})
 
 
+class EngineReplyTests(unittest.TestCase):
+    """Replies read from the engine's stdout resolve their request."""
+
+    def read_reply(self, line: bytes) -> Any:
+        async def scenario() -> Any:
+            backend = main.BackendProcess("/nonexistent")
+            stdout = asyncio.StreamReader()
+            stdout.feed_data(line + b"\n")
+            stdout.feed_eof()
+            backend.proc = types.SimpleNamespace(stdout=stdout, returncode=0)
+            fut = asyncio.get_running_loop().create_future()
+            backend._pending[1] = fut
+            await backend._read_stdout()
+            return await fut
+
+        return asyncio.run(scenario())
+
+    def test_a_null_result_resolves_the_request(self) -> None:
+        self.assertIsNone(self.read_reply(b'{"id":1,"result":null}'))
+
+    def test_a_result_resolves_the_request(self) -> None:
+        self.assertEqual(self.read_reply(b'{"id":1,"result":{"ok":true}}'), {"ok": True})
+
+
 class RpcForwarderTests(unittest.TestCase):
     def test_forwards_method_and_params_unchanged(self) -> None:
         backend = StubBackend(result={"addon": {"id": "x"}})

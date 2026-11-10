@@ -1,6 +1,10 @@
+import { TsmIcon } from "../icons/TsmIcon";
+import { TSM_ADDON_ACTION, TSM_REFRESH, TsmAddon } from "./TsmAddon";
+import { tsmSession, tsmOptionsSources, tsmDestinationVisible } from "../tsmSession";
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { FaClock, FaFileArchive, FaFire, FaSearch } from "react-icons/fa";
 import {
+  ButtonItem,
   Field,
   Focusable,
   GamepadButton,
@@ -41,7 +45,13 @@ import {
   subscribeQamLayout,
 } from "../steamDom/qamWidening";
 import { isVirtualKeyboardShowing } from "../steamDom/qamVisibility";
-import { forgetFocus, rememberFocus, rememberedFocus, restoreFocus } from "../focusMemory";
+import {
+  focusIfReady,
+  forgetFocus,
+  rememberFocus,
+  rememberedFocus,
+  restoreFocus,
+} from "../focusMemory";
 import { addonSession } from "../session";
 import { InstallationSelect } from "./InstallationSelect";
 import { ListTab, ManualInstallTab, SearchTab, type SourceControls } from "./browseTabs";
@@ -61,6 +71,7 @@ import { descriptionStyle } from "../steamTheme";
  */
 
 const DESTINATIONS: Record<GetAddonsTab, { label: string; icon: ReactNode }> = {
+  tsm: { label: "TradeSkillMaster", icon: <TsmIcon /> },
   search: { label: "Search", icon: <FaSearch /> },
   latest: { label: "Latest", icon: <FaClock /> },
   popular: { label: "Popular", icon: <FaFire /> },
@@ -71,6 +82,13 @@ const DESTINATIONS: Record<GetAddonsTab, { label: string; icon: ReactNode }> = {
 
 /** Before the first load: a stable empty list, so the sources' derivations don't re-run. */
 const NO_PROVIDERS: ProviderInfo[] = [];
+
+/**
+ * Pane buttons that sit beside another one in a row, by focus-memory key:
+ * Left from the key goes to its value. Our pane Left handler stops the press
+ * before Steam's own row navigation sees it.
+ */
+const PANE_LEFT_NEIGHBOUR: Record<string, string> = { [TSM_REFRESH]: TSM_ADDON_ACTION };
 
 export function GetAddonsTab({
   installations,
@@ -98,6 +116,7 @@ export function GetAddonsTab({
   onOpenSources: (providers: ProviderInfo[], marked: readonly string[]) => void;
   onOpenInstallations: () => void;
 }) {
+  const tsm = useSyncExternalStore(tsmSession.subscribe, tsmSession.get);
   const listZoneAnchor = useRef<HTMLDivElement>(null);
   const installationRef = useRef<HTMLDivElement>(null);
   const [landingOnInstallation] = useState(landOnInstallation);
@@ -174,6 +193,12 @@ export function GetAddonsTab({
     categories: categoriesBySource,
   } = useSyncExternalStore(sourcesStore.subscribe, sourcesStore.get);
   const providers = loadedProviders ?? NO_PROVIDERS;
+  useEffect(() => {
+    if (active === "tsm" && !tsmDestinationVisible(providers)) {
+      pageState.tab = "search";
+      setActive("search");
+    }
+  }, [active, providers]);
   useEffect(() => {
     void loadSources(api.rpc);
   }, []);
@@ -344,7 +369,16 @@ export function GetAddonsTab({
       ) {
         return;
       }
-      const segment = segmentOfFocusKey(rememberedFocus(browseFocusView(active)));
+      const view = browseFocusView(active);
+      // Side-by-side pane buttons: Left moves to the neighbour when it can
+      // take focus (DEVICE 2026-11-10: Left from TSM's Refresh left the pane).
+      const neighbour = PANE_LEFT_NEIGHBOUR[rememberedFocus(view) ?? ""];
+      if (neighbour && focusIfReady(view, neighbour)) {
+        evt.preventDefault();
+        evt.stopPropagation();
+        return;
+      }
+      const segment = segmentOfFocusKey(rememberedFocus(view));
       if (segment === "category") {
         // Category is never the bar's first segment; Left from it is the bar's
         // own row movement. (With only a Category segment there is no Source
@@ -446,6 +480,14 @@ export function GetAddonsTab({
             />
           </CapabilityGate>
         );
+      case "tsm":
+        return tsm.state === "signedIn" ? (
+          <>{installation && <TsmAddon key={installation.id} installationId={installation.id} />}</>
+        ) : (
+          <ButtonItem layout="below" onClick={() => sources.openSources(tsmOptionsSources())}>
+            Sign in in Options
+          </ButtonItem>
+        );
       case "url":
         return <ManualInstallTab sources={sources} />;
     }
@@ -466,21 +508,23 @@ export function GetAddonsTab({
             own segments from the destination and the sources — Popular gets
             Source then Category, Latest Source, Search and From URL no bar;
             nothing to choose is no bar at all. */}
-        <BrowseBar
-          destination={active}
-          providers={providers}
-          sourceId={active === "latest" ? latestSource : popularSource}
-          categoryId={categoryId}
-          categories={popularSource ? (categoriesBySource[popularSource] ?? []) : []}
-          onSource={(id) => {
-            // The Source segment exists only for the list destinations (the
-            // registry says so); the pick is the picked list's own.
-            if (active === "latest" || active === "popular") {
-              pickSource(active, id);
-            }
-          }}
-          onCategory={setCategory}
-        />
+        {active !== "tsm" && (
+          <BrowseBar
+            destination={active}
+            providers={providers}
+            sourceId={active === "latest" ? latestSource : popularSource}
+            categoryId={categoryId}
+            categories={popularSource ? (categoriesBySource[popularSource] ?? []) : []}
+            onSource={(id) => {
+              // The Source segment exists only for the list destinations (the
+              // registry says so); the pick is the picked list's own.
+              if (active === "latest" || active === "popular") {
+                pickSource(active, id);
+              }
+            }}
+            onCategory={setCategory}
+          />
+        )}
         {tabBody(active)}
       </PanelSection>
     </Focusable>
@@ -535,34 +579,38 @@ export function GetAddonsTab({
               </Focusable>
             </PanelSectionRow>
           )}
-          {BROWSE_TABS.map((tab) => (
-            <PanelSectionRow key={tab}>
-              <Field
-                focusable
-                ref={(el) => {
-                  destinationRefs.current[tab] = el ?? undefined;
-                }}
-                className={
-                  wide && paneFocused && active === tab ? "wowdeck-destination-selected" : undefined
-                }
-                icon={DESTINATIONS[tab].icon}
-                label={DESTINATIONS[tab].label}
-                description={
-                  (tab === "latest" || tab === "popular") &&
-                  destinationNote(providers) && (
-                    <span style={descriptionStyle}>{destinationNote(providers)}</span>
-                  )
-                }
-                onClick={() => openDestination(tab)}
-                onOKActionDescription="Open"
-                onGamepadFocus={() => {
-                  setPaneFocused(false);
-                  setActive(tab);
-                  focusDestination(tab);
-                }}
-              />
-            </PanelSectionRow>
-          ))}
+          {BROWSE_TABS.filter((tab) => tab !== "tsm" || tsmDestinationVisible(providers)).map(
+            (tab) => (
+              <PanelSectionRow key={tab}>
+                <Field
+                  focusable
+                  ref={(el) => {
+                    destinationRefs.current[tab] = el ?? undefined;
+                  }}
+                  className={
+                    wide && paneFocused && active === tab
+                      ? "wowdeck-destination-selected"
+                      : undefined
+                  }
+                  icon={DESTINATIONS[tab].icon}
+                  label={DESTINATIONS[tab].label}
+                  description={
+                    (tab === "latest" || tab === "popular") &&
+                    destinationNote(providers) && (
+                      <span style={descriptionStyle}>{destinationNote(providers)}</span>
+                    )
+                  }
+                  onClick={() => openDestination(tab)}
+                  onOKActionDescription="Open"
+                  onGamepadFocus={() => {
+                    setPaneFocused(false);
+                    setActive(tab);
+                    focusDestination(tab);
+                  }}
+                />
+              </PanelSectionRow>
+            ),
+          )}
         </PanelSection>
       </Focusable>
       {wideningAvailable ? (

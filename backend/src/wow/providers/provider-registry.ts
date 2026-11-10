@@ -91,7 +91,7 @@ export class ProviderRegistry {
     provider.enabled = enabled;
     if (this.#store) {
       const current = this.#store.settings.enabledProviders;
-      const list = new Set(current ?? this.#providers.keys());
+      const list = new Set(current ?? this.enabled().map(p => p.name));
       if (enabled) {
         list.add(name);
       } else {

@@ -116,7 +116,8 @@ export class JsonlServer {
     }
     try {
       const result = await handler((req.params ?? {}) as never);
-      this.#send({ id: req.id, result } satisfies RpcResult);
+      // JSON drops an undefined result, and the bridge needs the key.
+      this.#send({ id: req.id, result: result ?? null } satisfies RpcResult);
     } catch (err) {
       const code = errorCodeFor(err);
       const message = err instanceof Error ? err.message : String(err);

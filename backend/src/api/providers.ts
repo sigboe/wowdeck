@@ -8,6 +8,7 @@ import type { AddonProviderType } from "../wow/types";
 
 /** The provider ids in use; providers, engine code and UI refer to these, never to string literals. */
 export const PROVIDER_ID = {
+  TradeSkillMaster: "TradeSkillMaster",
   Curse: "Curse",
   File: "File",
   GitHub: "GitHub",

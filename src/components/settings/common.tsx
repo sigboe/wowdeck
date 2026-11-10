@@ -1,5 +1,5 @@
 import type { CSSProperties, ReactNode } from "react";
-import { Spinner } from "@decky/ui";
+import { Spinner, type FooterLegendProps } from "@decky/ui";
 import { FaChevronRight } from "react-icons/fa";
 import { FocusRow } from "../FocusSlot";
 import { QAM_VIEW } from "../../qamState";
@@ -32,9 +32,12 @@ export function SettingsRow({
   id,
   className,
   style,
+  actions,
   children,
 }: {
   id: string;
+  /** X / Y / Options actions for the whole row, shown in Steam's footer. */
+  actions?: FooterLegendProps;
   /** Extra classes on the row wrapper (the Options jump's blink, optionsJump.ts). */
   className?: string;
   /** The wrapper's inline style (the blink's shared phase). */
@@ -42,7 +45,7 @@ export function SettingsRow({
   children: ReactNode;
 }) {
   return (
-    <FocusRow view={VIEW} id={id} className={className} style={style}>
+    <FocusRow view={VIEW} id={id} className={className} style={style} actions={actions}>
       {children}
     </FocusRow>
   );

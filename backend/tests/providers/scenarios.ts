@@ -16,6 +16,8 @@ import { GitHubProvider } from "../../src/wow/providers/github/GitHubProvider";
 import { TukUiAddonProvider } from "../../src/wow/providers/tukui/TukUiAddonProvider";
 import { WowInterfaceProvider } from "../../src/wow/providers/wowinterface/WowInterfaceProvider";
 import { WowUpHubProvider } from "../../src/wow/providers/wowup-hub/WowUpHubProvider";
+import { TradeSkillMasterAuth, TradeSkillMasterProvider } from "../../src/wow/tsm/TradeSkillMasterAuth";
+import { ProviderRegistry } from "../../src/wow/providers/provider-registry";
 import { ZipProvider } from "../../src/wow/providers/zip/ZipProvider";
 
 export type Capability =
@@ -39,6 +41,8 @@ export interface ProviderScenario {
   fixture?: string;
   make(network: NetworkClient, credentials: Credentials): AddonProvider;
   capabilities: Capability[];
+  /** Session-backed results are exercised by the local endpoint/RPC suite. */
+  sessionRequired?: boolean;
   /** The catalog search text, or the link for a URL import. */
   query?: string;
   addonId: string;
@@ -73,6 +77,13 @@ const HUB_URL = "https://hub.wowup.io";
 const ARCHIVE = realpathSync(`${import.meta.dir}/../fixtures/archives/addon.7z`);
 
 export const scenarios: ProviderScenario[] = [
+  {
+    // Authentication only in #174; catalogue capabilities arrive separately.
+    make: () => new TradeSkillMasterProvider(new TradeSkillMasterAuth("/unused", "fixture", new ProviderRegistry())),
+    capabilities: ["getById", "getAll"],
+    sessionRequired: true,
+    addonId: "TradeSkillMaster",
+  },
   {
     fixture: "curseforge",
     // A placeholder key on replay: the provider refuses to ask without one.

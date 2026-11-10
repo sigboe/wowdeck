@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, test } from "bun:test";
 import { JSDOM } from "jsdom";
 import {
   type FocusableElement,
+  focusIfReady,
   forgetFocus,
   registerFocusElement,
   rememberFocus,
@@ -142,6 +143,28 @@ describe("focusMemory", () => {
     expect(requestFocus("installed", "busy")).toBe(false);
     expect(requestFocus("installed", "group")).toBe(false);
     expect(focused).toEqual(["All up to date"]);
+  });
+
+  test("focusIfReady focuses a mounted control at once and remembers it", () => {
+    rememberFocus("tsm", "refresh-data");
+    const button = fakeElement();
+    registerFocusElement("tsm", "addon-action", fakeElement(button), true);
+    expect(focusIfReady("tsm", "addon-action")).toBe(true);
+    expect(button.focused).toBe(1);
+    expect(rememberedFocus("tsm")).toBe("addon-action");
+  });
+
+  test("focusIfReady leaves focus and memory alone when the control cannot take focus", () => {
+    rememberFocus("tsm", "refresh-data");
+    // Unmounted: nothing waits for it, so a later mount pulls no focus.
+    expect(focusIfReady("tsm", "addon-action")).toBe(false);
+    const late = fakeElement();
+    registerFocusElement("tsm", "addon-action", fakeElement(late), true);
+    expect(late.focused).toBe(0);
+    // Disabled (no focusable control inside the slot).
+    registerFocusElement("tsm", "addon-action", fakeElement(), true);
+    expect(focusIfReady("tsm", "addon-action")).toBe(false);
+    expect(rememberedFocus("tsm")).toBe("refresh-data");
   });
 
   test("revealRemembered scrolls the remembered row into view without focusing it", () => {

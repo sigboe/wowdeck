@@ -7,9 +7,9 @@ import { channelFromWire } from "../../wow/addons/releaseChannel";
 import { NotFoundError } from "../../wow/errors";
 import { runningFileManager, showItems } from "../../desktop/FileManager";
 
-export function register(server: JsonlServer, { service, catalogue, installationService, updateCheck }: HandlerDeps): void {
-  server.on("addons.list", async () => {
-    const installation = installationService.require();
+export function register(server: JsonlServer, { service, catalogue, installationService, updateCheck, tsmData }: HandlerDeps): void {
+  server.on("addons.list", async (params) => {
+    const installation = installationService.require(params.installationId);
     return service.addonList(installation);
   });
 
@@ -105,7 +105,7 @@ export function register(server: JsonlServer, { service, catalogue, installation
       intent: "install",
       providerId: params.providerId,
       externalId: params.externalId,
-      installation: installationService.require(),
+      installation: installationService.require(params.installationId),
       channel: params.channel === undefined ? undefined : channelFromWire(params.channel),
     }),
   );
@@ -113,6 +113,13 @@ export function register(server: JsonlServer, { service, catalogue, installation
   server.on("addons.setChannel", async (params) => service.setChannel(params.addonId, channelFromWire(params.channel)));
 
   server.on("addons.reinstall", async (params) => service.reinstall(params.addonId));
+
+  server.on("tradeskillmaster.removeAddons", async (params) => {
+    const installation = installationService.require(params.installationId);
+    const cleanup = params.cleanupFollows ? await tsmData.cleanupFollows(installation.id, params.cleanupPreview) : undefined;
+    const local = await service.removeTradeSkillMasterAddons(installation);
+    return { ...local, cleanup };
+  });
 
   server.on("addons.remove", async (params) => {
     const operation = await service.removeAddon(params.addonId, { removeLibraries: params.removeLibraries });

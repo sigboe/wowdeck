@@ -1,0 +1,26 @@
+{"result":"PASS","case":"addon RPC operations for flavor %s with beta entitlement %s[0,false]"}
+{"result":"PASS","case":"addon RPC operations for flavor %s with beta entitlement %s[1,false]"}
+{"result":"PASS","case":"addon RPC operations for flavor %s with beta entitlement %s[2,false]"}
+{"result":"PASS","case":"addon RPC operations for flavor %s with beta entitlement %s[3,false]"}
+{"result":"PASS","case":"addon RPC operations for flavor %s with beta entitlement %s[4,false]"}
+{"result":"PASS","case":"addon RPC operations for flavor %s with beta entitlement %s[5,false]"}
+{"result":"PASS","case":"addon RPC operations for flavor %s with beta entitlement %s[6,false]"}
+{"result":"PASS","case":"addon RPC operations for flavor %s with beta entitlement %s[7,false]"}
+{"result":"PASS","case":"addon RPC operations for flavor %s with beta entitlement %s[8,false]"}
+{"result":"PASS","case":"addon RPC operations for flavor %s with beta entitlement %s[9,false]"}
+{"result":"PASS","case":"addon RPC operations for flavor %s with beta entitlement %s[10,false]"}
+{"result":"PASS","case":"addon RPC operations for flavor %s with beta entitlement %s[0,true]"}
+{"result":"PASS","case":"addon RPC operations for flavor %s with beta entitlement %s[1,true]"}
+{"result":"PASS","case":"addon RPC operations for flavor %s with beta entitlement %s[2,true]"}
+{"result":"PASS","case":"addon RPC operations for flavor %s with beta entitlement %s[3,true]"}
+{"result":"PASS","case":"addon RPC operations for flavor %s with beta entitlement %s[4,true]"}
+{"result":"PASS","case":"addon RPC operations for flavor %s with beta entitlement %s[5,true]"}
+{"result":"PASS","case":"addon RPC operations for flavor %s with beta entitlement %s[6,true]"}
+{"result":"PASS","case":"addon RPC operations for flavor %s with beta entitlement %s[7,true]"}
+{"result":"PASS","case":"addon RPC operations for flavor %s with beta entitlement %s[8,true]"}
+{"result":"PASS","case":"addon RPC operations for flavor %s with beta entitlement %s[9,true]"}
+{"result":"PASS","case":"addon RPC operations for flavor %s with beta entitlement %s[10,true]"}
+{"result":"PASS","case":"socket auction data reaches all Retail files and destination through RPC"}
+{"result":"PASS","case":"every committed AppHelper folder change refreshes auction data through RPC"}
+{"result":"PASS","case":"all Classic account follows deliver isolated faction and region data to inactive installations"}
+{"result":"PASS","case":"discovery follows across flavors in recent order, stops at refusal and preserves choices"}

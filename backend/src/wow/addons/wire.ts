@@ -17,6 +17,7 @@ import { isAutoUpdatePaused } from "./addonStatus";
 export function toWireAddon(
   addon: AddonRecord,
   {
+    allowedChannels,
     canReinstall = false,
     canChangeChannel = false,
     sourceOff = false,
@@ -24,6 +25,7 @@ export function toWireAddon(
     newlyUpdatedMs = 0,
     now = Date.now(),
   }: {
+    allowedChannels?: import("../../api/contracts").ReleaseChannel[];
     canReinstall?: boolean;
     canChangeChannel?: boolean;
     sourceOff?: boolean;
@@ -66,6 +68,7 @@ export function toWireAddon(
     canReinstall,
     channel: channelToWire(addon.channelType),
     canChangeChannel,
+    ...(allowedChannels ? { allowedChannels } : {}),
     thumbnailUrl: addon.thumbnailUrl ?? null,
   };
 }
@@ -201,8 +204,8 @@ export function toWireSearchResult(
     releasedAt: dateLabel(file?.releaseDate) ?? null,
     channel: file ? channelToWire(file.channelType) : null,
     channelReleases:
-      canChangeChannel && hasNewerPrerelease(result.files)
-        ? [AddonChannelType.Stable, AddonChannelType.Beta, AddonChannelType.Alpha].map((c) => {
+      canChangeChannel && (result.allowedChannels ? result.allowedChannels.length > 1 : hasNewerPrerelease(result.files))
+        ? (result.allowedChannels ?? [AddonChannelType.Stable, AddonChannelType.Beta, AddonChannelType.Alpha]).map((c) => {
             const f = latestFile(result.files, c)!;
             return { channel: channelToWire(c), version: f.version, fileChannel: channelToWire(f.channelType) };
           })

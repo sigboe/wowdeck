@@ -1,9 +1,9 @@
 import { resetDestinations } from "./browseDestinations";
 
-export type GetAddonsTab = "search" | "latest" | "popular" | "url";
+export type GetAddonsTab = "search" | "latest" | "popular" | "url" | "tsm";
 
 /** The four destinations in list order (Search, Latest, Popular, Manual Install). */
-export const BROWSE_TABS: GetAddonsTab[] = ["search", "latest", "popular", "url"];
+export const BROWSE_TABS: GetAddonsTab[] = ["search", "latest", "popular", "url", "tsm"];
 
 /**
  * Focus-memory view per destination (focusMemory.ts). The list destinations

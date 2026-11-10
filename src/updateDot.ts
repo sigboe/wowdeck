@@ -4,9 +4,9 @@ import { DECKY } from "./steamTheme";
  * The update dot's colour language: one semantic colour per kind of news,
  * so a surface says what it means and the look lives here. Only "update"
  * (WoWDeck itself) ships; green for addon updates and red for errors are
- * reserved for later rounds, blue is not used.
+ * reserved for later rounds, blue asks the player to act.
  */
-export type DotColor = "update";
+export type DotColor = "update" | "action";
 
 /**
  * Decky Loader's notification badge (frontend NotificationBadge, the orange
@@ -17,5 +17,6 @@ export type DotColor = "update";
  */
 export const DOT_FILL: Record<DotColor, string> = {
   update: DECKY.notification,
+  action: "#1a9fff",
 };
 export const DOT_SIZE_PX = 10;

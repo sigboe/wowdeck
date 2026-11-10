@@ -803,3 +803,233 @@ Repeat MI-130-1 after overwriting the first addon's original zip with a bundle
 containing both addons. The preview must still show both owners and disable
 Install. Repeat through From a link after replacing the archive at the original
 URL. Installation must refuse the conflict and leave both addons unchanged.
+
+### TradeSkillMaster sign-in (#174)
+
+| ID | Pri | S | Steps | Expected |
+|---|---|---|---|---|
+| TSM-174-1 | P1 | | In game mode, open Options → Addon sources. Enable TradeSkillMaster and finish browser sign-in. Turn the source off, then on. Press X on its row (Sign out). Repeat on arm64 when phone testing is authorized | Source starts off. Steam's browser signs in without copied codes, closes once sign-in finishes and Options reopens. The row shows the account. Off keeps the account and says X signs out; on again needs no browser. Sign out turns the source off, forgets the account and leaves installed addons intact |
+| TSM-174-2 | P1 | | Start sign-in, return and cancel. Start again and leave it unfinished for ten minutes | Both attempts leave the source off; a late browser callback cannot enable it |
+
+Device runs are pending; this ticket's automated checks use local endpoints.
+
+| TSM-175-1 | P1 | | Sign in, restart Decky, then reopen Options | The source stays on, shows the account and remains usable |
+| TSM-175-2 | P1 | | End the session elsewhere and wait for refresh; reopen Options repeatedly | One notification; blue dots on Options and the source row. Source stays on but unusable |
+| TSM-175-3 | P1 | | Open Get Addons after session rejection, select TradeSkillMaster, use its Options jump and sign in again | Fifth destination follows Manual Install, has no browse bar, and focuses the source row in Options. Sign-in clears dots. Turning the source off hides the destination and stops token refresh requests |
+| TSM-175-4 | P1 | | Disconnect the network across token refresh, then reconnect | No session-ended notification or blue dots; refresh retries without signing out |
+
+
+### TradeSkillMaster addon management (#176)
+
+| ID | Priority | Result | Steps | Expected |
+| --- | --- | --- | --- | --- |
+| TSM-176-1 | P1 | | Sign in and install TradeSkillMaster from its destination in each supported flavor | TSM and AppHelper install. My Addons shows versions without v, and AppHelper as a required library |
+| TSM-176-2 | P1 | | With beta access, switch the normal release channel to Beta and back. Repeat without beta access | Only permitted channels appear. Each switch installs that channel |
+| TSM-176-3 | P1 | | Check for a new release, update it, then repeat with automatic updates enabled | Normal update marker and update controls work. Automatic updates follow the existing setting |
+| TSM-176-4 | P1 | | Remove TSM, then disable the source or sign out | AppHelper stays as an unneeded library. Installed rows remain with Source off |
+| TSM-176-5 | P1 | | Interrupt a download during an update | The prior addon files and installed version remain intact |
+
+### TradeSkillMaster folder ownership (#177)
+
+| ID | Priority | Result | Steps | Expected |
+| --- | --- | --- | --- | --- |
+| TSM-177-1 | P1 | | Start with TSM and AppHelper from files or another source in two installations. Sign in and refresh each | Both folders use TradeSkillMaster without reinstalling. Existing files stay intact |
+| TSM-177-2 | P1 | | While signed in, try each folder through another catalogue, a pasted link, Change source, Manual Install and Roll back to a kept archive version after adoption | Each refuses with "TradeSkillMaster installs this addon". Files stay intact |
+| TSM-177-3 | P1 | | Refresh with a git checkout or development build in either folder, then try installing TSM | Developer folders remain untouched |
+| TSM-177-5 | P1 | | With TSM or AppHelper installed from another source and TradeSkillMaster signed in, open Change source on each | TradeSkillMaster is listed and switching to it keeps the files |
+| TSM-177-4 | P1 | | Disable the source, refresh both installations, then install from a file. Enable it and refresh. Repeat with Sign out | Disabling and signing out leave files installed with Source off. Other sources work while unavailable. Enabling restores TSM ownership |
+
+### Retail auction data (#178)
+
+| ID | Check | Expected |
+| --- | --- | --- |
+| TSM-178-1 | Sign in with Retail realms followed; open TradeSkillMaster in Get Addons. | Installed version/channel or Install, account tier and account-wide allowance, "Updated … ago" freshness for each followed realm and region appears. Realms read "Name · Faction" with a Follow or Unfollow button. Without data they say No auction data yet. Refresh auction data says Refreshing… until new data arrives, then shows when the data was last updated. Followed realms in every flavor get prices: realm times follow the price scan, not historical data. |
+| TSM-178-2 | Leave WoW running and receive a newer auction push with two eligible Retail installations. | Both active and inactive installations receive prices; the destination updates without reopening. Connected realms share prices. Catalogue house type All produces one connected-realm entry. A Retail installation with only TradeSkillMaster also receives data. |
+| TSM-178-3 | Disconnect networking and reopen the destination. | Cached follows and catalogue remain visible with timestamps from the installation's file. |
+| TSM-178-4 | Drop a followed realm on the account, then reconnect. Preserve an unknown line in the existing data file. | Dropped realm data is pruned; the unknown line remains unchanged. Failed writes preserve the previous file. |
+
+These device checks are pending; deterministic RPC coverage uses a fake WoW
+tree, recorded protocol fixtures, a local socket/blob endpoint and manual timers.
+
+### TradeSkillMaster followed realms (#179)
+
+| ID | Steps | Expected |
+| --- | --- | --- |
+| TSM-179-1 | Open the destination with realms followed from another computer. Unfollow one, then follow it again. | Manage lists external follows with an account-wide warning. Counts update; dropped Retail prices disappear from every eligible installation. No follow is removed automatically. |
+| TSM-179-2 | Unfollow a realm, sign out, restart and sign back in. | The declined choice remains. Following manually clears it. WoWDeck-added follows retain their ownership across restart. |
+| TSM-179-3 | Attempt a follow at the displayed allowance. | The request reaches TradeSkillMaster. Server acceptance updates the list; refusal leaves it unchanged and shows an error. Failed unfollows keep the follow and its ownership. Repeated or concurrent follows do not send duplicate writes. Controls from a previous installation cannot replace the current list. |
+
+### TradeSkillMaster character realm discovery (#180)
+
+With several known installations, sign in with Retail character folders and
+Classic TSM SavedVariables present. Check that recent character realms are
+followed first across installations, with Retail first on equal timestamps.
+Use TradeSkillMaster.lua as the game writes it (it saves TSMItemInfoDB too),
+and check every realm and faction with a character is listed with Follow.
+Before a Classic login has saved faction and region, check that no faction is
+guessed. After login, wait for discovery and check the correct faction appears.
+At the account limit, check remaining candidates have usable unfollowed toggles.
+Unfollow one, sign out and back in, and check it stays unfollowed. Follow it by
+hand and check the choice clears. Remove a character folder and check its
+account follow remains. Repeat with Hardcore, Season of Discovery, Anniversary,
+progression and Forever. Device execution remains pending.
+
+Disconnect networking when a new character appears, then reconnect. Discovery
+retries the follow without needing another new character. A server refusal
+stops that discovery batch; unchanged scans do not repeat refused requests.
+
+
+### TradeSkillMaster interruption recovery (#181)
+
+Device results are pending. This implementation run did not authorize or access devices.
+
+- On Steam Deck in game mode, enable TradeSkillMaster, complete sign-in in Steam's browser, and return to WoWDeck.
+- Install TradeSkillMaster and its AppHelper library. Confirm realm and region update times appear within seconds, then check prices in WoW.
+- Select Refresh auction data. Confirm the active installation gets current prices again, even with unchanged timestamps. Check that another current installation stays unchanged.
+- Refresh while downloads are still arriving. Confirm old queued downloads do not resume or replace the refreshed data.
+- Update or reinstall AppHelper and change its source where permitted. Confirm data returns after the folder swap without waiting for the next scheduled push.
+- Suspend and wake the Deck. Confirm auction data resumes immediately. Disconnect the network, restore it, and confirm recovery. Disable the source and confirm sync stops.
+- Copy Diagnostics while signed in and after sign-out. Confirm it shows enabled state, authentication, tier, socket state, last push and followed count, without account names, realm names, tokens or download links.
+- Repeat Steam-browser sign-in, install, refresh, update recovery and data arrival on DroidDeck arm64. Compare the destination and in-game prices with Deck behavior. Ask before every phone Steam session stop or start.
+
+### TradeSkillMaster cross-flavor prices (#182)
+
+Pending on-device verification. Use existing account follows without relying
+on character discovery. Repeat for Classic Era, Hardcore, Season of Discovery,
+Anniversary, progression Classic and WoW Forever where available.
+
+| ID | Action | Expected |
+| --- | --- | --- |
+| TSM-182-1 | Keep one installation active and refresh prices with AppHelper installed in other flavors. Also include an installation with only TradeSkillMaster. | Every matching installation receives realm, shopping and region data. Localized realm names have the correct Horde or Alliance suffix. Connected realms share data within the same faction. |
+| TSM-182-2 | Switch installations in the destination, including both factions and a region without data. | Only realms, factions and regions supported by that installation's saved character evidence appear. Factions and update times match the installed data. Missing data says it is waiting. |
+| TSM-182-3 | Log into each available flavor and faction after delivery. Compare a known item's realm, shopping and region prices with TradeSkillMaster's desktop data. | Prices load in game for the correct region and faction. Record any unavailable flavors as unverified. |
+| TSM-182-4 | Unfollow one faction house while keeping the other followed, then refresh. | Only the unfollowed house is pruned. The other faction's prices and unknown file lines remain. |
+
+### TradeSkillMaster folder changes (#187)
+
+Pending on-device verification.
+
+| ID | Action | Expected |
+| --- | --- | --- |
+| TSM-187-1 | Update AppHelper, let new prices arrive, then roll it back. | Prices reach the restored AppHelper within seconds, without waiting for the next push. |
+| TSM-187-2 | Remove AppHelper from My Addons, then repeat with a hand-copied AppHelper folder removed as unmanaged. | TradeSkillMaster's own data file gets current prices within seconds each time. |
+| TSM-187-3 | Install AppHelper from Manual Install. Then remove both addons and install TradeSkillMaster, which installs AppHelper as a library. | Each install succeeds and prices reach AppHelper within seconds. |
+| TSM-187-4 | Disable the source or sign out, then install or remove AppHelper. | The change succeeds and WoWDeck makes no TradeSkillMaster connection. |
+
+
+### TradeSkillMaster grouped addon controls (#194)
+
+Run on Steam Deck or DroidDeck only after a device-test request. These cases have not been run on a device.
+
+| Case | Action | Expected |
+| --- | --- | --- |
+| TSM-194-1 | Open the destination with neither addon, both addons, only TradeSkillMaster, then only AppHelper installed. | Install appears when both are absent. Uninstall appears when either is present. The action shares one row with Refresh auction data. Both labels fit the widened pane. |
+| TSM-194-2 | Use the controller to open Uninstall, then cancel with Cancel and with B repeatedly, including a panel remount and delayed data load. Wait for modal exit to settle. | The dialog names TradeSkillMaster and AppHelper. Nothing changes. Focus returns to the action row and can reach Refresh. |
+| TSM-194-3 | Confirm Uninstall both with another installation configured and unrelated libraries installed. | Only the selected installation loses the two named addons. Sign-in, account follows, other installations and unrelated libraries stay. Install becomes available. |
+| TSM-194-4 | Try removal with a developer copy or an installation requiring recovery. | A visible error directs the player to My Addons. Protected files and recovery copies stay. Retry reflects the remaining addons. |
+| TSM-194-5 | Install from the action row, then navigate between Install or Uninstall and Refresh with the controller. | Both addons install into the selected installation. Uninstall replaces Install. Focus stays usable through confirmation and return. |
+### TradeSkillMaster account follows (#192)
+
+Run on a device only after a device-test request. Use an account with follows
+in several regions and WoW versions, including a realm absent locally.
+
+| ID | Action | Expected |
+| --- | --- | --- |
+| TSM-192-1 | Open the destination and use the controller to reach Manage beside the count. | The headline says TradeSkillMaster. Signed in shows the account name. No tier label appears. Manage lists all account follows with region, WoW version and faction where applicable. |
+| TSM-192-2 | Select the last follow, then cancel with B and Cancel repeatedly. Select a different follow and repeat. Measure the containing row identity, not only the repeated Unfollow label. | Confirmation explains the change affects every computer. Cancel has initial focus. Neither cancellation changes the account. Focus returns to that follow. |
+| TSM-192-3 | Confirm Unfollow, then repeat with a service failure. | Success removes the row and updates the count. Failure keeps the follow and shows an error with retry available. |
+| TSM-192-4 | Close Manage with B or Done. Reopen it after character discovery and a plugin restart. | Focus returns to Manage. The removed follow stays absent, including when local characters use that realm. |
+
+
+### TradeSkillMaster local evidence (#193)
+
+Device execution requires an explicit device-test request. These cases have
+not been run on a device.
+
+| ID | Action | Expected |
+| --- | --- | --- |
+| TSM-193-1 | Switch between installations with different saved regions and Classic factions. | Each list uses only the selected installation's evidence. A saved Horde scope does not expose Alliance. A region without matched evidence stays hidden. |
+| TSM-193-2 | Select an installation with no saved character evidence while the account follows realms elsewhere. Navigate to Manage with the controller and open it. | The local list is empty, with help about logging in and logging out to save settings, and enabling TradeSkillMaster and AppHelper for Classic. Account count and Manage remain available. Manage lists all account follows. Closing it returns focus to Manage. No follow changes. |
+| TSM-193-3 | Follow the help for a missing destination, then reopen the destination after WoW saves settings. | Matching realm, faction and region rows appear. Help describes locally saved evidence without claiming live Blizzard character knowledge. |
+
+### Optional TradeSkillMaster uninstall cleanup (#195)
+
+Pending a device-test request. These cases have not been run on a device.
+
+| Case | Action | Expected |
+| --- | --- | --- |
+| TSM-195-1 | Open Uninstall with exclusive, shared and pre-existing account follows. | Cleanup starts unchecked. Preview identifies eligible realms by region, WoW version and faction. Shared and pre-existing follows are excluded. |
+| TSM-195-2 | Cancel, then uninstall with cleanup unchecked. | Cancellation changes nothing. Unchecked uninstall removes addons and preserves all follows and sign-in. |
+| TSM-195-3 | Select cleanup and confirm while some unfollows fail. | Addons are removed. The result names follows left behind separately from local removal. Successful removals stay unfollowed after discovery. |
+| TSM-195-4 | Navigate preview, cleanup toggle, Cancel and Uninstall both with controller. | Controls remain reachable; consent text explains the account change affects all computers. |
+| TSM-195-5 | Confirm cleanup after a successful preview while the account service cannot reload eligibility. | Addon removal proceeds. The result names the previewed follows left behind. No follows are deleted using stale eligibility. |
+| TSM-195-6 | Confirm uninstall, close the QAM while it runs, then reopen it before and after completion. Repeat with addon failure and account cleanup failure. | Working remains visible while pending. The returning panel shows removal errors or the cleanup result with realm identities. Other installations do not inherit the result. |
+| TSM-195-7 | Remove a follow in Manage or cleanup while DELETE succeeds but subsequent account reads fail. | The removal succeeds. Manage updates its list and count. Cleanup counts the follow as removed, and discovery does not recreate it. |
+
+### TradeSkillMaster Deck verification, 2026-11-10
+
+DEVICE, Steam Deck via `tools/deck-ui/deck`, deployed frontend and engine.
+Account heading and allowance showed correctly after removing the old tier row.
+Manage listed four account follows across Classic Era, Hardcore and Forever.
+Down selected the next follow. Its confirmation started on Cancel; B returned
+to the list without mutation. Uninstall named both addons, with cleanup
+unchecked and no eligible follows for Forever. Cancel left the addons present.
+The corrected action row fit both buttons and Right moved from Uninstall to
+Refresh. Switching Classic Era and Forever updated the destination while
+Manage retained all four account follows. No plugin errors appeared.
+
+Closing a modal with B closed the QAM; reopening returned to the destination
+selector rather than Manage. Return focus remains unverified. The audit still
+reported one overflow elsewhere in the pane. No live unfollows or addon removal
+were performed. Empty-evidence, partial-removal and cleanup-failure cases remain
+covered by automated tests, with device execution pending.
+
+### Manage return-focus follow-up, 2026-11-10 (#192)
+
+DEVICE, Steam Deck via `tools/deck-ui/deck`, frontend-only deployment over
+0589c04's engine, with Forever selected. After cancelling a stale installation
+selector without changing the installation, both B and Done closed Manage and
+returned directly to the TradeSkillMaster destination with Manage focused.
+No manual QAM reopening was needed. Down reached Uninstall and Up returned to
+Manage. Within Manage, Down moved from Soulseeker Alliance to Soulseeker Horde.
+Both buttons say Unfollow, so the action probe reported no change; inspecting
+the focused button's containing row confirmed the move. Confirmation opened on
+Cancel. Down reached Unfollow and Up returned to Cancel. B and Cancel each returned to the account list while keeping Manage
+open. No live unfollows or addon removals were performed. Diagnostics reported
+no plugin errors. The earlier failed return-focus observation above describes
+the previous build.
+
+Automated component coverage unmounts the destination while Manage is open,
+then remounts it with the account response held pending. Both dismissal paths
+reopen the QAM and focus Manage when that response resolves. Both tests failed
+before the fix because the QAM was never reopened. The existing focus-memory
+restore window remains two seconds; longer account delays are not verified.
+
+### Expanded TSM Deck run, 2026-11-10
+
+See [the device report](tsm-deck-test-2026-11-10.md) for live account unfollow and restoration, grouped removal and installation, helper retention, developer protection, file verification and every TSM case disposition. This run remains incomplete. Authentication scenarios were excluded by request; skipped cases still require verification.
+
+
+### Four-gap Deck follow-up at fe047cc, 2026-11-10
+
+DEVICE. The source-off real Manual Install picker installed the backed-up helper ZIP successfully as provider File. Source state was restored. The positive cleanup preview listed Normal Horde / EU / Forever from existing current-account ownership. Controller navigation checked the toggle, reached Uninstall both and Cancel, and cancelled without changing the four follows. Manage Cancel row identity was already measured in the preceding focus-fix run.
+
+TSM-195-6 remains incomplete. A bounded 35-second pause of only our engine held a real unchecked uninstall pending. Closing and reopening QAM, then returning to TradeSkillMaster, displayed the heading/version without Working while destination data was loading. Removal completed after automatic engine resume. The working-tree follow-up below records the attempted fix verification. The picker attempt did not switch installations, so it does not verify result isolation. No code was changed in the test run.
+
+TSM-192-3 service-failure presentation remains unverified. The shipped engine has constructor-only TSM endpoint injection and no environment or RPC override; its isolated runner cannot render through the ordinary UI bridge. A localhost service test through that UI needs an explicit bridge or endpoint seam. Production account responses and network settings were not changed. See the device report for scoped counts and restoration. Its 26 isolated device scenarios are not live account passes. Excluded authentication portions are counted separately from remaining authorized gaps.
+
+
+### Working-tree action-row Deck follow-up, 2026-11-10
+
+DEVICE, local HEAD dca0923 with the uncommitted action-row fix. Real unchecked removal showed Working immediately after confirmation, but completed before QAM reopened. Pending remount before destination data remains unverified. Real dropdown selection reached Forever Beta and returned to Forever; neither displayed leaked busy/error state after completion. No cleanup result existed, so result preservation and switching while busy remain uncovered. TSM-195-6 retains PARTIAL.
+
+Uninstall Cancel and B returned to Uninstall, then Right reached Refresh auction data. Manage last-row confirmation started on Cancel; B and Cancel returned to the measured Normal Horde row. Restored folders, generated helper data, original addon records and exact choice metadata from backups. Verified all static files without mismatches, original four follows, signed-in status, enabled source and Forever selection. `deck down` restored autoUpdate. See the device report for comparison counts and the generated-data refresh boundary. No production edits or authentication actions. Parent owns final checks and commit.
+
+
+### Deterministic action-row Deck retest, 2026-11-10
+
+DEVICE, local HEAD dca0923 with the uncommitted action-row fix. Prepared the ordinary unchecked Uninstall preview, then paused only the RPC-identified wowdeck engine for 35 seconds through an isolated SSH command with automatic SIGCONT in finally. Confirmed Uninstall both, closed and reopened QAM, then selected TradeSkillMaster. Working remained visible while the engine and destination RPC were still held. Pending-remount visibility passes for this working tree.
+
+Real dropdown navigation focused Forever Beta, but selection waited on the same paused engine. The pane stayed on Forever with Working. After automatic resume, Beta was selected and the startup retry screen appeared; plugin reload recovered access. Busy-state isolation and return to Forever while pending remain unverified. No cleanup result or removal error existed to verify preservation. Completion was not observed before backup restoration. TSM-195-6 retains PARTIAL. The earlier missing-Working observation describes the previous build; the two focus defects were already fixed and retested.
+
+Restored original folders, addon records and choice metadata. Verified 42,214 static files without mismatches, exact records and choices, Forever selected and all four original follows. Engine resume was confirmed before restoration reload. `deck down` restored autoUpdate. No production edits, commits, pushes, authentication or account mutations. See the device report for the exact sequence and remaining limits. Parent owns final checks and commit.

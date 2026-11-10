@@ -17,6 +17,7 @@ const checkAll = (service: AddonService, options?: { autoUpdate?: boolean }) =>
 import { AddonProvider } from "../src/wow/providers/addon-provider";
 import { ProviderRegistry } from "../src/wow/providers/provider-registry";
 import { createStateStore } from "../src/wow/storage/StateStore";
+import { FaultInjectingFs, type StageFs } from "../src/wow/fs/StageFs";
 import { NetworkClient } from "../src/wow/net/network";
 import { DownloadService } from "../src/wow/downloads/DownloadService";
 import type { AddonSearchResult, WowAddon, WowInstallation } from "../src/wow/models";
@@ -710,7 +711,7 @@ function stored(f: { service: AddonService; installation: WowInstallation }, id:
 }
 
 /** A service with its own provider, store and AddOns folder, for tests that must not share state. */
-function localFixture(name: string, catalog: CatalogEntry[]) {
+function localFixture(name: string, catalog: CatalogEntry[], fs?: StageFs) {
   const localProvider = new FakeProvider(catalog);
   const localVersions: Record<string, string> = Object.fromEntries(catalog.map((c) => [c.id, c.version]));
   const registry = new ProviderRegistry();
@@ -729,7 +730,7 @@ function localFixture(name: string, catalog: CatalogEntry[]) {
     defaultAddonChannelType: 0,
     source: "detected",
   };
-  const store = createStateStore(localRoot);
+  const store = createStateStore(localRoot, fs);
   store.setInstallations([localInstallation]);
   const operations: OperationResult[] = [];
   const changed: string[][] = [];
@@ -2185,5 +2186,98 @@ describe("addon list import keeps libraries libraries (WF-21)", () => {
       f.installation,
     );
     expect(record(f, "Lib")!.isDependency).toBe(false);
+  });
+});
+
+describe("folders-changed callback", () => {
+  /** A fixture whose service reports each folders-changed call into `calls`. */
+  const watched = (name: string, catalog: CatalogEntry[]) => {
+    const fs = new FaultInjectingFs();
+    const f = localFixture(name, catalog, fs);
+    const calls: [string, string[]][] = [];
+    f.service.onFoldersChanged = (installationId, folders) => {
+      calls.push([installationId, [...folders].sort()]);
+    };
+    return { ...f, fs, calls };
+  };
+
+  test("each committed install, dependency, rollback and removal reports its folders once", async () => {
+    const f = watched("folders-changed", [
+      { id: "900", name: "Lib", version: "1.0.0", releaseId: "l1", folders: ["Lib"] },
+      { id: "901", name: "Suite", version: "1.0.0", releaseId: "s1", folders: ["Suite", "SuiteData"], requiredDependencyIds: ["900"] },
+    ]);
+    f.store.updateSettings({ keepPreviousVersions: true });
+    const id = f.installation.id;
+
+    const { addon: suite } = await f.service.install({ intent: "install", providerId: "WowUpHub", externalId: "901", installation: f.installation });
+    // The addon's own commit, then the library's, each on its own.
+    expect(f.calls).toEqual([[id, ["Suite", "SuiteData"]], [id, ["Lib"]]]);
+
+    f.calls.length = 0;
+    f.provider.catalog[1]!.version = "1.1.0";
+    f.provider.catalog[1]!.releaseId = "s2";
+    f.versions["901"] = "1.1.0";
+    await f.service.refresh(f.installation);
+    expect((await f.service.updateAddon(suite.id)).operation.status).toBe("updated");
+    expect(f.calls).toEqual([[id, ["Suite", "SuiteData"]]]);
+
+    f.calls.length = 0;
+    expect((await f.service.rollback(suite.id)).operation.status).toBe("installed");
+    expect(f.calls).toEqual([[id, ["Suite", "SuiteData"]]]);
+
+    f.calls.length = 0;
+    const lib = f.store.addons.all().find((a) => a.externalId === "900")!;
+    expect((await f.service.removeAddon(suite.id, { removeLibraries: true })).status).toBe("removed");
+    expect(f.calls).toEqual([[id, ["Suite", "SuiteData"]], [id, ["Lib"]]]);
+    expect(f.store.addons.get(lib.id)).toBeUndefined();
+
+    f.calls.length = 0;
+    mkdirSync(join(f.addonsPath, "Loose"));
+    writeFileSync(join(f.addonsPath, "Loose", "Loose.toc"), "## Title: Loose\n");
+    expect((await f.service.removeUnmanagedFolder(f.installation, "Loose")).status).toBe("removed");
+    expect(f.calls).toEqual([[id, ["Loose"]]]);
+  });
+
+  test("a failed install, rollback or removal reports nothing", async () => {
+    const f = watched("folders-unchanged", [{ id: "910", name: "Solo", version: "1.0.0", releaseId: "o1", folders: ["Solo"] }]);
+    const { addon } = await f.service.install({ intent: "install", providerId: "WowUpHub", externalId: "910", installation: f.installation });
+    f.calls.length = 0;
+
+    f.fs.failAt("folder.install");
+    expect((await f.service.reinstall(addon.id)).operation.status).toBe("failed");
+    f.fs.clear();
+    // Nothing is kept, so there is nothing to roll back to.
+    expect((await f.service.rollback(addon.id)).operation.status).toBe("failed");
+    f.fs.failAt("state.write");
+    expect((await f.service.removeAddon(addon.id)).status).toBe("failed");
+    mkdirSync(join(f.addonsPath, "Loose"));
+    writeFileSync(join(f.addonsPath, "Loose", "Loose.toc"), "## Title: Loose\n");
+    f.fs.failAt("folder.backup");
+    expect((await f.service.removeUnmanagedFolder(f.installation, "Loose")).status).toBe("failed");
+    f.fs.clear();
+
+    expect(f.calls).toEqual([]);
+  });
+
+  test("a callback that throws leaves the committed install a success and its library installed", async () => {
+    const f = localFixture("folders-throw", [
+      { id: "920", name: "Lib", version: "1.0.0", releaseId: "l1", folders: ["Lib"] },
+      { id: "921", name: "Suite", version: "1.0.0", releaseId: "s1", folders: ["Suite"], requiredDependencyIds: ["920"] },
+    ]);
+    f.service.onFoldersChanged = () => {
+      throw new Error("refresh exploded");
+    };
+    const logs: string[] = [];
+    const originalError = console.error;
+    console.error = (...args: unknown[]) => { logs.push(args.map(String).join(" ")); };
+    try {
+      const { operation } = await f.service.install({ intent: "install", providerId: "WowUpHub", externalId: "921", installation: f.installation });
+      expect(operation.status).toBe("installed");
+    } finally {
+      console.error = originalError;
+    }
+    expect(f.store.addons.all().find((a) => a.externalId === "920")?.isDependency).toBe(true);
+    expect(existsSync(join(f.addonsPath, "Lib", "Lib.toc"))).toBe(true);
+    expect(logs.filter((l) => l.includes("refresh exploded"))).toHaveLength(2);
   });
 });

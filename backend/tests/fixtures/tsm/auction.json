@@ -1,0 +1,17 @@
+{
+  "realm": {
+    "realmId": 1,
+    "localizedName": "Tarren Mill",
+    "regionId": 1,
+    "region": { "regionId": 1, "gameVersion": "Retail", "regionPrefix": "eu" },
+    "auctionHouses": [{ "type": "All", "auctionHouseId": 10 }]
+  },
+  "event": {
+    "realmId": 1,
+    "auctionHouseType": "ALL",
+    "stringType": "AUCTIONDB_NON_COMMODITY_DATA",
+    "lastModified": 100,
+    "url": "https://blob.invalid/auction"
+  },
+  "blob": "return {price=123}"
+}

@@ -78,8 +78,10 @@ export interface DownloadAuth {
 export abstract class AddonProvider {
   public name: AddonProviderType = "Unknown";
   public enabled = false;
+  public normalizeVersion(version: string): string { return version; }
   public allowReinstall = false;
   public allowChannelChange = false;
+  public permittedChannels?(): import("../types").AddonChannelType[];
   /**
    * Whether this provider's `enabled` flag can be toggled by the user
    * at all — ported from upstream. Upstream's Options UI filters its provider
