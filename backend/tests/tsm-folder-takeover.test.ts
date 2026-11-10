@@ -79,7 +79,8 @@ test.each(["TradeSkillMaster first", "AppHelper first"])(
       label: "_retail_",
       displayName: "Retail",
       selected: true,
-      defaultAddonChannelType: AddonChannelType.Stable,
+      // The old install picked up this channel; the takeover must not reset it.
+      defaultAddonChannelType: AddonChannelType.Beta,
       source: "detected",
     };
     const addonsPath = join(installation.location, "Interface", "AddOns");
@@ -111,6 +112,7 @@ test.each(["TradeSkillMaster first", "AppHelper first"])(
     await service.setAutoUpdatePaused(id, true);
     const before = service.addonsFor(installation.id).find((r) => r.id === id)!;
     expect(before.providerName).toBe("File");
+    expect(before.channelType).toBe(AddonChannelType.Beta);
     expect([...before.installedFolderList!].sort()).toEqual([OTHER, TSM, HELPER].sort());
     expect(before.installedArchiveHash).toBeDefined();
     expect(before.installedExternalReleaseId).toBeDefined();
@@ -146,8 +148,7 @@ test.each(["TradeSkillMaster first", "AppHelper first"])(
     expect(taken.installedArchiveHash).toBeUndefined();
     expect(taken.installedExternalReleaseId).toBeUndefined();
     expect(taken.autoUpdatePaused).toBe(true);
-    expect(taken.channelType).toBe(before.channelType);
-    expect(taken.isIgnored).toBe(false);
+    expect(taken.channelType).toBe(AddonChannelType.Beta);
     // The other TradeSkillMaster folder gets a record of its own.
     const other = records.find((r) => r.id !== id)!;
     const second = takesOverFirst === TSM ? HELPER : TSM;

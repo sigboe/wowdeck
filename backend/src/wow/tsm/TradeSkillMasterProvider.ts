@@ -17,7 +17,6 @@ interface Release {
   version: string;
   url: string;
 }
-export { tradeSkillMasterFolders };
 const names = tradeSkillMasterFolders;
 export class TradeSkillMasterProvider extends AddonProvider {
   override allowReinstall = true;

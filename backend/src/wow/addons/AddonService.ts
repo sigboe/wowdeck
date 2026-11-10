@@ -49,7 +49,8 @@ import { WOWUP_DATA_ADDON_FOLDER_NAME } from "../notifications/constants";
 import { PROVIDER_ID } from "../../api/providers";
 import {
   isDeveloperAddon,
-  isDevelopmentVersion,
+  blocksTradeSkillMasterRemoval,
+  isTradeSkillMasterDevelopmentVersion,
   isReservedFolder,
   retainsFolder,
   takesOverRecord,
@@ -364,7 +365,7 @@ export class AddonService {
       for (const provider of SCAN_ORDER.flatMap((name) => available.filter((p) => p.name === name))) {
         const tradeSkillMasterUsable = this.#tradeSkillMasterUsable();
         const unmatched = folders.filter((f) => !matches.has(f.name) && f.ignoreReason === undefined &&
-          !isDevelopmentVersion(f) &&
+          !isTradeSkillMasterDevelopmentVersion(f) &&
           !isReservedFolder(f.name, provider.name, tradeSkillMasterUsable) &&
           !records.forInstallation(installation.id).some((r) => r.isIgnored && recordFolders(r).includes(f.name)));
         try {
@@ -1588,7 +1589,7 @@ export class AddonService {
         const folders = await this.addonFolders(installation, addon.id);
         const scanned = await scanAddons(installation);
         if (scanned.some((f) => folders.folders.some((owned) => owned.name === f.name) &&
-            (f.ignoreReason === "git_repo" || isDevelopmentVersion(f)))) {
+            blocksTradeSkillMasterRemoval(f))) {
           throw new ValidationError("Cannot remove a developer addon");
         }
         if (folders.folders.some((f) => !names.includes(f.name))) {
