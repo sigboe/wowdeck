@@ -47,6 +47,15 @@ import { getClientTypeLabel } from "../utils/gametype";
 import { gameVersionForInstallation } from "../utils/gameversion";
 import { WOWUP_DATA_ADDON_FOLDER_NAME } from "../notifications/constants";
 import { PROVIDER_ID } from "../../api/providers";
+import {
+  isDeveloperAddon,
+  blocksTradeSkillMasterRemoval,
+  isTradeSkillMasterDevelopmentVersion,
+  isReservedFolder,
+  retainsFolder,
+  takesOverRecord,
+  tradeSkillMasterFolders,
+} from "../tsm/TradeSkillMasterFolders";
 import { needsUpdate, updateStatus } from "./addonStatus";
 import {
   WARNING_FOLDERS_MISSING,
@@ -196,11 +205,6 @@ function releaseMetadata(
     metadata.newlyUpdatedInvalidated = true;
   }
   return metadata;
-}
-
-function isTradeSkillMasterDevelopmentFolder(folder: AddonFolder): boolean {
-  return ["TradeSkillMaster", "TradeSkillMaster_AppHelper"].includes(folder.name) &&
-    folder.tocs.some((toc) => /@project-version@|^dev(?:elopment)?$/i.test(toc.version ?? ""));
 }
 
 /** TSM owns its named folders first; other providers keep their existing precedence. */
@@ -359,10 +363,10 @@ export class AddonService {
       const matches = new Map<string, ScanMatch>();
       const available = this.registry.available();
       for (const provider of SCAN_ORDER.flatMap((name) => available.filter((p) => p.name === name))) {
+        const tradeSkillMasterUsable = this.#tradeSkillMasterUsable();
         const unmatched = folders.filter((f) => !matches.has(f.name) && f.ignoreReason === undefined &&
-          !isTradeSkillMasterDevelopmentFolder(f) &&
-          !(provider.name !== "TradeSkillMaster" && this.registry.usable("TradeSkillMaster") &&
-            ["TradeSkillMaster", "TradeSkillMaster_AppHelper"].includes(f.name)) &&
+          !isTradeSkillMasterDevelopmentVersion(f) &&
+          !isReservedFolder(f.name, provider.name, tradeSkillMasterUsable) &&
           !records.forInstallation(installation.id).some((r) => r.isIgnored && recordFolders(r).includes(f.name)));
         try {
           for (const [folderName, match] of await provider.scan(installation, unmatched)) {
@@ -443,12 +447,10 @@ export class AddonService {
 
       if (found) {
         const existing = current(found);
-        const retainedFolders = (existing.installedFolderList ?? []).filter((name) =>
-          match.addon.providerName !== "TradeSkillMaster" || !matches.has(name) ||
-          matches.get(name)?.addon.externalId === match.addon.externalId);
+        const retainedFolders = (existing.installedFolderList ?? []).filter((name) => retainsFolder(match, name, matches));
         const installedFolderList = [...new Set([...folderNames, ...retainedFolders])];
         change(existing.id, {
-          ...(match.addon.providerName === "TradeSkillMaster" && existing.providerName !== "TradeSkillMaster"
+          ...(takesOverRecord(match, existing.providerName)
             ? { providerName: match.addon.providerName, externalId: match.addon.externalId,
                 installedExternalReleaseId: undefined, downloadUrl: match.latestFile.downloadUrl,
                 latestVersion: match.latestFile.version, externalLatestReleaseId: match.latestFile.externalId,
@@ -865,16 +867,20 @@ export class AddonService {
   async #validateInstallFolders(providerId: string, folders: string[], installation: WowInstallation): Promise<void> {
     this.#requireFolderSource(providerId, folders);
     const protectedFolder = (await scanAddons(installation)).find((folder) =>
-      ["TradeSkillMaster", "TradeSkillMaster_AppHelper"].includes(folder.name) &&
-      folders.includes(folder.name) && (folder.ignoreReason === "git_repo" || isTradeSkillMasterDevelopmentFolder(folder)));
+      folders.includes(folder.name) && isDeveloperAddon(folder));
     if (protectedFolder) throw new ValidationError(protectedFolder.name + " is a developer addon");
   }
 
   #requireFolderSource(providerId: string, folders: string[]): void {
-    if (providerId !== "TradeSkillMaster" && this.registry.usable("TradeSkillMaster") &&
-        folders.some((name) => name === "TradeSkillMaster" || name === "TradeSkillMaster_AppHelper")) {
+    const tradeSkillMasterUsable = this.#tradeSkillMasterUsable();
+    if (folders.some((name) => isReservedFolder(name, providerId, tradeSkillMasterUsable))) {
       throw new ValidationError("TradeSkillMaster installs this addon");
     }
+  }
+
+  /** TradeSkillMaster's source is on and signed in: its folders are reserved to it. */
+  #tradeSkillMasterUsable(): boolean {
+    return !!this.registry.usable(PROVIDER_ID.TradeSkillMaster);
   }
 
   /** The install itself; callers hold the gate (`Gate.run` is not reentrant). */
@@ -1575,7 +1581,7 @@ export class AddonService {
 
   /** Grouped consent names exactly these folders, never an unrelated library. */
   async removeTradeSkillMasterAddons(installation: WowInstallation): Promise<{ operations: OperationResult[] }> {
-    const names = ["TradeSkillMaster", "TradeSkillMaster_AppHelper"];
+    const names = tradeSkillMasterFolders;
     const { addons } = await this.addonList(installation);
     const operations: OperationResult[] = [];
     for (const addon of addons.filter((a) => names.includes(a.folderName))) {
@@ -1583,7 +1589,7 @@ export class AddonService {
         const folders = await this.addonFolders(installation, addon.id);
         const scanned = await scanAddons(installation);
         if (scanned.some((f) => folders.folders.some((owned) => owned.name === f.name) &&
-            (f.ignoreReason === "git_repo" || isTradeSkillMasterDevelopmentFolder(f)))) {
+            blocksTradeSkillMasterRemoval(f))) {
           throw new ValidationError("Cannot remove a developer addon");
         }
         if (folders.folders.some((f) => !names.includes(f.name))) {

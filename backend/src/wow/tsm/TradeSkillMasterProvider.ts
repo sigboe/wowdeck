@@ -9,6 +9,7 @@ import { AddonChannelType, AddonDependencyType } from "../types";
 import type { Toc } from "../toc/toc";
 import { basename, dirname } from "node:path";
 import type { TradeSkillMasterAuth } from "./TradeSkillMasterAuth";
+import { tradeSkillMasterFolders } from "./TradeSkillMasterFolders";
 
 interface Release {
   addon: string;
@@ -16,8 +17,6 @@ interface Release {
   version: string;
   url: string;
 }
-/** The folders TradeSkillMaster owns. */
-export const tradeSkillMasterFolders = ["TradeSkillMaster", "TradeSkillMaster_AppHelper"];
 const names = tradeSkillMasterFolders;
 export class TradeSkillMasterProvider extends AddonProvider {
   override allowReinstall = true;

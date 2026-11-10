@@ -9,7 +9,8 @@ import { gunzipSync } from "fflate";
 import type { TradeSkillMasterDestination } from "../../api/contracts";
 import type { StateStore } from "../storage/StateStore";
 import type { TradeSkillMasterAuth } from "./TradeSkillMasterAuth";
-import { tradeSkillMasterFolders, type TradeSkillMasterProvider } from "./TradeSkillMasterProvider";
+import type { TradeSkillMasterProvider } from "./TradeSkillMasterProvider";
+import { tradeSkillMasterFolders } from "./TradeSkillMasterFolders";
 
 import { discoverCharacters, matchesFlavor, regionKey, realmKey, realmFolders } from "./CharacterDiscovery";
 
