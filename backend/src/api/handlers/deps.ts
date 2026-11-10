@@ -8,6 +8,8 @@ import type { UpdateCheck } from "../../wow/notifications/UpdateCheck";
 import type { UpdateToastGate } from "../../wow/notifications/UpdateToastGate";
 import type { PluginUpdateCheck } from "../../wow/notifications/PluginUpdateCheck";
 import type { UpdateStager } from "../../wow/plugin/UpdateStager";
+import type { PrBuildList } from "../../wow/plugin/PrBuildList";
+import type { PrBuildFollow } from "../../wow/plugin/PrBuildFollow";
 import type { ProviderRegistry } from "../../wow/providers/provider-registry";
 import type { CurseForgeAuthService } from "../../wow/providers/curseforge/CurseForgeKeyAuth";
 import type { CurseForgeProvider } from "../../wow/providers/curseforge/CurseForgeProvider";
@@ -35,6 +37,10 @@ export interface HandlerDeps {
   pluginUpdate: PluginUpdateCheck;
   /** Stages the newer release for Decky's installer (system.updateStage). */
   updateStager: UpdateStager;
+  /** The published PR builds (system.listPrBuilds). */
+  prBuilds: PrBuildList;
+  /** Where the running PR build's PR stands (system.prBuildState). */
+  prBuildFollow: PrBuildFollow;
   curseForgeAuth: CurseForgeAuthService;
   curseForgeProvider: CurseForgeProvider;
   wtfService: WtfBackupService;

@@ -128,16 +128,33 @@ class VersionFileTests(unittest.TestCase):
 
     def test_stamp_writes_a_beta_version_that_check_accepts(self) -> None:
         self.write({rel: "0.3.0" for rel in version.VERSIONED_FILES})
-        version.stamp_beta("0.3.1-beta.57")
+        version.stamp_build("0.3.1-beta.57")
         self.assertEqual(version.check(), "0.3.1-beta.57")
         for rel in version.VERSIONED_FILES:
             self.assertEqual(version.read_version(self._tmp / rel), "0.3.1-beta.57", rel)
 
-    def test_stamp_rejects_anything_but_a_beta_and_touches_nothing(self) -> None:
+    def test_stamp_writes_a_pr_build_version_and_its_rebuild(self) -> None:
         self.write({rel: "0.3.0" for rel in version.VERSIONED_FILES})
-        for candidate in ("0.3.1", "1.0.0-rc1", "0.3.1-beta", "0.3.1-beta.x", "v0.3.1-beta.1"):
+        for candidate in ("0.3.1-pr.117", "0.3.1-pr.117.2"):
+            self.assertEqual(version.main(["stamp", candidate]), 0)
+            self.assertEqual(version.check(), candidate)
+
+    def test_stamp_rejects_anything_but_a_beta_or_pr_build_and_touches_nothing(self) -> None:
+        self.write({rel: "0.3.0" for rel in version.VERSIONED_FILES})
+        for candidate in (
+            "0.3.1",
+            "1.0.0-rc1",
+            "0.3.1-beta",
+            "0.3.1-beta.x",
+            "v0.3.1-beta.1",
+            "0.3.1-beta.1.2",
+            "0.3.1-test.114",
+            "0.3.1-pr",
+            "0.3.1-pr.117.2.3",
+            "0.3.1-pr.x",
+        ):
             with self.assertRaises(SystemExit, msg=candidate):
-                version.stamp_beta(candidate)
+                version.stamp_build(candidate)
         self.assertEqual(version.check(), "0.3.0")
 
     def test_stamp_is_a_command(self) -> None:

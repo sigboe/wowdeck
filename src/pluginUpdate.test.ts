@@ -6,12 +6,14 @@ import {
   pluginUpdateDot,
   pluginUpdateRow,
   pluginUpdateToast,
+  prBuildOffer,
   releaseNotesAction,
   requestPluginUpdate,
   UPDATE_CHANNEL_ROWS,
   type PluginUpdateInfo,
 } from "./pluginUpdate";
 import { UPDATE_CHANNELS } from "../backend/src/api/contracts";
+import type { PrBuild } from "./types";
 
 const info = (over: Partial<PluginUpdateInfo>): PluginUpdateInfo => ({
   status: "current",
@@ -136,6 +138,15 @@ describe("isTestBuild", () => {
     expect(isTestBuild(info({ currentVersion: "1.0.2-pr.117" }))).toBe(true);
   });
 
+  test("true for a pr build's rebuild (X.Y.Z-pr.N.K)", () => {
+    expect(isTestBuild(info({ currentVersion: "1.0.2-pr.117.2" }))).toBe(true);
+  });
+
+  test("false for a counter on anything but a pr build", () => {
+    expect(isTestBuild(info({ currentVersion: "1.0.2-test.114.2" }))).toBe(false);
+    expect(isTestBuild(info({ currentVersion: "1.0.2-beta.29.2" }))).toBe(false);
+  });
+
   test("false for a release, a beta and a failed answer", () => {
     expect(isTestBuild(info({ currentVersion: "1.1.1" }))).toBe(false);
     expect(isTestBuild(info({ currentVersion: "1.1.2-beta.29" }))).toBe(false);
@@ -169,6 +180,16 @@ describe("a leaveTest offer (the way out of a test build)", () => {
       label: "Switch to beta 1.0.2-beta.27",
       description: "1.0.2-test.114 → 1.0.2-beta.27",
     });
+  });
+
+  test("a pr build's rebuild gets the same wording as a test build", () => {
+    const fromPr = { ...LEAVE_TEST, currentVersion: "1.0.2-pr.117.2" };
+    expect(isTestBuild(fromPr)).toBe(true);
+    expect(pluginUpdateRow(fromPr)).toEqual({
+      label: "Switch to beta 1.0.2-beta.27",
+      description: "1.0.2-pr.117.2 → 1.0.2-beta.27",
+    });
+    expect(panelOffer(fromPr)?.kind).toBe("leaveTest");
   });
 
   test("the panel offers it and toasts once, like any installable offer", () => {
@@ -212,6 +233,93 @@ describe("pluginUpdateRow", () => {
       label: "WoWDeck 0.1.1",
       description: "Couldn't check for a newer release",
     });
+  });
+});
+
+describe("following a PR build: the offer for each state of its PR", () => {
+  /** A PR build on Beta, offered the way back (the engine's leaveTest). */
+  const ON_PR = info({
+    status: "available",
+    currentVersion: "1.1.2-pr.117.2",
+    offer: {
+      kind: "leaveTest",
+      version: "1.1.2-beta.42",
+      headline: "Switch to beta 1.1.2-beta.42",
+      buttonLabel: "Switch to beta 1.1.2-beta.42",
+      toastBody: "Switch in Options",
+      rowLabel: "Switch to beta 1.1.2-beta.42",
+      releaseNotes: null,
+      releaseUrl: "https://github.com/sigboe/wowdeck/releases/tag/v1.1.2-beta.42",
+      installable: true,
+    },
+  });
+  const NEWER: PrBuild = {
+    number: 117,
+    title: "Add PR builds to the channel picker",
+    author: "sigboe",
+    version: "1.1.2-pr.117.3",
+    headSha: "0123456789abcdef0123456789abcdef01234567",
+    builtAt: "2026-11-10T09:15:00Z",
+    zipSize: 72998400,
+  };
+
+  test("a newer build of the same PR while it is listed: update to it", () => {
+    const offer = prBuildOffer(ON_PR, { kind: "listed", number: 117, newer: NEWER });
+    expect(offer).toMatchObject({
+      kind: "newerBuild",
+      headline: "PR #117 has a newer build",
+      buttonLabel: "Update to 1.1.2-pr.117.3",
+      build: NEWER,
+    });
+    expect(pluginUpdateRow(ON_PR, offer)).toEqual({
+      label: "PR #117 has a newer build",
+      description: "1.1.2-pr.117.2 → 1.1.2-pr.117.3",
+    });
+  });
+
+  test("merged, with a beta that has it: PR #N was merged. Switch to beta X", () => {
+    const offer = prBuildOffer(ON_PR, { kind: "merged", number: 117, beta: "1.1.2-beta.43" });
+    expect(offer).toMatchObject({
+      kind: "mergedBeta",
+      headline: "PR #117 was merged. Switch to beta 1.1.2-beta.43",
+      buttonLabel: "Switch to beta 1.1.2-beta.43",
+    });
+    expect(pluginUpdateRow(ON_PR, offer)).toEqual({
+      label: "PR #117 was merged",
+      description: "1.1.2-pr.117.2 → 1.1.2-beta.43",
+    });
+  });
+
+  test("merged, no beta has it yet: says one is building and offers no beta", () => {
+    const offer = prBuildOffer(ON_PR, { kind: "merged", number: 117, beta: null });
+    expect(offer).toMatchObject({
+      kind: "mergedBuilding",
+      headline: "PR #117 was merged. A beta with it is still building",
+      buttonLabel: null,
+    });
+    expect(pluginUpdateRow(ON_PR, offer)).toEqual({
+      label: "PR #117 was merged",
+      description: "A beta with it is still building",
+    });
+  });
+
+  test("closed, unlisted, listed with nothing newer, or unknown: the plain way back", () => {
+    for (const state of [
+      { kind: "closed", number: 117 },
+      { kind: "unlisted", number: 117 },
+      { kind: "listed", number: 117, newer: null },
+      null,
+    ] as const) {
+      expect(prBuildOffer(ON_PR, state)).toBeNull();
+    }
+    expect(panelOffer(ON_PR)?.headline).toBe("Switch to beta 1.1.2-beta.42");
+    expect(pluginUpdateRow(ON_PR, null).label).toBe("Switch to beta 1.1.2-beta.42");
+  });
+
+  test("only a PR build follows its PR", () => {
+    const test = { ...ON_PR, currentVersion: "1.1.2-test.200" };
+    expect(prBuildOffer(test, { kind: "merged", number: 117, beta: "1.1.2-beta.43" })).toBeNull();
+    expect(prBuildOffer(null, { kind: "merged", number: 117, beta: "1.1.2-beta.43" })).toBeNull();
   });
 });
 

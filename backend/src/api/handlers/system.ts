@@ -4,8 +4,10 @@ import type { JsonlServer } from "../../bridge/jsonl";
 import type { HandlerDeps } from "./deps";
 import { PROTOCOL_VERSION, UPDATE_CHANNELS } from "../contracts";
 import { ValidationError } from "../../wow/errors";
+import { publicFields } from "../../wow/plugin/PrBuildList";
+import { outcome } from "../../wow/plugin/UpdateStager";
 
-export function register(server: JsonlServer, { tsmData, store, registry, service, installationService, companionCoordinator, curseForgeAuth, recentErrors, backendVersion, pluginUpdate, updateStager, homeDir }: HandlerDeps): void {
+export function register(server: JsonlServer, { tsmData, store, registry, service, installationService, companionCoordinator, curseForgeAuth, recentErrors, backendVersion, pluginUpdate, updateStager, prBuilds, prBuildFollow, homeDir }: HandlerDeps): void {
   server.on("system.getStatus", async () => ({
     backendVersion: backendVersion,
     protocolVersion: PROTOCOL_VERSION,
@@ -27,6 +29,28 @@ export function register(server: JsonlServer, { tsmData, store, registry, servic
   });
 
   server.on("system.updateStage", async () => updateStager.stage());
+
+  // The modal's fields only: the zip's URL and checksum stay engine-side.
+  server.on("system.listPrBuilds", async () => {
+    const builds = await prBuilds.list();
+    return { builds: builds?.map(publicFields) ?? null };
+  });
+
+  // The zip's URL and checksum come from the list, read again here, never
+  // from the caller; the build must still be the one the owner confirmed.
+  server.on("system.installPrBuild", async ({ number, version }) => {
+    const builds = await prBuilds.list();
+    if (builds === null) {
+      return outcome("list_unavailable", "Couldn't load PR builds. Check the connection and try again");
+    }
+    const build = builds.find((b) => b.number === number);
+    if (build === undefined || build.version !== version) {
+      return outcome("not_listed", `PR #${number} has changed since the list opened. Open PR builds again`);
+    }
+    return updateStager.stagePrBuild(build);
+  });
+
+  server.on("system.prBuildState", async () => ({ state: await prBuildFollow.state() }));
 
   server.on("system.diagnostics", async () => ({
     tradeSkillMaster: tsmData?.diagnostics(),

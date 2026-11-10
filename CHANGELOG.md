@@ -15,6 +15,7 @@ What's new in each version of WoWDeck Addon Manager. The format follows
 - The Steam picker shows each game's icon and app id, and whether it's linked by hand or automatically.
 - Addon details show every game version a release supports as colored tags with friendly names, including Titan Reforged, so multi-game addons list them all.
 - Titan Reforged and China Beta installations are detected and can be added, so their addons install like any other client.
+- Try a build of a pull request from Options › Updates. WoWDeck offers its newer builds, then the beta that has it once it's merged.
 
 ### Changed
 

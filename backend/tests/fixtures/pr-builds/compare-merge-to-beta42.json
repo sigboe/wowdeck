@@ -1,0 +1,10 @@
+{
+  "url": "https://api.github.com/repos/sigboe/wowdeck/compare/fedcba9876543210fedcba9876543210fedcba98...v1.1.2-beta.42",
+  "html_url": "https://github.com/sigboe/wowdeck/compare/fedcba9876543210fedcba9876543210fedcba98...v1.1.2-beta.42",
+  "base_commit": { "sha": "fedcba9876543210fedcba9876543210fedcba98" },
+  "merge_base_commit": { "sha": "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678" },
+  "status": "behind",
+  "ahead_by": 0,
+  "behind_by": 3,
+  "total_commits": 0
+}

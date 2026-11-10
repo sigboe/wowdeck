@@ -32,6 +32,8 @@ import { UpdateToastGate } from "./wow/notifications/UpdateToastGate";
 import { UpdateCheck } from "./wow/notifications/UpdateCheck";
 import { PluginUpdateCheck } from "./wow/notifications/PluginUpdateCheck";
 import { UpdateStager } from "./wow/plugin/UpdateStager";
+import { PrBuildList } from "./wow/plugin/PrBuildList";
+import { PrBuildFollow } from "./wow/plugin/PrBuildFollow";
 import { CurseForgeAuthService } from "./wow/providers/curseforge/CurseForgeKeyAuth";
 import { WtfBackupService } from "./wow/wtf/WtfBackupService";
 import { WtfJobRunner, type WtfJobTarget } from "./wow/wtf/WtfJobRunner";
@@ -56,6 +58,12 @@ const HUB_URL = process.env.WOWDECK_HUB_URL ?? "https://hub.wowup.io";
  * `/releases/latest`: the Beta channel lists the releases beside it.
  */
 const RELEASES_URL = process.env.WOWDECK_RELEASES_URL ?? "https://api.github.com/repos/sigboe/wowdeck/releases/latest";
+/**
+ * The PR builds list CI publishes on GitHub Pages from the `pr-builds`
+ * branch (ADR 0010, docs/development.md "PR builds"); each build's zip must
+ * be served from the same host.
+ */
+const PR_BUILDS_URL = process.env.WOWDECK_PR_BUILDS_URL ?? "https://sigboe.github.io/wowdeck/index.json";
 
 const dataDir = process.env.WOWDECK_DATA_DIR ?? join(tmpdir(), "wowdeck");
 const homeDir = process.env.HOME ?? "/home/deck";
@@ -191,6 +199,15 @@ const pluginUpdate = new PluginUpdateCheck(
 );
 
 const updateStager = new UpdateStager(network, pluginUpdate, githubToken);
+const prBuilds = new PrBuildList(network, PR_BUILDS_URL);
+// The PR's own state comes from the repo's API, unauthenticated: the repo is
+// public, and no token ever reaches a PR build's check.
+const prBuildFollow = new PrBuildFollow(
+  BACKEND_VERSION,
+  prBuilds,
+  network,
+  RELEASES_URL.replace(/\/releases\/latest$/, ""),
+);
 
 const server = new JsonlServer();
 
@@ -233,6 +250,8 @@ const deps: HandlerDeps = {
   updateToastGate,
   pluginUpdate,
   updateStager,
+  prBuilds,
+  prBuildFollow,
   curseForgeAuth,
   curseForgeProvider,
   wtfService,

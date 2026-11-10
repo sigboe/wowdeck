@@ -142,6 +142,86 @@ stable version and the release steps above are unchanged. The version and
 prune choices are `tools/beta-release.ts` (tests beside it); pruning only
 ever matches `v*-beta.*`, and `release.yml` ignores those tags.
 
+### PR builds
+
+A maintainer who wants players to try an open pull request puts the
+`pr-build` label on it. `.github/workflows/pr-build.yml` then builds the PR
+and publishes the zip to GitHub Pages. Owners install it from Options ›
+Updates › WoWDeck › channel picker › "PR builds…". Label a PR only after you
+have reviewed its head commit, because the build ships the bundled
+CurseForge key and runs on owners' devices. GitHub lets only people with
+triage access or higher add labels. `GLOSSARY.md` ("PR build") and ADR 0010
+explain why the builds are hosted this way.
+
+The workflow runs on the label going on or off, on every push to the PR, and
+on the PR closing or reopening:
+
+- Adding the label builds the PR. A push by a maintainer (triage access or
+  higher) rebuilds it, and so does a maintainer reopening it.
+- A push by anyone else removes the label and takes the build off the list.
+  Review the new commits, then label the PR again. Only a push does this.
+  If someone else reopens the PR, the label stays on and the PR stays
+  unlisted.
+- Removing the label, merging the PR or closing it takes the build off the
+  list and deletes its zip.
+
+The version is `<last stable tag, patch+1>-pr.<PR number>`, and each
+rebuild adds a counter (`1.1.2-pr.117`, then `1.1.2-pr.117.2`).
+`index.json` remembers the last version published for every PR, so a PR
+that left the list and is labeled again counts on (`1.1.2-pr.117.3`)
+rather than starting over. A version never names two different builds.
+`tools/version.py stamp` writes it into the build's checkout only. A PR
+branched from a `next` older than the `-pr` versions fails at that step.
+Rebase it onto `next`.
+
+The bot keeps one comment on the PR and edits it on each build. It shows
+the version, the commit, the zip's size and sha256, and a download link
+that works without a GitHub login. Pages holds at most 10 PR builds, about
+73 MB each. Publish refuses an 11th and says so in the comment. Remove the label
+from a PR nobody needs any more, then label the new one again.
+
+`tools/pr-build.ts` makes every choice (tests beside it). The workflow
+reads the PR's state from GitHub, passes it in and carries out the answer.
+Its four jobs hold different permissions:
+
+- `decide` runs the default branch's `tools/` with a read-only token. It
+  picks the action and the version.
+- `strip-label` can only edit the PR's labels.
+- `build` checks out the PR's head commit and builds it with a read-only
+  token and the CurseForge key. It uploads the zip as an artifact.
+- `publish` runs no code from the PR. It takes only the zip from `build`,
+  computes its sha256, writes `pr/<number>/WoWDeck.zip` and `index.json` to
+  the `pr-builds` branch, and edits the PR comment. It is the only job that
+  can push.
+
+None of these jobs restores an Actions cache, and neither do the beta and
+release builds. A read-only token doesn't stop the PR's code in `build`
+from writing cache entries into the base branch's scope, and runs on
+`next` and `main` would restore them. Keep `cache:` off `setup-node` and
+`no-cache: true` on `setup-bun` in any job that publishes or holds a write
+token. `ci.yml` drops its caches only when `beta.yml` calls it with a
+version.
+
+The `pr-builds` branch is the Pages site and holds a single commit. Each
+publish clones it without file contents, replaces that commit and
+force-pushes, so it uploads only the new zip. `index.json` lists every PR
+build. Its format is in the header of `tools/pr-build.ts`. Each publish
+also drops builds whose PR has closed, lost its label or moved past the
+built commit. GitHub keeps only one publish waiting and cancels an older
+one that is still waiting. The next publish removes whatever that run
+would have taken off the list. Rerun a cancelled build from the Actions
+tab.
+
+The owner sets up the repository once, by hand:
+
+1. Create the `pr-build` label.
+2. Create the `pr-builds` branch with an empty `index.json`
+   (`{"builds": []}`) as its only commit, and no ruleset on it.
+3. Turn on Pages, deploying from the `pr-builds` branch, root folder.
+
+Until the branch exists, a build fails at publish and nothing is written.
+Until Pages is on, a build fails at publish before it pushes anything.
+
 ### Branch protection
 
 The repository deletes a PR's head branch after merging it. On
