@@ -24,6 +24,12 @@
  * once — which may be a different release. Every other failure (offline,
  * 5xx, rate limited, a damaged or wrong package) is reported as is.
  *
+ * Both paths report the download's bytes through `progress`
+ * (system.downloadProgress) and can be cancelled (system.cancelDownload):
+ * a cancelled download deletes its partial file, stages nothing and
+ * answers "cancelled". One download runs at a time per stager; the panel
+ * and the PR builds modal both disable their buttons while one runs.
+ *
  * The staged file intentionally outlives the RPC — the native prompt
  * may sit unanswered, and cancelling leaves the file — so stage()
  * first removes our staging files older than a day (SteamOS clears
@@ -34,9 +40,11 @@ import { chmodSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs"
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { unzip } from "fflate";
-import type { NetworkClient } from "../net/network";
+import type { EventMap } from "../../api/contracts";
+import type { DownloadOptions, NetworkClient } from "../net/network";
 import type { PluginUpdateCheck, StagingAnswer } from "../notifications/PluginUpdateCheck";
-import type { PublishedPrBuild } from "./PrBuildList";
+import type { PrBuildList, PublishedPrBuild } from "./PrBuildList";
+import { prNumber } from "./PluginVersion";
 import { NetworkError } from "../net/network";
 import { InstallError } from "../errors";
 
@@ -74,6 +82,12 @@ type LogTag = "[self-update]" | "[pr-builds]";
 /** The offered zip answered 404: the stored answer is stale. */
 const GONE = Symbol("gone");
 const DOWNLOAD_FAILED = outcome("download_failed", "Couldn't download the update. Try again");
+const CANCELLED = outcome("cancelled", "The download was cancelled");
+
+/** At most this many progress events per download, past the first and the last. */
+const PROGRESS_STEPS = 100;
+
+export type DownloadProgress = EventMap["system.downloadProgress"];
 
 export class UpdateStager {
   constructor(
@@ -85,9 +99,46 @@ export class UpdateStager {
     private check: Pick<PluginUpdateCheck, "forStaging" | "recordStagedVersion">,
     private tokenProvider: () => string | undefined = () => undefined,
     private tempDir: string = tmpdir(),
+    /** system.downloadProgress: the download's bytes, in order. */
+    private progress: (event: DownloadProgress) => void = () => {},
+    /** The published PR builds: a PR build's zip and checksum come only from here. */
+    private prBuilds: Pick<PrBuildList, "list"> = { list: async () => null },
   ) {}
 
-  async stage(): Promise<StageOutcome> {
+  /** The staging operation, including metadata lookup and verification. */
+  #inFlight: AbortController | null = null;
+  #received = 0;
+
+  /**
+   * Cancel the download in flight (system.cancelDownload): its stage
+   * answers "cancelled". False, and nothing changes, when none runs.
+   */
+  cancel(): boolean {
+    if (this.#inFlight === null || this.#inFlight.signal.aborted) {
+      return false;
+    }
+    this.#inFlight.abort();
+    return true;
+  }
+
+  async #operation(run: () => Promise<StageOutcome>): Promise<StageOutcome> {
+    if (this.#inFlight !== null) {
+      return outcome("download_in_progress", "An update is already being prepared");
+    }
+    this.#inFlight = new AbortController();
+    this.#received = 0;
+    try {
+      return await run();
+    } finally {
+      this.#inFlight = null;
+    }
+  }
+
+  stage(): Promise<StageOutcome> {
+    return this.#operation(() => this.#stage());
+  }
+
+  async #stage(): Promise<StageOutcome> {
     const first = await this.#stageFrom(await this.check.forStaging());
     if (first !== GONE) {
       return first;
@@ -98,11 +149,71 @@ export class UpdateStager {
     return retry === GONE ? DOWNLOAD_FAILED : retry;
   }
 
+  /**
+   * Download `url` to `zipPath` under the staging operation's abort signal, reporting its
+   * bytes against `knownTotal` (else the response's Content-Length). The
+   * controller stays in #inFlight until staging finishes, so
+   * a cancel that lands with the last byte still counts.
+   */
+  async #download(
+    url: string,
+    zipPath: string,
+    version: string,
+    options: Omit<DownloadOptions, "signal" | "onProgress">,
+    knownTotal: number | null = null,
+  ): Promise<void> {
+    const controller = this.#inFlight!;
+    if (controller.signal.aborted) throw new NetworkError("download aborted");
+    let sent = -1;
+    let step = 1;
+    const report = (received: number, total: number | null, last = false) => {
+      if (received === sent || (!last && sent >= 0 && received - sent < step)) {
+        return;
+      }
+      sent = received;
+      this.#received = received;
+      this.progress({ version, received, total });
+    };
+    // The start goes out once the total is known: at once from the list,
+    // else with the response's headers (the first chunk).
+    let total = knownTotal;
+    if (knownTotal !== null) {
+      report(0, total);
+    }
+    const bytes = await this.net.downloadToFile(url, zipPath, {
+      ...options,
+      signal: controller.signal,
+      onProgress: (received, length) => {
+        total = knownTotal ?? length;
+        report(0, total);
+        step = total === null ? 1024 * 1024 : Math.max(1, Math.floor(total / PROGRESS_STEPS));
+        report(received, total, total !== null && received >= total);
+      },
+    });
+    if (controller.signal.aborted) {
+      throw new NetworkError("download aborted");
+    }
+    report(bytes, total, true);
+  }
+
+  /** True when the staging operation was cancelled. */
+  #cancelled(): boolean {
+    const cancelled = this.#inFlight?.signal.aborted === true;
+    return cancelled;
+  }
+
   async #stageFrom({ status, offer, downloadUrl }: StagingAnswer): Promise<StageOutcome | typeof GONE> {
+    if (this.#cancelled()) return CANCELLED;
     if (offer === null) {
       return status === "current"
         ? outcome("up_to_date", "WoWDeck is already up to date")
         : outcome("check_unavailable", "Couldn't check for a newer release");
+    }
+    // The PR channel's offer stages through the PR build path (GLOSSARY:
+    // PR channel), never from the stored answer's URL.
+    const pr = offer.kind === "prUpdate" ? prNumber(offer.version) : null;
+    if (pr !== null) {
+      return this.#stageListedPrBuild(pr, offer.version);
     }
     if (!downloadUrl) {
       return outcome("no_download", "The release has no WoWDeck.zip to install");
@@ -126,14 +237,23 @@ export class UpdateStager {
       let downloaded = false;
       for (const header of headers) {
         try {
-          await this.net.downloadToFile(downloadUrl, zipPath, { headers: header, trustedHostsForHeaders });
+          await this.#download(downloadUrl, zipPath, version, { headers: header, trustedHostsForHeaders });
           downloaded = true;
           break;
         } catch (err) {
           failure = err;
+          if (this.#inFlight?.signal.aborted || this.#received > 0) {
+            break;
+          }
         }
       }
+      if (this.#cancelled()) {
+        rmSync(zipPath, { force: true });
+        console.error({ operation: "self-update", version, outcome: "cancelled" });
+        return CANCELLED;
+      }
       if (!downloaded) {
+        rmSync(zipPath, { force: true });
         console.error(
           `[self-update] download failed: ${failure instanceof Error ? failure.message : String(failure)}`,
         );
@@ -146,19 +266,60 @@ export class UpdateStager {
   }
 
   /**
-   * Stage a listed PR build (system.installPrBuild): its zip from Pages,
+   * Stage PR `number`'s build at exactly `version` (system.installPrBuild,
+   * and Update on the PR channel): the list is read again, so the zip's
+   * URL and checksum never come from the caller, and the build must still
+   * be the one confirmed or offered.
+   */
+  stageListedPrBuild(number: number, version: string): Promise<StageOutcome> {
+    return this.#operation(() => this.#stageListedPrBuild(number, version));
+  }
+
+  async #stageListedPrBuild(number: number, version: string): Promise<StageOutcome> {
+    const builds = await this.prBuilds.list();
+    if (this.#cancelled()) return CANCELLED;
+    if (builds === null) {
+      return outcome("list_unavailable", "Couldn't load PR builds. Check the connection and try again");
+    }
+    const build = builds.find((b) => b.number === number);
+    if (build === undefined || build.version !== version) {
+      return outcome("not_listed", `PR #${number} has changed since the list opened. Open PR builds again`);
+    }
+    return this.#stagePrBuild(build);
+  }
+
+  /**
+   * Stage a listed PR build: its zip from Pages,
    * refused unless it matches the sha256 the list publishes, then verified
    * like a release. Pages is public, so no token is sent; the stored
    * update channel is never touched.
    */
-  async stagePrBuild(build: Pick<PublishedPrBuild, "number" | "version" | "sha256" | "zipUrl">): Promise<StageOutcome> {
+  stagePrBuild(
+    build: Pick<PublishedPrBuild, "number" | "version" | "sha256" | "zipUrl" | "zipSize">,
+  ): Promise<StageOutcome> {
+    return this.#operation(() => this.#stagePrBuild(build));
+  }
+
+  async #stagePrBuild(
+    build: Pick<PublishedPrBuild, "number" | "version" | "sha256" | "zipUrl" | "zipSize">,
+  ): Promise<StageOutcome> {
     const { version } = build;
     const zipPath = join(this.tempDir, stagedFileName(version));
     this.#sweepStale(zipPath);
     try {
+      let failure: unknown = null;
       try {
-        await this.net.downloadToFile(build.zipUrl, zipPath);
+        await this.#download(build.zipUrl, zipPath, version, {}, build.zipSize);
       } catch (err) {
+        failure = err;
+      }
+      if (this.#cancelled()) {
+        rmSync(zipPath, { force: true });
+        console.error({ operation: "pr-builds", pr: build.number, version, outcome: "cancelled" });
+        return CANCELLED;
+      }
+      if (failure !== null) {
+        const err = failure;
         rmSync(zipPath, { force: true });
         console.error(
           `[pr-builds] download of PR #${build.number} failed: ${err instanceof Error ? err.message : String(err)}`,
@@ -186,6 +347,10 @@ export class UpdateStager {
   async #verifyAndRecord(zipPath: string, version: string, log: LogTag): Promise<StageOutcome> {
     const sha256 = sha256OfFile(zipPath);
     await this.#verifyPackage(zipPath, version);
+    if (this.#cancelled()) {
+      rmSync(zipPath, { force: true });
+      return CANCELLED;
+    }
     chmodSync(zipPath, 0o600);
     console.error(`${log} staged WoWDeck ${version} for Decky's installer (sha256 ${sha256.slice(0, 8)}…)`);
     this.check.recordStagedVersion(version);
@@ -195,6 +360,7 @@ export class UpdateStager {
   /** Delete the download and say why it was refused: nothing is staged on any failure. */
   #removeAndRefuse(zipPath: string, err: unknown, log: LogTag): StageOutcome {
     rmSync(zipPath, { force: true });
+    if (this.#cancelled()) return CANCELLED;
     if (!(err instanceof InstallError)) {
       console.error(`${log} staging failed: ${err instanceof Error ? err.message : String(err)}`);
     }

@@ -39,6 +39,15 @@
  * yesterday is never offered on Stable today. Switching channel
  * (setChannel) checks at once, past the daily interval and any backoff.
  *
+ * A running PR build is on its PR channel (GLOSSARY: PR channel) from its
+ * first start until the owner picks Stable or Beta (setChannel). The PR
+ * channel's source is the PR builds list (PrBuildFollow), under the same
+ * cadence, backoff and toast rule: a newer listed build of the same PR is
+ * offered as `prUpdate`; a listed PR with nothing newer is "current". A
+ * merged PR waits for a beta containing its merge, then persists Beta
+ * and offers that release as an update. Closed or unlisted PRs offer the
+ * stored channel as the way back.
+ *
  * Each ask of GitHub also calls onGitHubAsk, which refreshes Options ›
  * About's fetched files (ADR-0005). That refresh keeps no part of this
  * check's stamp or backoff, and neither side's failure fails the other.
@@ -50,14 +59,29 @@
  */
 
 import type { NetworkClient } from "../net/network";
-import type {
-  MethodMap,
-  PluginUpdateBackoff,
-  PluginUpdateSnapshot,
-  UpdateChannel,
+import {
+  type MethodMap,
+  type PluginUpdateBackoff,
+  type PluginUpdateOffer,
+  type PluginUpdateSnapshot,
+  PR_CHANNEL_OFFER_KINDS,
+  type ServedChannel,
+  type UpdateChannel,
 } from "../../api/contracts";
-import { type BuildSource, buildSources, type CandidateBuild, RELEASES_PAGE } from "../plugin/BuildSource";
-import { compareVersions, isBetaVersion, isPrVersion, isTestVersion } from "../plugin/PluginVersion";
+import {
+  type BuildSource,
+  buildSources,
+  type CandidateBuild,
+  RELEASES_PAGE,
+} from "../plugin/BuildSource";
+import {
+  compareVersions,
+  isBetaVersion,
+  isPrVersion,
+  isTestVersion,
+  prNumber,
+} from "../plugin/PluginVersion";
+import type { PrBuildFollow } from "../plugin/PrBuildFollow";
 import { releaseNotesText } from "../plugin/ReleaseNotesText";
 import { backoffIntervalMs, DAY_MS, HOUR_MS, isDue, SingleFlight } from "./CheckCadence";
 
@@ -90,6 +114,11 @@ export interface PluginUpdateStore {
   /** The owner's update channel; Stable when none was ever picked. */
   readChannel(): UpdateChannel;
   writeChannel(channel: UpdateChannel): void;
+  /** The PR whose PR channel the owner is on; null when on none. */
+  readPrChannel(): number | null;
+  writePrChannel(pr: number | null): void;
+  /** Move to Stable after release (GLOSSARY: Update channel): off unless the owner turned it on. */
+  readMoveToStableAfterRelease(): boolean;
   readLastRunVersion(): string | null;
   writeLastRunVersion(version: string): void;
   readStagedVersion(): string | null;
@@ -101,6 +130,7 @@ function memoryStore(): PluginUpdateStore {
   let backoff: PluginUpdateBackoff | null = null;
   let toastShownFor: string | null = null;
   let channel: UpdateChannel = "stable";
+  let prChannel: number | null = null;
   let lastRunVersion: string | null = null;
   let stagedVersion: string | null = null;
   return {
@@ -128,6 +158,11 @@ function memoryStore(): PluginUpdateStore {
     writeChannel: (value) => {
       channel = value;
     },
+    readPrChannel: () => prChannel,
+    writePrChannel: (value) => {
+      prChannel = value;
+    },
+    readMoveToStableAfterRelease: () => false,
   };
 }
 
@@ -142,13 +177,19 @@ export interface PluginUpdateCheckOptions {
    * waits for it nor lets it fail the check.
    */
   onGitHubAsk?: () => void;
+  /** The PR channel's source; without one a PR channel's check always fails. */
+  prChannel?: Pick<PrBuildFollow, "standing">;
 }
+
+/** Where a check answers from: the stored Stable or Beta, or a PR's channel. */
+type Source = { kind: "channel"; channel: UpdateChannel } | { kind: "pr"; number: number };
 
 export class PluginUpdateCheck {
   #flight = new SingleFlight<Answer>();
   readonly #sources: Record<UpdateChannel, BuildSource>;
   readonly #now: () => number;
   readonly #onGitHubAsk: () => void;
+  readonly #prChannel: Pick<PrBuildFollow, "standing">;
 
   constructor(
     net: Pick<NetworkClient, "getJson">,
@@ -159,20 +200,32 @@ export class PluginUpdateCheck {
     tokenProvider: () => string | undefined = () => undefined,
     /** The persisted answer and timestamp: this is the once-a-day cap. */
     private store: PluginUpdateStore = memoryStore(),
-    { now = Date.now, onGitHubAsk = () => {} }: PluginUpdateCheckOptions = {},
+    {
+      now = Date.now,
+      onGitHubAsk = () => {},
+      prChannel = { standing: async () => null },
+    }: PluginUpdateCheckOptions = {},
   ) {
     this.#sources = buildSources(net, releasesUrl, tokenProvider);
     this.#now = now;
     this.#onGitHubAsk = onGitHubAsk;
+    this.#prChannel = prChannel;
     // An installed build chooses its channel once. A restart keeps the
     // owner's choice; a stable package staged by our updater keeps it too.
     // A test build rides Beta: it is built from a branch past the newest
-    // beta, so Beta's answer is the one it can act on. A PR build keeps the
-    // owner's channel (GLOSSARY: PR build): leaving it returns them there.
-    if (this.store.readLastRunVersion() !== currentVersion && !isPrVersion(currentVersion)) {
-      if (isBetaVersion(currentVersion) || isTestVersion(currentVersion)) {
+    // beta, so Beta's answer is the one it can act on. A PR build joins its
+    // PR channel and keeps the owner's Stable or Beta (GLOSSARY: PR
+    // channel): leaving the PR channel returns them there. Any other build
+    // leaves the PR channel. Successful staging applies Move to Stable.
+    if (this.store.readLastRunVersion() !== currentVersion) {
+      const pr = prNumber(currentVersion);
+      this.store.writePrChannel(pr);
+      if (pr === null && (isBetaVersion(currentVersion) || isTestVersion(currentVersion))) {
         this.store.writeChannel("beta");
-      } else if (this.store.readStagedVersion() !== currentVersion) {
+      } else if (
+        pr === null &&
+        this.store.readStagedVersion() !== currentVersion
+      ) {
         this.store.writeChannel("stable");
       }
     }
@@ -182,6 +235,10 @@ export class PluginUpdateCheck {
   /** Record only a package successfully staged and verified for Decky. */
   recordStagedVersion(version: string): void {
     this.store.writeStagedVersion(version);
+    if (!isBetaVersion(version) && !isTestVersion(version) &&
+        this.store.readChannel() === "beta" && this.store.readMoveToStableAfterRelease()) {
+      this.store.writeChannel("stable");
+    }
   }
 
   channel(): UpdateChannel {
@@ -194,10 +251,17 @@ export class PluginUpdateCheck {
    * the toast: the owner is looking at Options already.
    */
   async setChannel(channel: UpdateChannel): Promise<PluginUpdateStatus> {
-    this.store.writeChannel(channel);
-    // A check in flight asked the old channel; the switch waits it out
-    // instead of joining it.
-    const answer = await this.#flight.runAfterPending(() => this.#run({ force: true }));
+    // Apply the explicit choice after any old PR check's automatic transition.
+    const answer = await this.#flight.runAfterPending(() => {
+      this.store.writeChannel(channel);
+      this.store.writePrChannel(null);
+      const stored = this.store.read();
+      if (stored?.mergedFromPr) {
+        const { mergedFromPr: _, ...rest } = stored;
+        this.store.write(rest);
+      }
+      return this.#run({ force: true });
+    });
     return { ...toWire(answer), toastPending: false };
   }
 
@@ -242,10 +306,10 @@ export class PluginUpdateCheck {
   }
 
   async #run({ force = false } = {}): Promise<Answer> {
-    const channel = this.store.readChannel();
+    const source = this.#source();
     const stored = this.store.read();
     // Only this channel's answer serves.
-    const stamp = stored !== null && stampChannel(stored) === channel ? stored : null;
+    const stamp = stored !== null && serves(stored, source) ? stored : null;
     const now = this.#now();
     if (!force && !isDue(stamp?.checkedAt ?? null, now, this.#interval(stamp))) {
       return this.#fromStamp(stamp!);
@@ -255,7 +319,11 @@ export class PluginUpdateCheck {
     // daily cap's cached answer, so a Deck that cannot reach GitHub is not
     // re-asked by every trigger (plugin load, wake, Options visit).
     const backoff = this.store.readBackoff();
-    if (!force && backoff !== null && !isDue(backoff.failedAt, now, backoffIntervalMs(backoff.failures))) {
+    if (
+      !force &&
+      backoff !== null &&
+      !isDue(backoff.failedAt, now, backoffIntervalMs(backoff.failures))
+    ) {
       return stamp !== null ? this.#fromStamp(stamp) : this.#unknown(false);
     }
     try {
@@ -263,7 +331,15 @@ export class PluginUpdateCheck {
     } catch (err) {
       console.error(`[plugin-update] onGitHubAsk failed: ${String(err)}`);
     }
-    const fresh = await this.#fetch(channel);
+    // While the PR build still runs, every replacement beta must pass
+    // containment again, including the stager's recovery from a removed zip.
+    const mergedPr = source.kind === "channel" && source.channel === "beta" &&
+      stored?.mergedFromPr === this.currentVersion ? prNumber(this.currentVersion) : null;
+    const fresh = source.kind === "pr"
+      ? await this.#fetchPr(source.number, stored)
+      : mergedPr !== null
+        ? await this.#fetchPr(mergedPr, stored)
+        : await this.#fetch(source.channel);
     if (fresh !== null) {
       const snapshot = { ...fresh, checkedAt: this.#now() };
       this.store.write(snapshot);
@@ -276,7 +352,9 @@ export class PluginUpdateCheck {
     // A failure keeps serving the stored answer, as inside the backoff
     // window: otherwise the panel would vanish on the failed attempt and
     // come back on the next trigger.
-    return stamp !== null ? { ...this.#fromStamp(stamp), checked: true, failed: true } : this.#unknown(true);
+    return stamp !== null
+      ? { ...this.#fromStamp(stamp), checked: true, failed: true }
+      : this.#unknown(true);
   }
 
   /**
@@ -305,9 +383,12 @@ export class PluginUpdateCheck {
    * a nagging one.
    */
   #toastGate(result: GatelessStatus): PluginUpdateStatus {
-    // A PR build never toasts (GLOSSARY: PR build): its owner follows the PR
-    // or leaves it from Options, where the panel asks where the PR stands.
-    const candidate = result.offer?.installable && !isPrVersion(this.currentVersion) ? result.offer.version : null;
+    // On a PR build only the PR channel's own offers toast (GLOSSARY: PR
+    // channel); its way out waits in Options.
+    const toasts =
+      result.offer?.installable &&
+      (!isPrVersion(this.currentVersion) || isPrChannelOffer(result.offer));
+    const candidate = toasts ? result.offer!.version : null;
     if (candidate === null) {
       return { ...result, toastPending: false };
     }
@@ -318,11 +399,83 @@ export class PluginUpdateCheck {
     return { ...result, toastPending: pending };
   }
 
+  /** Where this check answers from: the running PR build's PR channel while it is on it. */
+  #source(): Source {
+    const pr = prNumber(this.currentVersion);
+    if (pr !== null && this.store.readPrChannel() === pr) {
+      return { kind: "pr", number: pr };
+    }
+    return { kind: "channel", channel: this.store.readChannel() };
+  }
+
+  /** The channel an answer serves (the wire's `channel`): null on a test build off any channel. */
+  #served(stamp: PluginUpdateSnapshot | null): ServedChannel | null {
+    const source = this.#source();
+    if (source.kind === "pr") {
+      return { kind: "pr", number: source.number, title: stamp?.pr?.title ?? null };
+    }
+    return isTestVersion(this.currentVersion) && stamp?.mergedFromPr !== this.currentVersion
+      ? null
+      : { kind: source.channel };
+  }
+
   /** The stored answer, compared against the version running right now. */
   #fromStamp(stamp: PluginUpdateSnapshot): Answer {
     const cmp = compareVersions(stamp.latestVersion, this.currentVersion);
     if (cmp === null) {
       return this.#unknown(false);
+    }
+    const channel = this.#served(stamp);
+    if (stamp.pr?.state === "listed") {
+      return this.#prListed(stamp, cmp, channel);
+    }
+    if (stamp.pr?.state === "merged") {
+      const headline = `PR #${stamp.pr.number} was merged. A beta with it is still building`;
+      return {
+        status: "available",
+        currentVersion: this.currentVersion,
+        channel,
+        offer: {
+          kind: "prMergedBuilding",
+          version: this.currentVersion,
+          headline,
+          buttonLabel: "",
+          toastBody: "",
+          rowLabel: headline,
+          releaseNotes: null,
+          releaseUrl: pullPage(stamp.pr.number),
+          installable: false,
+        },
+        downloadUrl: null,
+        checked: false,
+        failed: false,
+      };
+    }
+    if (stamp.pr?.state === "closed" || stamp.pr?.state === "unlisted") {
+      const closed = stamp.pr.state === "closed";
+      const headline = closed
+        ? `PR #${stamp.pr.number} was closed`
+        : `PR #${stamp.pr.number} is no longer listed`;
+      const switchLabel = `Switch to ${stampChannel(stamp)} ${stamp.latestVersion}`;
+      return {
+        status: "available",
+        currentVersion: this.currentVersion,
+        channel,
+        offer: {
+          kind: closed ? "prClosed" : "prUnlisted",
+          version: stamp.latestVersion,
+          headline,
+          buttonLabel: switchLabel,
+          toastBody: "Switch in Options",
+          rowLabel: headline,
+          releaseNotes: stamp.releaseNotes ? releaseNotesText(stamp.releaseNotes) : null,
+          releaseUrl: stamp.releaseUrl ?? RELEASES_PAGE,
+          installable: stamp.downloadUrl !== null,
+        },
+        downloadUrl: stamp.downloadUrl,
+        checked: false,
+        failed: false,
+      };
     }
     // Stable never offers an older build — except to a running beta, which
     // is on the wrong channel: leaving Beta offers the latest stable.
@@ -330,12 +483,14 @@ export class PluginUpdateCheck {
     // A test build is not on a channel: its owner needs the way back to a
     // published one, so the channel's newest build is offered however it
     // compares (a genuinely newer build took the "update" branch above).
-    const leaveTest = cmp <= 0 && isTestVersion(this.currentVersion);
+    const mergedBeta = stamp.mergedFromPr === this.currentVersion;
+    const leaveTest = cmp <= 0 && isTestVersion(this.currentVersion) && !mergedBeta;
     const switchToStable = cmp < 0 && betaOnStable;
-    if (cmp <= 0 && !switchToStable && !leaveTest) {
+    if (cmp <= 0 && !switchToStable && !leaveTest && !mergedBeta) {
       return {
         status: "current",
         currentVersion: this.currentVersion,
+        channel,
         offer: null,
         downloadUrl: null,
         checked: false,
@@ -350,6 +505,7 @@ export class PluginUpdateCheck {
       return {
         status: "available",
         currentVersion: this.currentVersion,
+        channel,
         offer: {
           kind: "leaveTest",
           version,
@@ -370,8 +526,9 @@ export class PluginUpdateCheck {
     return {
       status: "available",
       currentVersion: this.currentVersion,
+      channel,
       offer: {
-        kind: switchToStable ? "switchToStable" : "update",
+        kind: mergedBeta ? "prMergedBeta" : switchToStable ? "switchToStable" : "update",
         version,
         headline: switchToStable ? switchLabel : `WoWDeck ${version} available`,
         buttonLabel: switchToStable ? switchLabel : "Update",
@@ -395,11 +552,119 @@ export class PluginUpdateCheck {
     return {
       status: "unknown",
       currentVersion: this.currentVersion,
+      channel: this.#served(this.#servingStamp()),
       offer: null,
       downloadUrl: null,
       checked: failed,
       failed,
     };
+  }
+
+  /** The stored answer when it serves the current source (its PR's title, for an unknown answer). */
+  #servingStamp(): PluginUpdateSnapshot | null {
+    const stored = this.store.read();
+    return stored !== null && serves(stored, this.#source()) ? stored : null;
+  }
+
+  /**
+   * A listed PR's stored answer: its newer build as `prUpdate`, otherwise
+   * "current". The zip's URL is never what staging uses: Update reads the
+   * list again (UpdateStager).
+   */
+  #prListed(stamp: PluginUpdateSnapshot, cmp: number, channel: ServedChannel | null): Answer {
+    if (cmp <= 0) {
+      return {
+        status: "current",
+        currentVersion: this.currentVersion,
+        channel,
+        offer: null,
+        downloadUrl: null,
+        checked: false,
+        failed: false,
+      };
+    }
+    const headline = `PR #${stamp.pr!.number} has a newer build`;
+    const offer: PluginUpdateOffer = {
+      kind: "prUpdate",
+      version: stamp.latestVersion,
+      headline,
+      buttonLabel: `Update to ${stamp.latestVersion}`,
+      toastBody: "Update in Options",
+      rowLabel: headline,
+      releaseNotes: null,
+      releaseUrl: stamp.releaseUrl ?? RELEASES_PAGE,
+      installable: true,
+    };
+    return {
+      status: "available",
+      currentVersion: this.currentVersion,
+      channel,
+      offer,
+      downloadUrl: stamp.downloadUrl,
+      checked: false,
+      failed: false,
+    };
+  }
+
+  /**
+   * One ask of the PR channel's source: the PR's listed build, or, for a
+   * PR no longer listed, the stored channel's newest build with where the
+   * PR stands. The PR's title is the list's; a PR off the list keeps the
+   * title its last stored answer had. Null when the check could not run.
+   */
+  async #fetchPr(
+    number: number,
+    stored: PluginUpdateSnapshot | null,
+  ): Promise<PluginUpdateSnapshot | null> {
+    const standing = await this.#prChannel.standing(number);
+    if (standing === null) return null;
+    const channel = this.store.readChannel();
+    if (standing.state === "listed") {
+      const { build } = standing;
+      return {
+        checkedAt: 0,
+        channel,
+        latestVersion: build.version,
+        releaseUrl: pullPage(number),
+        downloadUrl: build.zipUrl,
+        pr: { number, title: build.title, state: "listed" },
+      };
+    }
+    if (standing.state === "merged") {
+      const title = stored?.pr?.number === number ? stored.pr.title : null;
+      if (standing.beta !== null) {
+        // Pin the release that passed the merge comparison, rather than a
+        // newer candidate which may have appeared between the two reads.
+        const builds = await this.#sources.beta.candidates();
+        const beta = builds?.find((build) => build.version === standing.beta);
+        if (beta?.downloadUrl) {
+          this.store.writeChannel("beta");
+          this.store.writePrChannel(null);
+          return {
+            checkedAt: 0,
+            channel: "beta",
+            latestVersion: beta.version,
+            mergedFromPr: this.currentVersion,
+            releaseUrl: beta.releaseUrl,
+            downloadUrl: beta.downloadUrl,
+            ...(beta.releaseNotes !== null && { releaseNotes: beta.releaseNotes }),
+          };
+        }
+      }
+      this.store.writePrChannel(number);
+      return {
+        checkedAt: 0,
+        channel,
+        latestVersion: this.currentVersion,
+        releaseUrl: pullPage(number),
+        downloadUrl: null,
+        pr: { number, title, state: "merged" },
+      };
+    }
+    const fallback = await this.#fetch(channel);
+    if (fallback === null) return null;
+    const title = stored?.pr?.number === number ? stored.pr.title : null;
+    return { ...fallback, pr: { number, title, state: standing.state } };
   }
 
   /**
@@ -413,9 +678,11 @@ export class PluginUpdateCheck {
     for (const build of builds ?? []) {
       // Sources only return parseable versions, so the comparison never
       // answers "can't tell" here.
-      if (newest === null || (compareVersions(build.version, newest.version) ?? 0) > 0) newest = build;
+      if (newest === null || (compareVersions(build.version, newest.version) ?? 0) > 0)
+        newest = build;
     }
-    if (newest === null || compareVersions(newest.version, this.currentVersion) === null) return null;
+    if (newest === null || compareVersions(newest.version, this.currentVersion) === null)
+      return null;
     // The zip is stored whatever the running version: a same-day rollback
     // below this release then still finds it (#fromStamp exposes it only
     // while the release is newer, or a switch to stable).
@@ -433,6 +700,21 @@ export class PluginUpdateCheck {
 /** An answer as system.updateCheck sends it: the zip's URL stays in the engine. */
 function toWire({ downloadUrl: _, ...answer }: Answer): GatelessStatus {
   return answer;
+}
+
+/** Whether a stored answer serves this source: a PR channel's answers serve only that PR's channel. */
+function serves(stamp: PluginUpdateSnapshot, source: Source): boolean {
+  if (source.kind === "pr") return stamp.pr?.number === source.number;
+  return stamp.pr === undefined && stampChannel(stamp) === source.channel;
+}
+
+function isPrChannelOffer(offer: PluginUpdateOffer): boolean {
+  return (PR_CHANNEL_OFFER_KINDS as readonly string[]).includes(offer.kind);
+}
+
+/** A pull request's page, beside the releases page. */
+function pullPage(number: number): string {
+  return RELEASES_PAGE.replace(/\/releases$/, `/pull/${number}`);
 }
 
 /** The channel a stored answer came from; one from before channels was Stable's. */

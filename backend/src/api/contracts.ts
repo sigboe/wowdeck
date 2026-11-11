@@ -720,10 +720,20 @@ export interface MethodMap {
      * failures are visible only in the engine's structured stderr log.
      * "available" carries the `offer`; whether it is installable says
      * whether the release has the WoWDeck.zip system.updateStage downloads.
-     * On a test build (X.Y.Z-test.N or X.Y.Z-pr.N) the channel's newest build is always
+     * On a test build (X.Y.Z-test.N) the channel's newest build is always
      * offered (`leaveTest`, older or not), so a test build's owner has the
      * way back to a published channel; a genuinely newer build still offers
      * as `update`.
+     *
+     * A PR build (X.Y.Z-pr.N or X.Y.Z-pr.N.K) is on its PR channel
+     * (GLOSSARY: PR channel) from the moment it first runs until the owner
+     * picks Stable or Beta (system.setUpdateChannel). The PR channel's
+     * source is the PR builds list, asked under the same daily cadence,
+     * failure backoff and once-per-version toast as Stable and Beta: a
+     * newer listed build of the same PR offers as `prUpdate`, and a listed
+     * PR with nothing newer answers "current". While the PR is not listed,
+     * the stored channel's newest build offers as `prClosed` or `prUnlisted`.
+     * A PR build that left its PR channel is on no channel, like a test build.
      */
     params: {
       /**
@@ -743,6 +753,13 @@ export interface MethodMap {
     result: {
       status: "current" | "available" | "unknown";
       currentVersion: string;
+      /**
+       * The update channel this answer served (GLOSSARY: Update channel,
+       * PR channel), so the channel modal can check its row and the panel
+       * can say "Up to date with PR #N". Null on no channel: a test build,
+       * or a PR build whose owner left its PR channel.
+       */
+      channel: ServedChannel | null;
       /**
        * The one release on offer, ready to render: the toast, the update
        * panel, its dot and the Options → Updates row all read it, so they
@@ -797,7 +814,8 @@ export interface MethodMap {
      * daily interval and any failure-backoff window, so the owner sees what
      * the new channel offers right away. Answers like system.updateCheck
      * (never spending the toast); "unknown" when the channel's source could
-     * not be asked. The channel is stored even then.
+     * not be asked. The channel is stored even then. On a PR build this
+     * leaves the PR channel (GLOSSARY: PR channel) for the picked one.
      */
     params: { channel: UpdateChannel };
     result: MethodMap["system.updateCheck"]["result"];
@@ -813,6 +831,15 @@ export interface MethodMap {
      * utilities/install_plugin, whose native prompt installs and reloads
      * the plugin. This engine never extracts or replaces its own
      * installed files, and nothing is staged on any failure.
+     *
+     * The download reports its bytes as `system.downloadProgress` events
+     * (total from Content-Length). system.cancelDownload aborts it: the
+     * partial file is deleted, nothing is staged, and `error.code` is
+     * "cancelled". A failure partway is "download_failed".
+     * A `prUpdate` offer stages through system.installPrBuild's path: the
+     * PR builds list is read again, the build must still be the offered
+     * version ("not_listed" otherwise), and its zip must match the
+     * published sha256.
      */
     params: Record<string, never>;
     result: {
@@ -845,11 +872,15 @@ export interface MethodMap {
      * exactly `version`), and leave it as a 0600 file in the OS temp dir.
      * The caller hands the returned file:// artifact, version and sha256
      * to utilities/install_plugin, whose native prompt confirms the
-     * install. The stored update channel is never touched. Nothing is
+     * install. The stored Stable or Beta choice is never touched; the
+     * installed build joins its PR channel when it first runs. Nothing is
      * staged on any failure, and `error.code` says which:
      * "list_unavailable" (the list couldn't load), "not_listed" (the PR
      * left the list, or was rebuilt since the owner confirmed `version`),
-     * "download_failed", "checksum_mismatch" or "archive_invalid".
+     * "download_failed", "checksum_mismatch", "archive_invalid" or
+     * "cancelled" (system.cancelDownload). The download reports its bytes
+     * as `system.downloadProgress` events, the total from the list's
+     * `zipSize`.
      */
     params: {
       /** The PR's number. */
@@ -859,19 +890,16 @@ export interface MethodMap {
     };
     result: MethodMap["system.updateStage"]["result"];
   };
-  "system.prBuildState": {
+  "system.cancelDownload": {
     /**
-     * Where the PR the running PR build came from stands (GLOSSARY: PR
-     * build), so the update panel can offer the right way on. Asked only
-     * when Options checks while a PR build runs: no toast, no background
-     * check. Reads the PR builds list first; only when the PR is no longer
-     * listed does it ask GitHub's API for the PR, without any token, and,
-     * when it was merged, the releases list for the newest beta. `state`
-     * is null — never an RPC error — when the running build is no PR
-     * build or its PR's state couldn't be read (offline, rate limited).
+     * Cancel the WoWDeck download in flight (system.updateStage or
+     * system.installPrBuild): its partial file is deleted, nothing is
+     * staged, and that call answers with `error.code` "cancelled".
+     * `cancelled` is false, and nothing happens, when no download is in
+     * flight (it already finished, or never started).
      */
     params: Record<string, never>;
-    result: { state: PrBuildState | null };
+    result: { cancelled: boolean };
   };
   "installations.list": {
     params: Record<string, never>;
@@ -1437,6 +1465,21 @@ export interface PluginSettings {
    * check). Missing or unknown in the stored file means Stable.
    */
   pluginUpdateChannel: UpdateChannel;
+  /**
+   * The PR whose PR channel the owner is on (GLOSSARY: PR channel): set
+   * when a PR build first runs, cleared when the owner picks Stable or
+   * Beta or a build that is no PR build runs. Engine-written only; it
+   * counts only while the running build is that PR's build.
+   */
+  pluginUpdatePrChannel: number | null;
+  /**
+   * Move to Stable after release (GLOSSARY: Update channel; default off):
+   * when a stable release our updater staged first runs while Beta is
+   * selected, select Stable instead of keeping Beta. Set through
+   * settings.set from the channel modal, shown there only while Beta is
+   * selected. Off leaves Beta selected, as before the toggle existed.
+   */
+  pluginMoveToStableAfterRelease: boolean;
   /** Last engine-start version; engine-written only. Null before the first start. */
   pluginUpdateLastRunVersion: string | null;
   /** Last successfully verified updater package; engine-written only. */
@@ -1572,9 +1615,9 @@ export interface FundingLink {
 // ---------------------------------------------------------------------------
 
 /**
- * The WoWDeck update channels (GLOSSARY): which builds the owner is offered.
- * String ids, so a later build source (PR builds, say) is one more id here —
- * no other contract or stored-setting change.
+ * The WoWDeck update channels the owner can pick (GLOSSARY: Update
+ * channel). The PR channel is not one of them: a PR build joins it by
+ * running, never by a pick (ServedChannel).
  */
 export const UPDATE_CHANNELS = ["stable", "beta"] as const;
 export type UpdateChannel = (typeof UPDATE_CHANNELS)[number];
@@ -1604,30 +1647,52 @@ export interface PrBuild {
 }
 
 /**
- * The state of the PR a running PR build came from (system.prBuildState).
- * "listed": still on the PR builds list; `newer` is its listed build when
- * that one is newer than the running build, else null. "merged": `beta`
- * is the newest beta when its commit contains the PR's merge commit;
- * null while no such beta exists or that can't be told. "closed": closed without
- * merging. "unlisted": still open, but no longer on the list (the label
- * was removed).
+ * The update channel an answer served (system.updateCheck's `channel`):
+ * Stable or Beta, or the PR channel of the running PR build (GLOSSARY: PR
+ * channel) with its PR's number and title. `title` is the PR builds list's
+ * untrusted text, shown as plain text only; null until the list has named
+ * the PR.
  */
-export type PrBuildState =
-  | { kind: "listed"; number: number; newer: PrBuild | null }
-  | { kind: "merged"; number: number; beta: string | null }
-  | { kind: "closed"; number: number }
-  | { kind: "unlisted"; number: number };
+export type ServedChannel =
+  | { kind: UpdateChannel }
+  | { kind: "pr"; number: number; title: string | null };
+
+/**
+ * Where the PR channel's PR stood when its answer was stored
+ * (PluginUpdateSnapshot.pr): still on the PR builds list, merged, closed
+ * without merging, or open but unlisted (its label was removed).
+ */
+export type PrChannelState = "listed" | "merged" | "closed" | "unlisted";
+
+/** The PR channel's part of a stored answer (PluginUpdateSnapshot.pr). */
+export interface PrChannelSnapshot {
+  /** The pull request's number. */
+  number: number;
+  /** The PR's title from the list; null when the list never named it. */
+  title: string | null;
+  state: PrChannelState;
+}
+
+/** The kinds a PR channel offer can take (PluginUpdateOffer.kind). */
+export const PR_CHANNEL_OFFER_KINDS = ["prUpdate", "prMergedBeta", "prMergedBuilding", "prClosed", "prUnlisted"] as const;
 
 /**
  * A WoWDeck release offered by system.updateCheck, with its text decided
  * engine-side. "update" offers a newer build; "switchToStable" offers the
  * latest stable, older than the running beta, to an owner who left Beta;
  * "leaveTest" offers the channel's newest build, older or not, to an owner
- * running a test build (X.Y.Z-test.N or X.Y.Z-pr.N) — the way out of a test build.
+ * running a test build (X.Y.Z-test.N, or a PR build off its PR channel),
+ * the way out of a test build. The PR
+ * channel's kinds (PR_CHANNEL_OFFER_KINDS): "prUpdate" offers a newer
+ * listed build of the running PR build's own PR. "prMergedBeta" offers
+ * the beta containing its merge as an update, even below the running
+ * version; "prMergedBuilding" is informational and never installable.
+ * `prClosed` and `prUnlisted` offer the stored channel's newest build,
+ * older or not, keeping the PR channel.
  */
 export interface PluginUpdateOffer {
-  kind: "update" | "switchToStable" | "leaveTest";
-  /** X.Y.Z or X.Y.Z-beta.N, without a leading v. */
+  kind: "update" | "switchToStable" | "leaveTest" | (typeof PR_CHANNEL_OFFER_KINDS)[number];
+  /** X.Y.Z, X.Y.Z-beta.N or (on the PR channel) X.Y.Z-pr.N.K, without a leading v. */
   version: string;
   /** The toast's and the update panel's line: "WoWDeck X available" or "Switch to stable X". */
   headline: string;
@@ -1661,12 +1726,21 @@ export interface PluginUpdateSnapshot {
   channel?: UpdateChannel;
   /** The offered build's version (X.Y.Z or X.Y.Z-beta.N), without a leading v. */
   latestVersion: string;
+  /** Running PR version whose merge was confirmed in this Beta answer. */
+  mergedFromPr?: string;
   /** The release page to point the user at. */
   releaseUrl: string | null;
   /** The release's WoWDeck.zip asset, when the release published one. */
   downloadUrl: string | null;
   /** The release notes (the GitHub release body, Markdown); absent when it has none. */
   releaseNotes?: string;
+  /**
+   * Set exactly when the PR channel answered (GLOSSARY: PR channel): its
+   * PR and where it stood. A listed PR's latestVersion is its listed
+   * build; otherwise the fields above are the stored channel's newest
+   * build. Such an answer serves only that PR's channel.
+   */
+  pr?: PrChannelSnapshot;
 }
 
 /**
@@ -1701,6 +1775,13 @@ export interface EventMap {
   "tradeskillmaster.changed": Record<string, never>;
   "addons.changed": { addonIds: string[] };
   "wtf.progress": { job: WtfJobSnapshot };
+  /**
+   * Bytes of the WoWDeck download in flight (system.updateStage,
+   * system.installPrBuild), in order: one at the start (received 0), at
+   * most one per percent while it runs, and one when the last byte lands.
+   * `total` is null when the size isn't known.
+   */
+  "system.downloadProgress": { version: string; received: number; total: number | null };
   "wtf.completed": {
     jobId: string;
     kind: WtfJobKind;

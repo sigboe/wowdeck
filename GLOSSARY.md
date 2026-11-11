@@ -173,17 +173,33 @@ _Avoid_: badge (that is the Steam library tile's).
 **Update channel**:
 Which WoWDeck builds the owner is offered: **Stable** (releases from `main`,
 "Recommended for most users.") or **Beta** (builds of every change merged into
-`next`, "Built from every merged change. Newer features, may have bugs.").
+`next`, "Built from every merged change. Newer features, may have bugs."), the
+two the owner picks, or the **PR channel** of a running PR build.
 Beta also offers a stable release when it is newer than the latest beta build;
 leaving Beta offers the latest stable even when it is older ("Switch to
 stable"). Set under Options › Updates › WoWDeck. Installing a beta selects Beta;
 installing a stable zip by hand selects Stable. An in-app stable update keeps
-Beta selected. A channel chosen in Options stays selected across restarts.
-A test build (`X.Y.Z-test.N` or `X.Y.Z-pr.N`, made for device testing, never published) is on
+Beta selected unless **Move to Stable after release** is on (off by default;
+in the channel picker while Beta is selected), which selects Stable as soon as the stable package is verified and staged. A channel chosen in Options stays selected across
+restarts.
+A test build (`X.Y.Z-test.N`, made for device testing, never published) is on
 no channel: no channel is checked, Check again is hidden, and the channel
 picker always offers the chosen channel's newest build ("Switch to beta X",
 "Switch to stable X") — the way out of a test build.
 _Avoid_: release channel (that is an addon's Stable/Beta/Alpha).
+
+**PR channel**:
+The update channel a PR build is on: its own pull request ("PR #210"). The
+owner never picks it from the list; installing the PR's build joins it, and
+picking Stable or Beta leaves it. It is checked like the other channels, so a
+newer build of the same PR is offered with the usual dot and toast; with
+nothing newer it reads "Up to date with PR #N". Once a beta contains the
+merged PR, the owner is moved to Beta and that beta is offered as the update,
+though its version sorts below the PR build's. A PR closed unmerged or no
+longer listed says so and offers the chosen Stable or Beta channel's newest
+build; the owner stays on the PR channel until pressing it, so a PR listed again
+offers its newer build. Nothing installs without the owner's press.
+_Avoid_: PR mode, PR track
 
 **Test build**:
 A WoWDeck build made by hand on a developer's machine, versioned
@@ -193,14 +209,13 @@ _Avoid_: PR build (that one comes from CI).
 **PR build**:
 A WoWDeck build CI made from an open pull request a maintainer labeled
 `pr-build`, versioned `X.Y.Z-pr.N` (`X.Y.Z` is the release it is based on, `N`
-the PR number; a rebuild adds a counter, `-pr.117.2`). It sits on no update
+the PR number; a rebuild adds a counter, `-pr.117.2`). It sits on its PR
 channel. Options › Updates › WoWDeck › channel picker › "PR builds…" lists the
 open, labeled PRs; installing one asks the owner to confirm first. A new commit
 rebuilds it when a maintainer pushed it; a push by anyone else removes the
 label and the PR leaves the list until a maintainer labels it again.
-The update panel offers a newer build of the same PR while it is listed, and
-once the PR is merged, the newest beta when it contains the merge. Until such a
-beta exists it says one is still building.
+Once the PR is merged and no beta contains it yet, the update panel says one
+is still building.
 _Avoid_: test build (that one is built by hand), preview.
 
 **Release notes**:

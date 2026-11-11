@@ -16,6 +16,7 @@ import type { StagedUpdate } from "./pluginUpdate";
 mock.module("@decky/ui", () => deckyUiStub);
 
 const { PrBuildsModal } = await import("./components/PrBuildsModal");
+const { createSelfUpdateStore } = await import("./selfUpdateStore");
 const { UpdateChannelModal } = await import("./components/UpdateChannelModal");
 
 const dom = new JSDOM('<div id="root"></div>');
@@ -63,12 +64,48 @@ const PR_117: PrBuild = {
   zipSize: 72998400,
 };
 
+/**
+ * The self-update store the modal installs through, over the test's
+ * engine; Decky's installer records what it was handed and answers once
+ * `installer.release()` is called (at once unless `installer.hold()`).
+ */
+function storeOver(engine: DeferredRpc, handed: StagedUpdate[] = [], toasts: string[] = []) {
+  let gate: Promise<void> | null = null;
+  let release = () => {};
+  const selfUpdate = createSelfUpdateStore({
+    rpc: engine.rpc,
+    toast: (title) => toasts.push(title),
+    toastError: (title) => toasts.push(title),
+    requestUpdate: async (staged) => {
+      handed.push(staged);
+      if (gate) await gate;
+      return { success: true };
+    },
+  });
+  const installer = {
+    hold() {
+      gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+    },
+    release: () => release(),
+  };
+  return { selfUpdate, installer };
+}
+
 /** Open the modal over a fresh engine; it has not answered yet. */
 async function open(): Promise<DeferredRpc> {
   const engine = createDeferredRpc();
   root = createRoot(dom.window.document.getElementById("root")!);
   await act(async () =>
-    root!.render(<PrBuildsModal rpc={engine.rpc} dateFormat={UTC} closeModal={() => {}} />),
+    root!.render(
+      <PrBuildsModal
+        rpc={engine.rpc}
+        selfUpdate={storeOver(engine).selfUpdate}
+        dateFormat={UTC}
+        closeModal={() => {}}
+      />,
+    ),
   );
   return engine;
 }
@@ -77,6 +114,7 @@ const page = () => dom.window.document.getElementById("root")!;
 const text = () => page().textContent ?? "";
 const button = (label: string) =>
   [...page().querySelectorAll("button")].find((b) => b.textContent === label);
+const progressBar = () => page().querySelector('[role="progressbar"]');
 
 describe("PR builds modal", () => {
   test("lists each build with its PR number, title, author, version and build time", async () => {
@@ -169,22 +207,21 @@ describe("installing a PR build", () => {
     const engine = createDeferredRpc();
     const handed: StagedUpdate[] = [];
     const happened: string[] = [];
+    const toasts: string[] = [];
+    const { selfUpdate, installer } = storeOver(engine, handed, toasts);
     root = createRoot(dom.window.document.getElementById("root")!);
     await act(async () =>
       root!.render(
         <PrBuildsModal
           rpc={engine.rpc}
+          selfUpdate={selfUpdate}
           dateFormat={UTC}
-          requestUpdate={async (staged) => {
-            handed.push(staged);
-            return { success: true };
-          }}
           closeModal={() => happened.push("closed")}
         />,
       ),
     );
     await act(() => engine.next("system.listPrBuilds").resolve({ builds: [PR_117] }));
-    return { engine, handed, happened };
+    return { engine, handed, happened, toasts, selfUpdate, installer };
   }
   const pick = (label: string) =>
     act(async () =>
@@ -228,8 +265,8 @@ describe("installing a PR build", () => {
     await pick("#117 Add PR builds to the channel picker");
 
     await act(async () => button("Install")!.click());
-    expect(text()).toContain("Preparing the PR build…");
-    expect(button("Install")!.disabled).toBe(true);
+    expect(progressBar()).not.toBeNull();
+    expect(button("Install")).toBeUndefined();
     const staged = {
       artifact: "file:///tmp/wowdeck-update-1.1.2-pr.117.2.zip",
       version: "1.1.2-pr.117.2",
@@ -263,11 +300,113 @@ describe("installing a PR build", () => {
     expect(text()).toContain(
       "The download doesn't match the published PR build, so it wasn't installed",
     );
-    expect(text()).not.toContain("Preparing the PR build…");
+    expect(progressBar()).toBeNull();
+    expect(button("Install")!.disabled).toBe(false);
     expect(handed).toEqual([]);
     expect(happened).toEqual([]);
     await act(async () => button("Cancel")!.click());
     expect(text()).toContain("#117 Add PR builds to the channel picker");
+  });
+});
+
+describe("a PR build's download", () => {
+  /** Open the list, pick #117 and press Install; the engine is downloading. */
+  async function installing() {
+    const engine = createDeferredRpc();
+    const handed: StagedUpdate[] = [];
+    const happened: string[] = [];
+    const toasts: string[] = [];
+    const { selfUpdate, installer } = storeOver(engine, handed, toasts);
+    root = createRoot(dom.window.document.getElementById("root")!);
+    await act(async () =>
+      root!.render(
+        <PrBuildsModal
+          rpc={engine.rpc}
+          selfUpdate={selfUpdate}
+          dateFormat={UTC}
+          closeModal={() => happened.push("closed")}
+        />,
+      ),
+    );
+    await act(() => engine.next("system.listPrBuilds").resolve({ builds: [PR_117] }));
+    await act(async () =>
+      (
+        [...page().querySelectorAll("b")].find(
+          (b) => b.textContent === "#117 Add PR builds to the channel picker",
+        )!.parentElement as HTMLElement
+      ).click(),
+    );
+    await act(async () => button("Install")!.click());
+    const progress = (received: number) =>
+      act(async () =>
+        selfUpdate.handleEvent({
+          event: "system.downloadProgress",
+          params: { version: PR_117.version, received, total: PR_117.zipSize },
+        }),
+      );
+    return { engine, handed, happened, toasts, installer, progress };
+  }
+  const staged = {
+    artifact: "file:///tmp/wowdeck-update-1.1.2-pr.117.2.zip",
+    version: "1.1.2-pr.117.2",
+    sha256: "a".repeat(64),
+  };
+
+  test("Valve's progress bar shows Downloading X of Y MB in Install's place, then Preparing… for Decky", async () => {
+    const { engine, happened, installer, progress } = await installing();
+
+    expect(progressBar()).not.toBeNull();
+    expect(button("Install")).toBeUndefined();
+    await progress(36_499_200);
+    expect(text()).toContain("Downloading 36.5 of 73.0 MB");
+    await progress(PR_117.zipSize);
+    expect(text()).toContain("Preparing…");
+
+    installer.hold();
+    await act(() => engine.next("system.installPrBuild").resolve({ result: staged, error: null }));
+    expect(text()).toContain("Preparing…");
+    expect(happened).toEqual([]);
+    await act(async () => installer.release());
+    expect(happened).toEqual(["closed"]);
+  });
+
+  test("B cancels the download silently: back to the confirmation, no error, nothing handed to Decky", async () => {
+    const { engine, handed, happened, toasts, progress } = await installing();
+    await progress(10_000_000);
+
+    await act(async () => button("B: Cancel download")!.click());
+    await act(() => engine.next("system.cancelDownload").resolve({ cancelled: true }));
+    await act(() =>
+      engine.next("system.installPrBuild").resolve({
+        result: null,
+        error: { code: "cancelled", message: "The download was cancelled" },
+      }),
+    );
+
+    expect(progressBar()).toBeNull();
+    expect(text()).toContain("Install WoWDeck 1.1.2-pr.117.2?");
+    expect(text()).not.toContain("cancelled");
+    expect(button("Install")!.disabled).toBe(false);
+    expect(handed).toEqual([]);
+    expect(happened).toEqual([]);
+    expect(toasts).toEqual([]);
+  });
+
+  test("a download that fails partway says so, and Install can be pressed again", async () => {
+    const { engine, handed, progress } = await installing();
+    await progress(10_000_000);
+
+    await act(() =>
+      engine.next("system.installPrBuild").resolve({
+        result: null,
+        error: { code: "download_failed", message: "Couldn't download the PR build. Try again" },
+      }),
+    );
+
+    expect(text()).toContain("Couldn't download the PR build. Try again");
+    expect(progressBar()).toBeNull();
+    expect(button("Install")!.disabled).toBe(false);
+    expect(handed).toEqual([]);
   });
 });
 
@@ -278,16 +417,14 @@ describe("updating to a newer build of the running PR (the update panel's button
     const engine = createDeferredRpc();
     const handed: StagedUpdate[] = [];
     const happened: string[] = [];
+    const { selfUpdate } = storeOver(engine, handed);
     root = createRoot(dom.window.document.getElementById("root")!);
     await act(async () =>
       root!.render(
         <PrBuildsModal
           rpc={engine.rpc}
+          selfUpdate={selfUpdate}
           confirm={NEWER}
-          requestUpdate={async (staged) => {
-            handed.push(staged);
-            return { success: true };
-          }}
           closeModal={() => happened.push("closed")}
         />,
       ),
@@ -331,14 +468,25 @@ describe("updating to a newer build of the running PR (the update panel's button
 });
 
 describe("the channel picker's PR builds row", () => {
-  async function openPicker(onPrBuilds: () => void, closeModal: () => void) {
+  async function openPicker(
+    onPrBuilds: () => void,
+    closeModal: () => void,
+    {
+      current = "stable",
+      pr = null,
+      onPick = () => {},
+    }: Partial<Parameters<typeof UpdateChannelModal>[0]> = {},
+  ) {
     root = createRoot(dom.window.document.getElementById("root")!);
     await act(async () =>
       root!.render(
         <UpdateChannelModal
-          current="stable"
-          onPick={() => {}}
+          current={current}
+          pr={pr}
+          onPick={onPick}
           onPrBuilds={onPrBuilds}
+          moveToStable={false}
+          onMoveToStable={() => {}}
           closeModal={closeModal}
         />,
       ),
@@ -359,5 +507,87 @@ describe("the channel picker's PR builds row", () => {
     await act(async () => row("PR builds…").click());
 
     expect(happened).toEqual(["picker closed", "PR builds opened"]);
+  });
+
+  test("on a PR channel: the PR's row first, with its title; Stable leaves the PR channel", async () => {
+    const happened: string[] = [];
+    await openPicker(
+      () => happened.push("PR builds opened"),
+      () => happened.push("picker closed"),
+      {
+        current: null,
+        pr: { name: "PR #117", description: "Add PR builds to the channel picker" },
+        onPick: (channel) => happened.push(`picked ${channel}`),
+      },
+    );
+
+    expect(text()).toContain("Add PR builds to the channel picker");
+    expect(text().indexOf("PR #117")).toBeLessThan(text().indexOf("Stable"));
+    expect(row("PR #117").querySelector("svg")).not.toBeNull();
+    expect(row("Stable").querySelector("svg")).toBeNull();
+
+    await act(async () => row("PR #117").click());
+    await act(async () => row("Stable").click());
+
+    expect(happened).toEqual(["picker closed", "picker closed", "picked stable"]);
+  });
+});
+
+describe("the channel picker's Move to Stable after release toggle", () => {
+  async function openPicker(
+    current: "stable" | "beta" | null,
+    moveToStable: boolean,
+    happened: string[] = [],
+  ) {
+    root = createRoot(dom.window.document.getElementById("root")!);
+    await act(async () =>
+      root!.render(
+        <UpdateChannelModal
+          current={current}
+          pr={null}
+          onPick={() => {}}
+          onPrBuilds={() => {}}
+          moveToStable={moveToStable}
+          onMoveToStable={(on) => happened.push(`toggle ${on ? "on" : "off"}`)}
+          closeModal={() => happened.push("picker closed")}
+        />,
+      ),
+    );
+  }
+  const toggle = () =>
+    page().querySelector<HTMLInputElement>('input[aria-label="Move to Stable after release"]');
+
+  test("shows below the channels while Beta is selected, off on a fresh install", async () => {
+    await openPicker("beta", false);
+
+    expect(toggle()).not.toBeNull();
+    expect(toggle()!.checked).toBe(false);
+  });
+
+  test("shows the stored choice", async () => {
+    await openPicker("beta", true);
+
+    expect(toggle()!.checked).toBe(true);
+  });
+
+  test("is hidden on Stable and on a test build", async () => {
+    await openPicker("stable", true);
+    expect(toggle()).toBeNull();
+    await act(async () => root?.unmount());
+
+    await openPicker(null, true);
+    expect(toggle()).toBeNull();
+  });
+
+  test("turning it on saves the choice and keeps the picker open; off again saves off", async () => {
+    const happened: string[] = [];
+    await openPicker("beta", false, happened);
+
+    await act(async () => toggle()!.click());
+    expect(toggle()!.checked).toBe(true);
+    await act(async () => toggle()!.click());
+
+    expect(toggle()!.checked).toBe(false);
+    expect(happened).toEqual(["toggle on", "toggle off"]);
   });
 });

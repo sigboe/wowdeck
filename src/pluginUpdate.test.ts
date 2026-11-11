@@ -1,23 +1,24 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import {
   closeStalePanel,
-  isTestBuild,
+  isOffChannel,
   panelOffer,
   pluginUpdateDot,
   pluginUpdateRow,
   pluginUpdateToast,
-  prBuildOffer,
+  prChannelLine,
   releaseNotesAction,
+  updateChannelChoice,
   requestPluginUpdate,
   UPDATE_CHANNEL_ROWS,
   type PluginUpdateInfo,
 } from "./pluginUpdate";
 import { UPDATE_CHANNELS } from "../backend/src/api/contracts";
-import type { PrBuild } from "./types";
 
 const info = (over: Partial<PluginUpdateInfo>): PluginUpdateInfo => ({
   status: "current",
   currentVersion: "0.1.1",
+  channel: { kind: "stable" },
   offer: null,
   checked: true,
   failed: false,
@@ -129,32 +130,26 @@ describe("releaseNotesAction: Y on the panel's Update button", () => {
   });
 });
 
-describe("isTestBuild", () => {
-  test("true only for a test or pr build's answer (X.Y.Z-test.N, X.Y.Z-pr.N)", () => {
-    expect(isTestBuild(info({ currentVersion: "1.0.2-test.114" }))).toBe(true);
+describe("isOffChannel (a test build, or a PR build that left its PR channel)", () => {
+  test("true when the answer served no channel", () => {
+    expect(isOffChannel(info({ currentVersion: "1.0.2-test.114", channel: null }))).toBe(true);
+    expect(isOffChannel(info({ currentVersion: "1.0.2-pr.117.2", channel: null }))).toBe(true);
   });
 
-  test("true for a pr build's answer (X.Y.Z-pr.N)", () => {
-    expect(isTestBuild(info({ currentVersion: "1.0.2-pr.117" }))).toBe(true);
-  });
-
-  test("true for a pr build's rebuild (X.Y.Z-pr.N.K)", () => {
-    expect(isTestBuild(info({ currentVersion: "1.0.2-pr.117.2" }))).toBe(true);
-  });
-
-  test("false for a counter on anything but a pr build", () => {
-    expect(isTestBuild(info({ currentVersion: "1.0.2-test.114.2" }))).toBe(false);
-    expect(isTestBuild(info({ currentVersion: "1.0.2-beta.29.2" }))).toBe(false);
-  });
-
-  test("false for a release, a beta and a failed answer", () => {
-    expect(isTestBuild(info({ currentVersion: "1.1.1" }))).toBe(false);
-    expect(isTestBuild(info({ currentVersion: "1.1.2-beta.29" }))).toBe(false);
-    expect(isTestBuild(info({ status: "unknown", failed: true }))).toBe(false);
+  test("false on Stable, Beta and a PR channel", () => {
+    expect(isOffChannel(info({ channel: { kind: "stable" } }))).toBe(false);
+    expect(isOffChannel(info({ currentVersion: "1.1.2-beta.29", channel: { kind: "beta" } }))).toBe(
+      false,
+    );
+    const onPr = info({
+      currentVersion: "1.0.2-pr.117.2",
+      channel: { kind: "pr", number: 117, title: "Fix" },
+    });
+    expect(isOffChannel(onPr)).toBe(false);
   });
 
   test("false before the engine answered", () => {
-    expect(isTestBuild(null)).toBe(false);
+    expect(isOffChannel(null)).toBe(false);
   });
 });
 
@@ -162,6 +157,7 @@ describe("a leaveTest offer (the way out of a test build)", () => {
   const LEAVE_TEST = info({
     status: "available",
     currentVersion: "1.0.2-test.114",
+    channel: null,
     offer: {
       kind: "leaveTest",
       version: "1.0.2-beta.27",
@@ -184,7 +180,7 @@ describe("a leaveTest offer (the way out of a test build)", () => {
 
   test("a pr build's rebuild gets the same wording as a test build", () => {
     const fromPr = { ...LEAVE_TEST, currentVersion: "1.0.2-pr.117.2" };
-    expect(isTestBuild(fromPr)).toBe(true);
+    expect(isOffChannel(fromPr)).toBe(true);
     expect(pluginUpdateRow(fromPr)).toEqual({
       label: "Switch to beta 1.0.2-beta.27",
       description: "1.0.2-pr.117.2 → 1.0.2-beta.27",
@@ -236,90 +232,97 @@ describe("pluginUpdateRow", () => {
   });
 });
 
-describe("following a PR build: the offer for each state of its PR", () => {
-  /** A PR build on Beta, offered the way back (the engine's leaveTest). */
-  const ON_PR = info({
+describe("the PR channel (GLOSSARY: PR channel)", () => {
+  const PR_117 = { kind: "pr", number: 117, title: "Add PR builds to the channel picker" } as const;
+  /** A PR build on its PR channel, with nothing newer listed. */
+  const CURRENT = info({ status: "current", currentVersion: "1.1.2-pr.117.2", channel: PR_117 });
+  /** The engine's offer of the PR's newer build. */
+  const NEWER = info({
     status: "available",
     currentVersion: "1.1.2-pr.117.2",
+    channel: PR_117,
     offer: {
-      kind: "leaveTest",
-      version: "1.1.2-beta.42",
-      headline: "Switch to beta 1.1.2-beta.42",
-      buttonLabel: "Switch to beta 1.1.2-beta.42",
-      toastBody: "Switch in Options",
-      rowLabel: "Switch to beta 1.1.2-beta.42",
+      kind: "prUpdate",
+      version: "1.1.2-pr.117.3",
+      headline: "PR #117 has a newer build",
+      buttonLabel: "Update to 1.1.2-pr.117.3",
+      toastBody: "Update in Options",
+      rowLabel: "PR #117 has a newer build",
       releaseNotes: null,
-      releaseUrl: "https://github.com/sigboe/wowdeck/releases/tag/v1.1.2-beta.42",
+      releaseUrl: "https://github.com/sigboe/wowdeck/pull/117",
       installable: true,
     },
   });
-  const NEWER: PrBuild = {
-    number: 117,
-    title: "Add PR builds to the channel picker",
-    author: "sigboe",
-    version: "1.1.2-pr.117.3",
-    headSha: "0123456789abcdef0123456789abcdef01234567",
-    builtAt: "2026-11-10T09:15:00Z",
-    zipSize: 72998400,
-  };
 
-  test("a newer build of the same PR while it is listed: update to it", () => {
-    const offer = prBuildOffer(ON_PR, { kind: "listed", number: 117, newer: NEWER });
-    expect(offer).toMatchObject({
-      kind: "newerBuild",
-      headline: "PR #117 has a newer build",
-      buttonLabel: "Update to 1.1.2-pr.117.3",
-      build: NEWER,
+  test("nothing newer: the panel reads Up to date with PR #N, with no offer and no dot", () => {
+    expect(prChannelLine(CURRENT)).toBe("Up to date with PR #117");
+    expect(panelOffer(CURRENT)).toBeNull();
+    expect(pluginUpdateDot(CURRENT)).toBeNull();
+    expect(pluginUpdateRow(CURRENT)).toEqual({
+      label: "WoWDeck 1.1.2-pr.117.2",
+      description: "Up to date with PR #117",
     });
-    expect(pluginUpdateRow(ON_PR, offer)).toEqual({
+  });
+
+  test("a newer build of the PR: the panel's offer, the dot, the row and the toast", () => {
+    expect(prChannelLine(NEWER)).toBeNull();
+    expect(panelOffer(NEWER)?.buttonLabel).toBe("Update to 1.1.2-pr.117.3");
+    expect(pluginUpdateDot(NEWER)).toBe("update");
+    expect(pluginUpdateRow(NEWER)).toEqual({
       label: "PR #117 has a newer build",
       description: "1.1.2-pr.117.2 → 1.1.2-pr.117.3",
     });
+    expect(pluginUpdateToast({ ...NEWER, toastPending: true })).toEqual({
+      title: "PR #117 has a newer build",
+      body: "Update in Options",
+    });
+    expect(releaseNotesAction(panelOffer(NEWER))).toBeNull();
   });
 
-  test("merged, with a beta that has it: PR #N was merged. Switch to beta X", () => {
-    const offer = prBuildOffer(ON_PR, { kind: "merged", number: 117, beta: "1.1.2-beta.43" });
-    expect(offer).toMatchObject({
-      kind: "mergedBeta",
-      headline: "PR #117 was merged. Switch to beta 1.1.2-beta.43",
-      buttonLabel: "Switch to beta 1.1.2-beta.43",
+  test("no panel line on Stable, Beta or off any channel", () => {
+    expect(prChannelLine(info({ status: "current" }))).toBeNull();
+    expect(prChannelLine(info({ status: "current", channel: null }))).toBeNull();
+    expect(prChannelLine(null)).toBeNull();
+  });
+
+  test("a PR channel that couldn't check says so, not up to date", () => {
+    const failed = info({ ...CURRENT, status: "unknown", failed: true });
+    expect(prChannelLine(failed)).toBeNull();
+    expect(pluginUpdateRow(failed).description).toBe("Couldn't check for a newer release");
+  });
+});
+
+describe("the channel modal's rows (updateChannelChoice)", () => {
+  test("on a PR channel: the PR's row is checked, with its title; Stable and Beta stay pickable", () => {
+    const onPr = info({
+      currentVersion: "1.1.2-pr.117.2",
+      channel: { kind: "pr", number: 117, title: "Add PR builds to the channel picker" },
     });
-    expect(pluginUpdateRow(ON_PR, offer)).toEqual({
-      label: "PR #117 was merged",
-      description: "1.1.2-pr.117.2 → 1.1.2-beta.43",
+    expect(updateChannelChoice(onPr, "beta")).toEqual({
+      checked: null,
+      pr: { name: "PR #117", description: "Add PR builds to the channel picker" },
     });
   });
 
-  test("merged, no beta has it yet: says one is building and offers no beta", () => {
-    const offer = prBuildOffer(ON_PR, { kind: "merged", number: 117, beta: null });
-    expect(offer).toMatchObject({
-      kind: "mergedBuilding",
-      headline: "PR #117 was merged. A beta with it is still building",
-      buttonLabel: null,
+  test("a PR the list never titled still gets its row", () => {
+    const untitled = info({
+      currentVersion: "1.1.2-pr.117.2",
+      channel: { kind: "pr", number: 117, title: null },
     });
-    expect(pluginUpdateRow(ON_PR, offer)).toEqual({
-      label: "PR #117 was merged",
-      description: "A beta with it is still building",
+    expect(updateChannelChoice(untitled, "stable").pr).toEqual({
+      name: "PR #117",
+      description: "",
     });
   });
 
-  test("closed, unlisted, listed with nothing newer, or unknown: the plain way back", () => {
-    for (const state of [
-      { kind: "closed", number: 117 },
-      { kind: "unlisted", number: 117 },
-      { kind: "listed", number: 117, newer: null },
-      null,
-    ] as const) {
-      expect(prBuildOffer(ON_PR, state)).toBeNull();
-    }
-    expect(panelOffer(ON_PR)?.headline).toBe("Switch to beta 1.1.2-beta.42");
-    expect(pluginUpdateRow(ON_PR, null).label).toBe("Switch to beta 1.1.2-beta.42");
+  test("on Stable or Beta: the stored channel is checked, and no PR row is offered", () => {
+    expect(updateChannelChoice(info({}), "stable")).toEqual({ checked: "stable", pr: null });
+    expect(updateChannelChoice(null, "beta")).toEqual({ checked: "beta", pr: null });
   });
 
-  test("only a PR build follows its PR", () => {
-    const test = { ...ON_PR, currentVersion: "1.1.2-test.200" };
-    expect(prBuildOffer(test, { kind: "merged", number: 117, beta: "1.1.2-beta.43" })).toBeNull();
-    expect(prBuildOffer(null, { kind: "merged", number: 117, beta: "1.1.2-beta.43" })).toBeNull();
+  test("off any channel (a test build): no row is checked", () => {
+    const test = info({ currentVersion: "1.0.2-test.114", channel: null });
+    expect(updateChannelChoice(test, "beta")).toEqual({ checked: null, pr: null });
   });
 });
 

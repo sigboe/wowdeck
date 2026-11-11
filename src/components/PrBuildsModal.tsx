@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   DialogBody,
   DialogButton,
@@ -6,12 +6,13 @@ import {
   DialogHeader,
   Field,
   ModalRoot,
+  ProgressBarWithInfo,
   showModal,
 } from "@decky/ui";
 import { STEAM, descriptionStyle } from "../steamTheme";
 import { wowupModalStyleCss } from "../sharedStyles";
-import { installPrBuild, loadPrBuilds, prBuildConfirmation, prBuildRow } from "../prBuilds";
-import { requestPluginUpdate, type StagedUpdate, type UpdateRequestResult } from "../pluginUpdate";
+import { loadPrBuilds, prBuildConfirmation, prBuildRow } from "../prBuilds";
+import { downloadView, type SelfUpdateStore } from "../selfUpdateStore";
 import type { Rpc } from "../services/envelope";
 import type { PrBuild } from "../types";
 
@@ -28,10 +29,12 @@ type Confirming = { build: PrBuild; preparing: boolean; error: string | null };
  * channel picker's "PR builds…" row. It asks the engine when it opens and
  * when Retry is pressed, never on its own: no polling, no toast. Each row
  * is a focusable Field, so the D-pad walks the list; A on a row asks the
- * owner to confirm it, every time. Install stages it in the engine and
- * hands it to Decky's own installer (`requestUpdate`), whose prompt
+ * owner to confirm it, every time. Install stages it through the
+ * self-update store and hands it to Decky's own installer, whose prompt
  * confirms again; Cancel goes back to the list and installs nothing. B
- * closes. Titles and every other field are React text nodes (ADR-0004): a
+ * closes. While it downloads, Valve's progress bar takes the buttons'
+ * place ("Downloading X of Y MB", then "Preparing…" for Decky's handoff),
+ * and B cancels the download silently, back to the confirmation. Titles and every other field are React text nodes (ADR-0004): a
  * PR's author can't dress up the list.
  *
  * Given `confirm` (the update panel's "Update to X" on a PR build with a
@@ -40,18 +43,20 @@ type Confirming = { build: PrBuild; preparing: boolean; error: string | null };
  */
 export function PrBuildsModal({
   rpc,
-  requestUpdate = requestPluginUpdate,
+  selfUpdate,
   dateFormat,
   confirm,
   closeModal,
 }: {
   rpc: Rpc;
+  /** Stages the build, holds its download progress and cancels it. */
+  selfUpdate: Pick<SelfUpdateStore, "get" | "subscribe" | "installPrBuild" | "cancelDownload">;
   /** Open on this build's confirmation, not the list. */
   confirm?: PrBuild;
-  requestUpdate?: (staged: StagedUpdate) => Promise<UpdateRequestResult>;
   dateFormat?: Intl.DateTimeFormat;
   closeModal?: () => void;
 }) {
+  const download = downloadView(useSyncExternalStore(selfUpdate.subscribe, selfUpdate.get));
   const [shown, setShown] = useState<Shown>("loading");
   const [confirming, setConfirming] = useState<Confirming | null>(
     confirm ? { build: confirm, preparing: false, error: null } : null,
@@ -60,17 +65,22 @@ export function PrBuildsModal({
 
   const install = (build: PrBuild) => {
     setConfirming({ build, preparing: true, error: null });
-    void installPrBuild(rpc, requestUpdate, build).then((error) => {
+    void selfUpdate.installPrBuild(build).then((ended) => {
       if (!open.current) {
         return;
       }
-      if (error === null) {
+      if (ended.kind === "installed") {
         closeModal?.();
       } else {
-        setConfirming({ build, preparing: false, error });
+        setConfirming({
+          build,
+          preparing: false,
+          error: ended.kind === "failed" ? ended.error : null,
+        });
       }
     });
   };
+  const cancelDownload = () => void selfUpdate.cancelDownload();
 
   const load = useCallback(() => {
     setShown("loading");
@@ -92,13 +102,18 @@ export function PrBuildsModal({
   }, [load, confirm]);
 
   return (
-    <ModalRoot onCancel={closeModal} closeModal={closeModal}>
+    <ModalRoot
+      onCancel={confirming?.preparing ? cancelDownload : closeModal}
+      closeModal={closeModal}
+    >
       <DialogHeader>{TITLE}</DialogHeader>
       <DialogBody>
         <style>{wowupModalStyleCss()}</style>
         {confirming && (
           <Confirm
             {...confirming}
+            download={confirming.preparing ? download : null}
+            onCancelDownload={cancelDownload}
             onInstall={install}
             onCancel={() => (confirm ? closeModal?.() : setConfirming(null))}
           />
@@ -145,9 +160,16 @@ function Confirm({
   build,
   preparing,
   error,
+  download,
   onInstall,
   onCancel,
-}: Confirming & { onInstall: (build: PrBuild) => void; onCancel: () => void }) {
+  onCancelDownload,
+}: Confirming & {
+  download: ReturnType<typeof downloadView>;
+  onInstall: (build: PrBuild) => void;
+  onCancel: () => void;
+  onCancelDownload: () => void;
+}) {
   const text = prBuildConfirmation(build);
   return (
     <>
@@ -157,31 +179,47 @@ function Confirm({
           {line}
         </div>
       ))}
-      {preparing && (
-        <div style={{ ...descriptionStyle, marginTop: "12px" }}>Preparing the PR build…</div>
-      )}
       {error && (
         <div style={{ ...descriptionStyle, marginTop: "12px", color: STEAM.danger }}>{error}</div>
       )}
-      <DialogButton
-        onClick={() => onInstall(build)}
-        disabled={preparing}
-        style={{ marginTop: "12px" }}
-      >
-        Install
-      </DialogButton>
-      <DialogButton onClick={onCancel} disabled={preparing} style={{ marginTop: "8px" }}>
-        Cancel
-      </DialogButton>
+      {preparing ? (
+        // The bar takes the buttons' place; B on it cancels the download.
+        <Field
+          focusable
+          preferredFocus
+          bottomSeparator="none"
+          childrenContainerWidth="max"
+          onCancelButton={onCancelDownload}
+          onCancelActionDescription="Cancel download"
+        >
+          <ProgressBarWithInfo
+            indeterminate={download?.percent == null}
+            nProgress={download?.percent ?? undefined}
+            sOperationText={download?.text ?? "Preparing…"}
+          />
+        </Field>
+      ) : (
+        <>
+          <DialogButton onClick={() => onInstall(build)} style={{ marginTop: "12px" }}>
+            Install
+          </DialogButton>
+          <DialogButton onClick={onCancel} style={{ marginTop: "8px" }}>
+            Cancel
+          </DialogButton>
+        </>
+      )}
     </>
   );
 }
 
-/** Open the PR builds modal over the engine `rpc`; on `confirm`'s confirmation when given. */
-export function openPrBuildsModal(rpc: Rpc, confirm?: PrBuild): void {
+/**
+ * Open the PR builds modal over the engine `rpc`, installing through
+ * `selfUpdate`; on `confirm`'s confirmation when given.
+ */
+export function openPrBuildsModal(rpc: Rpc, selfUpdate: SelfUpdateStore, confirm?: PrBuild): void {
   const close = () => modalResult.Close();
   const modalResult = showModal(
-    <PrBuildsModal rpc={rpc} confirm={confirm} closeModal={close} />,
+    <PrBuildsModal rpc={rpc} selfUpdate={selfUpdate} confirm={confirm} closeModal={close} />,
     window,
     {
       strTitle: TITLE,

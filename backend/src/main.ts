@@ -170,6 +170,11 @@ const about = new About({
   rawBaseUrl: process.env.WOWDECK_ABOUT_URL,
   tokenProvider: githubToken,
 });
+const prBuilds = new PrBuildList(network, PR_BUILDS_URL);
+// The PR channel's source (GLOSSARY: PR channel). A PR's own state comes from
+// the repo's API, unauthenticated: the repo is public, and no token ever
+// reaches a PR build's check.
+const prBuildFollow = new PrBuildFollow(prBuilds, network, RELEASES_URL.replace(/\/releases\/latest$/, ""));
 const pluginUpdate = new PluginUpdateCheck(
   network,
   BACKEND_VERSION,
@@ -194,19 +199,15 @@ const pluginUpdate = new PluginUpdateCheck(
     writeStagedVersion: (version) => store.updateSettings({ pluginUpdateStagedVersion: version }),
     readChannel: () => store.settings.pluginUpdateChannel,
     writeChannel: (channel) => store.updateSettings({ pluginUpdateChannel: channel }),
+    readPrChannel: () => store.settings.pluginUpdatePrChannel,
+    writePrChannel: (pr) => store.updateSettings({ pluginUpdatePrChannel: pr }),
+    readMoveToStableAfterRelease: () => store.settings.pluginMoveToStableAfterRelease,
   },
-  { onGitHubAsk: () => void about.refresh() },
+  { onGitHubAsk: () => void about.refresh(), prChannel: prBuildFollow },
 );
 
-const updateStager = new UpdateStager(network, pluginUpdate, githubToken);
-const prBuilds = new PrBuildList(network, PR_BUILDS_URL);
-// The PR's own state comes from the repo's API, unauthenticated: the repo is
-// public, and no token ever reaches a PR build's check.
-const prBuildFollow = new PrBuildFollow(
-  BACKEND_VERSION,
-  prBuilds,
-  network,
-  RELEASES_URL.replace(/\/releases\/latest$/, ""),
+const updateStager = new UpdateStager(network, pluginUpdate, githubToken, undefined, (event) =>
+  server.emit("system.downloadProgress", event), prBuilds,
 );
 
 const server = new JsonlServer();
@@ -251,7 +252,6 @@ const deps: HandlerDeps = {
   pluginUpdate,
   updateStager,
   prBuilds,
-  prBuildFollow,
   curseForgeAuth,
   curseForgeProvider,
   wtfService,
