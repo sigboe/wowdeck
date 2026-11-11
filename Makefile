@@ -64,7 +64,7 @@ build-backend:
 # The engine's integration tests run the compiled engine, so it is built first:
 # a binary left from another branch would test that branch instead.
 test: build-backend
-	$(TOOL_RUN) 'set -euo pipefail; pnpm test && (cd backend && bun test) && python3 tools/test_package.py && python3 tools/test_version.py && python3 tools/test_main_bridge.py'
+	$(TOOL_RUN) 'set -euo pipefail; pnpm test && (cd backend && bun test) && python3 tools/test_package.py && python3 tools/test_version.py && python3 tools/test_main_bridge.py && python3 tools/test_steamui_layout_check.py'
 
 typecheck:
 	$(TOOL_RUN) 'set -euo pipefail; pnpm run typecheck && (cd backend && bun run typecheck)'

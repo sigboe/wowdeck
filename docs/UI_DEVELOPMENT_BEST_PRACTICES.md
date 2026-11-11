@@ -720,6 +720,12 @@ this writing), from three places:
 a SteamOS update (procedure in its docstring). Re-measure when SteamOS or Steam
 changes; the values are Valve's to change.
 
+The same capture also drives `tools/steamui_layout_check.py`: it renders our
+markup with Steam's stylesheets in headless Chromium and checks measured
+geometry (centering, gaps, padding) against the tokens below. It prints
+numbers, not screenshots, so looping on a layout fix is cheap. It is only a
+pre-check; the Deck itself (§8.4a, §8.6) remains the authority.
+
 **Tokens (all CSS px; the Deck panel is 854x534 CSS px at DPR 1.5).**
 
 | Thing | Steam's value |

@@ -1,0 +1,23 @@
+<!-- Template: adapt the markup to the component under test. data-class names
+     must exist in the capture's classmap.js (check with
+     `python3 tools/steamui_rules.py <css> <classmap> <name>`). Steam's real
+     stylesheet is linked in by the tool; do not add styling here. -->
+<!doctype html>
+<html>
+  <body>
+    <div style="width: 268px">
+      <!-- A settings row with a trailing chevron: the PR #210 case. -->
+      <div data-class="Field StandardPadding" id="row-1">
+        <div data-class="FieldLabel" id="row-1-label">
+          <div>WoW Settings Backup</div>
+          <div data-class="FieldDescription">Last backup: today</div>
+        </div>
+        <div id="row-1-chevron" style="margin-left: auto">&gt;</div>
+      </div>
+      <div data-class="Field StandardPadding" id="row-2">
+        <div data-class="FieldLabel"><div>Manage backups</div></div>
+        <div id="row-2-chevron" style="margin-left: auto">&gt;</div>
+      </div>
+    </div>
+  </body>
+</html>
