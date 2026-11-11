@@ -1,6 +1,7 @@
 /// <reference types="bun-types" />
 import { beforeEach, describe, expect, test } from "bun:test";
 import {
+  CURSE_KEY_ROW,
   clearSourceJump,
   sourceJump,
   sourceRowKey,
@@ -63,6 +64,18 @@ describe("the Options jump", () => {
     );
     expect(sourceJump()!.landingKey).toBe("curseKey");
     expect(rememberedFocus(QAM_VIEW.settings)).toBe("curseKey");
+  });
+
+  test("Set up CurseForge lands on CurseForge's own source row and keeps it marked", () => {
+    startSourceJump(
+      ["Curse"],
+      [provider("Curse", { requiresApiKey: true, configured: false })],
+      CURSE_KEY_ROW,
+    );
+    expect(CURSE_KEY_ROW).toBe(sourceRowKey("Curse"));
+    expect(rememberedFocus(QAM_VIEW.settings)).toBe(sourceRowKey("Curse"));
+    rememberFocus(QAM_VIEW.settings, sourceRowKey("Curse"));
+    expect(sourceJump()!.marked.has("Curse")).toBe(true);
   });
 
   test("marks rows without touching any provider setting", () => {

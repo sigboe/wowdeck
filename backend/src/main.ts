@@ -71,7 +71,7 @@ const homeDir = process.env.HOME ?? "/home/deck";
 const store = createStateStore(dataDir);
 const network = new NetworkClient();
 /**
- * The optional GitHub token (Options › GitHub), read live: a token saved
+ * The optional GitHub token (Options › Addon sources › GitHub), read live: a token saved
  * later in the session is picked up by the next request. The GitHub addon
  * source, the WoWDeck update check, its staging and About all share it.
  */

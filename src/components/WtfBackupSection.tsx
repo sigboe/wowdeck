@@ -1,71 +1,40 @@
-import { useSyncExternalStore } from "react";
-import { ButtonItem, DropdownItem, Field, PanelSection, PanelSectionRow } from "@decky/ui";
-import { FaChevronRight, FaFolderOpen } from "react-icons/fa";
-import { FileSelectionType, openFilePicker } from "@decky/api";
+import {
+  ButtonItem,
+  DialogButton,
+  Field,
+  Focusable,
+  PanelSection,
+  PanelSectionRow,
+} from "@decky/ui";
+import { FaChevronRight, FaEllipsisH } from "react-icons/fa";
 import type { Installation } from "../types";
-import { settingsStore } from "../settings";
 import { useBackupList, useWtfOperation, wtfLifecycle } from "../wtfSession";
 import { formatBytes, formatWhen } from "../wtfFormat";
 import { jobPercent, jobProgressText } from "../wtfText";
 import { FocusRow } from "./FocusSlot";
 import { QAM_VIEW } from "../qamState";
-import { requestFocus } from "../focusMemory";
 import { QamProgressBar } from "./QamProgressBar";
 import { STEAM, descriptionStyle, outcomeColor } from "../steamTheme";
 
 import { openWtfBackupModal } from "./WtfBackupModal";
-import { pickerStartPath } from "../pickerStart";
+import { BACK_UP_ROW, openBackupSettingsModal } from "./BackupSettingsModal";
 
-const KEEP_OPTIONS = [1, 2, 3, 5, 10].map((n) => ({ data: n, label: String(n) }));
+const ROW_BUTTON_STYLE = { minWidth: 0, width: "auto", padding: "8px 16px" };
 
 interface Props {
   installation: Installation | null;
 }
 
 /**
- * Options → WTF Backup: a small fixed summary + the two actions that matter.
- * The variable-length backup list lives in a modal (guide P9).
+ * Options → Settings backup: a small fixed summary + the two actions that
+ * matter. Back up now is a plain row holding its Back up button and a ⋯ that
+ * opens Backup settings (folder, safety backups to keep), like WoWDeck's row
+ * in Updates. The variable-length backup list lives in a modal (guide P9).
  */
 export function WtfBackupSection({ installation }: Props) {
   const op = useWtfOperation();
   const { data: list, error, loading, refresh: reload } = useBackupList(installation?.id ?? null);
   const actionError = installation ? (op.errors[installation.id] ?? null) : null;
-  // Null until the engine answered: the folder and count rows never show a default.
-  const stored = useSyncExternalStore(settingsStore.subscribe, settingsStore.get);
-  const settings = stored.loaded ? stored.settings : null;
-  // A rejected folder (not writable, inside WTF…) is kept by the lifecycle, so it outlives the picker.
-  const settingsError = op.settingsError;
-  // A job reads the folder and count while it runs; they change only when nothing is pending.
-  const settingsFree = op.activity === null;
-
-  // The folder picker is a modal and unmounts this panel (guide G4), so the choice is saved
-  // straight from the picker's result instead of through component state.
-  const chooseFolder = async () => {
-    let picked: { path: string };
-    try {
-      picked = await openFilePicker(
-        FileSelectionType.FOLDER,
-        pickerStartPath(settings?.wtfBackupDir),
-        false,
-        true,
-      );
-    } catch {
-      return; // cancelled
-    }
-    await wtfLifecycle.saveSettings({ wtfBackupDir: picked.path });
-  };
-
-  // Use default folder hides itself once saved, and Steam then leaves focus
-  // on nothing (#132): hand it to Backup folder, the row above. A save that
-  // failed keeps the button, so focus goes back to it. Asked once the save is
-  // done (while it runs both rows are disabled), from the settings it left:
-  // a save with a lost answer is re-read and may have gone through.
-  const resetBackupFolder = async () => {
-    await wtfLifecycle.saveSettings({ wtfBackupDir: null });
-    const gone = !settingsStore.get().settings.wtfBackupDir;
-    requestFocus(QAM_VIEW.settings, gone ? "wtf:folder" : "wtf:defaultFolder");
-  };
-
   const jobHere =
     op.job && installation && op.job.installationId === installation.id ? op.job : null;
   const outcome =
@@ -131,20 +100,30 @@ export function WtfBackupSection({ installation }: Props) {
       {outcome && line(outcome.text, outcomeColor(outcome.ok))}
       {actionError && line(actionError, STEAM.danger)}
 
-      <FocusRow view={QAM_VIEW.settings} id="wtf:backUp">
+      <FocusRow view={QAM_VIEW.settings} id={BACK_UP_ROW}>
         <Field
-          focusable={!!jobHere || canBackUp}
-          disabled={!jobHere && !canBackUp}
-          label={jobHere ? "Cancel" : "Back up now"}
+          label="Back up now"
           description={
             <span style={descriptionStyle}>
-              {jobHere
-                ? "Stop the backup"
-                : status || "Addon settings, keybinds, macros and UI layout (the WTF folder)"}
+              {status || "Addon settings, keybinds, macros and UI layout (the WTF folder)"}
             </span>
           }
-          onClick={() => (jobHere ? cancel() : canBackUp && backUp())}
-        />
+        >
+          {/* Left/Right move between the two buttons (F7). */}
+          <Focusable flow-children="row" style={{ display: "flex", gap: "8px" }}>
+            <DialogButton
+              style={ROW_BUTTON_STYLE}
+              disabled={!jobHere && !canBackUp}
+              onClick={() => (jobHere ? cancel() : canBackUp && backUp())}
+            >
+              {jobHere ? "Cancel" : "Back up"}
+            </DialogButton>
+            <DialogButton style={ROW_BUTTON_STYLE} onClick={openBackupSettingsModal}>
+              <FaEllipsisH aria-hidden="true" />
+              <span className="wowdeck-visually-hidden">Backup settings</span>
+            </DialogButton>
+          </Focusable>
+        </Field>
       </FocusRow>
       <FocusRow view={QAM_VIEW.settings} id="wtf:manage">
         <Field
@@ -159,49 +138,6 @@ export function WtfBackupSection({ installation }: Props) {
           <FaChevronRight />
         </Field>
       </FocusRow>
-      <FocusRow view={QAM_VIEW.settings} id="wtf:folder">
-        <Field
-          focusable={settingsFree}
-          disabled={!settingsFree}
-          label="Backup folder"
-          description={
-            <span style={{ ...descriptionStyle, wordBreak: "break-all" }}>
-              {settings?.wtfBackupDir ?? "Internal storage (default)"}
-            </span>
-          }
-          onClick={() => settingsFree && void chooseFolder()}
-          onOKActionDescription="Choose"
-        >
-          <FaFolderOpen />
-        </Field>
-      </FocusRow>
-      {settings?.wtfBackupDir && (
-        <FocusRow view={QAM_VIEW.settings} id="wtf:defaultFolder">
-          <ButtonItem
-            layout="below"
-            disabled={!settingsFree}
-            onClick={() => void resetBackupFolder()}
-          >
-            Use default folder
-          </ButtonItem>
-        </FocusRow>
-      )}
-      {settingsError && line(settingsError, STEAM.danger)}
-      {op.settingsUnknown && line(op.settingsUnknown)}
-      {settings && (
-        <FocusRow view={QAM_VIEW.settings} id="wtf:keep">
-          <DropdownItem
-            label="Safety backups to keep"
-            description="Made automatically before each restore"
-            rgOptions={KEEP_OPTIONS}
-            selectedOption={settings.wtfKeepSnapshots}
-            disabled={!settingsFree}
-            onChange={(option) =>
-              void wtfLifecycle.saveSettings({ wtfKeepSnapshots: option.data as number })
-            }
-          />
-        </FocusRow>
-      )}
     </PanelSection>
   );
 }

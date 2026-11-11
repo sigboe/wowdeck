@@ -202,18 +202,20 @@ export class InstallationService {
       );
     }
 
-    // A display name is only unambiguous when exactly one installation
-    // results from this add; ignore it for multi-flavor roots.
-    const name = created.length === 1 ? opts.displayName : undefined;
-    if (name) {
-      created[0]!.displayName = name;
+    // A parent with one new installation is the same naming choice as a
+    // single flavor directory. Never rename its already registered siblings.
+    const fresh = created.filter(c => !this.store.installations.some(i => i.id === c.id));
+    const named = created.length === 1 ? created[0] : fresh.length === 1 ? fresh[0] : undefined;
+    const name = named ? opts.displayName : undefined;
+    if (name && named) {
+      named.displayName = name;
     }
     // Idempotent by location hash; a known installation keeps its display
     // name unless this add names it.
     this.store.setInstallations(
       mergeInstallations(this.store.installations, created, (prior) => {
         prior.source = "manual";
-        if (name) {
+        if (name && prior.id === named?.id) {
           prior.displayName = name;
         }
       }),

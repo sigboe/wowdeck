@@ -12,6 +12,7 @@ export type {
   AutoUpdateResult,
   CurseForgeAuthStatus,
   Diagnostics,
+  FoundInstallation,
   FundingLink,
   GameRunning,
   GameType,

@@ -7,15 +7,6 @@ import { QAM_VIEW } from "../../qamState";
 export const VIEW = QAM_VIEW.settings;
 
 /**
- * The CurseForge section's key row. Also the Options jump's fallback
- * landing while CurseForge has no usable key: its sources toggle is
- * disabled in that state (optionsJump.ts), and the row that sets the key
- * up is the one place focus helps (its own sources row says "see
- * CurseForge above").
- */
-export const CURSE_KEY_ROW = "curseKey";
-
-/**
  * DEVICE (2026-10-13): on SteamOS 3.8.28 `bIsPassword` alone left the
  * rendered <input> as type="text" (it is forwarded to the DOM element but
  * not acted on), so also pass `type`, which reaches the <input> too.

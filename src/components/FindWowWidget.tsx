@@ -1,25 +1,31 @@
 import { DialogButton, PanelSection, PanelSectionRow, Spinner } from "@decky/ui";
 import { descriptionStyle } from "../steamTheme";
 import { QAM_VIEW } from "../qamState";
+import type { AddWowFolderDeps } from "../addWowFolder";
 import { focusTarget, useRestoreFocus } from "./FocusSlot";
+import { runAddWowFolder } from "./addWowFolderUi";
 
 interface Props {
   installationCount: number;
   detecting: boolean;
   result: string | null;
   onDetect: () => void;
-  onOpenOptions: () => void;
+  /** Reload the installation list and active installation after Add WoW folder. */
+  onAdded: () => Promise<void>;
   restoreRows?: boolean;
+  /** Swaps Add WoW folder's collaborators (tests). */
+  addFolderDeps?: Partial<AddWowFolderDeps>;
 }
 
-/** Setup where a player first lands, using the existing detection and settings. */
+/** Setup where a player first lands: detection, or Add WoW folder (the same flow as Options). */
 export function FindWowWidget({
   installationCount,
   detecting,
   result,
   onDetect,
-  onOpenOptions,
+  onAdded,
   restoreRows = true,
+  addFolderDeps,
 }: Props) {
   useRestoreFocus(QAM_VIEW.installed, restoreRows && installationCount === 0);
   if (installationCount > 0) {
@@ -57,17 +63,13 @@ export function FindWowWidget({
         </PanelSectionRow>
       )}
       <PanelSectionRow>
-        <div style={descriptionStyle}>
-          If WoW isn&apos;t found, add its folder in Options. Under Steam library, link WoW or
-          Battle.net to show addon updates on its game page and tile.
-        </div>
-      </PanelSectionRow>
-      <PanelSectionRow>
         <DialogButton
-          onClick={onOpenOptions}
-          {...focusTarget(QAM_VIEW.installed, "findWowOptions")}
+          onClick={() =>
+            void runAddWowFolder(QAM_VIEW.installed, "addWowFolder", [], onAdded, addFolderDeps)
+          }
+          {...focusTarget(QAM_VIEW.installed, "addWowFolder")}
         >
-          Open Options
+          Add WoW folder
         </DialogButton>
       </PanelSectionRow>
     </PanelSection>

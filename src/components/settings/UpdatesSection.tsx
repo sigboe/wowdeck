@@ -1,11 +1,10 @@
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { DialogButton, Field, PanelSection, ToggleField } from "@decky/ui";
-import { FaEllipsisH } from "react-icons/fa";
+import { FaChevronRight, FaEllipsisH } from "react-icons/fa";
 import * as api from "../../services/backend";
 import { descriptionStyle } from "../../steamTheme";
-import { pluginToast, toastError } from "../../toast";
 import { lastAutoUpdateLine } from "../../text";
-import { formatBytes } from "../../wtfFormat";
+import { previousVersionsSummary } from "../../previousVersions";
 import { settingsStore } from "../../settings";
 import {
   isOffChannel,
@@ -18,11 +17,18 @@ import { selfUpdateStore } from "../../selfUpdate";
 import { openReleaseNotesModal } from "../ReleaseNotesModal";
 import { openUpdateChannelModal } from "../UpdateChannelModal";
 import { openPrBuildsModal } from "../PrBuildsModal";
-import { SettingsRow } from "./common";
+import {
+  loadPreviousVersionsUsage,
+  openPreviousVersionsModal,
+  previousVersionsStore,
+} from "../PreviousVersionsModal";
+import { rememberFocus } from "../../focusMemory";
+import { SettingsRow, VIEW } from "./common";
 
 /**
  * Automatic updates (WF-02) and rollback (BEYOND-02; owner: a way to turn it
- * off, the space it uses, clear). The last row is WoWDeck's own version —
+ * off, the space it uses, clear). Rollback is one "Previous versions" row
+ * summing up both, whose modal holds the toggle and Clear (#207). The last row is WoWDeck's own version —
  * the plugin, never an addon — read from the shared self-update store, so
  * plugin load's answer shows here without a second fetch. Its ⋯ opens the
  * update channel modal (A), checks again (X) and, while the panel offers
@@ -35,30 +41,10 @@ export function UpdatesSection() {
     selfUpdateStore.subscribe,
     selfUpdateStore.get,
   );
-  const [previousUsage, setPreviousUsage] = useState<{ bytes: number; count: number } | null>(null);
-  const [clearingPrevious, setClearingPrevious] = useState(false);
-  const loadPreviousUsage = () =>
-    api
-      .rpc("rollback.status")
-      .then(setPreviousUsage)
-      .catch(() => setPreviousUsage(null));
-  const clearPrevious = async () => {
-    setClearingPrevious(true);
-    try {
-      const before = previousUsage;
-      setPreviousUsage(await api.rpc("rollback.clear"));
-      pluginToast(
-        "Previous versions cleared",
-        before
-          ? `${formatBytes(before.bytes)} freed`
-          : "Rollback is no longer possible for earlier updates",
-      );
-    } catch (e) {
-      toastError("Couldn't clear", e);
-    } finally {
-      setClearingPrevious(false);
-    }
-  };
+  const { usage: previousUsage } = useSyncExternalStore(
+    previousVersionsStore.subscribe,
+    previousVersionsStore.get,
+  );
 
   // The checkmark is the engine's stored channel, read on each open, or
   // the PR channel the last answer served; the switch's answer lands in the
@@ -89,7 +75,7 @@ export function UpdatesSection() {
   const releaseNotes = releaseNotesAction(offer);
 
   useEffect(() => {
-    void loadPreviousUsage();
+    void loadPreviousVersionsUsage();
     // The shared self-update store: load or wake has usually answered
     // already, and this re-asks only when the held answer is stale — no
     // fetch on every Options visit.
@@ -112,38 +98,22 @@ export function UpdatesSection() {
           onChange={(on) => void settingsStore.save({ autoUpdate: on })}
         />
       </SettingsRow>
-      <SettingsRow id="keepPrevious">
-        <ToggleField
-          label="Keep previous versions"
-          description={
-            <span style={descriptionStyle}>
-              After an update, an addon's Options menu can roll it back
-            </span>
-          }
-          checked={settings.keepPreviousVersions}
-          onChange={(on) => void settingsStore.save({ keepPreviousVersions: on })}
-        />
-      </SettingsRow>
-      <SettingsRow id="previousUsage">
+      <SettingsRow id="previousVersions">
         <Field
-          label="Previous versions kept"
+          focusable
+          label="Previous versions"
           description={
             <span style={descriptionStyle}>
-              {previousUsage
-                ? previousUsage.count
-                  ? `${formatBytes(previousUsage.bytes)} for ${previousUsage.count} addon${previousUsage.count === 1 ? "" : "s"}`
-                  : "None kept"
-                : "…"}
+              {previousVersionsSummary(settings.keepPreviousVersions, previousUsage)}
             </span>
           }
+          onClick={() => {
+            rememberFocus(VIEW, "previousVersions");
+            openPreviousVersionsModal();
+          }}
+          onOKActionDescription="Open"
         >
-          <DialogButton
-            style={{ minWidth: 0, width: "auto", padding: "8px 16px" }}
-            disabled={clearingPrevious || !previousUsage?.count}
-            onClick={() => void clearPrevious()}
-          >
-            Clear
-          </DialogButton>
+          <FaChevronRight />
         </Field>
       </SettingsRow>
       <SettingsRow id="wowdeckUpdate">

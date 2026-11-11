@@ -1332,6 +1332,20 @@ same at any width and cost no extra focus stops. Connector characters
 depend on the font and wrap badly at QAM width. First used on the Manual
 Install preview card when a file takes over a catalogue addon (#129).
 
+**S39 [PROJECT] MUST** give `>` and ⋯ one meaning each on settings rows.
+What: a chevron (`>`, `FaChevronRight`) at a row's right edge means the
+row opens something: A on the row opens a modal, a picker or a page
+(Options › About › Diagnostics). A ⋯ button sits beside a row's own
+action and opens more settings for it (the WoWDeck row's ⋯ in Options ›
+Updates opens the update channel modal). A row never uses one icon for
+the other's job. Every icon-only button has an accessible name: text in a
+`wowdeck-visually-hidden` span inside the button, with the glyph
+`aria-hidden`, not only `aria-label`, because the device test tool reads
+text nodes (`updatesSectionNames.test.tsx`). Why: the
+icons mean the same thing everywhere, so players can tell what A does
+before they press it, and a screen reader or the focus hint can name the
+button (spec #183, stories 53 and 54).
+
 **Preview without a Deck.** Chromium can render Steam's real stylesheets against
 a static copy of the DOM: copy `css/sp.css` and `library.css`, wrap the markup in
 `<div class="BasicUI GamepadMode">` and Steam's hashed dialog classes, and run
@@ -1696,12 +1710,14 @@ flow-children="horizontal"` row, exactly like the Search and Install-from-URL
 rows, so D-pad Right moves from the field to the button. On pick, write the
 path into the field (the user can still edit it); on cancel (the promise
 rejects) do nothing. The picker is a modal, so the panel is unmounted while it
-is open (G4): keep the form draft in module scope
-(`src/installationFormState.ts`, a subscribable store read with
-`useSyncExternalStore`) so the picked path reaches the remounted form whether it
-arrives before or after the remount. First applied to Options → Add Installation
-Manually; the export dialog's folder/file pickers in `AddonPortabilityModal`
-already used `openFilePicker`. Source of the API: installed `@decky/api` types
+is open (G4): keep a form draft in module scope (a subscribable store read
+with `useSyncExternalStore`) so the picked path reaches the remounted form
+whether it arrives before or after the remount. When the path is all the form
+needs first, open the picker straight from the row and show the rest of the
+form in a modal after it returns, as Add WoW folder does (`src/addWowFolder.ts`,
+`AddInstallationModal`). Then nothing has to survive the unmount. The export
+dialog's folder/file pickers in `AddonPortabilityModal` use `openFilePicker`
+too. Source of the API: installed `@decky/api` types
 (OFFICIAL). Not yet verified on a Deck (see action items).
 
 ### 6.5 Pagination focus

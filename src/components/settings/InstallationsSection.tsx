@@ -1,6 +1,6 @@
 import { useEffect, useSyncExternalStore } from "react";
 import { Field, PanelSection, PanelSectionRow } from "@decky/ui";
-import { FaSearchLocation } from "react-icons/fa";
+import { FaChevronRight, FaSearchLocation } from "react-icons/fa";
 import type { Installation } from "../../types";
 import * as api from "../../services/backend";
 import { descriptionStyle } from "../../steamTheme";
@@ -12,6 +12,7 @@ import { QAM_DROPDOWN_VALUE } from "../dropdownValue";
 import { FactLine } from "../FactLine";
 import { InstallationSelect } from "../InstallationSelect";
 import { FocusRow } from "../FocusSlot";
+import { runAddWowFolder } from "../addWowFolderUi";
 import { SettingsRow, VIEW, busyIcon } from "./common";
 import {
   clearInstallationJump,
@@ -26,7 +27,7 @@ interface Props {
   onChanged: () => Promise<void>;
 }
 
-/** The active installation (its details on the Options button) and detection. */
+/** The active installation (its details on the Options button), detection and Add WoW folder. */
 export function InstallationsSection({ installations, selectedId, onChanged }: Props) {
   const { findingWow: detecting } = useSyncExternalStore(addonSession.subscribe, addonSession.get);
   const jump = useSyncExternalStore(subscribeInstallationJump, installationJump);
@@ -135,6 +136,22 @@ export function InstallationsSection({ installations, selectedId, onChanged }: P
           onClick={() => !detecting && void detect()}
         >
           {busyIcon(detecting, <FaSearchLocation />)}
+        </Field>
+      </SettingsRow>
+      {/* The manual way, next to the automatic one: the picker opens at once. */}
+      <SettingsRow id="addWowFolder">
+        <Field
+          focusable
+          label="Add WoW folder"
+          description={
+            <span style={descriptionStyle}>
+              The World of Warcraft folder, or a version folder such as _retail_
+            </span>
+          }
+          onClick={() => void runAddWowFolder(VIEW, "addWowFolder", installations, onChanged)}
+          onOKActionDescription="Choose folder"
+        >
+          <FaChevronRight />
         </Field>
       </SettingsRow>
     </PanelSection>

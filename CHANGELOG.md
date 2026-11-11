@@ -18,9 +18,11 @@ What's new in each version of WoWDeck Addon Manager. The format follows
 - Try pull request builds in Options, follow updates, return when they close, or join Beta after merging.
 - WoWDeck's own downloads show a progress bar with how many MB have arrived. Press B to cancel one.
 - On Beta, turn on Move to Stable after release in the update channel picker to select Stable after preparing a stable update.
+- Install WowUp Companion from Options › Notifications to see addon updates inside WoW.
 
 ### Changed
 
+- Options is shorter. One-off setup opens from the row it belongs to, and Add WoW folder, also on My Addons, opens the folder picker at once.
 - A test build now shows the way out: pick Beta or Stable under Options › Updates to switch to it.
 
 ### Changed
@@ -30,6 +32,9 @@ What's new in each version of WoWDeck Addon Manager. The format follows
 ### Fixed
 
 - Choosing Stable during an update check keeps your choice. Cancelling an update also stops preparation before the download.
+- Adding the last new version in a WoW folder keeps your chosen name and leaves existing names unchanged.
+- Previous versions reports loading errors and offers a retry; Options modals return focus after touch activation.
+- CurseForge key status stays current after clearing a key or retrying built-in access.
 
 - Addons lose the Updated tag when a newer update is found, until another update succeeds.
 
