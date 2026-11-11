@@ -41,6 +41,19 @@ export interface RequestOptions {
    * with ResponseTooLargeError, which is not retried. Not with `streamBody`.
    */
   maxBytes?: number;
+  /**
+   * Aborts the request, body included. An aborted request fails with a
+   * NetworkError at once and is never retried.
+   */
+  signal?: AbortSignal;
+}
+
+export interface DownloadOptions extends RequestOptions {
+  /**
+   * Called after every chunk with the bytes received so far and the
+   * response's Content-Length (null when it sent none).
+   */
+  onProgress?: (received: number, total: number | null) => void;
 }
 
 /** Exact or dot-suffix hostname match (`forgecdn.net` matches `edge.forgecdn.net` too). */
@@ -150,26 +163,40 @@ export class NetworkClient {
   }
 
   /**
-   * Stream a download to a file.
-   * Returns the byte count written.
+   * Stream a download to a file, reporting progress after every chunk.
+   * Returns the byte count written. Nothing is written unless the whole
+   * body arrived; an abort (`signal`) fails it at once.
    */
   async downloadToFile(
     url: string,
     destinationPath: string,
-    options: RequestOptions = {},
+    options: DownloadOptions = {},
   ): Promise<number> {
-    const res = await this.requestWithRetry("GET", url, { ...options, streamBody: true });
+    const { onProgress, ...request } = options;
+    const res = await this.requestWithRetry("GET", url, { ...request, streamBody: true });
+    const length = Number.parseInt(res.headers.get("content-length") ?? "", 10);
+    const total = Number.isSafeInteger(length) && length >= 0 ? length : null;
     let received = 0;
     const chunks: Uint8Array[] = [];
     if (res.body) {
       const reader = res.body.getReader();
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        if (value) {
-          chunks.push(value);
-          received += value.length;
+      try {
+        for (;;) {
+          if (options.signal?.aborted) {
+            throw new NetworkError(`download of ${redactUrl(url)} aborted`, undefined, url);
+          }
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (value) {
+            chunks.push(value);
+            received += value.length;
+            onProgress?.(received, total);
+          }
         }
+      } catch (err) {
+        void reader.cancel().catch(() => {});
+        if (err instanceof NetworkError) throw err;
+        throw new NetworkError(`download of ${redactUrl(url)} failed: ${String(err)}`, undefined, url);
       }
     }
     await Bun.write(destinationPath, Buffer.concat(chunks.map((c) => Buffer.from(c))));
@@ -189,6 +216,9 @@ export class NetworkClient {
     const target = buildUrl(url, options.query);
     let lastError: unknown;
     for (let attempt = 0; attempt <= 2; attempt++) {
+      if (options.signal?.aborted) {
+        throw new NetworkError(`${method} ${redactUrl(url)} aborted`, undefined, url);
+      }
       try {
         const res = await this.fetchWithTimeout(target, options, method, options.body);
         const retryable = res.status >= 500 || res.status === 429;
@@ -213,6 +243,9 @@ export class NetworkClient {
         }
         lastError = err;
       }
+      if (options.signal?.aborted) {
+        throw new NetworkError(`${method} ${redactUrl(url)} aborted`, undefined, url);
+      }
       await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
     }
     throw lastError instanceof Error ? lastError : new NetworkError(`request to ${redactUrl(url)} failed`);
@@ -226,13 +259,15 @@ export class NetworkClient {
   ): Promise<Response> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), options.timeoutMs ?? 30_000);
+    // The caller's abort reaches the body too; the timeout stops at the headers.
+    const signal = options.signal ? AbortSignal.any([controller.signal, options.signal]) : controller.signal;
     try {
       const res = options.trustedHostsForHeaders
-        ? await this.fetchFollowingTrustedRedirects(url, options, method, body, controller.signal)
+        ? await this.fetchFollowingTrustedRedirects(url, options, method, body, signal)
         : await fetch(url, {
             method,
             body,
-            signal: controller.signal,
+            signal,
             headers: { "User-Agent": "wowdeck/0.1 (addon manager)", ...options.headers },
             redirect: "follow",
           });

@@ -15,7 +15,9 @@ What's new in each version of WoWDeck Addon Manager. The format follows
 - The Steam picker shows each game's icon and app id, and whether it's linked by hand or automatically.
 - Addon details show every game version a release supports as colored tags with friendly names, including Titan Reforged, so multi-game addons list them all.
 - Titan Reforged and China Beta installations are detected and can be added, so their addons install like any other client.
-- Try a build of a pull request from Options › Updates. WoWDeck offers its newer builds, then the beta that has it once it's merged.
+- Try pull request builds in Options, follow updates, return when they close, or join Beta after merging.
+- WoWDeck's own downloads show a progress bar with how many MB have arrived. Press B to cancel one.
+- On Beta, turn on Move to Stable after release in the update channel picker to select Stable after preparing a stable update.
 
 ### Changed
 
@@ -26,6 +28,8 @@ What's new in each version of WoWDeck Addon Manager. The format follows
 - TradeSkillMaster has its own icon in Get Addons and account headings.
 
 ### Fixed
+
+- Choosing Stable during an update check keeps your choice. Cancelling an update also stops preparation before the download.
 
 - Addons lose the Updated tag when a newer update is found, until another update succeeds.
 

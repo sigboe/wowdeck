@@ -1,43 +1,50 @@
 /**
- * Where the PR a running PR build came from stands (GLOSSARY: PR build;
- * system.prBuildState), so the update panel can offer the right way on: a
- * newer build of the same PR while it is listed, Beta once a beta contains
- * the PR's merge commit, or the plain way back otherwise. Asked only when Options
- * checks while a PR build runs: no cache, no polling, no toast.
+ * The PR channel's source (GLOSSARY: PR channel): where a running PR
+ * build's PR stands, for the plugin update check (PluginUpdateCheck), which
+ * asks it under its own daily cadence and failure backoff. Listed: the PR's
+ * build on the PR builds list. Otherwise GitHub's API is asked, without any
+ * token, whether the PR was merged (and whether the newest beta contains
+ * the merge commit), closed, or is open but unlisted.
  */
 
-import type { PrBuildState } from "../../api/contracts";
 import type { NetworkClient } from "../net/network";
-import { compareVersions, isBetaVersion, normalizeVersion, prNumber } from "./PluginVersion";
-import { isRecord, publicFields, type PrBuildList } from "./PrBuildList";
+import { compareVersions, isBetaVersion, normalizeVersion } from "./PluginVersion";
+import { isRecord, type PrBuildList, type PublishedPrBuild } from "./PrBuildList";
+
+/**
+ * Where a PR stands. "listed": still on the PR builds list, with its
+ * listed build. "merged": `beta` is the newest beta when its commit
+ * contains the PR's merge commit; null while no such beta exists or that
+ * can't be told. "closed": closed without merging. "unlisted": still open,
+ * but no longer on the list (the label was removed).
+ */
+export type PrStanding =
+  | { state: "listed"; build: PublishedPrBuild }
+  | { state: "merged"; beta: string | null }
+  | { state: "closed" }
+  | { state: "unlisted" };
 
 export class PrBuildFollow {
   constructor(
-    private currentVersion: string,
     private prBuilds: Pick<PrBuildList, "list">,
     private net: Pick<NetworkClient, "getJson">,
     /** The repo's API root (https://api.github.com/repos/<owner>/<repo>). */
     private repoApiUrl: string,
   ) {}
 
-  /** The PR's state, or null for no PR build or a state that couldn't be read. Never throws. */
-  async state(): Promise<PrBuildState | null> {
-    const number = prNumber(this.currentVersion);
-    if (number === null) return null;
+  /** Where PR `number` stands, or null when that couldn't be read (offline, rate limited). Never throws. */
+  async standing(number: number): Promise<PrStanding | null> {
     const builds = await this.prBuilds.list();
     if (builds === null) return null;
     const listed = builds.find((b) => b.number === number);
-    if (listed !== undefined) {
-      const newer = (compareVersions(listed.version, this.currentVersion) ?? 0) > 0;
-      return { kind: "listed", number, newer: newer ? publicFields(listed) : null };
-    }
+    if (listed !== undefined) return { state: "listed", build: listed };
     const pull = await this.#get<GithubPull>(`${this.repoApiUrl}/pulls/${number}`);
     if (!isRecord(pull)) return null;
     if (typeof pull.merged_at === "string") {
       const mergeSha = typeof pull.merge_commit_sha === "string" ? pull.merge_commit_sha : null;
-      return { kind: "merged", number, beta: await this.#betaWith(mergeSha) };
+      return { state: "merged", beta: await this.#betaWith(mergeSha) };
     }
-    return pull.state === "closed" ? { kind: "closed", number } : { kind: "unlisted", number };
+    return pull.state === "closed" ? { state: "closed" } : { state: "unlisted" };
   }
 
   /**

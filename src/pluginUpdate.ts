@@ -12,94 +12,49 @@
  */
 
 import type { MethodMap, PluginUpdateOffer } from "../backend/src/api/contracts";
-import type { PrBuild, PrBuildState, UpdateChannel } from "./types";
+import type { UpdateChannel } from "./types";
 import type { DotColor } from "./updateDot";
 
 export type PluginUpdateInfo = MethodMap["system.updateCheck"]["result"];
 
 /**
- * Whether the running WoWDeck is a test build (X.Y.Z-test.N) or a pr build
- * (X.Y.Z-pr.N, or its rebuild X.Y.Z-pr.N.K), read from the engine's
- * answer: a test build is on no update channel, so its Check again
- * is hidden and the channel modal checks no row — picking a channel is the
- * way out (the engine then offers that channel's newest build, `leaveTest`).
+ * Whether the answer served no update channel: a test build (X.Y.Z-test.N)
+ * or a PR build whose owner left its PR channel. Its Check again is hidden
+ * and the channel modal checks no row: picking a channel is the way out
+ * (the engine then offers that channel's newest build, `leaveTest`).
  */
-export function isTestBuild(info: PluginUpdateInfo | null): boolean {
-  return (
-    info?.currentVersion !== undefined && /-(test\.\d+|pr\.\d+(\.\d+)?)$/.test(info.currentVersion)
-  );
-}
-
-/** Whether the running WoWDeck is a PR build (X.Y.Z-pr.N or X.Y.Z-pr.N.K). */
-export function isPrBuild(info: PluginUpdateInfo | null): boolean {
-  return info?.currentVersion !== undefined && /-pr\.\d+(\.\d+)?$/.test(info.currentVersion);
+export function isOffChannel(info: PluginUpdateInfo | null): boolean {
+  return info !== null && info.channel === null;
 }
 
 /**
- * What the update panel offers a PR build instead of the engine's plain
- * way back, from where its PR stands (system.prBuildState): a newer build
- * of the same PR, the beta that carries the merged PR, or word that one is
- * still building, with nothing to press, so Beta is never offered before
- * it has the PR. Null keeps the engine's offer: the PR is closed, unlisted,
- * listed with nothing newer, or its state is unknown.
+ * The update panel's line on a PR channel with nothing newer (GLOSSARY: PR
+ * channel): "Up to date with PR #N". Null otherwise, including when the
+ * check couldn't run.
  */
-export type PrBuildOffer =
-  | {
-      kind: "newerBuild";
-      headline: string;
-      buttonLabel: string;
-      rowLabel: string;
-      version: string;
-      build: PrBuild;
-    }
-  | { kind: "mergedBeta"; headline: string; buttonLabel: string; rowLabel: string; version: string }
-  | {
-      kind: "mergedBuilding";
-      headline: string;
-      buttonLabel: null;
-      rowLabel: string;
-      version: null;
-    };
+export function prChannelLine(info: PluginUpdateInfo | null): string | null {
+  if (info?.offer?.kind === "prMergedBuilding") return info.offer.headline;
+  if (info?.channel?.kind !== "pr" || info.status !== "current") {
+    return null;
+  }
+  return `Up to date with PR #${info.channel.number}`;
+}
 
-export function prBuildOffer(
+/**
+ * What the channel modal shows: the stored channel's row checked, or on a
+ * PR channel the PR's own row, checked, above Stable and Beta (both then
+ * pickable: a pick leaves the PR channel). The PR's row is never offered
+ * otherwise. Off any channel no row is checked.
+ */
+export function updateChannelChoice(
   info: PluginUpdateInfo | null,
-  state: PrBuildState | null,
-): PrBuildOffer | null {
-  if (!isPrBuild(info) || state === null) {
-    return null;
+  stored: UpdateChannel,
+): { checked: UpdateChannel | null; pr: { name: string; description: string } | null } {
+  const served = info?.channel;
+  if (served?.kind === "pr") {
+    return { checked: null, pr: { name: `PR #${served.number}`, description: served.title ?? "" } };
   }
-  if (state.kind === "listed" && state.newer) {
-    const headline = `PR #${state.number} has a newer build`;
-    return {
-      kind: "newerBuild",
-      headline,
-      buttonLabel: `Update to ${state.newer.version}`,
-      rowLabel: headline,
-      version: state.newer.version,
-      build: state.newer,
-    };
-  }
-  if (state.kind !== "merged") {
-    return null;
-  }
-  const merged = `PR #${state.number} was merged`;
-  if (state.beta === null) {
-    return {
-      kind: "mergedBuilding",
-      headline: `${merged}. A beta with it is still building`,
-      buttonLabel: null,
-      rowLabel: merged,
-      version: null,
-    };
-  }
-  const switchLabel = `Switch to beta ${state.beta}`;
-  return {
-    kind: "mergedBeta",
-    headline: `${merged}. ${switchLabel}`,
-    buttonLabel: switchLabel,
-    rowLabel: merged,
-    version: state.beta,
-  };
+  return { checked: info !== null && served === null ? null : stored, pr: null };
 }
 
 /**
@@ -186,28 +141,22 @@ export function pluginUpdateDot(info: PluginUpdateInfo | null): DotColor | null 
  * "unknown" (repo unreachable — private beyond the token's reach, offline,
  * rate limited) reads as "couldn't check", never as a failure.
  */
-export function pluginUpdateRow(
-  info: PluginUpdateInfo,
-  prOffer: PrBuildOffer | null = null,
-): { label: string; description: string } {
-  if (prOffer) {
-    return {
-      label: prOffer.rowLabel,
-      description:
-        prOffer.version === null
-          ? "A beta with it is still building"
-          : `${info.currentVersion} → ${prOffer.version}`,
-    };
-  }
+export function pluginUpdateRow(info: PluginUpdateInfo): { label: string; description: string } {
   const { offer } = info;
   if (offer) {
     return {
       label: offer.rowLabel,
-      description: `${info.currentVersion} → ${offer.version}`,
+      description:
+        offer.kind === "prMergedBuilding"
+          ? offer.headline
+          : `${info.currentVersion} → ${offer.version}`,
     };
   }
   if (info.status === "current") {
-    return { label: `WoWDeck ${info.currentVersion}`, description: "Up to date" };
+    return {
+      label: `WoWDeck ${info.currentVersion}`,
+      description: prChannelLine(info) ?? "Up to date",
+    };
   }
   return {
     label: `WoWDeck ${info.currentVersion}`,

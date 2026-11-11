@@ -379,11 +379,13 @@ export default definePlugin(() => {
   // it costs a request, so waking the Deck is a useful trigger as well.
   void selfUpdateStore.refresh({ toast: true, bypassWindow: true });
 
-  // WTF backup/restore jobs run in the engine and outlive any panel or modal, so their
-  // progress/outcome events are subscribed once per plugin load into a module-scope
+  // WTF backup/restore jobs (and the WoWDeck download) run in the engine and outlive
+  // any panel or modal, so their progress/outcome events are subscribed once per plugin load into a module-scope
   // lifecycle (wtfLifecycle.ts), not in a component that a modal would unmount.
   const offWtfEvents = api.onBackendEvent((event) => {
     wtfLifecycle.handleEvent(event);
+    // The WoWDeck download's bytes, for the update panel and the PR builds modal.
+    selfUpdateStore.handleEvent(event);
     if (event.event === "wtf.completed") {
       const toast = wtfCompletedToast(event.params);
       if (toast) {

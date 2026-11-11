@@ -63,6 +63,8 @@ export const deckyUiStub = {
     children,
     onSecondaryActionDescription,
     onMenuActionDescription,
+    onCancelButton,
+    onCancelActionDescription,
     onClick,
   }: Kids & {
     label?: ReactNode;
@@ -70,6 +72,9 @@ export const deckyUiStub = {
     disabled?: boolean;
     onSecondaryActionDescription?: string;
     onMenuActionDescription?: string;
+    /** B's action: a button labeled "B: <its description>". */
+    onCancelButton?: () => void;
+    onCancelActionDescription?: string;
     onClick?: () => void;
   }) => (
     <div data-disabled={disabled ? "true" : undefined} onClick={onClick}>
@@ -79,6 +84,7 @@ export const deckyUiStub = {
       <footer>
         {onSecondaryActionDescription && <span>X: {onSecondaryActionDescription}</span>}
         {onMenuActionDescription && <span>Menu: {onMenuActionDescription}</span>}
+        {onCancelButton && <button onClick={onCancelButton}>B: {onCancelActionDescription}</button>}
       </footer>
     </div>
   ),
@@ -91,7 +97,9 @@ export const deckyUiStub = {
   TextField: ({ "aria-label": ariaLabel }: { "aria-label"?: string }) =>
     ariaLabel ? <input aria-label={ariaLabel} /> : null,
   Spinner: () => <span role="progressbar" />,
-  ProgressBarWithInfo: () => <div role="progressbar" />,
+  ProgressBarWithInfo: ({ sOperationText }: { sOperationText?: ReactNode }) => (
+    <div role="progressbar">{sOperationText}</div>
+  ),
   DropdownItem: (p: {
     label?: string;
     menuLabel?: string;
@@ -117,6 +125,22 @@ export const deckyUiStub = {
   ),
   DialogBodyText: box,
   MenuSeparator: box,
-  ToggleField: box,
+  ToggleField: ({
+    label,
+    checked,
+    onChange,
+  }: {
+    label?: string;
+    checked?: boolean;
+    onChange?: (on: boolean) => void;
+  }) => (
+    <input
+      type="checkbox"
+      aria-label={label}
+      checked={checked ?? false}
+      readOnly={!onChange}
+      onChange={(e) => onChange?.(e.target.checked)}
+    />
+  ),
   showModal: () => ({ Close: () => {} }),
 };

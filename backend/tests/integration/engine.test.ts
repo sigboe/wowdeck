@@ -745,6 +745,7 @@ describe("system.updateCheck (the plugin's own update notice)", () => {
       expect(res.result).toEqual({
         status: "current",
         currentVersion: version,
+        channel: { kind: "stable" },
         offer: null,
         checked: true,
         failed: false,
@@ -773,6 +774,7 @@ describe("system.updateCheck (the plugin's own update notice)", () => {
       expect(res.result).toEqual({
         status: "unknown",
         currentVersion: version,
+        channel: { kind: "stable" },
         offer: null,
         checked: true,
         failed: true,
@@ -1012,6 +1014,10 @@ describe("system.updateCheck (the plugin's own update notice)", () => {
       expect(set.result.settings.pluginUpdateChannel).toBe("beta");
       expect(set.result.settings.pluginUpdateLastRunVersion).toBe(version);
       expect(set.result.settings.pluginUpdateStagedVersion).toBeNull();
+      // Move to Stable after release is the owner's own toggle, off until set.
+      expect(set.result.settings.pluginMoveToStableAfterRelease).toBe(false);
+      const toggled = await call1(6, "settings.set", { settings: { pluginMoveToStableAfterRelease: true } });
+      expect(toggled.result.settings.pluginMoveToStableAfterRelease).toBe(true);
     } finally {
       first.kill();
     }
@@ -1020,6 +1026,7 @@ describe("system.updateCheck (the plugin's own update notice)", () => {
     const { call: call2 } = link(second);
     try {
       expect((await call2(1, "system.getUpdateChannel")).result).toEqual({ channel: "beta" });
+      expect((await call2(3, "settings.get")).result.settings.pluginMoveToStableAfterRelease).toBe(true);
       const res = await call2(2, "system.updateCheck");
       expect(res.result).toMatchObject({ status: "available", offer: { version: beta }, checked: false });
     } finally {

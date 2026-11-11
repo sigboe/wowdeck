@@ -1,7 +1,9 @@
 /**
- * Following a PR build, engine side: system.prBuildState. The engine reads
- * the PR builds list, and only for a PR that left it asks GitHub's API for
- * the PR, the releases and whether the newest beta contains the merge. One
+ * The PR channel's source (GLOSSARY: PR channel), PrBuildFollow.standing:
+ * the plugin update check asks it where the running PR build's PR stands.
+ * It reads the PR builds list, and only for a PR that left it asks GitHub's
+ * API for the PR, the releases and whether the newest beta contains the
+ * merge. One
  * fake net stands in for NetworkClient.getJson and answers with recorded
  * fixtures (the list as tools/pr-build.ts publishes it, GitHub's PR,
  * releases and compare answers trimmed to the fields read), so no test
@@ -11,9 +13,6 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { HandlerDeps } from "../src/api/handlers/deps";
-import { register } from "../src/api/handlers/system";
-import { JsonlServer } from "../src/bridge/jsonl";
 import { NetworkError } from "../src/wow/net/network";
 import { PrBuildFollow } from "../src/wow/plugin/PrBuildFollow";
 import { PrBuildList } from "../src/wow/plugin/PrBuildList";
@@ -45,7 +44,7 @@ const BETA_43_HAS_MERGE = fixture("compare-merge-to-beta43.json");
 /** v1.1.2-beta.42 is behind the merge commit: it lacks the PR. */
 const BETA_42_LACKS_MERGE = fixture("compare-merge-to-beta42.json");
 
-function engine(currentVersion: string, answers: Record<string, unknown>) {
+function engine(answers: Record<string, unknown>) {
   const asked: { url: string; headers?: Record<string, string> }[] = [];
   const net = {
     async getJson<T>(url: string, options?: { headers?: Record<string, string> }): Promise<T> {
@@ -56,32 +55,21 @@ function engine(currentVersion: string, answers: Record<string, unknown>) {
       return structuredClone(answer) as T;
     },
   };
-  const deps = {
-    prBuildFollow: new PrBuildFollow(currentVersion, new PrBuildList(net, INDEX_URL), net, REPO_API),
-  } as unknown as HandlerDeps;
+  const follow = new PrBuildFollow(new PrBuildList(net, INDEX_URL), net, REPO_API);
   return {
-    async state() {
-      let response: { result?: { state: unknown }; error?: unknown } = {};
-      const rpc = new JsonlServer((line) => {
-        response = JSON.parse(line);
-      });
-      register(rpc, deps);
-      await rpc.handleLine(JSON.stringify({ id: 1, method: "system.prBuildState" }));
-      expect(response.error).toBeUndefined();
-      return response.result?.state;
-    },
+    /** Where #117 stands. */
+    state: () => follow.standing(117),
     asked,
   };
 }
 
-describe("following a PR build (system.prBuildState)", () => {
-  test("a newer build of the same PR while it is still listed", async () => {
-    const e = engine("1.1.2-pr.117", { [INDEX_URL]: LISTED });
+describe("where a PR build's PR stands (the PR channel's source)", () => {
+  test("listed: the PR's build on the list", async () => {
+    const e = engine({ [INDEX_URL]: LISTED });
 
     expect(await e.state()).toEqual({
-      kind: "listed",
-      number: 117,
-      newer: {
+      state: "listed",
+      build: {
         number: 117,
         title: "Add PR builds to the channel picker",
         author: "sigboe",
@@ -89,6 +77,8 @@ describe("following a PR build (system.prBuildState)", () => {
         headSha: "0123456789abcdef0123456789abcdef01234567",
         builtAt: "2026-11-08T09:15:00Z",
         zipSize: 72998400,
+        sha256: "a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90",
+        zipUrl: "https://sigboe.github.io/wowdeck/pr/117/WoWDeck.zip",
       },
     });
     // A listed PR needs no GitHub API call.
@@ -96,50 +86,50 @@ describe("following a PR build (system.prBuildState)", () => {
   });
 
   test("merged, and the newest beta contains the merge commit: that beta", async () => {
-    const e = engine("1.1.2-pr.117.2", {
+    const e = engine({
       [INDEX_URL]: WITHOUT_117,
       [PULL_117]: MERGED,
       [RELEASES]: RELEASES_AFTER_MERGE,
       [compareTo("v1.1.2-beta.43")]: BETA_43_HAS_MERGE,
     });
 
-    expect(await e.state()).toEqual({ kind: "merged", number: 117, beta: "1.1.2-beta.43" });
+    expect(await e.state()).toEqual({ state: "merged", beta: "1.1.2-beta.43" });
     expect(e.asked.map((a) => a.url)).toEqual([INDEX_URL, PULL_117, RELEASES, compareTo("v1.1.2-beta.43")]);
   });
 
   test("a beta identical to the merge commit contains it", async () => {
-    const e = engine("1.1.2-pr.117.2", {
+    const e = engine({
       [INDEX_URL]: WITHOUT_117,
       [PULL_117]: MERGED,
       [RELEASES]: RELEASES_AFTER_MERGE,
       [compareTo("v1.1.2-beta.43")]: { ...(BETA_43_HAS_MERGE as object), status: "identical", ahead_by: 0 },
     });
 
-    expect(await e.state()).toEqual({ kind: "merged", number: 117, beta: "1.1.2-beta.43" });
+    expect(await e.state()).toEqual({ state: "merged", beta: "1.1.2-beta.43" });
   });
 
   test("merged, but the newest beta lacks the merge commit: still building", async () => {
     const before = (RELEASES_AFTER_MERGE as { tag_name: string }[]).filter((r) => r.tag_name !== "v1.1.2-beta.43");
-    const e = engine("1.1.2-pr.117.2", {
+    const e = engine({
       [INDEX_URL]: WITHOUT_117,
       [PULL_117]: MERGED,
       [RELEASES]: before,
       [compareTo("v1.1.2-beta.42")]: BETA_42_LACKS_MERGE,
     });
 
-    expect(await e.state()).toEqual({ kind: "merged", number: 117, beta: null });
+    expect(await e.state()).toEqual({ state: "merged", beta: null });
   });
 
   test("a beta published after the merge but built without it is not offered", async () => {
     // A beta run that started before the merge can publish after it.
-    const e = engine("1.1.2-pr.117.2", {
+    const e = engine({
       [INDEX_URL]: WITHOUT_117,
       [PULL_117]: MERGED,
       [RELEASES]: RELEASES_AFTER_MERGE,
       [compareTo("v1.1.2-beta.43")]: { ...(BETA_42_LACKS_MERGE as object), status: "diverged", ahead_by: 1 },
     });
 
-    expect(await e.state()).toEqual({ kind: "merged", number: 117, beta: null });
+    expect(await e.state()).toEqual({ state: "merged", beta: null });
   });
 
   test("merged, and a stable release came after the merge: only a beta is offered", async () => {
@@ -147,14 +137,14 @@ describe("following a PR build (system.prBuildState)", () => {
       { tag_name: "v1.1.2", draft: false, published_at: "2026-11-10T13:00:00Z" },
       ...(RELEASES_AFTER_MERGE as { tag_name: string }[]).filter((r) => r.tag_name !== "v1.1.2-beta.43"),
     ];
-    const e = engine("1.1.2-pr.117.2", {
+    const e = engine({
       [INDEX_URL]: WITHOUT_117,
       [PULL_117]: MERGED,
       [RELEASES]: releases,
       [compareTo("v1.1.2-beta.42")]: BETA_42_LACKS_MERGE,
     });
 
-    expect(await e.state()).toEqual({ kind: "merged", number: 117, beta: null });
+    expect(await e.state()).toEqual({ state: "merged", beta: null });
     expect(e.asked.map((a) => a.url)).not.toContain(compareTo("v1.1.2"));
   });
 
@@ -177,32 +167,26 @@ describe("following a PR build (system.prBuildState)", () => {
       },
     ],
   ])("merged, and %s: still building, so Beta is never offered too early", async (_name, answers) => {
-    const e = engine("1.1.2-pr.117.2", Object.assign({ [INDEX_URL]: WITHOUT_117, [PULL_117]: MERGED }, answers));
+    const e = engine(Object.assign({ [INDEX_URL]: WITHOUT_117, [PULL_117]: MERGED }, answers));
 
-    expect(await e.state()).toEqual({ kind: "merged", number: 117, beta: null });
+    expect(await e.state()).toEqual({ state: "merged", beta: null });
   });
 
   test("closed without merging", async () => {
-    const e = engine("1.1.2-pr.117.2", { [INDEX_URL]: WITHOUT_117, [PULL_117]: CLOSED });
+    const e = engine({ [INDEX_URL]: WITHOUT_117, [PULL_117]: CLOSED });
 
-    expect(await e.state()).toEqual({ kind: "closed", number: 117 });
+    expect(await e.state()).toEqual({ state: "closed" });
     expect(e.asked.map((a) => a.url)).toEqual([INDEX_URL, PULL_117]);
   });
 
   test("still open but unlisted (the label was removed)", async () => {
-    const e = engine("1.1.2-pr.117.2", { [INDEX_URL]: WITHOUT_117, [PULL_117]: OPEN });
+    const e = engine({ [INDEX_URL]: WITHOUT_117, [PULL_117]: OPEN });
 
-    expect(await e.state()).toEqual({ kind: "unlisted", number: 117 });
-  });
-
-  test("the running build is the listed one: listed, nothing newer", async () => {
-    const e = engine("1.1.2-pr.117.2", { [INDEX_URL]: LISTED });
-
-    expect(await e.state()).toEqual({ kind: "listed", number: 117, newer: null });
+    expect(await e.state()).toEqual({ state: "unlisted" });
   });
 
   test("asks GitHub without a token", async () => {
-    const e = engine("1.1.2-pr.117.2", {
+    const e = engine({
       [INDEX_URL]: WITHOUT_117,
       [PULL_117]: MERGED,
       [RELEASES]: RELEASES_AFTER_MERGE,
@@ -218,26 +202,15 @@ describe("following a PR build (system.prBuildState)", () => {
     ]);
   });
 
-  test.each([
-    ["a release", "1.1.1"],
-    ["a beta", "1.1.2-beta.43"],
-    ["a test build", "1.1.2-test.200"],
-  ])("null on %s, without asking anything", async (_name, version) => {
-    const e = engine(version, { [INDEX_URL]: LISTED });
-
-    expect(await e.state()).toBeNull();
-    expect(e.asked).toEqual([]);
-  });
-
   test("null when the list can't load: a listed PR can't be told from a merged one", async () => {
-    const e = engine("1.1.2-pr.117.2", { [INDEX_URL]: new NetworkError("offline") });
+    const e = engine({ [INDEX_URL]: new NetworkError("offline") });
 
     expect(await e.state()).toBeNull();
     expect(e.asked.map((a) => a.url)).toEqual([INDEX_URL]);
   });
 
   test("null when GitHub can't say where the PR stands", async () => {
-    const e = engine("1.1.2-pr.117.2", { [INDEX_URL]: WITHOUT_117, [PULL_117]: new NetworkError("HTTP 403") });
+    const e = engine({ [INDEX_URL]: WITHOUT_117, [PULL_117]: new NetworkError("HTTP 403") });
 
     expect(await e.state()).toBeNull();
   });

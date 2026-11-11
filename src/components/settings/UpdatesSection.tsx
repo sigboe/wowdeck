@@ -8,11 +8,11 @@ import { lastAutoUpdateLine } from "../../text";
 import { formatBytes } from "../../wtfFormat";
 import { settingsStore } from "../../settings";
 import {
+  isOffChannel,
   panelOffer,
-  isTestBuild,
   pluginUpdateRow,
-  prBuildOffer,
   releaseNotesAction,
+  updateChannelChoice,
 } from "../../pluginUpdate";
 import { selfUpdateStore } from "../../selfUpdate";
 import { openReleaseNotesModal } from "../ReleaseNotesModal";
@@ -31,11 +31,10 @@ import { SettingsRow } from "./common";
  */
 export function UpdatesSection() {
   const { settings } = useSyncExternalStore(settingsStore.subscribe, settingsStore.get);
-  const {
-    info: pluginUpdate,
-    prState,
-    checking,
-  } = useSyncExternalStore(selfUpdateStore.subscribe, selfUpdateStore.get);
+  const { info: pluginUpdate, checking } = useSyncExternalStore(
+    selfUpdateStore.subscribe,
+    selfUpdateStore.get,
+  );
   const [previousUsage, setPreviousUsage] = useState<{ bytes: number; count: number } | null>(null);
   const [clearingPrevious, setClearingPrevious] = useState(false);
   const loadPreviousUsage = () =>
@@ -61,29 +60,32 @@ export function UpdatesSection() {
     }
   };
 
-  // The checkmark is the engine's stored channel, read on each open; the
-  // switch's answer lands in the self-update store (panel, dot, row). A
-  // test build checks no row: picking either channel is its way out, so
-  // the pick goes through even when it matches the stored channel.
-  const test = isTestBuild(pluginUpdate);
+  // The checkmark is the engine's stored channel, read on each open, or
+  // the PR channel the last answer served; the switch's answer lands in the
+  // self-update store (panel, dot, row). Off any channel, or on a PR
+  // channel, Stable and Beta are unchecked: picking either is the way out,
+  // so the pick goes through even when it matches the stored channel.
+  const test = isOffChannel(pluginUpdate);
   const openChannelModal = async () => {
     const channel = await selfUpdateStore.getChannel();
     if (channel !== null) {
+      const { checked, pr } = updateChannelChoice(selfUpdateStore.get().info, channel);
       openUpdateChannelModal(
-        test ? null : channel,
+        checked,
+        pr,
         (next) => void selfUpdateStore.setChannel(next),
-        () => openPrBuildsModal(api.rpc),
+        () => openPrBuildsModal(api.rpc, selfUpdateStore),
+        settingsStore.get().settings.pluginMoveToStableAfterRelease,
+        (on) => void settingsStore.save({ pluginMoveToStableAfterRelease: on }),
       );
     }
   };
 
-  // Shown before the first answer too: the ⋯ is the way to the channel. A
-  // PR build whose PR moved on names that, as the panel does.
-  const prOffer = prBuildOffer(pluginUpdate, prState);
+  // Shown before the first answer too: the ⋯ is the way to the channel.
   const wowdeckRow = pluginUpdate
-    ? pluginUpdateRow(pluginUpdate, prOffer)
+    ? pluginUpdateRow(pluginUpdate)
     : { label: "WoWDeck", description: "" };
-  const offer = prOffer ? null : panelOffer(pluginUpdate);
+  const offer = panelOffer(pluginUpdate);
   const releaseNotes = releaseNotesAction(offer);
 
   useEffect(() => {
@@ -158,7 +160,7 @@ export function UpdatesSection() {
           <DialogButton
             style={{ minWidth: 0, width: "auto", padding: "8px 16px" }}
             onClick={() => void openChannelModal()}
-            // A test build has no Check again: the stored answer always
+            // Off any channel there is no Check again: the stored answer always
             // offers the channel's newest build, so a forced re-ask can
             // only say the same. The channel modal is the way forward.
             {...(!test && {

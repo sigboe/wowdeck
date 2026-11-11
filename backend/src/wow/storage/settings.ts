@@ -11,10 +11,12 @@ import {
   type PluginSettings,
   type PluginUpdateBackoff,
   type PluginUpdateSnapshot,
+  type PrChannelSnapshot,
+  type PrChannelState,
   UPDATE_CHANNELS,
   type UpdateChannel,
 } from "../../api/contracts";
-import { normalizeVersion } from "../plugin/PluginVersion";
+import { normalizeVersion, isPrVersion } from "../plugin/PluginVersion";
 
 interface Rule<T> {
   default: () => T;
@@ -68,6 +70,27 @@ function normalizeUpdateChannel(value: unknown): UpdateChannel {
   return UPDATE_CHANNELS.find((channel) => channel === value) ?? "stable";
 }
 
+/** A pull request number: a positive safe integer, or null. */
+function normalizePrNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0 ? value : null;
+}
+
+const PR_CHANNEL_STATES: readonly PrChannelState[] = ["listed", "merged", "closed", "unlisted"];
+
+/** A stored answer's PR channel part, or null when it is not one. */
+function normalizePrChannelSnapshot(value: unknown): PrChannelSnapshot | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const { number, title, state } = value as Record<string, unknown>;
+  const pr = normalizePrNumber(number);
+  const known = PR_CHANNEL_STATES.find((s) => s === state);
+  if (pr === null || known === undefined || (title !== null && typeof title !== "string")) {
+    return null;
+  }
+  return { number: pr, title, state: known };
+}
+
 function normalizedVersion(value: unknown): string | null {
   if (typeof value !== "string") {
     return null;
@@ -86,12 +109,20 @@ export function normalizePluginUpdateSnapshot(value: unknown): PluginUpdateSnaps
   if (!value || typeof value !== "object") {
     return null;
   }
-  const { checkedAt, channel, latestVersion, releaseUrl, downloadUrl, releaseNotes } = value as Record<string, unknown>;
+  const { checkedAt, channel, latestVersion, releaseUrl, downloadUrl, releaseNotes, pr, mergedFromPr } = value as Record<
+    string,
+    unknown
+  >;
   if (typeof checkedAt !== "number" || !Number.isFinite(checkedAt)) {
     return null;
   }
   const latest = normalizedVersion(latestVersion);
   if (latest === null) {
+    return null;
+  }
+  // A broken PR part could serve another channel's answer: drop it all.
+  const prPart = pr === undefined ? undefined : normalizePrChannelSnapshot(pr);
+  if (prPart === null) {
     return null;
   }
   const url = (candidate: unknown): string | null =>
@@ -100,9 +131,11 @@ export function normalizePluginUpdateSnapshot(value: unknown): PluginUpdateSnaps
     checkedAt,
     ...(channel !== undefined && { channel: normalizeUpdateChannel(channel) }),
     latestVersion: latest,
+    ...(typeof mergedFromPr === "string" && isPrVersion(mergedFromPr) && { mergedFromPr }),
     releaseUrl: url(releaseUrl),
     downloadUrl: url(downloadUrl),
     ...(typeof releaseNotes === "string" && releaseNotes.trim() !== "" && { releaseNotes }),
+    ...(prPart !== undefined && { pr: prPart }),
   };
 }
 
@@ -179,6 +212,11 @@ const RULES: Rules = {
   // Set through system.setUpdateChannel only, so a switch always runs its
   // check; a missing value (every install before channels) is Stable.
   pluginUpdateChannel: { default: () => "stable", normalize: normalizeUpdateChannel, userWritable: false },
+  // Set and cleared by the update check only (GLOSSARY: PR channel).
+  pluginUpdatePrChannel: { default: () => null, normalize: normalizePrNumber, userWritable: false },
+  // Move to Stable after release: the channel modal's toggle, off so an
+  // owner on Beta stays there unless they ask to leave after a release.
+  pluginMoveToStableAfterRelease: toggle(false),
   pluginUpdateLastRunVersion: {
     default: () => null,
     normalize: normalizedVersion,

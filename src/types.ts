@@ -29,7 +29,7 @@ export type {
   OperationResult,
   PluginSettings,
   PrBuild,
-  PrBuildState,
+  ServedChannel,
   ProviderCategory,
   ProviderErrors,
   ProviderInfo,
