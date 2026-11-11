@@ -4,7 +4,7 @@
  * to drop those of a removed installation.
  */
 
-import type { FoundInstallation, Installation } from "../../api/contracts";
+import type { FoundInstallation, Installation, InstallationPreferences } from "../../api/contracts";
 import type { WowInstallation } from "../models";
 import type { StateStore } from "../storage/StateStore";
 import { NotFoundError, ValidationError } from "../errors";
@@ -93,6 +93,8 @@ export class InstallationService {
 
   #wire(i: WowInstallation): Installation {
     return {
+      autoUpdateEnabled: i.autoUpdateEnabled ?? true,
+      hidden: i.hidden ?? false,
       id: i.id,
       gameType: getGameTypeForClientType(i.clientType),
       path: i.location,
@@ -118,6 +120,11 @@ export class InstallationService {
     const list = this.store.installations;
     let changed = false;
     for (const i of list) {
+      if (i.autoUpdateEnabled === undefined || i.hidden === undefined) {
+        i.autoUpdateEnabled ??= true;
+        i.hidden ??= false;
+        changed = true;
+      }
       if (isLegacyAutoDisplayName(i.displayName, i.clientType)) {
         i.displayName = getClientTypeLabel(i.clientType);
         changed = true;
@@ -261,6 +268,22 @@ export class InstallationService {
     const fallback = installations[0]!;
     this.store.updateSettings({ selectedInstallationId: fallback.id });
     return fallback;
+  }
+
+  update(id: string, changes: InstallationPreferences): Installation {
+    const installation = this.require(id);
+    for (const key of ["autoUpdateEnabled", "hidden"] as const) {
+      if (changes[key] !== undefined && typeof changes[key] !== "boolean") throw new ValidationError(key + " must be a boolean");
+    }
+    if (changes.autoUpdateEnabled !== undefined) installation.autoUpdateEnabled = changes.autoUpdateEnabled;
+    if (changes.hidden !== undefined) installation.hidden = changes.hidden;
+    this.store.setInstallations(this.store.installations);
+    return this.#wire(installation);
+  }
+
+  /** Installations receiving automatic checks and updates. */
+  automatic(): WowInstallation[] {
+    return this.list().filter((i) => i.autoUpdateEnabled !== false && !i.hidden);
   }
 
   selectedId(): string | null {

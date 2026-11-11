@@ -77,7 +77,7 @@ export function register(server: JsonlServer, { service, catalogue, installation
     return { changelog };
   });
 
-  server.on("addons.updateSummary", async (params) => ({ installations: await updateCheck.updateSummary(params.refresh === true) }));
+  server.on("addons.updateSummary", async (params) => ({ installations: await updateCheck.updateSummary(params.refresh === true, params.manual === true) }));
 
   server.on("addons.rollback", async (params) => service.rollback(params.addonId));
 

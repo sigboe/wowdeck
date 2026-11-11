@@ -5,6 +5,8 @@ import type { HandlerDeps } from "./deps";
 import { getClientTypeForGameType } from "../../wow/utils/gametype";
 
 export function register(server: JsonlServer, { installationService, service, updateCheck, homeDir }: HandlerDeps): void {
+  server.on("installations.update", async (params) => ({ installation: installationService.update(params.installationId, params) }));
+
   server.on("installations.list", async () => ({ installations: installationService.listed() }));
 
   server.on("installations.detect", async () => {

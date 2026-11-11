@@ -1388,6 +1388,20 @@ describe("automatic updates (WF-02)", () => {
     expect(await f.service.autoUpdate(notRunning)).toBeNull();
   });
 
+  test("installation preferences exclude automatic candidates while manual updates still work", async () => {
+    const f = localFixture("auto-installation-preferences", catalog());
+    await f.service.install({ intent: "install", providerId: "WowUpHub", externalId: "810", installation: f.installation });
+    publish(f);
+    await f.service.refresh(f.installation);
+    f.store.updateSettings({ autoUpdate: true });
+    f.service.installations.update(f.installation.id, { autoUpdateEnabled: false });
+    expect(await f.service.autoUpdate(notRunning)).toBeNull();
+    f.service.installations.update(f.installation.id, { autoUpdateEnabled: true, hidden: true });
+    expect(await f.service.autoUpdate(notRunning)).toBeNull();
+    await f.service.updateAll(f.installation);
+    expect(f.store.addons.all().find(a => a.externalId === "810")!.installedVersion).toBe("2.0.0");
+  });
+
   test("on: updates every waiting addon except ignored ones and a rolled-back release", async () => {
     const f = localFixture("auto-on", catalog());
     const { addon: a } = await f.service.install({ intent: "install", providerId: "WowUpHub", externalId: "810", installation: f.installation });

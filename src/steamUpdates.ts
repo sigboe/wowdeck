@@ -42,7 +42,10 @@ export function checkNow(opts: { toast: boolean }): Promise<void> {
   patch({ checking: true });
   inFlight = (async () => {
     try {
-      const { installations } = await api.rpc("addons.updateSummary", { refresh: true });
+      const { installations } = await api.rpc("addons.updateSummary", {
+        refresh: true,
+        manual: opts.toast,
+      });
       patch({ summary: installations });
       if (opts.toast) {
         pluginToast("Checked for addon updates", updateSummaryText(installations));

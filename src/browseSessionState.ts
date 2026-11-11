@@ -170,11 +170,12 @@ export function popupOpening(): void {
 
 /**
  * A dropdown menu's own onMenuWillOpen: that menu hides the QAM window too,
- * so mark the hide as not a close, then show the menu. Valve's dropdown hands
- * the showing to the handler — the menu opens only when `showMenu` runs
- * (DEVICE 2026-10-20, GA-9: the picker and Installation menus) — so passing
- * `popupOpening` alone would leave the bar's menus shut and `popupOpen`
- * stuck true. Every dropdown in the browse UI goes through this.
+ * so mark the hide as not a close, then show the menu. Valve's dropdown runs
+ * `if (onMenuWillOpen(ShowMenu) == false) return; ShowMenu()` (DEVICE
+ * 2026-11-12, PR #211), so the menu opens unless the handler returns false.
+ * This still calls `showMenu`: on 2026-10-20 (GA-9) the menus stayed shut
+ * when the handler did not.
+ * Every dropdown in the browse UI goes through this.
  */
 export function showWithoutClosing(showMenu: () => void): void {
   popupOpening();

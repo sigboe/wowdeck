@@ -8,6 +8,8 @@ What's new in each version of WoWDeck Addon Manager. The format follows
 
 ### Added
 
+- Hide unused WoW installations from pickers and turn automatic checks and updates off per installation.
+
 - TradeSkillMaster shows auction prices for locally saved characters' realms, with account-wide follow management.
 - Install or uninstall both TradeSkillMaster addons beside auction refresh, with optional cleanup of eligible account follows.
 

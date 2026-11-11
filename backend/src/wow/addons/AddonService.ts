@@ -1352,7 +1352,7 @@ export class AddonService {
    */
   updateSummary(): { installationId: string; displayName: string; updates: number }[] {
     const out: { installationId: string; displayName: string; updates: number }[] = [];
-    for (const installation of this.installations.list()) {
+    for (const installation of this.installations.automatic()) {
       out.push({
         installationId: installation.id,
         displayName: installation.displayName,
@@ -1503,7 +1503,7 @@ export class AddonService {
 
   async #runAutoUpdate(detect: () => Promise<GameRunning>): Promise<AutoUpdateResult | null> {
     // A recovery-required installation is refused (its addons are not candidates).
-    const candidates = this.installations.list().filter((i) => !this.recovery.required(i.id)).flatMap((installation) =>
+    const candidates = this.installations.automatic().filter((i) => !this.recovery.required(i.id)).flatMap((installation) =>
       this.addonsFor(installation.id).filter((a) => updateStatus(a, this.registry).canAutoUpdate),
     );
     if (candidates.length === 0) {
@@ -1515,7 +1515,7 @@ export class AddonService {
     } else {
       for (const addon of candidates) {
         try {
-          const updated = await this.#updateIfStill(addon.id, (a) => updateStatus(a, this.registry).canAutoUpdate);
+          const updated = await this.#updateIfStill(addon.id, (a) => this.installations.automatic().some(i => i.id === a.installationId) && updateStatus(a, this.registry).canAutoUpdate);
           const operation = updated?.operation;
           if (operation?.status === "updated") {
             result.updated.push(addon.name);

@@ -82,8 +82,12 @@ export interface SteamGameLink {
   name: string;
 }
 
+export type InstallationPreferences = Partial<Pick<Installation, "autoUpdateEnabled" | "hidden">>;
+
 /** A World of Warcraft installation (one per game flavor). */
 export interface Installation {
+  autoUpdateEnabled: boolean;
+  hidden: boolean;
   id: string;
   gameType: GameType;
   /** Absolute path of the flavor root, e.g. .../World of Warcraft/_retail_ */
@@ -909,6 +913,10 @@ export interface MethodMap {
     params: Record<string, never>;
     result: { installations: Installation[] };
   };
+  "installations.update": {
+    params: { installationId: string } & InstallationPreferences;
+    result: { installation: Installation };
+  };
   "installations.select": {
     params: { installationId: string };
     result: { installation: Installation | null };
@@ -1272,7 +1280,7 @@ export interface MethodMap {
    * (like updateAll {allInstallations}); without it, the last known state.
    */
   "addons.updateSummary": {
-    params: { refresh?: boolean };
+    params: { refresh?: boolean; manual?: boolean };
     result: { installations: Array<{ installationId: string; displayName: string; updates: number }> };
   };
   "settings.set": {
