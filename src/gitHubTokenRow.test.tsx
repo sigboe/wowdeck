@@ -78,21 +78,26 @@ mock.module("@decky/ui", () => ({
   ),
   TextField: ({
     label,
+    description,
     value,
     onChange,
     type,
   }: {
     label?: ReactNode;
+    description?: ReactNode;
     value?: string;
     onChange?: (e: { target: { value: string } }) => void;
     type?: string;
   }) => (
-    <input
-      aria-label={String(label)}
-      type={type}
-      value={value}
-      onChange={(e) => onChange?.({ target: { value: e.target.value } })}
-    />
+    <label>
+      {description}
+      <input
+        aria-label={String(label)}
+        type={type}
+        value={value}
+        onChange={(e) => onChange?.({ target: { value: e.target.value } })}
+      />
+    </label>
   ),
   showModal: (element: ReactElement) => {
     modal = element;
@@ -217,22 +222,22 @@ describe("the GitHub row in Addon sources", () => {
 
   test("says it works without a token when none is saved", async () => {
     await startWith(null);
-    expect(gitHubRow().textContent).toContain("No token, works without one");
+    expect(gitHubRow().textContent).not.toContain("No token, works without one");
   });
 
-  test("says it uses your token when one is saved", async () => {
+  test("omits token help text when one is saved", async () => {
     await startWith("ghp_saved");
-    expect(gitHubRow().textContent).toContain("Using your token");
+    expect(gitHubRow().textContent).not.toContain("Using your token");
   });
 });
 
 describe("the GitHub token modal", () => {
-  test("has a password field and Save, and no Clear token without a token", async () => {
+  test("has a password field and Save, and no Remove token without a token", async () => {
     await startWith(null);
     await openModal();
     expect(doc.querySelector<HTMLInputElement>("#modal input")!.type).toBe("password");
     expect(inModal("Save")).not.toBeNull();
-    expect(inModal("Clear token")).toBeNull();
+    expect(inModal("Remove token")).toBeNull();
   });
 
   test("checks the token before saving it, then updates the row", async () => {
@@ -248,7 +253,7 @@ describe("the GitHub token modal", () => {
     });
     expect(storedToken).toBe("ghp_new");
     expect(modalClosed).toBe(true);
-    expect(gitHubRow().textContent).toContain("Using your token");
+    expect(gitHubRow().textContent).not.toContain("Using your token");
   });
 
   test("does not save a token GitHub rejects and says why in the modal", async () => {
@@ -263,7 +268,7 @@ describe("the GitHub token modal", () => {
     expect(doc.getElementById("modal")!.textContent).toContain("Bad credentials");
     // The token stays in the field to correct or try again.
     expect(doc.querySelector<HTMLInputElement>("#modal input")!.value).toBe("ghp_bad");
-    expect(gitHubRow().textContent).toContain("No token, works without one");
+    expect(gitHubRow().textContent).not.toContain("No token, works without one");
   });
 
   test("Save stays disabled until a token is typed", async () => {
@@ -274,13 +279,13 @@ describe("the GitHub token modal", () => {
     expect(inModal("Save")!.disabled).toBe(false);
   });
 
-  test("offers Clear token when one is saved, and clearing updates the row", async () => {
+  test("offers Remove token when one is saved, and clearing updates the row", async () => {
     await startWith("ghp_saved");
     await openModal();
-    await act(async () => inModal("Clear token")!.click());
+    await act(async () => inModal("Remove token")!.click());
     expect(storedToken).toBeNull();
     expect(modalClosed).toBe(true);
-    expect(gitHubRow().textContent).toContain("No token, works without one");
+    expect(gitHubRow().textContent).not.toContain("No token, works without one");
   });
 });
 

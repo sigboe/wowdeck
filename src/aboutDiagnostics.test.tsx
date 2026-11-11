@@ -62,11 +62,13 @@ mock.module("@decky/ui", () => ({
   // A focusable Field is a Steam navigation node that takes focus.
   Field: ({
     label,
+    description,
     focusable,
     onClick,
     children,
   }: {
     label?: ReactNode;
+    description?: ReactNode;
     focusable?: boolean;
     onClick?: () => void;
     children?: ReactNode;
@@ -77,6 +79,8 @@ mock.module("@decky/ui", () => ({
       aria-label={String(label)}
       onClick={onClick}
     >
+      {label}
+      {description}
       {children}
     </div>
   ),
@@ -169,14 +173,18 @@ describe("Options › About › Diagnostics (#209)", () => {
     const shown = await openDiagnostics();
     expect(calls).toEqual(["system.diagnostics"]);
     expect(shown.querySelector("h2")!.textContent).toBe("Diagnostics");
-    expect(shown.textContent).toContain(diagnosticsText(diagnostics));
+    expect(shown.textContent).toContain("WoWDeck version");
+    expect(shown.textContent).toContain(diagnostics.pluginVersion!);
+    expect(shown.querySelector("pre")).toBeNull();
     // The copyable text never carries local paths (diagnostics.ts allowlist).
     expect(shown.textContent).not.toContain("/home/deck");
   });
 
   test("Copy puts the diagnostics text on the clipboard and says so", async () => {
     const shown = await openDiagnostics();
-    const copy = [...shown.querySelectorAll("button")].find((b) => b.textContent === "Copy")!;
+    const copy = [...shown.querySelectorAll("button")].find(
+      (b) => b.textContent === "Copy diagnostics",
+    )!;
     await act(async () => copy.click());
     expect(copied).toBe(diagnosticsText(diagnostics));
     expect(toasts).toEqual(["Diagnostics copied"]);

@@ -1498,6 +1498,19 @@ keep the component for layout only. One-line texts take no period (C03).
 
 ## 6. Focus, controller navigation, modals and forms
 
+Options update navigation, owner decision from PR #210 review: Right from the
+rightmost control of any Options row moves to the floating Update button.
+Left returns to the originating control and restores the list's scroll offset.
+A row's own horizontal controls take precedence. When Update is absent or
+disabled, Right keeps its normal behavior. `updatePanelNavigation.ts` handles
+this through the Options group's direction handler and the Update button's
+return handler. Controller behavior remains unverified on hardware.
+
+Modal-opening rows use `Field verticalAlignment="center"` and
+`childrenContainerWidth="min"`. Steam centers the chevron against the whole
+row while keeping the text column wide. This follows the owner's PR #210
+review decision; visual alignment remains unverified on hardware.
+
 ### 6.1 Facts about `Focusable` (installed `@decky/ui` 4.12.1, OFFICIAL types)
 
 - `flow-children?: string` — maps to SteamUI's layout enum

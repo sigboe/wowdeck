@@ -44,6 +44,8 @@ export function SteamLibrarySection() {
       </SettingsRow>
       <SettingsRow id="steamGame">
         <Field
+          verticalAlignment="center"
+          childrenContainerWidth="min"
           focusable
           label="World of Warcraft in Steam"
           description={

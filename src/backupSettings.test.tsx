@@ -6,9 +6,8 @@ import { createRoot, type Root } from "react-dom/client";
 import { deckyUiStub } from "./deckyUiStub";
 
 /**
- * Options → Settings backup (#204): Back up now keeps the action on the page
- * and its ⋯ opens Backup settings (folder, default folder, safety backups to
- * keep). Rendered with the real FocusRows and focus memory.
+ * Options opens WoW Settings Backup; creation and settings share the modal.
+ * Rendered with the real FocusRows and focus memory.
  */
 
 let pickResult: { path: string } | "cancel" = "cancel";
@@ -211,8 +210,8 @@ const section = () => doc.getElementById("root")!;
 const modal = () => doc.getElementById("modal")!;
 const buttonNamed = (scope: Element, name: string) =>
   [...scope.querySelectorAll("button")].find((b) => b.textContent === name) ?? null;
-const backUpButton = () => buttonNamed(section(), "Back up") ?? buttonNamed(section(), "Cancel");
-const backupSettingsButton = () => buttonNamed(section(), "Backup settings");
+const backUpButton = () => row(modal(), "Back up now") as HTMLElement | null;
+const backupSettingsButton = () => row(section(), "WoW Settings Backup") as HTMLElement | null;
 const row = (scope: Element, label: string) => scope.querySelector(`[aria-label="${label}"]`);
 
 beforeAll(() => {
@@ -245,13 +244,11 @@ afterEach(async () => {
 });
 
 describe("Back up now row", () => {
-  test("shows its status with a Back up button and a ⋯ named Backup settings", () => {
-    const backUpRow = row(section(), "Back up now")!;
+  test("opens a single backup entry without a backup button on Options", () => {
+    const backUpRow = row(section(), "WoW Settings Backup")!;
     expect(backUpRow.textContent).toContain("No backups yet.");
-    // A row that only holds its two buttons: no nested focusables.
-    expect(backUpRow.classList.contains("Focusable")).toBe(false);
-    expect(backUpRow.contains(backUpButton())).toBe(true);
-    expect(backUpRow.contains(backupSettingsButton())).toBe(true);
+    expect(backUpRow.classList.contains("Focusable")).toBe(true);
+    expect(buttonNamed(section(), "Back up")).toBeNull();
   });
 
   test("the set-once settings are no longer rows on the page", () => {
@@ -261,6 +258,7 @@ describe("Back up now row", () => {
   });
 
   test("Back up starts a backup of the active installation", async () => {
+    await openSettings();
     await act(async () => backUpButton()!.click());
     expect(calls).toEqual(["create:retail"]);
   });
@@ -272,8 +270,9 @@ describe("Back up now row", () => {
         job: { installationId: "retail", jobId: "j1", kind: "backup" },
       }),
     );
+    await openSettings();
     const button = backUpButton()!;
-    expect(button.textContent).toBe("Cancel");
+    expect(button.textContent).toContain("Cancel");
     await act(async () => button.click());
     expect(calls).toEqual(["cancel"]);
   });
@@ -287,7 +286,7 @@ describe("Backup settings modal", () => {
   test("holds Backup folder, Use default folder and Safety backups to keep", async () => {
     await openSettings();
     expect(row(modal(), "Backup folder")!.textContent).toContain("/run/media/sd/wtf");
-    expect(buttonNamed(modal(), "Use default folder")).not.toBeNull();
+    expect(row(modal(), "Use default folder") as HTMLElement | null).not.toBeNull();
     expect(modal().querySelector('select[aria-label="Safety backups to keep"]')).not.toBeNull();
   });
 
@@ -315,7 +314,9 @@ describe("Backup settings modal", () => {
     await openSettings();
     const expectLocked = () => {
       expect(row(modal(), "Backup folder")!.getAttribute("data-disabled")).toBe("true");
-      expect(buttonNamed(modal(), "Use default folder")!.disabled).toBe(true);
+      expect(
+        (row(modal(), "Use default folder") as HTMLElement | null)!.getAttribute("data-disabled"),
+      ).toBe("true");
       expect(
         (modal().querySelector('select[aria-label="Safety backups to keep"]') as HTMLSelectElement)
           .disabled,
@@ -331,20 +332,20 @@ describe("Backup settings modal", () => {
 
   test("Use default folder hides itself once saved and hands focus to Backup folder (#132)", async () => {
     await openSettings();
-    const button = buttonNamed(modal(), "Use default folder")!;
+    const button = (row(modal(), "Use default folder") as HTMLElement | null)!;
     button.focus();
     await act(async () => button.click());
-    expect(buttonNamed(modal(), "Use default folder")).toBeNull();
+    expect(row(modal(), "Use default folder") as HTMLElement | null).toBeNull();
     expect(doc.activeElement).toBe(row(modal(), "Backup folder"));
   });
 
   test("a Use default folder save that failed keeps the button and focus on it", async () => {
     saveOutcome = "failed";
     await openSettings();
-    const button = buttonNamed(modal(), "Use default folder")!;
+    const button = (row(modal(), "Use default folder") as HTMLElement | null)!;
     button.focus();
     await act(async () => button.click());
-    expect(buttonNamed(modal(), "Use default folder")).toBe(button);
+    expect(row(modal(), "Use default folder") as HTMLElement | null).toBe(button);
     expect(doc.activeElement).toBe(button);
   });
 });
@@ -355,7 +356,7 @@ describe("focus return", () => {
     (doc.activeElement as HTMLElement | null)?.blur();
     await closeSettings();
     expect(modalCloses).toBe(1);
-    expect(row(section(), "Back up now")!.contains(doc.activeElement)).toBe(true);
+    expect(row(section(), "WoW Settings Backup")!.contains(doc.activeElement)).toBe(true);
   });
 
   test("also when Options remounts while the modal is open", async () => {
@@ -364,6 +365,6 @@ describe("focus return", () => {
     await closeSettings();
     await renderSection();
     restoreFocus(QAM_VIEW.settings);
-    expect(row(section(), "Back up now")!.contains(doc.activeElement)).toBe(true);
+    expect(row(section(), "WoW Settings Backup")!.contains(doc.activeElement)).toBe(true);
   });
 });

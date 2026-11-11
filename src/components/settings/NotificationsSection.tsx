@@ -61,6 +61,8 @@ export function NotificationsSection({
           scrolling doesn't skip it; `>` only while it offers the install. */}
       <SettingsRow id="updatesInsideWow">
         <Field
+          verticalAlignment="center"
+          childrenContainerWidth="min"
           focusable
           label="Updates inside WoW"
           description={

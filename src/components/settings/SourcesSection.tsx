@@ -141,6 +141,8 @@ export function SourcesSection({
               >
                 {curseRow === "keyRow" ? (
                   <Field
+                    verticalAlignment="center"
+                    childrenContainerWidth="min"
                     focusable
                     label={providerLabel(p.id)}
                     description={<span style={descriptionStyle}>Needs an API key</span>}

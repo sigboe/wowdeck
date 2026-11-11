@@ -128,6 +128,8 @@ export function InstallationsSection({ installations, selectedId, onChanged }: P
         style={jump !== null ? { animationDelay: `${jump - Date.now()}ms` } : undefined}
       >
         <Field
+          verticalAlignment="center"
+          childrenContainerWidth="min"
           focusable
           label="Find WoW installations"
           description={
@@ -141,6 +143,8 @@ export function InstallationsSection({ installations, selectedId, onChanged }: P
       {/* The manual way, next to the automatic one: the picker opens at once. */}
       <SettingsRow id="addWowFolder">
         <Field
+          verticalAlignment="center"
+          childrenContainerWidth="min"
           focusable
           label="Add WoW folder"
           description={

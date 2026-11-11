@@ -76,6 +76,8 @@ export function AboutSection() {
       {rows.map((row) => (
         <SettingsRow key={row.id} id={row.id}>
           <Field
+            verticalAlignment="center"
+            childrenContainerWidth="min"
             focusable
             label={row.label}
             description={<span style={descriptionStyle}>{row.description}</span>}

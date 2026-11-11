@@ -1,3 +1,4 @@
+import { DialogControlsSection, Field } from "@decky/ui";
 import * as api from "../../services/backend";
 import { copyText } from "../../services/clipboard";
 import { pluginToast, toastError } from "../../toast";
@@ -34,10 +35,45 @@ export async function openDiagnosticsModal(title: string): Promise<void> {
     }
   };
 
-  openAboutModal(
-    title,
-    () => <pre style={{ whiteSpace: "pre-wrap", wordBreak: "break-all", margin: 0 }}>{text}</pre>,
-    "direct",
-    [{ label: "Copy", onClick: () => void copy() }],
+  openAboutModal(title, () => <DiagnosticsRows text={text} />, "focus", [
+    { label: "Copy diagnostics", onClick: () => void copy() },
+  ]);
+}
+
+/** Render only the same safe allowlist as the copyable support report. */
+export function DiagnosticsRows({ text }: { text: string }) {
+  const labels: Record<string, string> = {
+    tradeSkillMaster: "TradeSkillMaster",
+    backendVersion: "Backend version",
+    deckyVersion: "Decky version",
+    pluginVersion: "WoWDeck version",
+    platform: "Platform",
+    installations: "WoW installations",
+    providers: "Addon sources",
+    recentErrors: "Recent errors",
+    curseForgeAuth: "CurseForge access",
+    githubTokenConfigured: "GitHub token saved",
+  };
+  const format = (value: unknown): string => {
+    if (value === null || value === undefined) return "Not available";
+    if (typeof value === "boolean") return value ? "Yes" : "No";
+    if (Array.isArray(value)) return value.length ? value.map(format).join("; ") : "None";
+    if (typeof value === "object")
+      return Object.entries(value)
+        .map(([key, item]) => `${key.replace(/([a-z])([A-Z])/g, "$1 $2")}: ${format(item)}`)
+        .join(" · ");
+    return String(value);
+  };
+  return (
+    <DialogControlsSection>
+      {Object.entries(JSON.parse(text) as Record<string, unknown>).map(([key, value]) => (
+        <Field
+          key={key}
+          focusable
+          label={labels[key] ?? key}
+          description={<span style={{ overflowWrap: "anywhere" }}>{format(value)}</span>}
+        />
+      ))}
+    </DialogControlsSection>
   );
 }

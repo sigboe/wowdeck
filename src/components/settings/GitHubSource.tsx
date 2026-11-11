@@ -1,6 +1,7 @@
 import { useState, useSyncExternalStore } from "react";
 import {
   DialogBody,
+  DialogBodyText,
   DialogButton,
   DialogControlsSection,
   DialogFooter,
@@ -13,13 +14,14 @@ import {
 } from "@decky/ui";
 import { FaChevronRight } from "react-icons/fa";
 import * as api from "../../services/backend";
-import { STEAM, descriptionStyle } from "../../steamTheme";
+import { STEAM } from "../../steamTheme";
 import { wowupModalStyleCss } from "../../sharedStyles";
 import { pluginToast } from "../../toast";
 import { errorText } from "../../errors";
 import { settingsStore } from "../../settings";
 import { rememberFocus } from "../../focusMemory";
 import { PROVIDER_ID } from "../../../backend/src/api/providers";
+import { ScrollBuffer } from "../ScrollBuffer";
 import { PASSWORD_INPUT_PROPS, SettingsRow, VIEW } from "./common";
 
 /** The GitHub row's focus-memory key in Options. */
@@ -35,17 +37,13 @@ const useTokenSaved = () =>
  * It works without a token; a token only raises GitHub's rate limit.
  */
 export function GitHubSourceRow() {
-  const saved = useTokenSaved();
   return (
     <SettingsRow id={GITHUB_ROW}>
       <Field
+        verticalAlignment="center"
+        childrenContainerWidth="min"
         focusable
         label="GitHub"
-        description={
-          <span style={descriptionStyle}>
-            {saved ? "Using your token" : "No token, works without one"}
-          </span>
-        }
         onClick={() => {
           // The modal unmounts the panel (guide G4); Options comes back to this row (S21).
           rememberFocus(VIEW, GITHUB_ROW);
@@ -113,28 +111,27 @@ function GitHubTokenModal({ closeModal }: { closeModal?: () => void }) {
       <DialogHeader>{TITLE}</DialogHeader>
       <DialogBody>
         <style>{wowupModalStyleCss()}</style>
-        <DialogControlsSection>
-          <Field
-            focusable
-            label={saved ? "A token is saved (hidden)" : "No token saved"}
-            description={
-              <span style={descriptionStyle}>
-                A personal access token raises GitHub's rate limit. Public addons install without
-                one.
-              </span>
-            }
-          />
-          <TextField
-            label={saved ? "New personal access token" : "Personal access token"}
-            value={token}
-            onChange={(e) => setToken(e.target.value)}
-            bIsPassword
-            {...PASSWORD_INPUT_PROPS}
-          />
-          {error && (
-            <Field focusable label={<span style={{ color: STEAM.danger }}>{error}</span>} />
-          )}
-        </DialogControlsSection>
+        <ScrollBuffer>
+          <DialogBodyText>
+            A personal access token raises GitHub's rate limit. Public addons install without one.
+          </DialogBodyText>
+          <DialogControlsSection>
+            <TextField
+              label={saved ? "New personal access token" : "Personal access token"}
+              description={
+                <>
+                  {saved ? "A token is saved. Enter a new token to replace it." : "No token saved."}
+                  {error && <span style={{ display: "block", color: STEAM.danger }}>{error}</span>}
+                </>
+              }
+              disabled={busy}
+              value={token}
+              onChange={(e) => setToken(e.target.value)}
+              bIsPassword
+              {...PASSWORD_INPUT_PROPS}
+            />
+          </DialogControlsSection>
+        </ScrollBuffer>
       </DialogBody>
       <DialogFooter>
         <DialogButton disabled={busy || !token.trim()} onClick={() => void save()}>
@@ -143,9 +140,10 @@ function GitHubTokenModal({ closeModal }: { closeModal?: () => void }) {
         </DialogButton>
         {saved && (
           <DialogButton disabled={busy} onClick={() => void clear()}>
-            Clear token
+            Remove token
           </DialogButton>
         )}
+        <DialogButton onClick={close}>Cancel</DialogButton>
       </DialogFooter>
     </ModalRoot>
   );

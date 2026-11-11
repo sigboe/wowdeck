@@ -27,6 +27,8 @@ export function AddonListSection({ installations, selectedId, onChanged }: Props
     <PanelSection title="Addon list">
       <SettingsRow id="export">
         <Field
+          verticalAlignment="center"
+          childrenContainerWidth="min"
           focusable={installations.length > 0}
           disabled={installations.length === 0}
           label="Export addon list"
@@ -38,6 +40,8 @@ export function AddonListSection({ installations, selectedId, onChanged }: Props
       </SettingsRow>
       <SettingsRow id="import">
         <Field
+          verticalAlignment="center"
+          childrenContainerWidth="min"
           focusable={installations.length > 0}
           disabled={installations.length === 0}
           label="Import addon list"

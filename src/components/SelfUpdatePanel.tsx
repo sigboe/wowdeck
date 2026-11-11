@@ -1,5 +1,7 @@
 import { useSyncExternalStore } from "react";
 import { DialogButton, Field } from "@decky/ui";
+import { registerFocusElement } from "../focusMemory";
+import { updateReturnDirection } from "../updatePanelNavigation";
 import { QAM_VIEW } from "../qamState";
 import {
   isOffChannel,
@@ -53,9 +55,30 @@ export function SelfUpdatePanel() {
   return (
     <div style={{ padding: "0 16px 8px" }}>
       <FocusRow view={QAM_VIEW.settings} id="selfUpdate">
-        <Field label={offer.headline} bottomSeparator="none">
+        <div
+          ref={(el) =>
+            registerFocusElement(
+              QAM_VIEW.settings,
+              "selfUpdateAction",
+              staging || checking ? null : el,
+              true,
+            )
+          }
+          style={{ display: "flex", alignItems: "center", gap: "12px" }}
+        >
+          <div style={{ flex: "1 1 0", minWidth: 0, overflowWrap: "normal", wordBreak: "normal" }}>
+            {offer.headline}
+          </div>
           <DialogButton
-            style={{ position: "relative", minWidth: 0, width: "auto", padding: "8px 16px" }}
+            style={{
+              position: "relative",
+              minWidth: 0,
+              width: "auto",
+              flexShrink: 0,
+              whiteSpace: "nowrap",
+              padding: "8px 16px",
+            }}
+            onGamepadDirection={updateReturnDirection}
             disabled={staging || checking}
             onClick={() => void selfUpdateStore.runUpdate()}
             {...(!test && {
@@ -69,10 +92,10 @@ export function SelfUpdatePanel() {
                 : undefined
             }
           >
-            {checking ? "Checking…" : offer.buttonLabel}
+            {checking ? "Checking…" : "Update"}
             <UpdateDot color={pluginUpdateDot(info)} />
           </DialogButton>
-        </Field>
+        </div>
       </FocusRow>
     </div>
   );

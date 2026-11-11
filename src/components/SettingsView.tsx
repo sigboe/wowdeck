@@ -1,3 +1,5 @@
+import { Focusable } from "@decky/ui";
+import { optionsUpdateDirection } from "../updatePanelNavigation";
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import type { CurseForgeAuthStatus, Installation } from "../types";
 import * as api from "../services/backend";
@@ -76,7 +78,7 @@ export function SettingsView({ installations, selectedId, onChanged, restoreRows
   // Steam settings rows (guide S14, S19): one row per setting, label plus one
   // short description, the control on the right; long text lives in descriptions.
   return (
-    <>
+    <Focusable onGamepadDirection={optionsUpdateDirection}>
       <InstallationsSection
         installations={installations}
         selectedId={selectedId}
@@ -105,6 +107,6 @@ export function SettingsView({ installations, selectedId, onChanged, restoreRows
         onChanged={onChanged}
       />
       <AboutSection />
-    </>
+    </Focusable>
   );
 }

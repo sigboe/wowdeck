@@ -100,6 +100,8 @@ export function UpdatesSection() {
       </SettingsRow>
       <SettingsRow id="previousVersions">
         <Field
+          verticalAlignment="center"
+          childrenContainerWidth="min"
           focusable
           label="Previous versions"
           description={
@@ -118,6 +120,8 @@ export function UpdatesSection() {
       </SettingsRow>
       <SettingsRow id="wowdeckUpdate">
         <Field
+          verticalAlignment="center"
+          childrenContainerWidth="min"
           label={wowdeckRow.label}
           description={
             checking || wowdeckRow.description ? (
