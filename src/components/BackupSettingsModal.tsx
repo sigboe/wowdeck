@@ -96,7 +96,7 @@ export function BackupSettingsModal({
   };
 
   const line = (text: string, color: string = STEAM.textMuted) => (
-    <div style={{ ...descriptionStyle, color, paddingTop: "8px" }}>{text}</div>
+    <Field focusable label={<span style={{ color }}>{text}</span>} />
   );
 
   return (
@@ -137,11 +137,13 @@ export function BackupSettingsModal({
               />
             )}
             {job && (
-              <QamProgressBar
-                indeterminate={jobPercent(job) === null}
-                nProgress={jobPercent(job) ?? undefined}
-                sOperationText={jobProgressText(job)}
-              />
+              <Field focusable label="Backup progress" childrenLayout="below">
+                <QamProgressBar
+                  indeterminate={jobPercent(job) === null}
+                  nProgress={jobPercent(job) ?? undefined}
+                  sOperationText={jobProgressText(job)}
+                />
+              </Field>
             )}
             {outcome && <Field focusable label={outcome.text} />}
             {installation && op.errors[installation.id] && (

@@ -1506,10 +1506,25 @@ disabled, Right keeps its normal behavior. `updatePanelNavigation.ts` handles
 this through the Options group's direction handler and the Update button's
 return handler. Controller behavior remains unverified on hardware.
 
-Modal-opening rows use `Field verticalAlignment="center"` and
-`childrenContainerWidth="min"`. Steam centers the chevron against the whole
-row while keeping the text column wide. This follows the owner's PR #210
-review decision; visual alignment remains unverified on hardware.
+Modal-opening rows use `RowChevron` inside a native `Field`. Its width stays
+in the right control column. The glyph is positioned against the whole row,
+so a wrapped description does not push it above center. Steam's normal right
+inset stays in effect. `verticalAlignment="center"` and
+`childrenContainerWidth="min"` are already Field defaults; the former aligns
+the label, not the right column. Setting them explicitly does not fix this.
+
+Local Chromium measurement on 2026-11-12, using the captured Steam Field DOM
+and both `library.css` and `sp.css`, reproduced a 20 px center error with the
+bare icon. Rendering `RowChevron` reduced it to 0 px, with the right inset
+unchanged. This is a local stylesheet check, not a device result. The normal
+component tests replace Steam controls and cannot verify this geometry.
+
+Footer actions need `DialogTwoColLayout _DialogColLayout` around their
+`Focusable flow-children="row"` group when there are two buttons. Direct
+children of `DialogFooter` do not get the two-column layout. The same local
+check measured a 28 px gap after adding the wrapper. Inside the dialog body,
+actions are whole-row Fields and inputs use TextRow. Backup status and
+progress also sit in native Fields, so they keep the same row insets.
 
 ### 6.1 Facts about `Focusable` (installed `@decky/ui` 4.12.1, OFFICIAL types)
 

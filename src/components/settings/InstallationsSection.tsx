@@ -1,6 +1,7 @@
+import { RowChevron } from "../RowChevron";
 import { useEffect, useSyncExternalStore } from "react";
 import { Field, PanelSection, PanelSectionRow } from "@decky/ui";
-import { FaChevronRight, FaSearchLocation } from "react-icons/fa";
+import { FaSearchLocation } from "react-icons/fa";
 import type { Installation } from "../../types";
 import * as api from "../../services/backend";
 import { descriptionStyle } from "../../steamTheme";
@@ -128,8 +129,6 @@ export function InstallationsSection({ installations, selectedId, onChanged }: P
         style={jump !== null ? { animationDelay: `${jump - Date.now()}ms` } : undefined}
       >
         <Field
-          verticalAlignment="center"
-          childrenContainerWidth="min"
           focusable
           label="Find WoW installations"
           description={
@@ -143,8 +142,6 @@ export function InstallationsSection({ installations, selectedId, onChanged }: P
       {/* The manual way, next to the automatic one: the picker opens at once. */}
       <SettingsRow id="addWowFolder">
         <Field
-          verticalAlignment="center"
-          childrenContainerWidth="min"
           focusable
           label="Add WoW folder"
           description={
@@ -155,7 +152,7 @@ export function InstallationsSection({ installations, selectedId, onChanged }: P
           onClick={() => void runAddWowFolder(VIEW, "addWowFolder", installations, onChanged)}
           onOKActionDescription="Choose folder"
         >
-          <FaChevronRight />
+          <RowChevron />
         </Field>
       </SettingsRow>
     </PanelSection>

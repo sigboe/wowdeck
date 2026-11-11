@@ -41,12 +41,14 @@ mock.module("@decky/ui", () => ({
   // A focusable Field is a Steam navigation node that takes focus.
   Field: ({
     label,
+    disabled,
     description,
     focusable,
     onClick,
     children,
   }: {
     label?: ReactNode;
+    disabled?: boolean;
     description?: ReactNode;
     focusable?: boolean;
     onClick?: () => void;
@@ -57,7 +59,8 @@ mock.module("@decky/ui", () => ({
       tabIndex={focusable ? -1 : undefined}
       role={focusable ? "button" : undefined}
       aria-label={String(label)}
-      onClick={onClick}
+      onClick={disabled ? undefined : onClick}
+      data-disabled={disabled ? "true" : undefined}
     >
       <i>{description}</i>
       {children}
@@ -219,10 +222,7 @@ const openModal = async () => {
   await act(async () => modal!.render(modals[0]));
 };
 const inModal = (label: string) => doc.querySelector<HTMLElement>(`#modal [aria-label="${label}"]`);
-const clearButton = () =>
-  [...doc.querySelectorAll<HTMLButtonElement>("#modal button")].find(
-    (b) => b.textContent === "Clear",
-  ) ?? null;
+const clearButton = () => inModal("Clear previous versions");
 
 describe("Previous versions row (#207)", () => {
   test("one row sums up retention and space; the two old rows are gone", () => {
@@ -244,7 +244,7 @@ describe("Previous versions row (#207)", () => {
     const toggle = inModal("Keep previous versions") as HTMLInputElement;
     expect(toggle.checked).toBe(true);
     expect(inModal("Space used")?.textContent).toContain("12 MB for 4 addons");
-    expect(clearButton()?.disabled).toBe(false);
+    expect(clearButton()?.getAttribute("data-disabled")).toBeNull();
   });
 
   test("turning retention off saves the setting and the row says so on return", async () => {
@@ -265,7 +265,7 @@ describe("Previous versions row (#207)", () => {
     expect(calls).toContain("rollback.clear");
     expect(toasts).toEqual(["Previous versions cleared"]);
     expect(inModal("Space used")?.textContent).toContain("None kept");
-    expect(clearButton()?.disabled).toBe(true);
+    expect(clearButton()?.getAttribute("data-disabled")).toBe("true");
     await closeModal();
     await openPanel();
     expect(summary()).toBe("On · None kept");
@@ -276,18 +276,16 @@ describe("Previous versions row (#207)", () => {
     await closePanel();
     await openPanel();
     await openModal();
-    expect(clearButton()?.disabled).toBe(true);
+    expect(clearButton()?.getAttribute("data-disabled")).toBe("true");
   });
 
   test("a failed usage load shows an error and can be retried", async () => {
     statusFails = true;
     await openModal();
     expect(doc.getElementById("modal")!.textContent).toContain("Couldn't load previous versions");
-    expect(clearButton()?.disabled).toBe(true);
+    expect(clearButton()?.getAttribute("data-disabled")).toBe("true");
     statusFails = false;
-    const retry = [...doc.querySelectorAll<HTMLButtonElement>("#modal button")].find(
-      (b) => b.textContent === "Try again",
-    )!;
+    const retry = inModal("Try again")!;
     await act(async () => retry.click());
     expect(inModal("Space used")?.textContent).toContain("12 MB for 4 addons");
   });
@@ -311,7 +309,7 @@ describe("Previous versions row (#207)", () => {
     expect(doc.getElementById("modal")!.textContent).not.toContain(
       "Couldn't load previous versions",
     );
-    expect(clearButton()?.disabled).toBe(false);
+    expect(clearButton()?.getAttribute("data-disabled")).toBeNull();
   });
 
   test("closing the modal puts focus back on Previous versions", async () => {

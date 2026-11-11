@@ -3,6 +3,7 @@ import {
   DialogBody,
   DialogButton,
   DialogControlsSection,
+  DialogFooter,
   DialogHeader,
   Field,
   ModalRoot,
@@ -12,6 +13,7 @@ import {
 import * as api from "../services/backend";
 import { settingsStore } from "../settings";
 import { createStore } from "../store";
+import { ScrollBuffer } from "./ScrollBuffer";
 import { descriptionStyle } from "../steamTheme";
 import { wowupModalStyleCss } from "../sharedStyles";
 import { pluginToast, toastError } from "../toast";
@@ -86,42 +88,51 @@ export function PreviousVersionsModal({ closeModal }: { closeModal?: () => void 
       <DialogHeader>{TITLE}</DialogHeader>
       <DialogBody>
         <style>{wowupModalStyleCss()}</style>
-        <DialogControlsSection>
-          <ToggleField
-            label="Keep previous versions"
-            description={
-              <span style={descriptionStyle}>
-                After an update, an addon's Options menu can roll it back
-              </span>
-            }
-            checked={settings.keepPreviousVersions}
-            onChange={(on) => void settingsStore.save({ keepPreviousVersions: on })}
-          />
-          <Field
-            label="Space used"
-            description={
-              <span style={descriptionStyle}>
-                {error
-                  ? "Couldn't load previous versions"
-                  : usage
-                    ? previousVersionsUsageLine(usage)
-                    : "…"}
-              </span>
-            }
-          >
-            <DialogButton
-              style={{ minWidth: 0, width: "auto", padding: "8px 16px" }}
+        <ScrollBuffer>
+          <DialogControlsSection>
+            <ToggleField
+              label="Keep previous versions"
+              description={
+                <span style={descriptionStyle}>
+                  After an update, an addon's Options menu can roll it back
+                </span>
+              }
+              checked={settings.keepPreviousVersions}
+              onChange={(on) => void settingsStore.save({ keepPreviousVersions: on })}
+            />
+            <Field
+              label="Space used"
+              description={
+                <span style={descriptionStyle}>
+                  {error
+                    ? "Couldn't load previous versions"
+                    : usage
+                      ? previousVersionsUsageLine(usage)
+                      : "…"}
+                </span>
+              }
+            />
+            <Field
+              focusable
+              label={clearing ? "Clearing previous versions…" : "Clear previous versions"}
               disabled={clearing || !usage?.count}
-              onClick={() => void clearPreviousVersions()}
-            >
-              Clear
-            </DialogButton>
-          </Field>
-          {error && (
-            <DialogButton onClick={() => void loadPreviousVersionsUsage()}>Try again</DialogButton>
-          )}
-        </DialogControlsSection>
+              onClick={() => !clearing && !!usage?.count && void clearPreviousVersions()}
+              onOKActionDescription="Clear"
+            />
+            {error && (
+              <Field
+                focusable
+                label="Try again"
+                onClick={() => void loadPreviousVersionsUsage()}
+                onOKActionDescription="Retry"
+              />
+            )}
+          </DialogControlsSection>
+        </ScrollBuffer>
       </DialogBody>
+      <DialogFooter>
+        <DialogButton onClick={closeModal}>Close</DialogButton>
+      </DialogFooter>
     </ModalRoot>
   );
 }

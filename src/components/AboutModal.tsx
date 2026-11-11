@@ -85,21 +85,26 @@ function AboutModal({
         )}
       </DialogBody>
       <DialogFooter>
-        {actions.map((action) => (
+        <Focusable
+          flow-children="row"
+          className={actions.length ? "DialogTwoColLayout _DialogColLayout" : undefined}
+        >
+          {actions.map((action) => (
+            <DialogButton
+              key={action.label}
+              onClick={action.onClick}
+              onGamepadDirection={direct ? onGamepadDirection : undefined}
+            >
+              {action.label}
+            </DialogButton>
+          ))}
           <DialogButton
-            key={action.label}
-            onClick={action.onClick}
+            onClick={closeModal}
             onGamepadDirection={direct ? onGamepadDirection : undefined}
           >
-            {action.label}
+            Close
           </DialogButton>
-        ))}
-        <DialogButton
-          onClick={closeModal}
-          onGamepadDirection={direct ? onGamepadDirection : undefined}
-        >
-          Close
-        </DialogButton>
+        </Focusable>
       </DialogFooter>
     </ModalRoot>
   );

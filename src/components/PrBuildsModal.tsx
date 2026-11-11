@@ -1,14 +1,19 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   DialogBody,
+  DialogBodyText,
   DialogButton,
   DialogControlsSection,
+  DialogControlsSectionHeader,
+  DialogFooter,
   DialogHeader,
   Field,
+  Focusable,
   ModalRoot,
   ProgressBarWithInfo,
   showModal,
 } from "@decky/ui";
+import { ScrollBuffer } from "./ScrollBuffer";
 import { STEAM, descriptionStyle } from "../steamTheme";
 import { wowupModalStyleCss } from "../sharedStyles";
 import { loadPrBuilds, prBuildConfirmation, prBuildRow } from "../prBuilds";
@@ -107,50 +112,57 @@ export function PrBuildsModal({
       closeModal={closeModal}
     >
       <DialogHeader>{TITLE}</DialogHeader>
-      <DialogBody>
-        <style>{wowupModalStyleCss()}</style>
-        {confirming && (
-          <Confirm
-            {...confirming}
-            download={confirming.preparing ? download : null}
-            onCancelDownload={cancelDownload}
-            onInstall={install}
-            onCancel={() => (confirm ? closeModal?.() : setConfirming(null))}
-          />
-        )}
-        {!confirming && shown === "loading" && (
-          <div style={descriptionStyle}>Loading PR builds…</div>
-        )}
-        {!confirming && shown === "failed" && (
-          <>
-            <div style={{ ...descriptionStyle, color: STEAM.danger }}>
-              Couldn't load PR builds. Check the connection and try again.
-            </div>
-            <DialogButton onClick={load} style={{ marginTop: "12px" }}>
-              Retry
-            </DialogButton>
-          </>
-        )}
-        {!confirming && Array.isArray(shown) && shown.length === 0 && (
-          <div style={descriptionStyle}>No PR builds right now.</div>
-        )}
-        {!confirming && Array.isArray(shown) && shown.length > 0 && (
-          <DialogControlsSection>
-            {shown.map((build) => {
-              const row = prBuildRow(build, dateFormat);
-              return (
-                <Field
-                  key={build.number}
-                  focusable
-                  label={row.label}
-                  description={<span style={descriptionStyle}>{row.description}</span>}
-                  onClick={() => setConfirming({ build, preparing: false, error: null })}
-                />
-              );
-            })}
-          </DialogControlsSection>
-        )}
-      </DialogBody>
+      <style>{wowupModalStyleCss()}</style>
+      {confirming ? (
+        <Confirm
+          {...confirming}
+          download={confirming.preparing ? download : null}
+          onCancelDownload={cancelDownload}
+          onInstall={install}
+          onCancel={() => (confirm ? closeModal?.() : setConfirming(null))}
+        />
+      ) : (
+        <>
+          <DialogBody>
+            <ScrollBuffer>
+              {shown === "loading" && <DialogBodyText>Loading PR builds…</DialogBodyText>}
+              {shown === "failed" && (
+                <DialogBodyText style={{ color: STEAM.danger }}>
+                  Couldn't load PR builds. Check the connection and try again.
+                </DialogBodyText>
+              )}
+              {Array.isArray(shown) && shown.length === 0 && (
+                <DialogBodyText>No PR builds right now.</DialogBodyText>
+              )}
+              {Array.isArray(shown) && shown.length > 0 && (
+                <DialogControlsSection>
+                  {shown.map((build) => {
+                    const row = prBuildRow(build, dateFormat);
+                    return (
+                      <Field
+                        key={build.number}
+                        focusable
+                        label={row.label}
+                        description={<span style={descriptionStyle}>{row.description}</span>}
+                        onClick={() => setConfirming({ build, preparing: false, error: null })}
+                      />
+                    );
+                  })}
+                </DialogControlsSection>
+              )}
+            </ScrollBuffer>
+          </DialogBody>
+          <DialogFooter>
+            <Focusable
+              flow-children="row"
+              className={shown === "failed" ? "DialogTwoColLayout _DialogColLayout" : undefined}
+            >
+              {shown === "failed" && <DialogButton onClick={load}>Retry</DialogButton>}
+              <DialogButton onClick={closeModal}>Close</DialogButton>
+            </Focusable>
+          </DialogFooter>
+        </>
+      )}
     </ModalRoot>
   );
 }
@@ -173,41 +185,48 @@ function Confirm({
   const text = prBuildConfirmation(build);
   return (
     <>
-      <h3>{text.title}</h3>
-      {text.lines.map((line) => (
-        <div key={line} style={{ ...descriptionStyle, marginTop: "8px" }}>
-          {line}
-        </div>
-      ))}
-      {error && (
-        <div style={{ ...descriptionStyle, marginTop: "12px", color: STEAM.danger }}>{error}</div>
-      )}
-      {preparing ? (
-        // The bar takes the buttons' place; B on it cancels the download.
-        <Field
-          focusable
-          preferredFocus
-          bottomSeparator="none"
-          childrenContainerWidth="max"
-          onCancelButton={onCancelDownload}
-          onCancelActionDescription="Cancel download"
-        >
-          <ProgressBarWithInfo
-            indeterminate={download?.percent == null}
-            nProgress={download?.percent ?? undefined}
-            sOperationText={download?.text ?? "Preparing…"}
-          />
-        </Field>
-      ) : (
-        <>
-          <DialogButton onClick={() => onInstall(build)} style={{ marginTop: "12px" }}>
-            Install
-          </DialogButton>
-          <DialogButton onClick={onCancel} style={{ marginTop: "8px" }}>
-            Cancel
-          </DialogButton>
-        </>
-      )}
+      <DialogBody>
+        <ScrollBuffer>
+          <DialogControlsSection>
+            <DialogControlsSectionHeader>{text.title}</DialogControlsSectionHeader>
+            {text.lines.map((line) => (
+              <DialogBodyText key={line}>{line}</DialogBodyText>
+            ))}
+            {error && (
+              <Field focusable label={<span style={{ color: STEAM.danger }}>{error}</span>} />
+            )}
+            {preparing ? (
+              // The bar takes the buttons' place; B on it cancels the download.
+              <Field
+                focusable
+                preferredFocus
+                bottomSeparator="none"
+                childrenContainerWidth="max"
+                childrenLayout="below"
+                label="Download progress"
+                onCancelButton={onCancelDownload}
+                onCancelActionDescription="Cancel download"
+              >
+                <ProgressBarWithInfo
+                  indeterminate={download?.percent == null}
+                  nProgress={download?.percent ?? undefined}
+                  sOperationText={download?.text ?? "Preparing…"}
+                />
+              </Field>
+            ) : null}
+          </DialogControlsSection>
+        </ScrollBuffer>
+      </DialogBody>
+      <DialogFooter>
+        {preparing ? (
+          <DialogButton onClick={onCancelDownload}>Cancel download</DialogButton>
+        ) : (
+          <Focusable flow-children="row" className="DialogTwoColLayout _DialogColLayout">
+            <DialogButton onClick={() => onInstall(build)}>Install</DialogButton>
+            <DialogButton onClick={onCancel}>Cancel</DialogButton>
+          </Focusable>
+        )}
+      </DialogFooter>
     </>
   );
 }

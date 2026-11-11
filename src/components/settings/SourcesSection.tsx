@@ -1,7 +1,8 @@
+import { RowChevron } from "../RowChevron";
 import { UpdateDot } from "../UpdateDot";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { ButtonItem, Field, Navigation, PanelSection, ToggleField } from "@decky/ui";
-import { FaChevronRight } from "react-icons/fa";
+
 import type { CurseForgeAuthStatus, ProviderInfo } from "../../types";
 import * as api from "../../services/backend";
 import { toastError } from "../../toast";
@@ -141,14 +142,12 @@ export function SourcesSection({
               >
                 {curseRow === "keyRow" ? (
                   <Field
-                    verticalAlignment="center"
-                    childrenContainerWidth="min"
                     focusable
                     label={providerLabel(p.id)}
                     description={<span style={descriptionStyle}>Needs an API key</span>}
                     onClick={openKey}
                   >
-                    <FaChevronRight />
+                    <RowChevron />
                   </Field>
                 ) : (
                   <>

@@ -51,12 +51,14 @@ mock.module("@decky/ui", () => ({
   // A focusable Field is a Steam navigation node that takes focus.
   Field: ({
     label,
+    disabled,
     description,
     focusable,
     onClick,
     children,
   }: {
     label?: ReactNode;
+    disabled?: boolean;
     description?: ReactNode;
     focusable?: boolean;
     onClick?: () => void;
@@ -66,7 +68,8 @@ mock.module("@decky/ui", () => ({
       className={focusable ? "Focusable" : undefined}
       tabIndex={focusable ? -1 : undefined}
       data-row={String(label)}
-      onClick={onClick}
+      onClick={disabled ? undefined : onClick}
+      data-disabled={disabled ? "true" : undefined}
     >
       <b>{label}</b>
       <i>{description}</i>
@@ -200,7 +203,7 @@ const openModal = async () => {
 const inModal = (text: string) =>
   [...doc.querySelectorAll<HTMLButtonElement>("#modal button")].find(
     (b) => b.textContent === text,
-  ) ?? null;
+  ) ?? doc.querySelector<HTMLButtonElement>(`#modal [data-row="${text}"]`);
 const typeToken = async (value: string) => {
   const input = doc.querySelector<HTMLInputElement>("#modal input")!;
   const setter = Object.getOwnPropertyDescriptor(

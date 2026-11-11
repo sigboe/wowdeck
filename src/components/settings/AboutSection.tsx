@@ -1,6 +1,7 @@
+import { RowChevron } from "../RowChevron";
 import { useEffect, useRef, useState } from "react";
 import { Field, PanelSection } from "@decky/ui";
-import { FaChevronRight } from "react-icons/fa";
+
 import type { AboutInfo } from "../../types";
 import * as api from "../../services/backend";
 import {
@@ -88,7 +89,7 @@ export function AboutSection() {
               open[row.id](row);
             }}
           >
-            <FaChevronRight />
+            <RowChevron />
           </Field>
         </SettingsRow>
       ))}

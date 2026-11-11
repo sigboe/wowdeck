@@ -1,6 +1,7 @@
+import { RowChevron } from "../RowChevron";
 import { useSyncExternalStore } from "react";
 import { Field, PanelSection, ToggleField } from "@decky/ui";
-import { FaChevronRight } from "react-icons/fa";
+
 import { descriptionStyle } from "../../steamTheme";
 import { settingsStore } from "../../settings";
 import type { SteamGame } from "../../steamLibrary";
@@ -44,8 +45,6 @@ export function SteamLibrarySection() {
       </SettingsRow>
       <SettingsRow id="steamGame">
         <Field
-          verticalAlignment="center"
-          childrenContainerWidth="min"
           focusable
           label="World of Warcraft in Steam"
           description={
@@ -68,7 +67,7 @@ export function SteamLibrarySection() {
             )
           }
         >
-          <FaChevronRight />
+          <RowChevron />
         </Field>
       </SettingsRow>
       {linked.length > 0 && (

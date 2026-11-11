@@ -1,6 +1,7 @@
+import { RowChevron } from "../RowChevron";
 import { useSyncExternalStore } from "react";
 import { Field, PanelSection, ToggleField } from "@decky/ui";
-import { FaChevronRight } from "react-icons/fa";
+
 import type { Diagnostics, Installation } from "../../types";
 import * as api from "../../services/backend";
 import { descriptionStyle } from "../../steamTheme";
@@ -61,8 +62,6 @@ export function NotificationsSection({
           scrolling doesn't skip it; `>` only while it offers the install. */}
       <SettingsRow id="updatesInsideWow">
         <Field
-          verticalAlignment="center"
-          childrenContainerWidth="min"
           focusable
           label="Updates inside WoW"
           description={
@@ -84,7 +83,7 @@ export function NotificationsSection({
             }
           }}
         >
-          {offer && <FaChevronRight />}
+          {offer && <RowChevron />}
         </Field>
       </SettingsRow>
     </PanelSection>

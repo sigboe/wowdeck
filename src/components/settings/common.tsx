@@ -1,6 +1,7 @@
+import { RowChevron } from "../RowChevron";
 import type { CSSProperties, ReactNode } from "react";
 import { Spinner, type FooterLegendProps } from "@decky/ui";
-import { FaChevronRight } from "react-icons/fa";
+
 import { FocusRow } from "../FocusSlot";
 import { QAM_VIEW } from "../../qamState";
 
@@ -42,5 +43,5 @@ export function SettingsRow({
   );
 }
 
-export const busyIcon = (busy: boolean, idle: ReactNode = <FaChevronRight />) =>
+export const busyIcon = (busy: boolean, idle: ReactNode = <RowChevron />) =>
   busy ? <Spinner style={{ width: "1.2em" }} /> : idle;

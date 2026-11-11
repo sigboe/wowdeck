@@ -1,3 +1,4 @@
+import { RowChevron } from "../RowChevron";
 import { useEffect, useRef, useState } from "react";
 import {
   DialogBody,
@@ -11,7 +12,7 @@ import {
   TextField,
   showModal,
 } from "@decky/ui";
-import { FaChevronRight, FaSave, FaSync, FaTrash } from "react-icons/fa";
+import { FaSave, FaSync, FaTrash } from "react-icons/fa";
 import type { CurseForgeAuthStatus } from "../../types";
 import * as api from "../../services/backend";
 import { descriptionStyle } from "../../steamTheme";
@@ -228,7 +229,7 @@ export function CurseForgeKeyModal({ auth: initialAuth, onChanged, closeModal }:
               }
               onClick={() => Navigation.NavigateToExternalWeb(CURSEFORGE_API_KEYS_URL)}
             >
-              <FaChevronRight />
+              <RowChevron />
             </Field>
           </DialogControlsSection>
         </ScrollBuffer>

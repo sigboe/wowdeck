@@ -1084,4 +1084,16 @@ Restored original folders, addon records and choice metadata. Verified 42,214 st
 - The floating panel shows its status once beside a button labeled Update. Words wrap normally, and the button label stays on one line. Download progress replaces the action in the same panel.
 - Check every modal-opening row with and without a description. Its chevron stays at the right edge and vertically centered against the whole row.
 
+Local stylesheet checks on 2026-11-12 reproduced the bare chevron's 20 px
+center error. `RowChevron` measured 0 px with the right inset unchanged.
+A two-button footer using Steam's column layout measured a 28 px gap.
+These checks used captured Steam DOM and styles in local Chromium. They do
+not cover the live Steam React context or controller behavior.
+
+- In GitHub token, verify the input and Remove token are padded rows. Save and Cancel occupy separate footer columns.
+- In Diagnostics, verify Copy diagnostics and Close have separate footer columns.
+- In WoW Settings Backup, verify error and progress rows share the folder row's insets.
+- In Previous versions, verify Clear previous versions and Try again are whole-row actions, with Close in the footer.
+- In PR Builds, verify confirmation text uses native body and section spacing. Install and Cancel occupy separate footer columns. Retry and Close share the footer after a failed list load. Download progress keeps native row insets.
+
 These cases have not been run on hardware.

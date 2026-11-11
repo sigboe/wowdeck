@@ -22,7 +22,8 @@ What's new in each version of WoWDeck Addon Manager. The format follows
 
 ### Changed
 
-- Options setup opens in Steam dialogs. Create backups in WoW Settings Backup; diagnostics shows readable rows.
+- Options setup uses padded Steam rows and dialogs. Back up in WoW Settings Backup; diagnostics shows readable rows.
+- Options and backup-dialog chevrons stay centered beside descriptions, with consistent right alignment.
 - Press Right past any Options row to reach Update, then Left to return to your place.
 - A test build now shows the way out: pick Beta or Stable under Options › Updates to switch to it.
 

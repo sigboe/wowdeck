@@ -54,6 +54,7 @@ mock.module("@decky/ui", () => ({
       data-disabled={disabled ? "true" : undefined}
       onClick={onClick}
     >
+      {label}
       <i>{description}</i>
       {children}
     </div>

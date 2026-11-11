@@ -1,6 +1,7 @@
+import { RowChevron } from "../RowChevron";
 import { useEffect, useSyncExternalStore } from "react";
 import { DialogButton, Field, PanelSection, ToggleField } from "@decky/ui";
-import { FaChevronRight, FaEllipsisH } from "react-icons/fa";
+import { FaEllipsisH } from "react-icons/fa";
 import * as api from "../../services/backend";
 import { descriptionStyle } from "../../steamTheme";
 import { lastAutoUpdateLine } from "../../text";
@@ -100,8 +101,6 @@ export function UpdatesSection() {
       </SettingsRow>
       <SettingsRow id="previousVersions">
         <Field
-          verticalAlignment="center"
-          childrenContainerWidth="min"
           focusable
           label="Previous versions"
           description={
@@ -115,13 +114,11 @@ export function UpdatesSection() {
           }}
           onOKActionDescription="Open"
         >
-          <FaChevronRight />
+          <RowChevron />
         </Field>
       </SettingsRow>
       <SettingsRow id="wowdeckUpdate">
         <Field
-          verticalAlignment="center"
-          childrenContainerWidth="min"
           label={wowdeckRow.label}
           description={
             checking || wowdeckRow.description ? (

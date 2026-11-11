@@ -1,5 +1,6 @@
+import { RowChevron } from "./RowChevron";
 import { Field, PanelSection } from "@decky/ui";
-import { FaChevronRight } from "react-icons/fa";
+
 import type { Installation } from "../types";
 import { useBackupList } from "../wtfSession";
 import { formatBytes, formatWhen } from "../wtfFormat";
@@ -37,20 +38,16 @@ export function WtfBackupSection({ installation }: Props) {
     <PanelSection title="Settings backup">
       <FocusRow view={QAM_VIEW.settings} id={BACK_UP_ROW}>
         <Field
-          verticalAlignment="center"
-          childrenContainerWidth="min"
           focusable
           label="WoW Settings Backup"
           description={<span style={descriptionStyle}>{status}</span>}
           onClick={() => openBackupSettingsModal(installation)}
         >
-          <FaChevronRight />
+          <RowChevron />
         </Field>
       </FocusRow>
       <FocusRow view={QAM_VIEW.settings} id="wtf:manage">
         <Field
-          verticalAlignment="center"
-          childrenContainerWidth="min"
           focusable={!!installation}
           disabled={!installation}
           label="Manage backups"
@@ -59,7 +56,7 @@ export function WtfBackupSection({ installation }: Props) {
           }
           onClick={() => installation && openWtfBackupModal(installation)}
         >
-          <FaChevronRight />
+          <RowChevron />
         </Field>
       </FocusRow>
     </PanelSection>

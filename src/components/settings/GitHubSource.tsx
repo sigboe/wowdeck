@@ -1,3 +1,4 @@
+import { RowChevron } from "../RowChevron";
 import { useState, useSyncExternalStore } from "react";
 import {
   DialogBody,
@@ -7,12 +8,13 @@ import {
   DialogFooter,
   DialogHeader,
   Field,
+  Focusable,
   ModalRoot,
   Spinner,
   TextField,
   showModal,
 } from "@decky/ui";
-import { FaChevronRight } from "react-icons/fa";
+
 import * as api from "../../services/backend";
 import { STEAM } from "../../steamTheme";
 import { wowupModalStyleCss } from "../../sharedStyles";
@@ -21,6 +23,7 @@ import { errorText } from "../../errors";
 import { settingsStore } from "../../settings";
 import { rememberFocus } from "../../focusMemory";
 import { PROVIDER_ID } from "../../../backend/src/api/providers";
+import { TextRow } from "../TextRow";
 import { ScrollBuffer } from "../ScrollBuffer";
 import { PASSWORD_INPUT_PROPS, SettingsRow, VIEW } from "./common";
 
@@ -40,8 +43,6 @@ export function GitHubSourceRow() {
   return (
     <SettingsRow id={GITHUB_ROW}>
       <Field
-        verticalAlignment="center"
-        childrenContainerWidth="min"
         focusable
         label="GitHub"
         onClick={() => {
@@ -50,7 +51,7 @@ export function GitHubSourceRow() {
           openGitHubTokenModal();
         }}
       >
-        <FaChevronRight />
+        <RowChevron />
       </Field>
     </SettingsRow>
   );
@@ -116,7 +117,8 @@ function GitHubTokenModal({ closeModal }: { closeModal?: () => void }) {
             A personal access token raises GitHub's rate limit. Public addons install without one.
           </DialogBodyText>
           <DialogControlsSection>
-            <TextField
+            <TextRow
+              layout="inline"
               label={saved ? "New personal access token" : "Personal access token"}
               description={
                 <>
@@ -124,26 +126,36 @@ function GitHubTokenModal({ closeModal }: { closeModal?: () => void }) {
                   {error && <span style={{ display: "block", color: STEAM.danger }}>{error}</span>}
                 </>
               }
-              disabled={busy}
-              value={token}
-              onChange={(e) => setToken(e.target.value)}
-              bIsPassword
-              {...PASSWORD_INPUT_PROPS}
-            />
+            >
+              <TextField
+                aria-label="Personal access token"
+                disabled={busy}
+                value={token}
+                onChange={(e) => setToken(e.target.value)}
+                bIsPassword
+                {...PASSWORD_INPUT_PROPS}
+              />
+            </TextRow>
+            {saved && (
+              <Field
+                focusable
+                label="Remove token"
+                disabled={busy}
+                onClick={() => !busy && void clear()}
+                onOKActionDescription="Remove"
+              />
+            )}
           </DialogControlsSection>
         </ScrollBuffer>
       </DialogBody>
       <DialogFooter>
-        <DialogButton disabled={busy || !token.trim()} onClick={() => void save()}>
-          {busy ? <Spinner style={{ width: "1em" }} /> : null}
-          Save
-        </DialogButton>
-        {saved && (
-          <DialogButton disabled={busy} onClick={() => void clear()}>
-            Remove token
+        <Focusable flow-children="row" className="DialogTwoColLayout _DialogColLayout">
+          <DialogButton disabled={busy || !token.trim()} onClick={() => void save()}>
+            {busy ? <Spinner style={{ width: "1em" }} /> : null}
+            Save
           </DialogButton>
-        )}
-        <DialogButton onClick={close}>Cancel</DialogButton>
+          <DialogButton onClick={close}>Cancel</DialogButton>
+        </Focusable>
       </DialogFooter>
     </ModalRoot>
   );
