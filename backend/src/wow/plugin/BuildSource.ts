@@ -67,7 +67,7 @@ export class GithubLatestReleaseSource implements BuildSource {
     const release = await getGithubJson<GithubRelease>(this.net, this.releasesUrl, this.tokenProvider);
     if (release === null) return null;
     const build = candidateOf(release);
-    // A beta or test tag GitHub calls latest (published without the
+    // A beta, test or pr tag GitHub calls latest (published without the
     // pre-release flag) is still a pre-release: Stable never offers one.
     return build && !isBetaVersion(build.version) && !isTestVersion(build.version) ? [build] : [];
   }
@@ -92,7 +92,7 @@ export class GithubReleaseListSource implements BuildSource {
     if (!Array.isArray(releases)) return [];
     return releases.flatMap((release) => {
       const build = release && !release.draft ? candidateOf(release) : null;
-      // A test tag is a device-test build, never a published one; it must
+      // A test or pr tag is a device-test build, never a published one; it must
       // not be offered to Beta however it was pushed to GitHub.
       return build && !isTestVersion(build.version) ? [build] : [];
     });

@@ -36,6 +36,7 @@ import { join } from "node:path";
 import { unzip } from "fflate";
 import type { NetworkClient } from "../net/network";
 import type { PluginUpdateCheck, StagingAnswer } from "../notifications/PluginUpdateCheck";
+import type { PublishedPrBuild } from "./PrBuildList";
 import { NetworkError } from "../net/network";
 import { InstallError } from "../errors";
 
@@ -66,6 +67,9 @@ const ENGINE_ENTRIES = ["wowdeck/bin/wowdeck", "wowdeck/bin/wowdeck-x86_64"];
 export function stagedFileName(version: string): string {
   return `wowdeck-update-${version}.zip`;
 }
+
+/** Where a stage logs: a release or beta, or a PR build. */
+type LogTag = "[self-update]" | "[pr-builds]";
 
 /** The offered zip answered 404: the stored answer is stale. */
 const GONE = Symbol("gone");
@@ -135,25 +139,69 @@ export class UpdateStager {
         );
         return failure instanceof NetworkError && failure.status === 404 ? GONE : DOWNLOAD_FAILED;
       }
-      const sha256 = sha256OfFile(zipPath);
-      await this.#verifyPackage(zipPath, version);
-      chmodSync(zipPath, 0o600);
-      console.error(
-        `[self-update] staged WoWDeck ${version} for Decky's installer (sha256 ${sha256.slice(0, 8)}…)`,
-      );
-      this.check.recordStagedVersion(version);
-      return { result: { artifact: `file://${zipPath}`, version, sha256 }, error: null };
+      return await this.#verifyAndRecord(zipPath, version, "[self-update]");
     } catch (err) {
-      // Nothing is staged on any failure.
-      rmSync(zipPath, { force: true });
-      if (!(err instanceof InstallError)) {
-        console.error(`[self-update] staging failed: ${err instanceof Error ? err.message : String(err)}`);
-      }
-      return outcome(
-        "archive_invalid",
-        err instanceof InstallError ? err.message : "The update couldn't be prepared. Try again",
-      );
+      return this.#removeAndRefuse(zipPath, err, "[self-update]");
     }
+  }
+
+  /**
+   * Stage a listed PR build (system.installPrBuild): its zip from Pages,
+   * refused unless it matches the sha256 the list publishes, then verified
+   * like a release. Pages is public, so no token is sent; the stored
+   * update channel is never touched.
+   */
+  async stagePrBuild(build: Pick<PublishedPrBuild, "number" | "version" | "sha256" | "zipUrl">): Promise<StageOutcome> {
+    const { version } = build;
+    const zipPath = join(this.tempDir, stagedFileName(version));
+    this.#sweepStale(zipPath);
+    try {
+      try {
+        await this.net.downloadToFile(build.zipUrl, zipPath);
+      } catch (err) {
+        rmSync(zipPath, { force: true });
+        console.error(
+          `[pr-builds] download of PR #${build.number} failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+        return outcome("download_failed", "Couldn't download the PR build. Try again");
+      }
+      if (sha256OfFile(zipPath) !== build.sha256) {
+        rmSync(zipPath, { force: true });
+        console.error(`[pr-builds] PR #${build.number}'s zip does not match its published sha256; refused`);
+        return outcome(
+          "checksum_mismatch",
+          "The download doesn't match the published PR build, so it wasn't installed",
+        );
+      }
+      return await this.#verifyAndRecord(zipPath, version, "[pr-builds]");
+    } catch (err) {
+      return this.#removeAndRefuse(zipPath, err, "[pr-builds]");
+    }
+  }
+
+  /**
+   * Verify the downloaded package, make it 0600 and record it as staged,
+   * logging under `log`. Throws when it isn't WoWDeck `version`.
+   */
+  async #verifyAndRecord(zipPath: string, version: string, log: LogTag): Promise<StageOutcome> {
+    const sha256 = sha256OfFile(zipPath);
+    await this.#verifyPackage(zipPath, version);
+    chmodSync(zipPath, 0o600);
+    console.error(`${log} staged WoWDeck ${version} for Decky's installer (sha256 ${sha256.slice(0, 8)}…)`);
+    this.check.recordStagedVersion(version);
+    return { result: { artifact: `file://${zipPath}`, version, sha256 }, error: null };
+  }
+
+  /** Delete the download and say why it was refused: nothing is staged on any failure. */
+  #removeAndRefuse(zipPath: string, err: unknown, log: LogTag): StageOutcome {
+    rmSync(zipPath, { force: true });
+    if (!(err instanceof InstallError)) {
+      console.error(`${log} staging failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    return outcome(
+      "archive_invalid",
+      err instanceof InstallError ? err.message : "The update couldn't be prepared. Try again",
+    );
   }
 
   /** Remove our staging files older than a day; a cancelled prompt leaves one behind. */
@@ -228,7 +276,8 @@ export class UpdateStager {
   }
 }
 
-function outcome(code: string, message: string): StageOutcome {
+/** A failed stage: nothing staged, and why. */
+export function outcome(code: string, message: string): StageOutcome {
   return { result: null, error: { code, message } };
 }
 

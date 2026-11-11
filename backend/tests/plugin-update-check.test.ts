@@ -201,7 +201,27 @@ describe("compareVersions", () => {
     expect(compareVersions("0.3.0-pr.117", "0.3.0-beta.400")).toBe(1);
   });
 
-  test("null for pre-releases other than -beta.N, -test.N and -pr.N", () => {
+  test("a pr build's rebuild (-pr.N.K) sorts after -pr.N and by K, still below the release", () => {
+    const ordered = [
+      "0.3.0-beta.40",
+      "0.3.0-pr.117",
+      "0.3.0-pr.117.2",
+      "0.3.0-pr.117.10",
+      "0.3.0-pr.118",
+      "0.3.0",
+    ];
+    for (let i = 0; i < ordered.length - 1; i++) {
+      expect(compareVersions(ordered[i]!, ordered[i + 1]!)).toBe(-1);
+      expect(compareVersions(ordered[i + 1]!, ordered[i]!)).toBe(1);
+    }
+    expect(compareVersions("0.3.0-pr.117.2", "0.3.0-pr.117.2")).toBe(0);
+  });
+
+  test("null for pre-releases other than -beta.N, -test.N, -pr.N and -pr.N.K", () => {
+    expect(compareVersions("1.2.3-beta.1.2", "0.1.1")).toBeNull();
+    expect(compareVersions("1.2.3-test.1.2", "0.1.1")).toBeNull();
+    expect(compareVersions("1.2.3-pr.1.2.3", "0.1.1")).toBeNull();
+    expect(compareVersions("1.2.3-pr.1.x", "0.1.1")).toBeNull();
     expect(compareVersions("1.2.3-rc.1", "0.1.1")).toBeNull();
     expect(compareVersions("1.2.3-beta", "0.1.1")).toBeNull();
     expect(compareVersions("1.2.3-beta.x", "0.1.1")).toBeNull();
@@ -1353,6 +1373,51 @@ describe("a test build checks like any other, and always has the way out (establ
     expect(result.offer).toMatchObject({ kind: "leaveTest", version: "1.0.2-beta.27" });
   });
 
+  test("a pr build's rebuild (X.Y.Z-pr.N.K) checks like a test build too", async () => {
+    const h = makeCheck({
+      currentVersion: "1.0.2-pr.117.2",
+      channel: "beta",
+      respond: () => [withZip("v1.0.2-beta.27")],
+    });
+    const result = await h.check.check({ force: true });
+    expect(result.status).toBe("available");
+    expect(result.failed).toBe(false);
+    expect(result.offer).toMatchObject({ kind: "leaveTest", version: "1.0.2-beta.27" });
+  });
+
+  test("a pr build never toasts: its way out waits in Options", async () => {
+    const h = makeCheck({
+      currentVersion: "1.0.2-pr.117.2",
+      channel: "beta",
+      respond: () => [withZip("v1.0.2-beta.27")],
+    });
+    const result = await h.check.check(NOTIFY);
+    expect(result.offer).toMatchObject({ kind: "leaveTest", installable: true });
+    expect(result.toastPending).toBe(false);
+    expect(h.toastShown()).toBeNull();
+  });
+
+  test("Beta never offers a pr build, even a newer one", async () => {
+    const h = makeCheck({
+      currentVersion: "1.0.2-beta.27",
+      channel: "beta",
+      respond: () => [withZip("v1.0.3-pr.117.2"), withZip("v1.0.3-pr.117"), withZip("v1.0.2-beta.27")],
+    });
+    const result = await h.check.check({ force: true });
+    expect(result.status).toBe("current");
+    expect(result.offer).toBeNull();
+  });
+
+  test("Stable never offers a pr build, even a newer one", async () => {
+    const h = makeCheck({
+      currentVersion: "1.0.1",
+      channel: "stable",
+      respond: () => withZip("v1.0.2-pr.117"),
+    });
+    const result = await h.check.check({ force: true });
+    expect(result.offer).toBeNull();
+  });
+
   test("a test-tagged release on the list is never offered to Beta", async () => {
     const h = makeCheck({
       currentVersion: "0.1.1",
@@ -1376,6 +1441,22 @@ describe("a test build checks like any other, and always has the way out (establ
     const result = await h.check.check({ force: true });
     expect(result.offer?.kind).toBe("leaveTest");
   });
+
+  test.each(["stable", "beta"] as const)(
+    "first start of a pr build keeps the stored channel (%s): leaving returns the owner to it",
+    async (channel) => {
+      const h = makeCheck({
+        currentVersion: "1.0.2-pr.117.2",
+        lastRunVersion: "1.0.1",
+        stagedVersion: "1.0.2-pr.117.2",
+        channel,
+        respond: () => (channel === "stable" ? withZip("v1.0.1") : [withZip("v1.0.2-beta.27")]),
+      });
+      expect(h.check.channel()).toBe(channel);
+      h.restart();
+      expect(h.check.channel()).toBe(channel);
+    },
+  );
 
   test("the leave-test offer toasts once per version like any offer", async () => {
     const h = makeCheck({

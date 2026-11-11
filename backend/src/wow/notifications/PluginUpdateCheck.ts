@@ -57,7 +57,7 @@ import type {
   UpdateChannel,
 } from "../../api/contracts";
 import { type BuildSource, buildSources, type CandidateBuild, RELEASES_PAGE } from "../plugin/BuildSource";
-import { compareVersions, isBetaVersion, isTestVersion } from "../plugin/PluginVersion";
+import { compareVersions, isBetaVersion, isPrVersion, isTestVersion } from "../plugin/PluginVersion";
 import { releaseNotesText } from "../plugin/ReleaseNotesText";
 import { backoffIntervalMs, DAY_MS, HOUR_MS, isDue, SingleFlight } from "./CheckCadence";
 
@@ -167,8 +167,9 @@ export class PluginUpdateCheck {
     // An installed build chooses its channel once. A restart keeps the
     // owner's choice; a stable package staged by our updater keeps it too.
     // A test build rides Beta: it is built from a branch past the newest
-    // beta, so Beta's answer is the one it can act on.
-    if (this.store.readLastRunVersion() !== currentVersion) {
+    // beta, so Beta's answer is the one it can act on. A PR build keeps the
+    // owner's channel (GLOSSARY: PR build): leaving it returns them there.
+    if (this.store.readLastRunVersion() !== currentVersion && !isPrVersion(currentVersion)) {
       if (isBetaVersion(currentVersion) || isTestVersion(currentVersion)) {
         this.store.writeChannel("beta");
       } else if (this.store.readStagedVersion() !== currentVersion) {
@@ -304,7 +305,9 @@ export class PluginUpdateCheck {
    * a nagging one.
    */
   #toastGate(result: GatelessStatus): PluginUpdateStatus {
-    const candidate = result.offer?.installable ? result.offer.version : null;
+    // A PR build never toasts (GLOSSARY: PR build): its owner follows the PR
+    // or leaves it from Options, where the panel asks where the PR stands.
+    const candidate = result.offer?.installable && !isPrVersion(this.currentVersion) ? result.offer.version : null;
     if (candidate === null) {
       return { ...result, toastPending: false };
     }

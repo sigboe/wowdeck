@@ -190,6 +190,19 @@ A WoWDeck build made by hand on a developer's machine, versioned
 `X.Y.Z-test.N`. It sits on no update channel; neither channel offers one.
 _Avoid_: PR build (that one comes from CI).
 
+**PR build**:
+A WoWDeck build CI made from an open pull request a maintainer labeled
+`pr-build`, versioned `X.Y.Z-pr.N` (`X.Y.Z` is the release it is based on, `N`
+the PR number; a rebuild adds a counter, `-pr.117.2`). It sits on no update
+channel. Options › Updates › WoWDeck › channel picker › "PR builds…" lists the
+open, labeled PRs; installing one asks the owner to confirm first. A new commit
+rebuilds it when a maintainer pushed it; a push by anyone else removes the
+label and the PR leaves the list until a maintainer labels it again.
+The update panel offers a newer build of the same PR while it is listed, and
+once the PR is merged, the newest beta when it contains the merge. Until such a
+beta exists it says one is still building.
+_Avoid_: test build (that one is built by hand), preview.
+
 **Release notes**:
 What the offered WoWDeck build brings, written for players from our
 `CHANGELOG.md`. Y on the Update button, or on the WoWDeck row under

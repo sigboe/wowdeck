@@ -7,10 +7,17 @@ import { pluginToast, toastError } from "../../toast";
 import { lastAutoUpdateLine } from "../../text";
 import { formatBytes } from "../../wtfFormat";
 import { settingsStore } from "../../settings";
-import { panelOffer, isTestBuild, pluginUpdateRow, releaseNotesAction } from "../../pluginUpdate";
+import {
+  panelOffer,
+  isTestBuild,
+  pluginUpdateRow,
+  prBuildOffer,
+  releaseNotesAction,
+} from "../../pluginUpdate";
 import { selfUpdateStore } from "../../selfUpdate";
 import { openReleaseNotesModal } from "../ReleaseNotesModal";
 import { openUpdateChannelModal } from "../UpdateChannelModal";
+import { openPrBuildsModal } from "../PrBuildsModal";
 import { SettingsRow } from "./common";
 
 /**
@@ -24,10 +31,11 @@ import { SettingsRow } from "./common";
  */
 export function UpdatesSection() {
   const { settings } = useSyncExternalStore(settingsStore.subscribe, settingsStore.get);
-  const { info: pluginUpdate, checking } = useSyncExternalStore(
-    selfUpdateStore.subscribe,
-    selfUpdateStore.get,
-  );
+  const {
+    info: pluginUpdate,
+    prState,
+    checking,
+  } = useSyncExternalStore(selfUpdateStore.subscribe, selfUpdateStore.get);
   const [previousUsage, setPreviousUsage] = useState<{ bytes: number; count: number } | null>(null);
   const [clearingPrevious, setClearingPrevious] = useState(false);
   const loadPreviousUsage = () =>
@@ -64,15 +72,18 @@ export function UpdatesSection() {
       openUpdateChannelModal(
         test ? null : channel,
         (next) => void selfUpdateStore.setChannel(next),
+        () => openPrBuildsModal(api.rpc),
       );
     }
   };
 
-  // Shown before the first answer too: the ⋯ is the way to the channel.
+  // Shown before the first answer too: the ⋯ is the way to the channel. A
+  // PR build whose PR moved on names that, as the panel does.
+  const prOffer = prBuildOffer(pluginUpdate, prState);
   const wowdeckRow = pluginUpdate
-    ? pluginUpdateRow(pluginUpdate)
+    ? pluginUpdateRow(pluginUpdate, prOffer)
     : { label: "WoWDeck", description: "" };
-  const offer = panelOffer(pluginUpdate);
+  const offer = prOffer ? null : panelOffer(pluginUpdate);
   const releaseNotes = releaseNotesAction(offer);
 
   useEffect(() => {

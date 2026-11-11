@@ -820,6 +820,59 @@ export interface MethodMap {
       error: { code: string; message: string } | null;
     };
   };
+  "system.listPrBuilds": {
+    /**
+     * The PR builds published right now (GLOSSARY: PR build), newest PR
+     * first, read from the list CI publishes on GitHub Pages beside the
+     * zips (ADR 0010). Asked only when the PR builds modal opens: one
+     * network call per call, no cache, no polling, no toast. Entries that
+     * do not match the published shape are left out. `builds` is null —
+     * never an RPC error — when the list could not be fetched or is not a
+     * list at all (offline, Pages down, garbage), so the modal can say it
+     * couldn't load and offer a retry; an empty array is "no PR builds
+     * right now".
+     */
+    params: Record<string, never>;
+    result: { builds: PrBuild[] | null };
+  };
+  "system.installPrBuild": {
+    /**
+     * Stage the PR build the owner confirmed (GLOSSARY: PR build) for
+     * Decky's own installer, like system.updateStage: read the list again
+     * (the zip's URL and sha256 never come from the caller), download the
+     * PR's WoWDeck.zip from Pages without any token, refuse it unless its
+     * sha256 matches the published one, verify the package (WoWDeck at
+     * exactly `version`), and leave it as a 0600 file in the OS temp dir.
+     * The caller hands the returned file:// artifact, version and sha256
+     * to utilities/install_plugin, whose native prompt confirms the
+     * install. The stored update channel is never touched. Nothing is
+     * staged on any failure, and `error.code` says which:
+     * "list_unavailable" (the list couldn't load), "not_listed" (the PR
+     * left the list, or was rebuilt since the owner confirmed `version`),
+     * "download_failed", "checksum_mismatch" or "archive_invalid".
+     */
+    params: {
+      /** The PR's number. */
+      number: number;
+      /** The build's version the owner confirmed (X.Y.Z-pr.N or X.Y.Z-pr.N.K). */
+      version: string;
+    };
+    result: MethodMap["system.updateStage"]["result"];
+  };
+  "system.prBuildState": {
+    /**
+     * Where the PR the running PR build came from stands (GLOSSARY: PR
+     * build), so the update panel can offer the right way on. Asked only
+     * when Options checks while a PR build runs: no toast, no background
+     * check. Reads the PR builds list first; only when the PR is no longer
+     * listed does it ask GitHub's API for the PR, without any token, and,
+     * when it was merged, the releases list for the newest beta. `state`
+     * is null — never an RPC error — when the running build is no PR
+     * build or its PR's state couldn't be read (offline, rate limited).
+     */
+    params: Record<string, never>;
+    result: { state: PrBuildState | null };
+  };
   "installations.list": {
     params: Record<string, never>;
     result: { installations: Installation[] };
@@ -1525,6 +1578,45 @@ export interface FundingLink {
  */
 export const UPDATE_CHANNELS = ["stable", "beta"] as const;
 export type UpdateChannel = (typeof UPDATE_CHANNELS)[number];
+
+/**
+ * One PR build (GLOSSARY: PR build) as the PR builds modal lists it: a
+ * build of an open pull request a maintainer labeled `pr-build`, published
+ * by CI beside the list the engine reads (ADR 0010). Every field comes
+ * from that list, which is untrusted data: `title` is the PR title as its
+ * author wrote it and is shown as plain text only.
+ */
+export interface PrBuild {
+  /** The pull request number. */
+  number: number;
+  /** The PR title, as written; never rendered as markup. */
+  title: string;
+  /** The PR author's GitHub login. */
+  author: string;
+  /** X.Y.Z-pr.N or X.Y.Z-pr.N.K (the Kth build of the PR). */
+  version: string;
+  /** The 40-hex commit the build was made from. */
+  headSha: string;
+  /** When CI built it, ISO 8601 UTC. */
+  builtAt: string;
+  /** The zip's size in bytes. */
+  zipSize: number;
+}
+
+/**
+ * The state of the PR a running PR build came from (system.prBuildState).
+ * "listed": still on the PR builds list; `newer` is its listed build when
+ * that one is newer than the running build, else null. "merged": `beta`
+ * is the newest beta when its commit contains the PR's merge commit;
+ * null while no such beta exists or that can't be told. "closed": closed without
+ * merging. "unlisted": still open, but no longer on the list (the label
+ * was removed).
+ */
+export type PrBuildState =
+  | { kind: "listed"; number: number; newer: PrBuild | null }
+  | { kind: "merged"; number: number; beta: string | null }
+  | { kind: "closed"; number: number }
+  | { kind: "unlisted"; number: number };
 
 /**
  * A WoWDeck release offered by system.updateCheck, with its text decided

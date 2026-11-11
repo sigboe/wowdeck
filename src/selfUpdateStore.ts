@@ -10,8 +10,9 @@
 import type { Store } from "./store";
 import { createStore } from "./store";
 import type { rpcVia } from "./services/envelope";
-import type { UpdateChannel } from "./types";
+import type { PrBuildState, UpdateChannel } from "./types";
 import {
+  isPrBuild,
   pluginUpdateToast,
   type PluginUpdateInfo,
   type StagedUpdate,
@@ -21,6 +22,12 @@ import {
 export interface SelfUpdateState {
   /** The engine's last update-check answer; null until one arrives. */
   info: PluginUpdateInfo | null;
+  /**
+   * Where the running PR build's PR stands (system.prBuildState), for the
+   * panel's PR-build offers; null on any other build, before an Options
+   * check asked, and when the engine couldn't tell.
+   */
+  prState: PrBuildState | null;
   /** Stage-and-hand-off (the Update button's job) is running. */
   staging: boolean;
   /** A Check again is running: the panel's button and the Updates row say "Checking…". */
@@ -54,6 +61,12 @@ export interface SelfUpdateStore extends Pick<Store<SelfUpdateState>, "get" | "s
    * the engine's own cadence decide whether it costs a request.
    */
   refresh(opts?: { toast?: boolean; bypassWindow?: boolean }): Promise<void>;
+  /**
+   * "Switch to beta X" on a PR build whose PR was merged: pick Beta, whose
+   * answer is now the offer, then update to it like runUpdate. Nothing is
+   * staged when Beta couldn't be picked.
+   */
+  switchToBeta(): Promise<void>;
   /**
    * Stage the new release in the engine (download + verify), then hand it
    * to Decky's own installer: the loader's native prompt installs from the
@@ -101,7 +114,12 @@ export interface SelfUpdateStore extends Pick<Store<SelfUpdateState>, "get" | "s
 export const ANSWER_FRESH_MS = 15 * 60 * 1000;
 
 export function createSelfUpdateStore(deps: SelfUpdateDeps): SelfUpdateStore {
-  const store = createStore<SelfUpdateState>({ info: null, staging: false, checking: false });
+  const store = createStore<SelfUpdateState>({
+    info: null,
+    prState: null,
+    staging: false,
+    checking: false,
+  });
   const { rpc, toast, toastError, requestUpdate } = deps;
   const now = deps.now ?? Date.now;
   /** When the engine last answered with a checked status; 0 until then. */
@@ -119,6 +137,26 @@ export function createSelfUpdateStore(deps: SelfUpdateDeps): SelfUpdateStore {
    * is what keeps a double press to one request and one toast.
    */
   let checkAgainFlight: Promise<CheckAgainResult> | null = null;
+  /** When the PR's state was last asked; 0 until then. */
+  let prAskedAt = 0;
+
+  /**
+   * On a PR build, ask where its PR stands, at most once per freshness
+   * window. Only Options' check calls this: never load or wake, so a PR
+   * build is never checked in the background. A failed ask keeps null, the
+   * plain way back.
+   */
+  const followPrBuild = async () => {
+    if (!isPrBuild(store.get().info) || (prAskedAt !== 0 && now() - prAskedAt < ANSWER_FRESH_MS)) {
+      return;
+    }
+    prAskedAt = now();
+    try {
+      store.patch({ prState: (await rpc("system.prBuildState")).state });
+    } catch {
+      store.patch({ prState: null });
+    }
+  };
 
   /** Show an engine answer; only one that could check counts as fresh. */
   const land = (answer: PluginUpdateInfo) => {
@@ -163,11 +201,13 @@ export function createSelfUpdateStore(deps: SelfUpdateDeps): SelfUpdateStore {
   return {
     get: store.get,
     subscribe: store.subscribe,
-    refresh(opts = {}) {
-      if (!opts.bypassWindow && now() - answeredAt < ANSWER_FRESH_MS) {
-        return Promise.resolve();
+    async refresh(opts = {}) {
+      if (opts.bypassWindow || now() - answeredAt >= ANSWER_FRESH_MS) {
+        await check(opts.toast === true);
       }
-      return check(opts.toast === true).then(() => undefined);
+      if (!opts.toast) {
+        await followPrBuild();
+      }
     },
     async runUpdate() {
       if (store.get().staging) {
@@ -192,6 +232,11 @@ export function createSelfUpdateStore(deps: SelfUpdateDeps): SelfUpdateStore {
         // let it, then ask again.
         await inFlight;
         await check(false);
+      }
+    },
+    async switchToBeta() {
+      if (await this.setChannel("beta")) {
+        await this.runUpdate();
       }
     },
     async setChannel(channel) {

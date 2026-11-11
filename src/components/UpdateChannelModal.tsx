@@ -22,14 +22,18 @@ const TITLE = "WoWDeck Update Channel";
  * (G4): the choice goes through `onPick`. A test build is on no channel
  * (`current` null): no row is checked, and picking either — even the one
  * stored — switches, because that pick is its way out of the test build.
+ * Below the channels, "PR builds…" is no channel: it closes the picker and
+ * `onPrBuilds` opens the PR builds modal (GLOSSARY: PR build).
  */
-function UpdateChannelModal({
+export function UpdateChannelModal({
   current,
   onPick,
+  onPrBuilds,
   closeModal,
 }: {
   current: UpdateChannel | null;
   onPick: (channel: UpdateChannel) => void;
+  onPrBuilds: () => void;
   closeModal?: () => void;
 }) {
   const pick = (channel: UpdateChannel) => {
@@ -58,6 +62,20 @@ function UpdateChannelModal({
               )}
             </Field>
           ))}
+          <Field
+            focusable
+            label="PR builds…"
+            description={
+              <span style={descriptionStyle}>
+                Builds of open pull requests, for testing changes before they are released.
+              </span>
+            }
+            onClick={() => {
+              closeModal?.();
+              onPrBuilds();
+            }}
+            onOKActionDescription="Open"
+          />
         </DialogControlsSection>
       </DialogBody>
     </ModalRoot>
@@ -67,10 +85,16 @@ function UpdateChannelModal({
 export function openUpdateChannelModal(
   current: UpdateChannel | null,
   onPick: (channel: UpdateChannel) => void,
+  onPrBuilds: () => void,
 ): void {
   const close = () => modalResult.Close();
   const modalResult = showModal(
-    <UpdateChannelModal current={current} onPick={onPick} closeModal={close} />,
+    <UpdateChannelModal
+      current={current}
+      onPick={onPick}
+      onPrBuilds={onPrBuilds}
+      closeModal={close}
+    />,
     window,
     { strTitle: TITLE, bHideMainWindowForPopouts: false },
   );

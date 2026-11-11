@@ -28,6 +28,8 @@ export type {
   InstallationSource,
   OperationResult,
   PluginSettings,
+  PrBuild,
+  PrBuildState,
   ProviderCategory,
   ProviderErrors,
   ProviderInfo,

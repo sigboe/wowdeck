@@ -2,7 +2,7 @@
 import { describe, expect, test } from "bun:test";
 import type { PluginUpdateInfo, StagedUpdate, UpdateRequestResult } from "./pluginUpdate";
 import { createSelfUpdateStore, type SelfUpdateDeps } from "./selfUpdateStore";
-import type { UpdateChannel } from "./types";
+import type { PrBuildState, UpdateChannel } from "./types";
 
 const info = (over: Partial<PluginUpdateInfo>): PluginUpdateInfo => ({
   status: "current",
@@ -68,6 +68,8 @@ function harness() {
   let channelAnswer: PluginUpdateInfo | Error = available;
   /** The engine's stored channel, as system.getUpdateChannel answers it. */
   let storedChannel: UpdateChannel | Error = "stable";
+  /** What system.prBuildState answers. */
+  let prState: PrBuildState | null | Error = null;
   const deps: SelfUpdateDeps = {
     rpc: (async (
       method: string,
@@ -83,6 +85,10 @@ function harness() {
         if (channelAnswer instanceof Error) throw channelAnswer;
         storedChannel = params!.channel!;
         return channelAnswer;
+      }
+      if (method === "system.prBuildState") {
+        if (prState instanceof Error) throw prState;
+        return { state: prState };
       }
       if (method === "system.updateCheck") {
         checkParams.push(params);
@@ -137,13 +143,16 @@ function harness() {
     storedChannel: (next: UpdateChannel | Error) => {
       storedChannel = next;
     },
+    prState: (next: PrBuildState | null | Error) => {
+      prState = next;
+    },
   };
 }
 
 describe("self-update store: refresh", () => {
   test("a trigger with no answer asks the engine, lands the answer, and tells subscribers", async () => {
     const h = harness();
-    expect(h.store.get()).toEqual({ info: null, staging: false, checking: false });
+    expect(h.store.get()).toEqual({ info: null, prState: null, staging: false, checking: false });
     const heard: number[] = [];
     h.store.subscribe(() => heard.push(h.store.get().info?.offer?.version === "0.2.0" ? 1 : 0));
 
@@ -151,7 +160,12 @@ describe("self-update store: refresh", () => {
     expect(h.calls).toEqual(["system.updateCheck"]);
 
     await refreshing;
-    expect(h.store.get()).toEqual({ info: available, staging: false, checking: false });
+    expect(h.store.get()).toEqual({
+      info: available,
+      prState: null,
+      staging: false,
+      checking: false,
+    });
     expect(heard).toContain(1);
   });
 
@@ -226,6 +240,106 @@ describe("self-update store: refresh", () => {
     h.advance(60_000); // still fresh: a surface trigger would not re-ask…
     await h.store.refresh({ toast: true, bypassWindow: true }); // …but a wake always does
     expect(h.calls).toEqual(["system.updateCheck", "system.updateCheck"]);
+  });
+});
+
+describe("self-update store: following a PR build", () => {
+  /** A PR build's answer: the engine's plain way back to Beta. */
+  const onPr = info({
+    status: "available",
+    currentVersion: "1.1.2-pr.117.2",
+    offer: { ...offerOf("1.1.2-beta.42")!, kind: "leaveTest" },
+  });
+  const merged: PrBuildState = { kind: "merged", number: 117, beta: "1.1.2-beta.43" };
+
+  test("an Options check on a PR build asks where its PR stands", async () => {
+    const h = harness();
+    h.answer(onPr);
+    h.prState(merged);
+
+    await h.store.refresh();
+
+    expect(h.calls).toEqual(["system.updateCheck", "system.prBuildState"]);
+    expect(h.store.get().prState).toEqual(merged);
+  });
+
+  test("load and wake never ask: no background check", async () => {
+    const h = harness();
+    h.answer(onPr);
+    h.prState(merged);
+
+    await h.store.refresh({ toast: true, bypassWindow: true });
+
+    expect(h.calls).toEqual(["system.updateCheck"]);
+    expect(h.store.get().prState).toBeNull();
+  });
+
+  test("Options right after load asks only for the PR's state", async () => {
+    const h = harness();
+    h.answer(onPr);
+    h.prState(merged);
+    await h.store.refresh({ toast: true, bypassWindow: true });
+    h.advance(60_000);
+
+    await h.store.refresh();
+
+    expect(h.calls).toEqual(["system.updateCheck", "system.prBuildState"]);
+    expect(h.store.get().prState).toEqual(merged);
+  });
+
+  test("a second Options visit inside the freshness window asks nothing", async () => {
+    const h = harness();
+    h.answer(onPr);
+    h.prState(merged);
+    await h.store.refresh();
+    h.advance(60_000);
+
+    await h.store.refresh();
+
+    expect(h.calls).toEqual(["system.updateCheck", "system.prBuildState"]);
+  });
+
+  test("never asks on any other build", async () => {
+    const h = harness();
+    h.answer(info({ ...onPr, currentVersion: "1.1.2-test.200" }));
+
+    await h.store.refresh();
+
+    expect(h.calls).toEqual(["system.updateCheck"]);
+  });
+
+  test("a failed ask keeps the plain way back, silently", async () => {
+    const h = harness();
+    h.answer(onPr);
+    h.prState(new Error("engine not ready"));
+
+    await h.store.refresh();
+
+    expect(h.store.get().prState).toBeNull();
+    expect(h.toasts).toEqual([]);
+  });
+
+  test("Switch to beta on a merged PR picks Beta, then updates to it", async () => {
+    const h = harness();
+    h.switchAnswer(info({ ...onPr, offer: { ...offerOf("1.1.2-beta.43")!, kind: "leaveTest" } }));
+
+    await h.store.switchToBeta();
+
+    expect(h.channelParams).toEqual([{ channel: "beta" }]);
+    expect(h.calls.slice(0, 3)).toEqual([
+      "system.setUpdateChannel",
+      "system.updateStage",
+      "install 0.2.0",
+    ]);
+  });
+
+  test("Switch to beta stages nothing when Beta couldn't be picked", async () => {
+    const h = harness();
+    h.switchAnswer(new Error("engine not ready"));
+
+    await h.store.switchToBeta();
+
+    expect(h.calls).toEqual(["system.setUpdateChannel"]);
   });
 });
 

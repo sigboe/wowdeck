@@ -63,14 +63,16 @@ export const deckyUiStub = {
     children,
     onSecondaryActionDescription,
     onMenuActionDescription,
+    onClick,
   }: Kids & {
     label?: ReactNode;
     description?: ReactNode;
     disabled?: boolean;
     onSecondaryActionDescription?: string;
     onMenuActionDescription?: string;
+    onClick?: () => void;
   }) => (
-    <div data-disabled={disabled ? "true" : undefined}>
+    <div data-disabled={disabled ? "true" : undefined} onClick={onClick}>
       <b>{label}</b>
       <i>{description}</i>
       {children}
