@@ -7,7 +7,7 @@ const arg = (name, dflt) => {
   return f ? f.slice(name.length + 3) : dflt;
 };
 
-const { send, close } = await connect(want || "QuickAccess_uid2");
+const { send, close } = await connect(want || "QuickAccess_uid");
 await send("Accessibility.enable");
 const tree = await send("Accessibility.getFullAXTree");
 close();

@@ -10,7 +10,7 @@ const shared = await evalIn(
 ).then(JSON.parse);
 
 const qam = await evalIn(
-  "QuickAccess_uid2",
+  "QuickAccess_uid",
   `JSON.stringify({open:!!document.querySelector('.gpfocus'),focus:(document.querySelector('.gpfocus')||{}).textContent?.trim().slice(0,40)||null,w:innerWidth,h:innerHeight})`,
 ).then(JSON.parse);
 
