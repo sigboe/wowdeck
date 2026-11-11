@@ -25,7 +25,7 @@ const PORT = process.env.DECK_UI_PORT || "18080";
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const HELP = `deck.mjs steps (run several: deck.mjs run 'open; wait plugin = WoWDeck; probe tab focus; shot')
-  verb@target picks a CEF target by title substring; default QuickAccess_uid2 (change: target <substr>)
+  verb@target picks a CEF target by title substring; default QuickAccess_uid (change: target <substr>)
   open | close | nav <route>               QAM on our panel | close side menus | DFL.Navigation.Navigate
   press <button…>                          real pad (a b x y lb rb lt rt view menu guide l3 r3 up down left right wait:ms hold:b:ms)
   key <down|up|left|right|back|enter> [n]  CDP key presses
@@ -112,7 +112,7 @@ const PROBES = {
 const r=n.m_element?.getBoundingClientRect();if(l&&r&&r.width>0&&!out.includes(l))out.push(l);}k.forEach(walk)};
 if(t?.m_Root)walk(t.m_Root);return out.slice(0,20).join(' | ')})()`,
   },
-  tab: { target: "QuickAccess_uid2", expr: `document.querySelector('.wowdeck-tab-selected')?.textContent??'none'` },
+  tab: { target: "QuickAccess_uid", expr: `document.querySelector('.wowdeck-tab-selected')?.textContent??'none'` },
   toasts: { target: "notificationtoasts", expr: `document.body.innerText.trim().replace(/\\s+/g,' ').slice(0,200)||'none'` },
 };
 
@@ -308,7 +308,7 @@ async function runToastExpr(step, expr, okField = "on") {
 const toastHead = (r) => (r.incomplete ? `INCOMPLETE: ${r.missed} notice(s) missed, ${r.count} retained` : `${r.count} notice(s)`);
 
 class Runner {
-  target = "QuickAccess_uid2";
+  target = "QuickAccess_uid";
   pad = new Pad();
   logCheckpoint = null;
   // The toast observer is owned by this runner session: whichever way the
@@ -456,7 +456,7 @@ class Runner {
       }
       case "shot": {
         // Default to the window that has focus: the QAM when it is open, else Big Picture.
-        const t = at || ((await look()).tree === "QuickAccess-NA" ? "QuickAccess_uid2" : "Steam Big Picture Mode");
+        const t = at || ((await look()).tree === "QuickAccess-NA" ? "QuickAccess_uid" : "Steam Big Picture Mode");
         return shot(t, args);
       }
       case "audit":

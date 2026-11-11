@@ -234,7 +234,7 @@ const context = vm.createContext({
 });
 globalThis.fetch = async (url) => ({ ok: true, json: async () => String(url).endsWith("/json/version") ? (tunnelOpened ? { webSocketDebuggerUrl: "ws://fixture" } : {}) : [
   { title: "SharedJSContext", webSocketDebuggerUrl: "ws://fixture/shared" },
-  { title: "QuickAccess_uid2", webSocketDebuggerUrl: "ws://fixture/qam" },
+  { title: "QuickAccess_uid9", webSocketDebuggerUrl: "ws://fixture/qam" },
   { title: "notificationtoasts", webSocketDebuggerUrl: "ws://fixture/toasts" },
 ] });
 globalThis.WebSocket = class extends EventTarget {

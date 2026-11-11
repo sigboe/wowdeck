@@ -495,13 +495,13 @@ test("no active document fails explicitly instead of evaluating a fallback docum
 
 test("explicit-target evaluation keeps its target selection beside active mode", async () => {
   const r = await cli("deck.mjs", ["run", [
-    `eval@QuickAccess_uid2 'document.querySelector(".wowdeck-tab-selected").textContent'`,
+    `eval@QuickAccess_uid 'document.querySelector(".wowdeck-tab-selected").textContent'`,
     `eval@notificationtoasts '1 + 1'`,
   ].join("; ")]);
   expect(r.code).toBe(0);
   expect(r.text).toContain("→ Get Addons");
   expect(r.text).toContain("→ 2");
-  const mixed = await cli("deck.mjs", ["run", `eval@QuickAccess_uid2 --active 'doc.marker'`]);
+  const mixed = await cli("deck.mjs", ["run", `eval@QuickAccess_uid --active 'doc.marker'`]);
   expect(mixed.code).toBe(1);
   expect(mixed.text).toContain("FAIL eval");
   expect(mixed.text).toContain("--active");

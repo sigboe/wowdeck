@@ -44,7 +44,7 @@ await evalIn(
   `window.DFL.Navigation.OpenQuickAccessMenu(999); setTimeout(() => window.DeckyPluginLoader.deckyState.setActivePlugin("WoWDeck"), 500); 1`,
 );
 await sleep(2500);
-const QAM = "QuickAccess_uid2";
+const QAM = "QuickAccess_uid";
 try {
   const mounted = await evalIn(
     QAM,
