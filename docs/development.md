@@ -222,6 +222,7 @@ To check the approval gate, use a fork owned by an account with no
 collaborator access. After a maintainer labels the PR and its build appears,
 push another commit from that account. The label and build listing should
 disappear until a maintainer reviews and labels the PR again.
+Check the published list as well as the label before approving the new head.
 
 The version is `<last stable tag, patch+1>-pr.<PR number>`, and each
 rebuild adds a counter (`1.1.2-pr.117`, then `1.1.2-pr.117.2`).
