@@ -1,4 +1,4 @@
-.PHONY: setup wowup build build-frontend build-backend test typecheck lint format clean package version-set version-check record-provider-fixtures
+.PHONY: setup wowup tidy build build-frontend build-backend test typecheck lint format clean package version-set version-check record-provider-fixtures
 
 # GNU Make uses this shell for recipes. This is independent of the interactive shell.
 SHELL := /usr/bin/env bash
@@ -94,6 +94,12 @@ version-set:
 version-check:
 	$(TOOL_RUN) 'set -euo pipefail; python3 tools/version.py check'
 
+# List every local branch, worktree and stash with a verdict (dry run).
+# APPLY=1 (exactly) removes the removable ones and prints each deleted branch's SHA.
+# Fetches origin and asks gh for open PRs first. See tools/tidy.ts.
+APPLY ?=
+tidy:
+	$(TOOL_RUN) 'set -euo pipefail; bun tools/tidy.ts $(if $(filter 1,$(APPLY)),--apply)'
 
 clean:
 	rm -rf dist build backend/out
