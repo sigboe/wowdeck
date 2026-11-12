@@ -174,8 +174,14 @@ update-hang that any other name causes).
 ### Betas
 
 Every push to `next` that changes more than docs (`*.md`, `docs/`) and
-dev-only files (`.claude/`, `deck-debug/`, `tools/deck-ui/`) is published by `.github/workflows/beta.yml` as a beta pre-release for the Beta
-update channel; nobody runs anything. It calls `ci.yml` with the beta
+dev-only files (`.claude/`, `deck-debug/`, `tools/deck-ui/`, the
+`Makefile`, `make tidy`) is published by `.github/workflows/beta.yml` as a
+beta pre-release for the Beta update channel; nobody runs anything.
+
+To merge a PR without a beta, put `[skip actions]` in the merge commit's
+subject (`gh pr merge <n> --merge --subject "… [skip actions]"`). GitHub
+then starts no workflow for that push. Use it when nothing in the PR
+reaches players, such as comment-only edits in `src/`. It calls `ci.yml` with the beta
 version, so the same gates must pass before anything is published; then it
 tags the merged commit `v<version>`, attaches the same `WoWDeck.zip`, uses
 `CHANGELOG.md`'s `[Unreleased]` section as the notes ("Small fixes and
