@@ -116,9 +116,12 @@ jobs:
     env:
       VERSION: ${{ needs.decide.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ github.event.pull_request.head.sha }}
+          # The label approves this head (ADR 0010). Only this read-only,
+          # cache-free build job may execute PR code; publish stays trusted.
+          allow-unsafe-pr-checkout: true
           persist-credentials: false
       # The engine bundles backend/package.json's version at build time
       # and the zip ships package.json and plugin.json; never committed.
