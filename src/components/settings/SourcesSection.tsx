@@ -1,4 +1,4 @@
-import { RowChevron } from "../RowChevron";
+import { RowChevron } from "../RowGlyph";
 import { UpdateDot } from "../UpdateDot";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { ButtonItem, Field, Navigation, PanelSection, ToggleField } from "@decky/ui";
@@ -158,11 +158,9 @@ export function SourcesSection({
                     )}
                     <ToggleField
                       checked={p.enabled}
-                      label={
-                        p.id === PROVIDER_ID.TradeSkillMaster && tsm?.account
-                          ? `TradeSkillMaster · ${tsm.account}`
-                          : providerLabel(p.id)
-                      }
+                      // The account goes in the description: in the label it
+                      // truncated to "TradeSkillMaster ·" (DEVICE, 2026-11-12).
+                      label={providerLabel(p.id)}
                       disabled={p.requiresApiKey && !p.configured}
                       description={
                         p.requiresApiKey && !p.configured
@@ -171,9 +169,11 @@ export function SourcesSection({
                             ? "Using your API key"
                             : tsmAccount && !p.enabled
                               ? "Your account stays signed in while off. X signs out."
-                              : !p.enabled
-                                ? (sourceOffDescription(p.id) ?? undefined)
-                                : undefined
+                              : p.id === PROVIDER_ID.TradeSkillMaster && tsm?.account
+                                ? `Signed in as ${tsm.account}`
+                                : !p.enabled
+                                  ? (sourceOffDescription(p.id) ?? undefined)
+                                  : undefined
                       }
                       onChange={async (checked) => {
                         // The marked row was used: the attention effect has done its job.

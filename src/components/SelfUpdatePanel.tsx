@@ -12,7 +12,7 @@ import {
 } from "../pluginUpdate";
 import { selfUpdateStore } from "../selfUpdate";
 import { downloadView } from "../selfUpdateStore";
-import { QamProgressBar } from "./QamProgressBar";
+import { ProgressRow } from "./ProgressRow";
 import { FocusRow } from "./FocusSlot";
 import { openReleaseNotesModal } from "./ReleaseNotesModal";
 import { UpdateDot } from "./UpdateDot";
@@ -116,20 +116,16 @@ function DownloadRow({
   return (
     <div style={{ padding: "0 16px 8px" }}>
       <FocusRow view={QAM_VIEW.settings} id="selfUpdate">
-        <Field
+        <ProgressRow
           label={headline}
           bottomSeparator="none"
-          childrenLayout="below"
           focusable
           onCancelButton={() => void selfUpdateStore.cancelDownload()}
           onCancelActionDescription="Cancel download"
-        >
-          <QamProgressBar
-            indeterminate={download.percent === null}
-            nProgress={download.percent ?? undefined}
-            sOperationText={download.text}
-          />
-        </Field>
+          indeterminate={download.percent === null}
+          nProgress={download.percent ?? undefined}
+          sOperationText={download.text}
+        />
       </FocusRow>
     </div>
   );

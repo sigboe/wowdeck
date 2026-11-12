@@ -27,7 +27,7 @@ import {
   sortAddons,
   type AddonActionId,
 } from "../addonRow";
-import { QamProgressBar } from "./QamProgressBar";
+import { ProgressRow } from "./ProgressRow";
 import { STEAM, descriptionStyle } from "../steamTheme";
 import { QAM_VIEW } from "../qamState";
 import { addonSession } from "../session";
@@ -200,7 +200,7 @@ export function InstalledView({ addons, loading, restoreRows, multipleInstallati
       >
         <PanelSectionRow>
           {updatingAll ? (
-            <QamProgressBar
+            <ProgressRow
               indeterminate
               sOperationText={
                 updatingAll === "all"

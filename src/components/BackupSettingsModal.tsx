@@ -1,3 +1,4 @@
+import { RowGlyph } from "./RowGlyph";
 import { useSyncExternalStore } from "react";
 import {
   DialogButton,
@@ -21,7 +22,7 @@ import { wowupModalStyleCss } from "../sharedStyles";
 import { pickerStartPath } from "../pickerStart";
 import type { Installation } from "../types";
 import { jobPercent, jobProgressText } from "../wtfText";
-import { QamProgressBar } from "./QamProgressBar";
+import { ProgressRow } from "./ProgressRow";
 import { ScrollBuffer } from "./ScrollBuffer";
 import { FocusSlot } from "./FocusSlot";
 
@@ -137,13 +138,13 @@ export function BackupSettingsModal({
               />
             )}
             {job && (
-              <Field focusable label="Backup progress" childrenLayout="below">
-                <QamProgressBar
-                  indeterminate={jobPercent(job) === null}
-                  nProgress={jobPercent(job) ?? undefined}
-                  sOperationText={jobProgressText(job)}
-                />
-              </Field>
+              <ProgressRow
+                focusable
+                label="Backup progress"
+                indeterminate={jobPercent(job) === null}
+                nProgress={jobPercent(job) ?? undefined}
+                sOperationText={jobProgressText(job)}
+              />
             )}
             {outcome && <Field focusable label={outcome.text} />}
             {installation && op.errors[installation.id] && (
@@ -162,7 +163,9 @@ export function BackupSettingsModal({
                 onClick={() => settingsFree && void chooseFolder()}
                 onOKActionDescription="Choose"
               >
-                <FaFolderOpen />
+                <RowGlyph>
+                  <FaFolderOpen />
+                </RowGlyph>
               </Field>
             </FocusSlot>
             {op.settingsError && line(op.settingsError, STEAM.danger)}

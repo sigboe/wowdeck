@@ -1,4 +1,4 @@
-import { RowChevron } from "../RowChevron";
+import { RowChevron } from "../RowGlyph";
 import { useState, useSyncExternalStore } from "react";
 import {
   DialogBody,

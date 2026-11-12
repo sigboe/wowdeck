@@ -1,4 +1,4 @@
-import { RowChevron } from "../RowChevron";
+import { RowChevron } from "../RowGlyph";
 import { useEffect, useRef, useState } from "react";
 import { Field, PanelSection } from "@decky/ui";
 

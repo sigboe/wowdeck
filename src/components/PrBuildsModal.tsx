@@ -10,9 +10,9 @@ import {
   Field,
   Focusable,
   ModalRoot,
-  ProgressBarWithInfo,
   showModal,
 } from "@decky/ui";
+import { ProgressRow } from "./ProgressRow";
 import { ScrollBuffer } from "./ScrollBuffer";
 import { STEAM, descriptionStyle } from "../steamTheme";
 import { wowupModalStyleCss } from "../sharedStyles";
@@ -197,22 +197,17 @@ function Confirm({
             )}
             {preparing ? (
               // The bar takes the buttons' place; B on it cancels the download.
-              <Field
+              <ProgressRow
                 focusable
                 preferredFocus
                 bottomSeparator="none"
-                childrenContainerWidth="max"
-                childrenLayout="below"
                 label="Download progress"
                 onCancelButton={onCancelDownload}
                 onCancelActionDescription="Cancel download"
-              >
-                <ProgressBarWithInfo
-                  indeterminate={download?.percent == null}
-                  nProgress={download?.percent ?? undefined}
-                  sOperationText={download?.text ?? "Preparing…"}
-                />
-              </Field>
+                indeterminate={download?.percent == null}
+                nProgress={download?.percent ?? undefined}
+                sOperationText={download?.text ?? "Preparing…"}
+              />
             ) : null}
           </DialogControlsSection>
         </ScrollBuffer>

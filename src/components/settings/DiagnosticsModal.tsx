@@ -40,6 +40,24 @@ export async function openDiagnosticsModal(title: string): Promise<void> {
   ]);
 }
 
+/** Epoch-millisecond fields, shown as the player's local date and time. */
+const TIMESTAMP_KEYS = new Set(["lastPush"]);
+
+/** Nested keys whose sentence-case form would not read well. */
+const NESTED_LABELS: Record<string, string> = {
+  clientLabel: "Client",
+  companionAddonDetected: "Companion addon",
+  followedCount: "Followed realms",
+  id: "Source",
+  requiresApiKey: "Needs API key",
+};
+
+/** "signedIn" → "Signed in": a nested key as a label. */
+function nestedLabel(key: string): string {
+  const words = key.replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase();
+  return NESTED_LABELS[key] ?? words.charAt(0).toUpperCase() + words.slice(1);
+}
+
 /** Render only the same safe allowlist as the copyable support report. */
 export function DiagnosticsRows({ text }: { text: string }) {
   const labels: Record<string, string> = {
@@ -54,13 +72,15 @@ export function DiagnosticsRows({ text }: { text: string }) {
     curseForgeAuth: "CurseForge access",
     githubTokenConfigured: "GitHub token saved",
   };
-  const format = (value: unknown): string => {
+  const format = (value: unknown, key = ""): string => {
     if (value === null || value === undefined) return "Not available";
     if (typeof value === "boolean") return value ? "Yes" : "No";
-    if (Array.isArray(value)) return value.length ? value.map(format).join("; ") : "None";
+    if (typeof value === "number" && TIMESTAMP_KEYS.has(key))
+      return new Date(value).toLocaleString();
+    if (Array.isArray(value)) return value.length ? value.map((v) => format(v)).join("; ") : "None";
     if (typeof value === "object")
       return Object.entries(value)
-        .map(([key, item]) => `${key.replace(/([a-z])([A-Z])/g, "$1 $2")}: ${format(item)}`)
+        .map(([k, item]) => `${nestedLabel(k)}: ${format(item, k)}`)
         .join(" · ");
     return String(value);
   };

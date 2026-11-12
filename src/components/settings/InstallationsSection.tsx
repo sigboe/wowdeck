@@ -1,4 +1,4 @@
-import { RowChevron } from "../RowChevron";
+import { RowChevron } from "../RowGlyph";
 import { useEffect, useSyncExternalStore } from "react";
 import { Field, PanelSection, PanelSectionRow } from "@decky/ui";
 import { FaSearchLocation } from "react-icons/fa";

@@ -1,4 +1,4 @@
-import { RowChevron } from "../RowChevron";
+import { RowChevron, RowGlyph } from "../RowGlyph";
 import { useEffect, useRef, useState } from "react";
 import {
   DialogBody,
@@ -203,7 +203,9 @@ export function CurseForgeKeyModal({ auth: initialAuth, onChanged, closeModal }:
                 disabled={busy || rechecking}
                 onClick={() => void clear()}
               >
-                <FaTrash />
+                <RowGlyph>
+                  <FaTrash />
+                </RowGlyph>
               </Field>
             )}
             {auth?.bundledPresent && auth.bundledStatus === "invalid" && (

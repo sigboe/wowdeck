@@ -27,6 +27,14 @@ const diagnostics: Diagnostics = {
   ],
   providers: [],
   recentErrors: [],
+  tradeSkillMaster: {
+    enabled: true,
+    signedIn: true,
+    tier: "free",
+    connected: true,
+    lastPush: Date.UTC(2026, 10, 12, 9, 30),
+    followedCount: 2,
+  },
 } as unknown as Diagnostics;
 
 let diagnosticsFails = false;
@@ -178,6 +186,20 @@ describe("Options › About › Diagnostics (#209)", () => {
     expect(shown.querySelector("pre")).toBeNull();
     // The copyable text never carries local paths (diagnostics.ts allowlist).
     expect(shown.textContent).not.toContain("/home/deck");
+  });
+
+  test("nested values read as words: sentence-case keys, dates, not milliseconds", async () => {
+    const shown = await openDiagnostics();
+    const text = shown.textContent!;
+    expect(text).toContain("Signed in: Yes");
+    expect(text).toContain("Followed realms: 2");
+    expect(text).toContain("Client: Retail");
+    expect(text).toContain("Companion addon: Yes");
+    expect(text).toContain(
+      `Last push: ${new Date(Date.UTC(2026, 10, 12, 9, 30)).toLocaleString()}`,
+    );
+    expect(text).not.toContain(String(Date.UTC(2026, 10, 12, 9, 30)));
+    expect(text).not.toContain("signed In");
   });
 
   test("Copy puts the diagnostics text on the clipboard and says so", async () => {

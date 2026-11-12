@@ -1,6 +1,6 @@
-import { RowChevron } from "../RowChevron";
+import { RowChevron, RowGlyph, RowSpinner } from "../RowGlyph";
 import type { CSSProperties, ReactNode } from "react";
-import { Spinner, type FooterLegendProps } from "@decky/ui";
+import { type FooterLegendProps } from "@decky/ui";
 
 import { FocusRow } from "../FocusSlot";
 import { QAM_VIEW } from "../../qamState";
@@ -43,5 +43,6 @@ export function SettingsRow({
   );
 }
 
-export const busyIcon = (busy: boolean, idle: ReactNode = <RowChevron />) =>
-  busy ? <Spinner style={{ width: "1.2em" }} /> : idle;
+/** A row's right-column glyph (the chevron by default), or Steam's spinner while it works; both centered. */
+export const busyIcon = (busy: boolean, idle?: ReactNode) =>
+  busy ? <RowSpinner /> : idle === undefined ? <RowChevron /> : <RowGlyph>{idle}</RowGlyph>;

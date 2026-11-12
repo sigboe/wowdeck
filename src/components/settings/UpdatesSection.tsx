@@ -1,4 +1,4 @@
-import { RowChevron } from "../RowChevron";
+import { RowChevron } from "../RowGlyph";
 import { useEffect, useSyncExternalStore } from "react";
 import { DialogButton, Field, PanelSection, ToggleField } from "@decky/ui";
 import { FaEllipsisH } from "react-icons/fa";

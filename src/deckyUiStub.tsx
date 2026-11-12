@@ -97,8 +97,27 @@ export const deckyUiStub = {
   TextField: ({ "aria-label": ariaLabel }: { "aria-label"?: string }) =>
     ariaLabel ? <input aria-label={ariaLabel} /> : null,
   Spinner: () => <span role="progressbar" />,
-  ProgressBarWithInfo: ({ sOperationText }: { sOperationText?: ReactNode }) => (
-    <div role="progressbar">{sOperationText}</div>
+  // Steam's ProgressBarWithInfo is itself a Field row: its label and B action.
+  ProgressBarWithInfo: ({
+    label,
+    sOperationText,
+    onCancelButton,
+    onCancelActionDescription,
+  }: {
+    label?: ReactNode;
+    sOperationText?: ReactNode;
+    onCancelButton?: () => void;
+    onCancelActionDescription?: string;
+  }) => (
+    <div>
+      <b>{label}</b>
+      <div role="progressbar">{sOperationText}</div>
+      {onCancelButton && (
+        <footer>
+          <button onClick={onCancelButton}>B: {onCancelActionDescription}</button>
+        </footer>
+      )}
+    </div>
   ),
   DropdownItem: (p: {
     label?: string;

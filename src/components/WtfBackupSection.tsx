@@ -1,4 +1,4 @@
-import { RowChevron } from "./RowChevron";
+import { RowChevron } from "./RowGlyph";
 import { Field, PanelSection } from "@decky/ui";
 
 import type { Installation } from "../types";

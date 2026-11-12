@@ -1,4 +1,4 @@
-import { RowChevron } from "./RowChevron";
+import { RowChevron } from "./RowGlyph";
 import { ScrollBuffer } from "./ScrollBuffer";
 import { useState } from "react";
 import {

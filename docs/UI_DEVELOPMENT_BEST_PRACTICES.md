@@ -1206,18 +1206,22 @@ installations" (not pressed: it changes addons); audit: no issues.
 
 **S32 [PROJECT] MUST** keep everything in the QAM inside the panel's width,
 and check a Steam row component there before using it. What: no element may
-reach past `.wowdeck-root`'s edges (audit rule OVERFLOW). Steam's progress
-row goes through `QamProgressBar` (`childrenContainerWidth="max"`, no label).
+reach past `.wowdeck-root`'s edges (audit rule OVERFLOW). Every progress row,
+in the QAM or a modal, is a `ProgressRow` used as the row itself. It never
+sits inside another `Field`. It sets `childrenContainerWidth="max"` and, with a
+label, `childrenLayout="below"`; row actions (B cancels) go on it.
 Why: the owner saw the Update all progress bar run off the panel
 (2026-10-16). `ProgressBarWithInfo` is a Field laid out inline: a label column
 plus a bar column with a 270 px minimum width, in a 268 px row, so the bar
-ended 120-136 px past the panel; it ignores `layout="below"` (a label is then
-squeezed into a one-letter column). With a full-width children column the bar
-fits Steam's 12 px row padding (DEVICE, in-memory render with
-`tools/deck-ui/render.mjs`: OVERFLOW 120 px before, no issues after; the WTF
-backup progress in Options used the same component and had the same flaw).
-How: `QamProgressBar` for any progress row; before adopting another Steam
-component in the QAM, render it with its real props via `render.mjs` and keep
+ended 120-136 px past the panel. It ignores `layout="below"` but honors
+`childrenLayout="below"`. Wrapped in another Field, the bar sat in a narrow
+right column: 200 px of a 244 px row in the QAM with its text wrapping to two
+lines, and 280 of 584 px in a modal behind an empty 268 px label column
+(DEVICE, 2026-11-12, Steam's real components rendered in the panel). Used
+directly, the bar fills the row: 244 of 244 px and 584 of 584 px, text on one
+line, and no focusable row nested in another.
+How: `ProgressRow` for any progress row; before adopting another Steam
+component, render it with its real props via `render.mjs` and keep
 the audit clean. Verified on the device by the owner (2026-10-16: Update all
 and Update all installations, bar inside the panel).
 
@@ -1505,6 +1509,16 @@ A row's own horizontal controls take precedence. When Update is absent or
 disabled, Right keeps its normal behavior. `updatePanelNavigation.ts` handles
 this through the Options group's direction handler and the Update button's
 return handler. Controller behavior remains unverified on hardware.
+
+Every icon-only glyph in a Field's right column goes through `RowGlyph`
+(`src/components/RowGlyph.tsx`): `RowChevron` for rows that open a modal,
+`RowSpinner` for a running action, `RowGlyph` around any other icon, and
+`busyIcon` switches between an icon and the spinner. A bare icon sits level
+with the label's first line. On "Find WoW installations" it sat 18.7 px above
+center (DEVICE, 2026-11-12), while every `RowChevron` row measured 0.0. Right
+columns holding a button or text (an addon row's menu button, a search
+result's download count) keep Steam's own placement, and so does the spinner
+that swaps in for them.
 
 Modal-opening rows use `RowChevron` inside a native `Field`. Its width stays
 in the right control column. The glyph is positioned against the whole row,
