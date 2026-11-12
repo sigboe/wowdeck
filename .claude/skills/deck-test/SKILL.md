@@ -1,12 +1,14 @@
 ---
 name: deck-test
-description: Automatically wake, deploy to and test the owner's Steam Deck through tools/deck-ui/deck under standing device-test approval. Use whenever the owner asks to test, verify, check, look at or reproduce something on the Deck or on device. Pass a brief as the argument: the build (branch or commit, engine change or not), every claim to verify, and anything the owner said about the run.
+description: >-
+  Automatically wake, deploy to and test the owner's Steam Deck through tools/deck-ui/deck under standing device-test approval. Use whenever the owner asks to test, verify, check, look at or reproduce something on the Deck or on device. Pass a brief as the argument: the build (branch or commit, engine change or not), every claim to verify, and anything the owner said about the run.
 context: fork
 ---
 
 # Test on the Steam Deck
 
-You run in a fresh context. The brief from the caller:
+Use the caller's brief, or the current user request in Codex. Claude Code
+runs this skill in a fresh context and supplies the brief through:
 
 $ARGUMENTS
 
