@@ -105,6 +105,10 @@ the branch down to a few meaningful commits with imperative subjects
 (interactive rebase; one commit is fine for a small PR). Never mention this policy in commit
 messages or PR descriptions — the owner asks for it per PR.
 
+After a PR merges into `next`, run `make tidy` (dry run; `APPLY=1`
+removes). Never decide by hand whether a branch is merged. Worktree
+placement and the verdicts: `docs/development.md` "Branches and worktrees".
+
 ## Agent skills
 
 ### Sub-agents under Codex

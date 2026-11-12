@@ -49,6 +49,7 @@ PRs as feature requests; `/triage` reads this flag.)_
 ## Scratch
 
 - One feature per directory: `.scratch/<feature-slug>/`.
+- Run logs and notes go in that directory, never in `/tmp`.
 - `/research` writes `.scratch/<feature-slug>/research-<topic>.md`.
 - A file that tracks state carries a `Status:` line near the top
   (`open`, `claimed`, `resolved`); comments append under a `## Comments`

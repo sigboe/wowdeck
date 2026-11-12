@@ -6,6 +6,7 @@
 - [Third-party code](#third-party-code)
 - [Toolchain](#toolchain)
 - [Common tasks](#common-tasks)
+- [Branches and worktrees](#branches-and-worktrees)
 - [Testing on a real Steam Deck](#testing-on-a-real-steam-deck)
 - [Fixture installations](#fixture-installations)
 - [Checklists](#checklists)
@@ -88,8 +89,50 @@ make build     # build frontend (rollup) and backend (bun compile)
 make test      # frontend, engine and packaging tests
 make lint      # eslint + prettier + tsc
 make package   # build distributable plugin zip in build/
+make tidy      # list merged branches, worktrees and stashes; APPLY=1 removes them
 make clean
 ```
+
+## Branches and worktrees
+
+Feature branches start from `next` and come back to it through a PR
+(`AGENTS.md`, "Branching and merging"). Make a worktree by hand beside the
+main checkout, named for its ticket or topic:
+
+```bash
+git worktree add ../wowdeck-190 -b tools/190-tidy origin/next
+```
+
+Don't put one in `/tmp` or `.scratch/`. Claude Code and T3 Code keep their
+own worktrees in `.claude/worktrees/` and `~/.t3/worktrees/`; leave those
+where the tools put them. Worktrees already share their dependencies.
+pnpm and bun hardlink packages from their stores, so a second
+`node_modules` takes almost no disk space. A worktree's real cost is its
+build output, about 200 MB, most of it `backend/out`.
+
+After a PR merges into `next`, run `make tidy`. It fetches `origin`, asks
+`gh` for the open PRs, and prints every local branch, worktree and stash
+with a verdict:
+
+- `in next`: merging the branch into `origin/next` changes nothing.
+- `in PR #n`: the same against an open PR's head branch, so a pre-squash
+  backup of that PR's branch counts.
+- `landed (squashed)`: the merge conflicts, but at least 80% of the
+  branch's added lines (longer than 25 characters) are in `origin/next`.
+  Lines the branch only moved don't count. The other 20% leaves room for
+  lines rewritten in review, so check the branch first if that matters.
+- `unmerged`: everything else.
+
+Don't use `git branch --merged` for this. Squashing a branch before its
+PR merges gives it new commits, so git reports it as unmerged.
+
+`make tidy` only reports. `make tidy APPLY=1` removes the worktrees and
+branches marked `rm`, and prints each deleted branch's SHA with the command
+that restores it. It never removes `main`, `next`, the current branch,
+branches of open PRs, unmerged branches, locked worktrees, worktrees with
+uncommitted changes, or worktrees holding `.scratch/` notes. Removing a
+worktree deletes its ignored files with it: build output, `node_modules`,
+and any local `.env`. It lists stashes but never drops them.
 
 ## Releases
 
@@ -98,12 +141,16 @@ make clean
 after the merge. One version lives in `package.json`, `plugin.json` and
 `backend/package.json`, written and checked by `tools/version.py`.
 
-On `next`, before opening the PR into `main`:
+Prepare the release on a `release/X.Y.Z` branch off `next`, and push it
+once it has a commit. Never keep release prep in a stash. A stash stays
+on one machine and nobody else sees it, and the 1.2.0 version bump once
+sat in one unnoticed.
 
 1. In `CHANGELOG.md`, rename `[Unreleased]` to `[X.Y.Z] - <date>`, put a
    fresh empty `[Unreleased]` above it and update the link references.
 2. Run `make version-set VERSION=X.Y.Z` and commit both.
-3. Open the PR `next` → `main`.
+3. Merge `release/X.Y.Z` into `next` through a PR, then open the PR
+   `next` → `main`.
 
 The PR's "Release gate" check (`ci.yml`, `tools/release-check.ts`) fails
 while the version is already tagged, its changelog section is missing, or
