@@ -28,8 +28,7 @@ import { addonSession } from "./session";
 import { InstallationSelect } from "./components/InstallationSelect";
 import { askUntilAnswered } from "./askUntilAnswered";
 import { QAM_TABS, QAM_VIEW, qamState, type QamTab } from "./qamState";
-import { startSourceJump, startInstallationJump } from "./optionsJump";
-import { CURSE_KEY_ROW } from "./components/settings/common";
+import { CURSE_KEY_ROW, startSourceJump, startInstallationJump } from "./optionsJump";
 import { FocusRow } from "./components/FocusSlot";
 import { RecoveryNotice } from "./components/RecoveryNotice";
 import { QAM_DROPDOWN_BELOW_VALUE } from "./components/dropdownValue";
@@ -277,11 +276,7 @@ function Content() {
             detecting={findingWow}
             result={findWowResult}
             onDetect={() => void addonSession.findWow()}
-            onOpenOptions={() => {
-              setRestoreRows(true);
-              bumperEntry.current = false;
-              setTab("settings");
-            }}
+            onAdded={addonSession.reloadAll}
             restoreRows={restoreRows}
           />
           {installations.length > 0 && (
@@ -303,7 +298,8 @@ function Content() {
           onOpenSources={(providers, marked) => {
             // The zero-capability screen's button: Options opens on the first
             // marked source row that can take focus. A source that still needs
-            // setup cannot take it, so the key row is the fallback (optionsJump.ts).
+            // setup has no toggle to press, so its `>` key row is the fallback
+            // (optionsJump.ts).
             // Nothing is enabled here. With nothing compatible to mark, Options
             // still opens (sources are turned on there) through the normal
             // focus restore.

@@ -157,10 +157,11 @@ the top of Options with the **Update** button.
 ## Troubleshooting
 
 - **Logs** live at `~/homebrew/logs/wowdeck/` on the Deck (`engine.log`
-  and `plugin.log`). Options → Diagnostics copies them in one tap.
-- **No WoW installation found.** Open Options → Installation and pick
-  the folder that holds `_retail_`, `_classic_` or another flavor
-  folder.
+  and `plugin.log`). Options → About → Diagnostics shows versions and
+  recent errors, and **Copy** puts them on the clipboard.
+- **No WoW installation found.** Press **Add WoW folder** on My Addons
+  or under Options → WoW installations, then pick the folder that holds
+  `_retail_`, `_classic_` or another flavor folder.
 - **CurseForge errors (403 or 429).** Set your own key under Options →
   CurseForge.
 - **Options → Updates names a new version but shows no Update panel.**

@@ -34,18 +34,27 @@ const BODY_MAX_HEIGHT = "60vh";
  */
 export type AboutModalScroll = "direct" | "focus";
 
+/** A footer button before Close (Diagnostics' Copy); it leaves the modal open. */
+export interface AboutModalAction {
+  label: string;
+  onClick: () => void;
+}
+
 /**
  * A modal for an Options › About row, after the release notes modal
- * (ReleaseNotesModal). B, or A on Close, closes it.
+ * (ReleaseNotesModal). B, or A on Close, closes it. Footer actions come
+ * before Close; in a "direct" modal Up/Down on any of them scroll the body.
  */
 function AboutModal({
   title,
   scroll,
+  actions = [],
   children,
   closeModal,
 }: {
   title: string;
   scroll: AboutModalScroll;
+  actions?: AboutModalAction[];
   children: ReactNode;
   closeModal?: () => void;
 }) {
@@ -76,12 +85,26 @@ function AboutModal({
         )}
       </DialogBody>
       <DialogFooter>
-        <DialogButton
-          onClick={closeModal}
-          onGamepadDirection={direct ? onGamepadDirection : undefined}
+        <Focusable
+          flow-children="row"
+          className={actions.length ? "DialogTwoColLayout _DialogColLayout" : undefined}
         >
-          Close
-        </DialogButton>
+          {actions.map((action) => (
+            <DialogButton
+              key={action.label}
+              onClick={action.onClick}
+              onGamepadDirection={direct ? onGamepadDirection : undefined}
+            >
+              {action.label}
+            </DialogButton>
+          ))}
+          <DialogButton
+            onClick={closeModal}
+            onGamepadDirection={direct ? onGamepadDirection : undefined}
+          >
+            Close
+          </DialogButton>
+        </Focusable>
       </DialogFooter>
     </ModalRoot>
   );
@@ -97,10 +120,11 @@ export function openAboutModal(
   title: string,
   body: (close: () => void) => ReactNode,
   scroll: AboutModalScroll = "direct",
+  actions: AboutModalAction[] = [],
 ): void {
   const close = () => modalResult.Close();
   const modalResult = showModal(
-    <AboutModal title={title} scroll={scroll} closeModal={close}>
+    <AboutModal title={title} scroll={scroll} actions={actions} closeModal={close}>
       {body(close)}
     </AboutModal>,
     window,

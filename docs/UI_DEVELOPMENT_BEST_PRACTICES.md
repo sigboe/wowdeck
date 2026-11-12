@@ -1206,18 +1206,22 @@ installations" (not pressed: it changes addons); audit: no issues.
 
 **S32 [PROJECT] MUST** keep everything in the QAM inside the panel's width,
 and check a Steam row component there before using it. What: no element may
-reach past `.wowdeck-root`'s edges (audit rule OVERFLOW). Steam's progress
-row goes through `QamProgressBar` (`childrenContainerWidth="max"`, no label).
+reach past `.wowdeck-root`'s edges (audit rule OVERFLOW). Every progress row,
+in the QAM or a modal, is a `ProgressRow` used as the row itself. It never
+sits inside another `Field`. It sets `childrenContainerWidth="max"` and, with a
+label, `childrenLayout="below"`; row actions (B cancels) go on it.
 Why: the owner saw the Update all progress bar run off the panel
 (2026-10-16). `ProgressBarWithInfo` is a Field laid out inline: a label column
 plus a bar column with a 270 px minimum width, in a 268 px row, so the bar
-ended 120-136 px past the panel; it ignores `layout="below"` (a label is then
-squeezed into a one-letter column). With a full-width children column the bar
-fits Steam's 12 px row padding (DEVICE, in-memory render with
-`tools/deck-ui/render.mjs`: OVERFLOW 120 px before, no issues after; the WTF
-backup progress in Options used the same component and had the same flaw).
-How: `QamProgressBar` for any progress row; before adopting another Steam
-component in the QAM, render it with its real props via `render.mjs` and keep
+ended 120-136 px past the panel. It ignores `layout="below"` but honors
+`childrenLayout="below"`. Wrapped in another Field, the bar sat in a narrow
+right column: 200 px of a 244 px row in the QAM with its text wrapping to two
+lines, and 280 of 584 px in a modal behind an empty 268 px label column
+(DEVICE, 2026-11-12, Steam's real components rendered in the panel). Used
+directly, the bar fills the row: 244 of 244 px and 584 of 584 px, text on one
+line, and no focusable row nested in another.
+How: `ProgressRow` for any progress row; before adopting another Steam
+component, render it with its real props via `render.mjs` and keep
 the audit clean. Verified on the device by the owner (2026-10-16: Update all
 and Update all installations, bar inside the panel).
 
@@ -1331,6 +1335,20 @@ the words carry the meaning (spec #131, story 19). Indented rows read the
 same at any width and cost no extra focus stops. Connector characters
 depend on the font and wrap badly at QAM width. First used on the Manual
 Install preview card when a file takes over a catalogue addon (#129).
+
+**S39 [PROJECT] MUST** give `>` and ⋯ one meaning each on settings rows.
+What: a chevron (`>`, `FaChevronRight`) at a row's right edge means the
+row opens something: A on the row opens a modal, a picker or a page
+(Options › About › Diagnostics). A ⋯ button sits beside a row's own
+action and opens more settings for it (the WoWDeck row's ⋯ in Options ›
+Updates opens the update channel modal). A row never uses one icon for
+the other's job. Every icon-only button has an accessible name: text in a
+`wowdeck-visually-hidden` span inside the button, with the glyph
+`aria-hidden`, not only `aria-label`, because the device test tool reads
+text nodes (`updatesSectionNames.test.tsx`). Why: the
+icons mean the same thing everywhere, so players can tell what A does
+before they press it, and a screen reader or the focus hint can name the
+button (spec #183, stories 53 and 54).
 
 **Preview without a Deck.** Chromium can render Steam's real stylesheets against
 a static copy of the DOM: copy `css/sp.css` and `library.css`, wrap the markup in
@@ -1483,6 +1501,44 @@ keep the component for layout only. One-line texts take no period (C03).
 ---
 
 ## 6. Focus, controller navigation, modals and forms
+
+Options update navigation, owner decision from PR #210 review: Right from the
+rightmost control of any Options row moves to the floating Update button.
+Left returns to the originating control and restores the list's scroll offset.
+A row's own horizontal controls take precedence. When Update is absent or
+disabled, Right keeps its normal behavior. `updatePanelNavigation.ts` handles
+this through the Options group's direction handler and the Update button's
+return handler. Controller behavior remains unverified on hardware.
+
+Every icon-only glyph in a Field's right column goes through `RowGlyph`
+(`src/components/RowGlyph.tsx`): `RowChevron` for rows that open a modal,
+`RowSpinner` for a running action, `RowGlyph` around any other icon, and
+`busyIcon` switches between an icon and the spinner. A bare icon sits level
+with the label's first line. On "Find WoW installations" it sat 18.7 px above
+center (DEVICE, 2026-11-12), while every `RowChevron` row measured 0.0. Right
+columns holding a button or text (an addon row's menu button, a search
+result's download count) keep Steam's own placement, and so does the spinner
+that swaps in for them.
+
+Modal-opening rows use `RowChevron` inside a native `Field`. Its width stays
+in the right control column. The glyph is positioned against the whole row,
+so a wrapped description does not push it above center. Steam's normal right
+inset stays in effect. `verticalAlignment="center"` and
+`childrenContainerWidth="min"` are already Field defaults; the former aligns
+the label, not the right column. Setting them explicitly does not fix this.
+
+Local Chromium measurement on 2026-11-12, using the captured Steam Field DOM
+and both `library.css` and `sp.css`, reproduced a 20 px center error with the
+bare icon. Rendering `RowChevron` reduced it to 0 px, with the right inset
+unchanged. This is a local stylesheet check, not a device result. The normal
+component tests replace Steam controls and cannot verify this geometry.
+
+Footer actions need `DialogTwoColLayout _DialogColLayout` around their
+`Focusable flow-children="row"` group when there are two buttons. Direct
+children of `DialogFooter` do not get the two-column layout. The same local
+check measured a 28 px gap after adding the wrapper. Inside the dialog body,
+actions are whole-row Fields and inputs use TextRow. Backup status and
+progress also sit in native Fields, so they keep the same row insets.
 
 ### 6.1 Facts about `Focusable` (installed `@decky/ui` 4.12.1, OFFICIAL types)
 
@@ -1696,12 +1752,14 @@ flow-children="horizontal"` row, exactly like the Search and Install-from-URL
 rows, so D-pad Right moves from the field to the button. On pick, write the
 path into the field (the user can still edit it); on cancel (the promise
 rejects) do nothing. The picker is a modal, so the panel is unmounted while it
-is open (G4): keep the form draft in module scope
-(`src/installationFormState.ts`, a subscribable store read with
-`useSyncExternalStore`) so the picked path reaches the remounted form whether it
-arrives before or after the remount. First applied to Options → Add Installation
-Manually; the export dialog's folder/file pickers in `AddonPortabilityModal`
-already used `openFilePicker`. Source of the API: installed `@decky/api` types
+is open (G4): keep a form draft in module scope (a subscribable store read
+with `useSyncExternalStore`) so the picked path reaches the remounted form
+whether it arrives before or after the remount. When the path is all the form
+needs first, open the picker straight from the row and show the rest of the
+form in a modal after it returns, as Add WoW folder does (`src/addWowFolder.ts`,
+`AddInstallationModal`). Then nothing has to survive the unmount. The export
+dialog's folder/file pickers in `AddonPortabilityModal` use `openFilePicker`
+too. Source of the API: installed `@decky/api` types
 (OFFICIAL). Not yet verified on a Deck (see action items).
 
 ### 6.5 Pagination focus

@@ -78,8 +78,18 @@ mock.module("@decky/ui", () => ({
     </section>
   ),
   PanelSectionRow: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-  DialogButton: ({ children, disabled }: { children: ReactNode; disabled?: boolean }) => (
-    <button disabled={disabled}>{children}</button>
+  DialogButton: ({
+    children,
+    disabled,
+    onClick,
+  }: {
+    children: ReactNode;
+    disabled?: boolean;
+    onClick?: () => void;
+  }) => (
+    <button disabled={disabled} onClick={onClick}>
+      {children}
+    </button>
   ),
   Focusable: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }));
@@ -217,22 +227,80 @@ const props = {
   detecting: false,
   result: null as string | null,
   onDetect: () => {},
-  onOpenOptions: () => {},
+  onAdded: async () => {},
 };
 
 describe("My Addons Find WoW widget", () => {
-  test("offers detection and Steam library setup only without an installation", () => {
+  test("offers detection and Add WoW folder only without an installation", () => {
     const empty = renderToStaticMarkup(<FindWowWidget {...props} />);
     expect(empty).toContain("Find WoW");
-    expect(empty).toContain("Steam library");
-    expect(empty).toContain("WoW or Battle.net");
+    expect(empty).toContain("Add WoW folder");
+    // Getting started needs no Steam library setup, and no trip to Options.
+    expect(empty).not.toContain("Steam library");
+    expect(empty).not.toContain("Options");
     expect(renderToStaticMarkup(<FindWowWidget {...props} installationCount={1} />)).toBe("");
   });
 
-  test("shows the empty scan result and where to add a folder manually", () => {
+  test("shows the empty scan result", () => {
     const html = renderToStaticMarkup(<FindWowWidget {...props} result="Found 0 installations" />);
     expect(html).toContain("Found 0 installations");
-    expect(html).toContain("add its folder in Options");
+  });
+
+  test("Add WoW folder runs the shared flow: a two-version folder is added at once", async () => {
+    const oldWindow = globalThis.window;
+    const oldDocument = globalThis.document;
+    const dom = new JSDOM('<div id="widget-root"></div>');
+    globalThis.window = dom.window as unknown as Window & typeof globalThis;
+    globalThis.document = dom.window.document;
+    Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", {
+      configurable: true,
+      value: true,
+    });
+    const asked: { method: string; params: unknown }[] = [];
+    let reloads = 0;
+    const root = createRoot(document.getElementById("widget-root")!);
+    try {
+      await act(async () =>
+        root.render(
+          <FindWowWidget
+            {...props}
+            onAdded={async () => {
+              reloads++;
+            }}
+            addFolderDeps={{
+              pickFolder: async () => "/games/World of Warcraft",
+              rpc: (async (method: string, params: unknown) => {
+                asked.push({ method, params });
+                return method === "installations.inspect"
+                  ? {
+                      found: [
+                        { gameType: "retail", displayName: "Retail" },
+                        { gameType: "classic", displayName: "Classic" },
+                      ],
+                    }
+                  : { installations: [] };
+              }) as never,
+              toast: () => {},
+            }}
+          />,
+        ),
+      );
+      const add = [...document.querySelectorAll("button")].find(
+        (b) => b.textContent === "Add WoW folder",
+      )!;
+      await act(async () => add.click());
+      expect(asked).toEqual([
+        { method: "installations.inspect", params: { path: "/games/World of Warcraft" } },
+        { method: "installations.add", params: { path: "/games/World of Warcraft" } },
+      ]);
+      expect(reloads).toBe(1);
+    } finally {
+      await act(async () => root.unmount());
+      dom.window.close();
+      globalThis.window = oldWindow;
+      globalThis.document = oldDocument;
+      Reflect.deleteProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT");
+    }
   });
 
   test("shows progress with scanning disabled, and displays a failed scan", () => {

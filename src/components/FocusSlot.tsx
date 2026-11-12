@@ -42,6 +42,7 @@ export function FocusSlot({
   return (
     <Focusable
       {...actions}
+      data-options-row={view === "qam.settings" ? id : undefined}
       className={className}
       style={style}
       preferredFocus={rememberedFocus(view) === id}

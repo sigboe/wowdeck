@@ -1,16 +1,21 @@
+import { RowChevron } from "../RowGlyph";
 import { UpdateDot } from "../UpdateDot";
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { ButtonItem, Navigation, PanelSection, ToggleField } from "@decky/ui";
+import { ButtonItem, Field, Navigation, PanelSection, ToggleField } from "@decky/ui";
+
 import type { CurseForgeAuthStatus, ProviderInfo } from "../../types";
 import * as api from "../../services/backend";
 import { toastError } from "../../toast";
-import { shouldShowCurseForgeKeySection } from "../../curseForgeAuthUi";
+import { curseForgeRowState } from "../../curseForgeAuthUi";
+import { descriptionStyle } from "../../steamTheme";
+import { openCurseForgeKeyModal } from "./CurseForgeKeyModal";
 import { providerLabel } from "../../addonRow";
 import { PROVIDER_ID } from "../../../backend/src/api/providers";
 import { SettingsRow } from "./common";
 import { sourceOffDescription } from "../../sourceAccess";
 import { clearSourceJump, sourceJump, sourceRowKey, subscribeSourceJump } from "../../optionsJump";
 import { setSourceEnabled } from "../../sourcesStore";
+import { GitHubSourceRow } from "./GitHubSource";
 
 import { startTsmSignIn } from "../../tsmSignIn";
 import { openPanel } from "../../openPanel";
@@ -29,11 +34,25 @@ interface Props {
   /** Null when they could not be loaded (a Try again row). */
   providers: ProviderInfo[] | null;
   reloadProviders: () => Promise<void>;
+  /** Null while loading. */
   curseForgeAuth: CurseForgeAuthStatus | null;
+  /** The key modal saved or cleared a key: reload the CurseForge status. */
+  onCurseForgeKeyChanged: () => Promise<void>;
 }
 
-/** Each addon source on or off. */
-export function SourcesSection({ providers, reloadProviders, curseForgeAuth }: Props) {
+/**
+ * Each addon source on or off, then GitHub's token row (GitHub is always
+ * on). CurseForge's row also sets up its key
+ * (curseForgeAuthUi.ts): a `>` row while no key is usable, else a toggle,
+ * whose Options button (≡) "API key" opens the same modal while the
+ * player's own key is in use.
+ */
+export function SourcesSection({
+  providers,
+  reloadProviders,
+  curseForgeAuth,
+  onCurseForgeKeyChanged,
+}: Props) {
   // The Options jump (optionsJump.ts) marks the rows it navigated for; they
   // blink until the jump is used, focus moves on, or this section leaves.
   const [tsm, setTsm] = useState<TradeSkillMasterAuthStatus | null>(null);
@@ -78,6 +97,14 @@ export function SourcesSection({ providers, reloadProviders, curseForgeAuth }: P
           .filter((p) => p.allowEdit)
           .map((p) => {
             const marked = jump?.marked.has(p.id) ?? false;
+            const curseRow =
+              p.id === PROVIDER_ID.Curse ? curseForgeRowState(p, curseForgeAuth) : null;
+            const openKey = () => {
+              if (marked) {
+                clearSourceJump();
+              }
+              openCurseForgeKeyModal(curseForgeAuth, onCurseForgeKeyChanged);
+            };
             // Off keeps the TradeSkillMaster account; X forgets it.
             const tsmAccount =
               p.id === PROVIDER_ID.TradeSkillMaster &&
@@ -86,20 +113,22 @@ export function SourcesSection({ providers, reloadProviders, curseForgeAuth }: P
               <SettingsRow
                 key={p.id}
                 actions={
-                  tsmAccount
-                    ? {
-                        onSecondaryActionDescription: "Sign out",
-                        onSecondaryButton: () => {
-                          void api
-                            .rpc("tradeskillmaster.signOut")
-                            .then(async (status) => {
-                              setTsm(status);
-                              await reloadProviders();
-                            })
-                            .catch((e) => toastError("Couldn't sign out of TradeSkillMaster", e));
-                        },
-                      }
-                    : undefined
+                  curseRow === "ownKeyToggle"
+                    ? { onOptionsButton: openKey, onOptionsActionDescription: "API key" }
+                    : tsmAccount
+                      ? {
+                          onSecondaryActionDescription: "Sign out",
+                          onSecondaryButton: () => {
+                            void api
+                              .rpc("tradeskillmaster.signOut")
+                              .then(async (status) => {
+                                setTsm(status);
+                                await reloadProviders();
+                              })
+                              .catch((e) => toastError("Couldn't sign out of TradeSkillMaster", e));
+                          },
+                        }
+                      : undefined
                 }
                 id={sourceRowKey(p.id)}
                 className={marked ? "wowdeck-source-jump" : undefined}
@@ -111,84 +140,93 @@ export function SourcesSection({ providers, reloadProviders, curseForgeAuth }: P
                     : undefined
                 }
               >
-                {p.id === PROVIDER_ID.TradeSkillMaster && tsm?.state === "signedOut" && (
-                  <div style={{ position: "relative" }}>
-                    <UpdateDot color="action" />
-                  </div>
-                )}
-                <ToggleField
-                  checked={p.enabled}
-                  label={
-                    p.id === PROVIDER_ID.TradeSkillMaster && tsm?.account
-                      ? `TradeSkillMaster · ${tsm.account}`
-                      : providerLabel(p.id)
-                  }
-                  disabled={p.requiresApiKey && !p.configured}
-                  description={
-                    p.requiresApiKey && !p.configured
-                      ? "Needs an API key (see CurseForge above)"
-                      : p.requiresApiKey &&
-                          // "Your key" only when the bundled key isn't the one in use,
-                          // the same rule as the CurseForge section (curseForgeAuthUi.ts).
-                          (p.id !== PROVIDER_ID.Curse ||
-                            !curseForgeAuth ||
-                            shouldShowCurseForgeKeySection(curseForgeAuth))
-                        ? "Using your API key"
-                        : tsmAccount && !p.enabled
-                          ? "Your account stays signed in while off. X signs out."
-                          : !p.enabled
-                            ? (sourceOffDescription(p.id) ?? undefined)
-                            : undefined
-                  }
-                  onChange={async (checked) => {
-                    // The marked row was used: the attention effect has done its job.
-                    if (marked) {
-                      clearSourceJump();
-                    }
-                    // Shown at once; the store goes back to the engine's list on failure.
-                    try {
-                      if (
-                        p.id === PROVIDER_ID.TradeSkillMaster &&
-                        checked &&
-                        tsm?.state !== "signedIn" &&
-                        !tsm?.account
-                      ) {
-                        await startTsmSignIn(api.rpc, signInBrowser);
-                        setTsm(await api.rpc("tradeskillmaster.status"));
-                      } else {
-                        await setSourceEnabled(api.rpc, p.id, checked);
+                {curseRow === "keyRow" ? (
+                  <Field
+                    focusable
+                    label={providerLabel(p.id)}
+                    description={<span style={descriptionStyle}>Needs an API key</span>}
+                    onClick={openKey}
+                  >
+                    <RowChevron />
+                  </Field>
+                ) : (
+                  <>
+                    {p.id === PROVIDER_ID.TradeSkillMaster && tsm?.state === "signedOut" && (
+                      <div style={{ position: "relative" }}>
+                        <UpdateDot color="action" />
+                      </div>
+                    )}
+                    <ToggleField
+                      checked={p.enabled}
+                      // The account goes in the description: in the label it
+                      // truncated to "TradeSkillMaster ·" (DEVICE, 2026-11-12).
+                      label={providerLabel(p.id)}
+                      disabled={p.requiresApiKey && !p.configured}
+                      description={
+                        p.requiresApiKey && !p.configured
+                          ? "Needs an API key"
+                          : curseRow === "ownKeyToggle"
+                            ? "Using your API key"
+                            : tsmAccount && !p.enabled
+                              ? "Your account stays signed in while off. X signs out."
+                              : p.id === PROVIDER_ID.TradeSkillMaster && tsm?.account
+                                ? `Signed in as ${tsm.account}`
+                                : !p.enabled
+                                  ? (sourceOffDescription(p.id) ?? undefined)
+                                  : undefined
                       }
-                    } catch (e) {
-                      toastError(`Couldn't change ${providerLabel(p.id)}`, e);
-                    }
-                  }}
-                />
-                {p.id === PROVIDER_ID.TradeSkillMaster && tsm?.state === "signedOut" && (
-                  <ButtonItem
-                    layout="below"
-                    onClick={async () => {
-                      await startTsmSignIn(api.rpc, signInBrowser);
-                      setTsm(await api.rpc("tradeskillmaster.status"));
-                    }}
-                  >
-                    Sign in
-                  </ButtonItem>
-                )}
-                {p.id === PROVIDER_ID.TradeSkillMaster && tsm?.state === "signingIn" && (
-                  <ButtonItem
-                    layout="below"
-                    onClick={async () => {
-                      setTsm(await api.rpc("tradeskillmaster.cancel"));
-                      await reloadProviders();
-                    }}
-                  >
-                    Cancel sign-in
-                  </ButtonItem>
+                      onChange={async (checked) => {
+                        // The marked row was used: the attention effect has done its job.
+                        if (marked) {
+                          clearSourceJump();
+                        }
+                        // Shown at once; the store goes back to the engine's list on failure.
+                        try {
+                          if (
+                            p.id === PROVIDER_ID.TradeSkillMaster &&
+                            checked &&
+                            tsm?.state !== "signedIn" &&
+                            !tsm?.account
+                          ) {
+                            await startTsmSignIn(api.rpc, signInBrowser);
+                            setTsm(await api.rpc("tradeskillmaster.status"));
+                          } else {
+                            await setSourceEnabled(api.rpc, p.id, checked);
+                          }
+                        } catch (e) {
+                          toastError(`Couldn't change ${providerLabel(p.id)}`, e);
+                        }
+                      }}
+                    />
+                    {p.id === PROVIDER_ID.TradeSkillMaster && tsm?.state === "signedOut" && (
+                      <ButtonItem
+                        layout="below"
+                        onClick={async () => {
+                          await startTsmSignIn(api.rpc, signInBrowser);
+                          setTsm(await api.rpc("tradeskillmaster.status"));
+                        }}
+                      >
+                        Sign in
+                      </ButtonItem>
+                    )}
+                    {p.id === PROVIDER_ID.TradeSkillMaster && tsm?.state === "signingIn" && (
+                      <ButtonItem
+                        layout="below"
+                        onClick={async () => {
+                          setTsm(await api.rpc("tradeskillmaster.cancel"));
+                          await reloadProviders();
+                        }}
+                      >
+                        Cancel sign-in
+                      </ButtonItem>
+                    )}
+                  </>
                 )}
               </SettingsRow>
             );
           })
       )}
+      <GitHubSourceRow />
     </PanelSection>
   );
 }

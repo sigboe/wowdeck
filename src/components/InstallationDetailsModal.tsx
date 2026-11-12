@@ -1,3 +1,4 @@
+import { RowGlyph } from "./RowGlyph";
 import {
   DialogBody,
   DialogButton,
@@ -98,7 +99,9 @@ export function InstallationDetailsModal({
                 actions.onRescan();
               }}
             >
-              <FaSync />
+              <RowGlyph>
+                <FaSync />
+              </RowGlyph>
             </Field>
             <Field
               focusable
@@ -123,7 +126,9 @@ export function InstallationDetailsModal({
                 actions.onRemove();
               }}
             >
-              <FaTrash />
+              <RowGlyph>
+                <FaTrash />
+              </RowGlyph>
             </Field>
           </DialogControlsSection>
         </ScrollBuffer>

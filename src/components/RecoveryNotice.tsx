@@ -1,3 +1,4 @@
+import { RowGlyph } from "./RowGlyph";
 import { useSyncExternalStore } from "react";
 import { Field, PanelSection, PanelSectionRow } from "@decky/ui";
 import { FaExclamationTriangle } from "react-icons/fa";
@@ -54,7 +55,9 @@ export function RecoveryNoticeRow({
               </span>
             }
           >
-            <FaExclamationTriangle style={{ color: STEAM.warning }} />
+            <RowGlyph>
+              <FaExclamationTriangle style={{ color: STEAM.warning }} />
+            </RowGlyph>
           </Field>
         </PanelSectionRow>
       </PanelSection>
@@ -75,7 +78,9 @@ export function RecoveryNoticeRow({
           onClick={() => openRecoveryDetails(installation)}
           onOKActionDescription="Recovery details"
         >
-          <FaExclamationTriangle style={{ color: STEAM.warning }} />
+          <RowGlyph>
+            <FaExclamationTriangle style={{ color: STEAM.warning }} />
+          </RowGlyph>
         </Field>
       </PanelSectionRow>
     </PanelSection>

@@ -1,3 +1,4 @@
+import { RowGlyph } from "./RowGlyph";
 import { useEffect, useState } from "react";
 import {
   DialogBody,
@@ -107,7 +108,9 @@ function FoldersModal({ addon, closeModal }: { addon: Addon; closeModal?: () => 
                   description={<span style={descriptionStyle}>{showInfo.description}</span>}
                   onClick={() => void show()}
                 >
-                  <FaFolderOpen style={showInfo.muted ? { opacity: 0.5 } : undefined} />
+                  <RowGlyph>
+                    <FaFolderOpen style={showInfo.muted ? { opacity: 0.5 } : undefined} />
+                  </RowGlyph>
                 </Field>
                 <Field focusable label="AddOns folder" childrenLayout="below">
                   {homePath(folders.addonsPath)}
@@ -127,7 +130,9 @@ function FoldersModal({ addon, closeModal }: { addon: Addon; closeModal?: () => 
                     onOKActionDescription="Copy path"
                     onClick={() => void copy(f.path)}
                   >
-                    <FaCopy />
+                    <RowGlyph>
+                      <FaCopy />
+                    </RowGlyph>
                   </Field>
                 ))}
               </>

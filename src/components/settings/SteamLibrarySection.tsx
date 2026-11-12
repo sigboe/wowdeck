@@ -1,6 +1,7 @@
+import { RowChevron } from "../RowGlyph";
 import { useSyncExternalStore } from "react";
 import { Field, PanelSection, ToggleField } from "@decky/ui";
-import { FaChevronRight } from "react-icons/fa";
+
 import { descriptionStyle } from "../../steamTheme";
 import { settingsStore } from "../../settings";
 import type { SteamGame } from "../../steamLibrary";
@@ -66,7 +67,7 @@ export function SteamLibrarySection() {
             )
           }
         >
-          <FaChevronRight />
+          <RowChevron />
         </Field>
       </SettingsRow>
       {linked.length > 0 && (

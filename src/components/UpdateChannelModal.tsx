@@ -1,3 +1,4 @@
+import { RowGlyph } from "./RowGlyph";
 import {
   DialogBody,
   DialogControlsSection,
@@ -73,7 +74,9 @@ export function UpdateChannelModal({
               onClick={() => closeModal?.()}
               onOKActionDescription="Select"
             >
-              <FaCheck style={{ width: "16px", color: STEAM.positive }} />
+              <RowGlyph>
+                <FaCheck style={{ width: "16px", color: STEAM.positive }} />
+              </RowGlyph>
             </Field>
           )}
           {UPDATE_CHANNEL_ROWS.map((row) => (
@@ -86,7 +89,9 @@ export function UpdateChannelModal({
               onOKActionDescription="Select"
             >
               {row.channel === current && (
-                <FaCheck style={{ width: "16px", color: STEAM.positive }} />
+                <RowGlyph>
+                  <FaCheck style={{ width: "16px", color: STEAM.positive }} />
+                </RowGlyph>
               )}
             </Field>
           ))}

@@ -1,6 +1,7 @@
+import { RowChevron } from "../RowGlyph";
 import { useEffect, useRef, useState } from "react";
 import { Field, PanelSection } from "@decky/ui";
-import { FaChevronRight } from "react-icons/fa";
+
 import type { AboutInfo } from "../../types";
 import * as api from "../../services/backend";
 import {
@@ -13,8 +14,9 @@ import {
 } from "../../about";
 import { descriptionStyle } from "../../steamTheme";
 import { AboutFunding, AboutMarkdown, AboutNames, openAboutModal } from "../AboutModal";
-import { rememberedFocus, revealRemembered } from "../../focusMemory";
+import { rememberFocus, rememberedFocus, revealRemembered } from "../../focusMemory";
 import { SettingsRow, VIEW } from "./common";
+import { openDiagnosticsModal } from "./DiagnosticsModal";
 
 /**
  * Options › About, the last section: the rows src/about.ts picks from
@@ -67,6 +69,7 @@ export function AboutSection() {
       openAboutModal(row.label, (close) => (
         <AboutMarkdown markdown={noticesText(info)} closeModal={close} />
       )),
+    diagnostics: (row) => void openDiagnosticsModal(row.label),
   };
 
   return (
@@ -74,12 +77,19 @@ export function AboutSection() {
       {rows.map((row) => (
         <SettingsRow key={row.id} id={row.id}>
           <Field
+            verticalAlignment="center"
+            childrenContainerWidth="min"
             focusable
             label={row.label}
             description={<span style={descriptionStyle}>{row.description}</span>}
-            onClick={() => open[row.id](row)}
+            onClick={() => {
+              // A tap never focuses the row: remember it, so it gets focus
+              // back when the modal closes (S36).
+              rememberFocus(VIEW, row.id);
+              open[row.id](row);
+            }}
           >
-            <FaChevronRight />
+            <RowChevron />
           </Field>
         </SettingsRow>
       ))}

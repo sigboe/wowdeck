@@ -252,6 +252,13 @@ Someone who funded WoWDeck and asked to be credited by name. Credit is
 opt-in only: a name with no link, amount or tier.
 _Avoid_: donor, backer, patron, sponsor
 
+**WowUp Companion**:
+WowUp's own in-game addon (WowUp Hub addon 27), which shows WoWDeck's update
+data inside WoW. It reads the companion data addon (`wowup_data_addon`) that
+WoWDeck writes, which is a different addon. Options › Notifications offers to
+install it into the active installation from WowUp Hub.
+_Avoid_: companion data addon (that is `wowup_data_addon`), WowUp addon
+
 ## Get Addons rework
 
 **Title bar**:
