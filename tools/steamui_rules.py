@@ -6,8 +6,8 @@ stylesheet alone says nothing. The name-to-hash map is plain data in the client'
 JS and can be read (not run) over Decky's CDP port. This tool joins the two so a
 spacing or colour in the UI guide can be re-checked after a SteamOS update.
 
-Read-only on the Deck; nothing here runs on it. See docs/UI_DEVELOPMENT_BEST_PRACTICES.md
-section 5.3 for the full procedure.
+Read-only on the Deck; nothing here runs on it. See docs/ui/design-language.md
+(section 5.3) for the full procedure.
 
   1. scp -r deck@<ip>:.local/share/Steam/steamui/css <dir>/css
   2. ssh -L 18080:localhost:8080 deck@<ip>, then, in SharedJSContext, read the source

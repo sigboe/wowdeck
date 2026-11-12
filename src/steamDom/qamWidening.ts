@@ -34,7 +34,7 @@
  * check before touching anything — never a throw.
  *
  * Measurements: "QAM widening measurements" in
- * docs/UI_DEVELOPMENT_BEST_PRACTICES.md; decision: docs/adr/0001-get-addons-widened-qam.md.
+ * docs/ui/general.md; decision: docs/adr/0001-get-addons-widened-qam.md.
  */
 
 import { subscribeWidening } from "../browseSessionState";

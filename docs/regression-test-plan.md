@@ -32,7 +32,7 @@ The remaining checks still apply.
 
 Related documents:
 
-- `docs/UI_DEVELOPMENT_BEST_PRACTICES.md` §8: test tiers (T1–T6), the rule that
+- `docs/ui/verification.md` (§8): test tiers (T1–T6), the rule that
   an agent may not claim hardware verification (§8.3), and the report template
   (§8.5). §8.6 is the short UI checklist; this plan contains it and goes wider.
 - `docs/steam-deck.md`: SSH access, packaging with patchelf, and the original

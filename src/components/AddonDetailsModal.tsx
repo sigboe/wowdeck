@@ -223,7 +223,7 @@ function AddonDetailsIdentity({
  * My Addons rows.
  *
  * Modelled on Steam's own news-item modal (§8.4b of
- * docs/UI_DEVELOPMENT_BEST_PRACTICES.md): a header (icon, name, tag line),
+ * docs/ui/device-notes.md): a header (icon, name, tag line),
  * then one "page" at a time — Description, Changelog, Gallery — each with
  * its title as the headline. LB/RB and D-pad/stick Left/Right switch pages
  * (clamped, disabled pages skipped). The actions live on the controller

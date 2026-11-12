@@ -8,7 +8,7 @@
 
 Small Node scripts (Node 22, no dependencies) that drive Steam's own CEF over
 an SSH tunnel. They are the default way to inspect and measure the UI, and they
-measured the findings in `docs/UI_DEVELOPMENT_BEST_PRACTICES.md` (S15–S25,
+measured the findings in `docs/ui/design-language.md` (S15–S25,
 case 12). Run them from a machine that can SSH to the Deck.
 `node help.mjs` prints the command list for about 500 tokens, which beats
 reading this file.

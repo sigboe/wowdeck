@@ -26,6 +26,12 @@ Binding for every coding agent and human working on this repository.
 8. **Logging**: engine logs structured to stderr (`console.error`); never log
    tokens, cookies, secrets or URLs containing keys.
 
+## UI changes
+
+Before editing UI under `src/`, find the change in the task router of
+`docs/ui/README.md` and apply every rule its row names. `src/AGENTS.md`
+holds the MUST rules that cost rework most often.
+
 ## Toolchain
 
 Dependencies live in `flake.nix` (`nix develop`); `make` enters that shell
@@ -150,5 +156,7 @@ Single-context: root `GLOSSARY.md` plus `docs/adr/`. See `docs/agents/domain.md`
 When a skill finishes, or the last item of a report, ticket set or
 checklist is done, end the reply with a seam line: what finished, and the
 next skill to run, prefixed with `/clear` when that step starts on new
-material (a new ticket or spec) rather than the work already loaded. The
-map and the clearing and thread-settling rules are in `docs/agents/workflow.md`.
+material (a new ticket or spec) rather than the work already loaded.
+Read `docs/agents/workflow.md` before every seam line and take "Next" from
+its map row; never from memory. It also holds the `**Done:**` /
+`**Next:**` format and the clearing and thread-settling rules.

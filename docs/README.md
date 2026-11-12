@@ -34,7 +34,7 @@ is read-only.
 | File                                                                 | Purpose                                                                                                                              |
 | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
 | [development.md](development.md)                                     | Toolchain, pinned versions, everyday tasks, step-by-step checklists for common changes.                                              |
-| [UI_DEVELOPMENT_BEST_PRACTICES.md](UI_DEVELOPMENT_BEST_PRACTICES.md) | The UI guide: Decky/Steam Deck principles, project conventions, device-verified patterns, case studies. Read before touching `src/`. |
+| [ui/](ui/README.md) | The UI guide: Decky/Steam Deck principles, project conventions, device-verified patterns, case studies. Start with its task router before touching `src/`. |
 | [regression-test-plan.md](regression-test-plan.md)                   | Full manual test plan for a build before it is called good.                                                                          |
 | [steam-deck.md](steam-deck.md)                                       | Device runtime facts and access notes (SSH, deploy rules).                                                                           |
 | [remote-browser.md](remote-browser.md)                               | Inspecting the on-device UI: `tools/deck-ui` first, the Chrome DevTools MCP when a script does not cover it.                         |

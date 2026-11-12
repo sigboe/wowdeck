@@ -15,7 +15,7 @@ import type {
 import { dayAndTime } from "./text";
 
 /**
- * Recovery text as C03 wants it (UI_DEVELOPMENT_BEST_PRACTICES): one
+ * Recovery text as C03 wants it (docs/ui/feedback.md): one
  * sentence has no period, several each end with one. Parts may already
  * end with a period, or hold more than one sentence; empty parts drop out.
  */
