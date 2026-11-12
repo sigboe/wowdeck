@@ -135,6 +135,8 @@ describe("friendlySearchError", () => {
 
 describe("installationLabel", () => {
   const installation = (over: Partial<Installation>): Installation => ({
+    autoUpdateEnabled: true,
+    hidden: false,
     id: "i",
     gameType: "retail",
     path: "/wow/_retail_",

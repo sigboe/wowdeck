@@ -45,6 +45,14 @@ export function InstallationsSection({ installations, selectedId, onChanged }: P
   const openDetails = () =>
     selected &&
     openInstallationDetails(selected, addonCounts(), {
+      onUpdate: async (changes) => {
+        const { installation } = await api.rpc("installations.update", {
+          installationId: selected.id,
+          ...changes,
+        });
+        await onChanged();
+        return installation;
+      },
       onRescan: () => void rescan(),
       onRemove: removeSelected,
       recoveryRequired: !!addonSession.get().recoveryRequired[selected.id],
@@ -100,6 +108,7 @@ export function InstallationsSection({ installations, selectedId, onChanged }: P
         >
           <InstallationSelect
             session={addonSession}
+            showHidden
             label="Active installation"
             description={
               selected ? (

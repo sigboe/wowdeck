@@ -17,10 +17,12 @@ import type { CompanionSyncCoordinator } from "./CompanionSync";
 export interface CheckOptions {
   /** Run automatic updates after the check (default true). */
   autoUpdate?: boolean;
+  /** Explicit manual checks include quiet installations. */
+  manual?: boolean;
 }
 
 export class UpdateCheck {
-  #checking: Promise<void> | null = null;
+  #checking = new Map<boolean, Promise<void>>();
 
   constructor(
     private service: AddonService,
@@ -53,19 +55,22 @@ export class UpdateCheck {
    * time.
    */
   async checkAll(options: CheckOptions = {}): Promise<void> {
-    this.#checking ??= this.#checkInstallations().finally(() => {
-      this.#checking = null;
-    });
-    await this.#checking;
+    const manual = options.manual === true;
+    let checking = this.#checking.get(manual);
+    if (!checking) {
+      checking = this.#checkInstallations(manual).finally(() => { this.#checking.delete(manual); });
+      this.#checking.set(manual, checking);
+    }
+    await checking;
     if (options.autoUpdate !== false) {
       await this.service.autoUpdate();
     }
   }
 
-  async #checkInstallations(): Promise<void> {
+  async #checkInstallations(manual: boolean): Promise<void> {
     // Serially: one installation's provider calls never overlap another's.
     // A failing installation keeps its last known state; the rest go on.
-    for (const installation of this.service.installations.list()) {
+    for (const installation of (manual ? this.service.installations.list() : this.service.installations.automatic())) {
       try {
         await this.#checkInstallation(installation);
       } catch (err) {
@@ -81,14 +86,14 @@ export class UpdateCheck {
    * check: everything is updated right after.
    */
   async updateAllInstallations(): Promise<OperationResult[]> {
-    await this.checkAll({ autoUpdate: false });
+    await this.checkAll({ autoUpdate: false, manual: true });
     return this.service.updateAllInstallations();
   }
 
   /** Updates waiting per installation (Steam game-page section), checked first when asked. */
-  async updateSummary(refresh: boolean): Promise<ReturnType<AddonService["updateSummary"]>> {
+  async updateSummary(refresh: boolean, manual = false): Promise<ReturnType<AddonService["updateSummary"]>> {
     if (refresh) {
-      await this.checkAll();
+      await this.checkAll({ manual });
     }
     return this.service.updateSummary();
   }

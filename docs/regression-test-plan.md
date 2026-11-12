@@ -1097,3 +1097,15 @@ not cover the live Steam React context or controller behavior.
 - In PR Builds, verify confirmation text uses native body and section spacing. Install and Cancel occupy separate footer columns. Retry and Close share the footer after a failed list load. Download progress keeps native row insets.
 
 These cases have not been run on hardware.
+
+
+## Installation preferences (#154)
+
+| Check | Expected result |
+| --- | --- |
+| Turn Auto updates off in Installation details, then run an automatic check | No check, update notification count, game-page summary or automatic update for that installation. Rescan and My Addons refresh still check it. |
+| Hide an inactive installation | It disappears from My Addons and Get Addons pickers. Options still lists it with an eye-slash mark and can select it. Browsing and installing still work. |
+| Hide the active installation | Its picker entry stays visible with an eye-slash mark. Its picker menu offers only Unhide. |
+| Inspect a hidden installation's details, then unhide | Auto updates displays off and is disabled with an explanation. Unhiding restores its previous setting, whether on or off. |
+| Restart or detect installations again | Auto updates and Hide choices survive. Newly found installations default to Auto updates on and Hide off. |
+| Run Update all installations | Hidden and auto-off installations are included. |

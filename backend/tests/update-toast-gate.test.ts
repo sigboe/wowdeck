@@ -307,3 +307,17 @@ describe("UpdateToastGate", () => {
     expect(provider.getAllCalls).toBe(1);
   });
 });
+
+
+test("toast counts only installations receiving automatic updates", async () => {
+  const { store, gate } = setup();
+  store.setInstallations([
+    makeInstallation("normal", "11.0.2"),
+    { ...makeInstallation("off", "11.0.2"), autoUpdateEnabled: false },
+    { ...makeInstallation("hidden", "11.0.2"), hidden: true },
+  ]);
+  for (const installationId of ["normal", "off", "hidden"]) {
+    store.addons.create(makeAddon({ id: installationId, name: "Bagnon", installationId, providerName: "TukUI", externalId: "1", installedVersion: "1.0.0", latestVersion: "1.1.0" }));
+  }
+  expect(await gate.checkNow()).toEqual({ toast: { title: "1 addon update available", body: "Open WoWDeck Manager to update" } });
+});

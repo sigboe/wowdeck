@@ -1,4 +1,6 @@
 import { RowGlyph } from "./RowGlyph";
+import { useState } from "react";
+import { toastError } from "../toast";
 import {
   DialogBody,
   DialogButton,
@@ -6,6 +8,7 @@ import {
   DialogFooter,
   DialogHeader,
   Field,
+  ToggleField,
   ModalRoot,
   showModal,
 } from "@decky/ui";
@@ -13,10 +16,11 @@ import { FaSync, FaTrash } from "react-icons/fa";
 import { STEAM, descriptionStyle } from "../steamTheme";
 import { wowupModalStyleCss } from "../sharedStyles";
 import { ScrollBuffer } from "./ScrollBuffer";
-import type { Installation } from "../types";
+import type { Installation, InstallationPreferences } from "../../backend/src/api/contracts";
 import { addonCountText, gameFolder, homePath, splitGameVersion } from "../installationDetails";
 
 interface Actions {
+  onUpdate: (changes: InstallationPreferences) => Promise<Installation>;
   onRescan: () => void;
   onRemove: () => void;
   /** Recovery required (#107): the engine refuses both, so they're off. */
@@ -33,7 +37,7 @@ const RECOVERY_OFF = "Not available until this installation's recovery is done";
  * RestoreBackupModal, so spacing and focus colours are Steam's; B closes.
  */
 export function InstallationDetailsModal({
-  installation,
+  installation: initialInstallation,
   counts,
   actions,
   closeModal,
@@ -43,6 +47,18 @@ export function InstallationDetailsModal({
   actions: Actions;
   closeModal?: () => void;
 }) {
+  const [installation, setInstallation] = useState(initialInstallation);
+  const [saving, setSaving] = useState(false);
+  const update = async (changes: InstallationPreferences) => {
+    setSaving(true);
+    try {
+      setInstallation(await actions.onUpdate(changes));
+    } catch (e) {
+      toastError("Couldn't change installation", e);
+    } finally {
+      setSaving(false);
+    }
+  };
   const close = () => closeModal?.();
   const { version, build } = splitGameVersion(installation.version);
   const gameTypeDescription = (
@@ -60,6 +76,26 @@ export function InstallationDetailsModal({
         {/* Read-only rows are focusable so the D-pad scrolls to every one (F4). */}
         <ScrollBuffer>
           <DialogControlsSection>
+            <ToggleField
+              label="Auto updates"
+              checked={!installation.hidden && installation.autoUpdateEnabled}
+              disabled={saving || installation.hidden}
+              description={
+                installation.hidden
+                  ? "Hidden installations never update automatically. Unhide this installation to change Auto updates."
+                  : installation.autoUpdateEnabled
+                    ? "Updates automatically when 'Update automatically' is on in Options › Updates."
+                    : "Never updates or checks automatically, even when 'Update automatically' is on in Options. Rescan checks it by hand."
+              }
+              onChange={(autoUpdateEnabled) => void update({ autoUpdateEnabled })}
+            />
+            <ToggleField
+              label="Hide"
+              checked={installation.hidden}
+              disabled={saving}
+              description="Hide from My Addons and Get Addons pickers. Hidden installations never update automatically."
+              onChange={(hidden) => void update({ hidden })}
+            />
             <Field focusable label="Game version">
               {version ?? "Unknown"}
             </Field>

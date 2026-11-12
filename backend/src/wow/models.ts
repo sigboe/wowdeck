@@ -26,6 +26,8 @@ export interface FsStats {
 
 /** A WoW installation flavor the user can manage. Persisted. */
 export interface WowInstallation {
+  autoUpdateEnabled?: boolean;
+  hidden?: boolean;
   id: string;
   clientType: WowClientType;
   /** Absolute path of the flavor root, e.g. .../World of Warcraft/_retail_ */

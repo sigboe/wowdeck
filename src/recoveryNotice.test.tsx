@@ -8,6 +8,8 @@ import type {
   RecoveryVerifyResult,
 } from "./types";
 
+mock.module("@decky/api", () => ({ toaster: { toast: () => {} } }));
+
 // Steam supplies these controls at runtime (the findWow.test.tsx pattern).
 mock.module("@decky/ui", () => deckyUiStub);
 // The engine bridge and module session are Decky's; these renders never call them.
@@ -220,7 +222,12 @@ describe("Options installation details while recovery is required", () => {
       <InstallationDetailsModal
         installation={{ ...retail, path: "/home/deck/wow/_retail_", version: null } as Installation}
         counts={{ installed: 2, managed: 1 }}
-        actions={{ onRescan: () => {}, onRemove: () => {}, recoveryRequired }}
+        actions={{
+          onUpdate: async () => retail as Installation,
+          onRescan: () => {},
+          onRemove: () => {},
+          recoveryRequired,
+        }}
       />,
     );
 
