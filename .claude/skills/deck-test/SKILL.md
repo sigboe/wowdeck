@@ -10,6 +10,14 @@ You run in a fresh context. The brief from the caller:
 
 $ARGUMENTS
 
+Read the brief's `target: deck|kaptan|droiddeck` before loading local details.
+A missing target means `deck`; state that fallback in the report. For
+`target: kaptan`, read [local-kaptan.md](local-kaptan.md) and use its runner;
+for `target: droiddeck`, run the `droiddeck-test` skill. Only Deck runs read
+[local.md](local.md). Set `DECK_TEST_TARGET` to the chosen target when running
+the tool. A busy MCP-port warning means the MCP belongs to another device;
+use this run's scripts instead.
+
 An empty brief → verify the newest commit's change on `next` (`git log -1`),
 and say in the report that the brief was empty.
 
@@ -36,7 +44,7 @@ Wi-Fi/Ethernet candidates.
 tools/deck-ui/deck up            # wake, tunnel, build, back up, guard autoUpdate, deploy, reload
 tools/deck-ui/deck up --engine   # the same with the engine (patchelf, smoke test, atomic swap)
 tools/deck-ui/deck run 'open; wait plugin = WoWDeck; probe tab focus'
-tools/deck-ui/deck down          # restore autoUpdate
+tools/deck-ui/deck down          # restore autoUpdate, close owned tunnel
 ```
 
 - An action step (`open close nav press key seek rpc eval`) prints what changed
@@ -90,7 +98,8 @@ tools/deck-ui/deck down          # restore autoUpdate
    every claim in the brief has an observed result.
 3. **Down and report.** `deck down`, remove any in-memory hooks, then write
    the effort's [continuation report](#continuation-report). Run `down`
-   after a failed deployment or test too, if `up` changed autoUpdate.
+   after every attempted `up`, including failed deployment or tests: the
+   tunnel may be open even when autoUpdate was never changed.
    Backups live under `~/homebrew/data/wowdeck/test-backups/`.
    Leave the tested build installed. A step that needs the owner (waking the
    Deck, a press only they can make, the on-screen keyboard) → stop and

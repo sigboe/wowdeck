@@ -1,7 +1,7 @@
 // node deck.mjs <step…>                       one step, e.g. `deck.mjs rpc system.getStatus`
 // node deck.mjs run '<step>; <step>; …'       a run of steps in one call (or `run -f file`, `run -` for stdin)
 // node deck.mjs up [--engine] [--no-build] [--no-guard] [--reload] [--dry-run]   wake, tunnel, build, back up, deploy, reload
-// node deck.mjs down                          restore what `up` changed (autoUpdate)
+// node deck.mjs down                          restore autoUpdate and close the owned tunnel
 //
 // One entry point for a Deck test, so a test takes a few calls instead of a hundred:
 // every action step reports what it changed (focus, active nav tree, plugin tab, route, panel)
@@ -17,11 +17,12 @@ import { connect, evalIn } from "./cdp.mjs";
 import { elementLabel, reactProbe, uiDiagnostics, checkMethods, redact, scrub } from "./diagnostics.mjs";
 import { createConnection, SSH_OPTIONS } from "./connection.mjs";
 import { TOAST_TARGET, TOAST_SELECTOR, TOAST_LIMIT, toastStartExpr, toastReadExpr, toastResetExpr, toastStopExpr } from "./toast.mjs";
+import { createTunnel, tunnelIO } from "./tunnel.mjs";
 import { ACTIVE_TARGET, activeDocExpr } from "./active.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, "../..");
-const PORT = process.env.DECK_UI_PORT || "18080";
+let PORT;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const HELP = `deck.mjs steps (run several: deck.mjs run 'open; wait plugin = WoWDeck; probe tab focus; shot')
@@ -71,6 +72,10 @@ function loadEnv() {
   return { ...env, ...Object.fromEntries(Object.entries(process.env).filter(([k]) => k.startsWith("DECK"))) };
 }
 const ENV = loadEnv();
+PORT = ENV.DECK_UI_PORT || "18080";
+process.env.DECK_UI_PORT = PORT;
+const MCP_PORT = ENV.DECK_MCP_PORT || "9222";
+const TEST_TARGET = ENV.DECK_TEST_TARGET || "deck";
 const shellQuote = (s) => "'" + String(s).replaceAll("'", "'\"'\"'") + "'";
 
 class StepError extends Error {}
@@ -105,7 +110,7 @@ const PROBES = {
   route: { from: "look" },
   plugin: { from: "look" },
   modal: { target: "SharedJSContext", expr: `(()=>{${NAV}return /Modal/.test(t?.m_ID||'')?txt(t.m_Root?.m_element,160):'none'})()` },
-  text: { target: "SharedJSContext", expr: `(()=>{${NAV}return txt(t?.m_Root?.m_element,400)||''})()` },
+  text: { target: "SharedJSContext", expr: `(()=>{${NAV}const root=t?.m_Root?.m_element;const scrolls=root?[root,...root.querySelectorAll('*')].filter(e=>e.scrollHeight>e.clientHeight&&e.clientHeight>0).map(e=>e.scrollTop):[];return 'scrollTop='+JSON.stringify(scrolls)+' '+(txt(root,400)||'')})()` },
   items: {
     target: "SharedJSContext",
     expr: `(()=>{${NAV}const out=[];const walk=n=>{const k=n.m_rgChildren||[];if(!k.length){const l=txt(n.m_element,40);
@@ -216,6 +221,7 @@ function pick(v, paths) {
       const arr = part.endsWith("[]");
       const k = arr ? part.slice(0, -2) : part;
       cur = cur.map((x) => (k ? x?.[k] : x));
+      if (cur.some((x) => x === undefined)) fail(`RPC pick path ${p} is missing; use --full without --pick to inspect the answer`);
       if (arr) {
         cur = cur.flatMap((x) => (Array.isArray(x) ? x : []));
         many = true;
@@ -430,7 +436,7 @@ class Runner {
         try {
           params = json ? JSON.parse(json) : {};
         } catch {
-          fail(`rpc params are not JSON: ${json}`);
+          fail(`rpc params are not JSON: ${json}; run quoting: rpc ${method} '{"c":"s"}' (wrap the JSON in single quotes inside the run text)`);
         }
         return this.action(async () => {
           let v = await rpc(method, params, Number(flagOf(args, "t", "15000")));
@@ -597,6 +603,10 @@ class Runner {
 const PLUGIN = "/home/deck/homebrew/plugins/wowdeck";
 const DATA = "/home/deck/homebrew/data/wowdeck";
 const say = (line) => console.log(line);
+function ownedTunnel(host = ENV.DECK || "configured device") {
+  return createTunnel({ port: PORT, mcpPort: MCP_PORT, host,
+    file: path.join(HERE, `.tunnel-${PORT}.pid`) }, tunnelIO(run), sleep, say);
+}
 
 async function tunnelUp() {
   try {
@@ -608,6 +618,7 @@ async function tunnelUp() {
 }
 
 async function up(args) {
+  say(`target: ${TEST_TARGET}${ENV.DECK_TEST_TARGET ? "" : " (default; brief omitted target)"}`);
   // 1. Wake.
   const woke = await connection.up(() => {
     const command = tool("wakeonlan");
@@ -616,18 +627,17 @@ async function up(args) {
   });
   say(`ssh: ${deckHost()}${woke ? " (woke by Wake-on-LAN)" : ""}`);
 
-  // 2. Tunnel.
-  if (!(await tunnelUp())) {
-    const tunnel = run("ssh", [...SSH_OPTIONS, "-f", "-N", "-o", "ExitOnForwardFailure=yes",
-      "-L", `${PORT}:localhost:8080`, "-L", "9222:localhost:8080", deckHost()], { timeout: 15000, killSignal: "SIGKILL" });
-    if (tunnel.code !== 0) fail(`SSH tunnel: ${tunnel.err.trim()}`);
-    await sleep(1000);
-    if (!(await tunnelUp())) fail("CEF debugger unreachable: ask the owner to enable Decky → Developer → Allow Remote CEF Debugging");
-    say("tunnel: opened");
-  }
+  // 2. Only reuse tunnels whose process identity we recorded.
+  await ownedTunnel(deckHost()).up();
+  if (!(await tunnelUp())) fail("CEF debugger unreachable: ask the owner to enable Decky → Developer → Allow Remote CEF Debugging");
 
   // 3. Build.
-  const engine = hasFlag(args, "engine");
+  const manifest = path.join(ROOT, "backend/package.json");
+  const localVersion = fs.existsSync(manifest) ? JSON.parse(fs.readFileSync(manifest, "utf8")).version : null;
+  const runningVersion = await rpc("system.getStatus", {}, 3000).then(s => s.backendVersion).catch(() => null);
+  const versionChanged = localVersion && runningVersion && localVersion !== runningVersion;
+  const engine = hasFlag(args, "engine") || versionChanged;
+  if (versionChanged && !hasFlag(args, "engine")) say(`engine: version ${runningVersion}→${localVersion}; including engine rebuild and hash check`);
   if (!hasFlag(args, "no-build")) {
     const make = onPath("make") ? ["make"] : ["nix", "develop", "-c", "make"];
     const r = run(make[0], [...make.slice(1), engine ? "build" : "build-frontend"], { cwd: ROOT });
@@ -713,7 +723,10 @@ async function up(args) {
   for (let i = 0; i < 40 && !status; i++) {
     await sleep(500);
     const loaded = await evalIn("SharedJSContext", `!!window.DeckyPluginLoader?.plugins?.some(p=>p.name==='WoWDeck')`).catch(() => false);
-    if (loaded) status = await rpc("system.getStatus", {}, 3000).catch(() => null);
+    if (loaded) {
+      const answer = await rpc("system.getStatus", {}, 3000).catch(() => null);
+      if (answer && (!pid || answer.pid !== pid)) status = answer;
+    }
   }
   if (!status) fail(`reload: WoWDeck did not answer in 20 s; backup in ${backup}; journalctl -u plugin_loader`);
   const restarted = pid && status.pid !== pid ? `, engine pid ${pid}→${status.pid}` : status.pid === pid ? ", engine pid unchanged" : "";
@@ -721,6 +734,11 @@ async function up(args) {
 }
 
 async function down() {
+  try { return await restoreGuard(); }
+  finally { say(await ownedTunnel().down()); }
+}
+
+async function restoreGuard() {
   const result = ssh(`f=$(ls -t ${DATA}/test-backups/*/guard.json 2>/dev/null | head -1); [ -n "$f" ] && echo "$f" && cat "$f"; true`);
   if (result.code !== 0) fail(`read autoUpdate guard: ${result.err.trim()}`);
   const g = result.out.trim().split("\n");

@@ -37,6 +37,24 @@ SSH commands have a 30-second process limit and do not reuse or stop existing
 SSH control sessions. The selected address is used for deployment, controller
 input and new debugger tunnels. No live device access is needed for the tests.
 
+`DECK_UI_PORT` defaults to 18080 and `DECK_MCP_PORT` to 9222. Both can
+be set in `local.env` or the environment. Give each device distinct ports.
+`up` requires the scripts port to be free and opens an owned SSH tunnel.
+When the MCP port is busy, it reports the holder and continues with scripts;
+the MCP still reads the holder's device. The runner records its tunnel PID
+and process start time. `down` restores autoUpdate and closes only that
+recorded process, then reports whether its ports are free. Missing or stale
+records leave other SSH sessions alone.
+
+A local backend manifest version different from the running engine makes
+plain `up` include the engine build and hash comparison automatically.
+Reload reporting waits for a new engine PID before printing its version.
+
+`probe text` includes scroll offsets before its bounded text, so a scrolled
+panel can be distinguished from its initial position. In a batch, quote JSON
+inside the run text, for example `deck run "rpc system.getStatus '{\"c\":\"s\"}'"`.
+A missing `--pick` path reports the field and asks for the full answer.
+
 For long evaluations, set a budget with `deck eval --t=120000 --file=script.js`.
 Use `--file=script.js` or `--stdin` to pass literal JavaScript without the
 batch parser removing quotes. For example:
@@ -80,7 +98,7 @@ Every script takes a target by a substring of its title.
 
 | Script | Use |
 |---|---|
-| `deck` / `deck.mjs` | Start here. `deck up` wakes the Deck, opens the tunnel, builds, backs up, turns autoUpdate off, deploys what changed and reloads (`--engine` also patches, smoke-tests and swaps the engine; `--dry-run` lists what would deploy); `deck down` restores autoUpdate. `deck run 'open; wait plugin = WoWDeck; probe tab focus; shot'` runs steps in one call: every action prints what changed (focus, active nav tree, plugin tab, route, panel), `wait`/`expect` check probes, `rpc` calls the engine by its contract name, `shot` caps screenshots at 800 px, and `press` uses one virtual pad for the whole run. `deck help` lists the steps |
+| `deck` / `deck.mjs` | Start here. `deck up` wakes the Deck, opens the tunnel, builds, backs up, turns autoUpdate off, deploys what changed and reloads (`--engine` also patches, smoke-tests and swaps the engine; `--dry-run` lists what would deploy); `deck down` restores autoUpdate and closes its owned tunnel. `deck run 'open; wait plugin = WoWDeck; probe tab focus; shot'` runs steps in one call: every action prints what changed (focus, active nav tree, plugin tab, route, panel), `wait`/`expect` check probes, `rpc` calls the engine by its contract name, `shot` caps screenshots at 800 px, and `press` uses one virtual pad for the whole run. `deck help` lists the steps |
 | `help.mjs` | The command list, compact. Read this instead of the file |
 | `state.mjs [--pages]` | One line: pages, route, active plugin, QAM open/closed, focused text, view size. `--pages` adds the target titles |
 | `seek.mjs <target> <label> [--press] [--list] [--enter] [--reset]` | Focus the element whose text matches, in one call: it walks Steam's navigation tree and calls `BTakeFocus` on the match, so it crosses columns, scroll regions and text fields that arrow keys cannot. `--list` prints the matches, `--enter` presses Enter after, `--reset` opens the QAM on our panel first, `--press` steps there with real keys and checks after every press |
