@@ -1,3 +1,5 @@
+import { loadSources } from "./sourcesStore";
+import { tsmSession, readTsmSession, tsmActionRequired } from "./tsmSession";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   ButtonItem,
@@ -26,8 +28,7 @@ import { addonSession } from "./session";
 import { InstallationSelect } from "./components/InstallationSelect";
 import { askUntilAnswered } from "./askUntilAnswered";
 import { QAM_TABS, QAM_VIEW, qamState, type QamTab } from "./qamState";
-import { startSourceJump, startInstallationJump } from "./optionsJump";
-import { CURSE_KEY_ROW } from "./components/settings/common";
+import { CURSE_KEY_ROW, startSourceJump, startInstallationJump } from "./optionsJump";
 import { FocusRow } from "./components/FocusSlot";
 import { RecoveryNotice } from "./components/RecoveryNotice";
 import { QAM_DROPDOWN_BELOW_VALUE } from "./components/dropdownValue";
@@ -76,6 +77,22 @@ function Content() {
   // Widened mode (Get Addons) is module state owned by the widening service;
   // the tab bar mirrors it to stay at its collapsed width instead of
   // stretching across the widened panel.
+  const tsm = useSyncExternalStore(tsmSession.subscribe, tsmSession.get);
+  useEffect(() => {
+    const read = () => {
+      const previous = tsmSession.get().state;
+      void readTsmSession(api.rpc, () =>
+        pluginToast("TradeSkillMaster session ended", "Sign in again in Options."),
+      )
+        .then(() => {
+          if (previous !== tsmSession.get().state) void loadSources(api.rpc);
+        })
+        .catch(() => {});
+    };
+    read();
+    const timer = setInterval(read, 1000);
+    return () => clearInterval(timer);
+  }, []);
   const [wide, setWide] = useState(widening.wide);
   useEffect(() => subscribeWidening(setWide), []);
   // Valve's scroll buffer below Decky's sticky title, re-measured on every
@@ -167,7 +184,12 @@ function Content() {
   const tabs: NavTab[] = [
     { id: "installed", label: "My Addons", icon: <FaDiceD6 /> },
     { id: "browse", label: "Get Addons", icon: <FaSearch /> },
-    { id: "settings", label: "Options", icon: <FaCog />, dot: pluginUpdateDot(selfUpdate.info) },
+    {
+      id: "settings",
+      label: "Options",
+      icon: <FaCog />,
+      dot: tsmActionRequired(tsm) ? "action" : pluginUpdateDot(selfUpdate.info),
+    },
   ];
 
   if (unsupported !== null) {
@@ -254,11 +276,7 @@ function Content() {
             detecting={findingWow}
             result={findWowResult}
             onDetect={() => void addonSession.findWow()}
-            onOpenOptions={() => {
-              setRestoreRows(true);
-              bumperEntry.current = false;
-              setTab("settings");
-            }}
+            onAdded={addonSession.reloadAll}
             restoreRows={restoreRows}
           />
           {installations.length > 0 && (
@@ -280,7 +298,8 @@ function Content() {
           onOpenSources={(providers, marked) => {
             // The zero-capability screen's button: Options opens on the first
             // marked source row that can take focus. A source that still needs
-            // setup cannot take it, so the key row is the fallback (optionsJump.ts).
+            // setup has no toggle to press, so its `>` key row is the fallback
+            // (optionsJump.ts).
             // Nothing is enabled here. With nothing compatible to mark, Options
             // still opens (sources are turned on there) through the normal
             // focus restore.
@@ -356,11 +375,13 @@ export default definePlugin(() => {
   // it costs a request, so waking the Deck is a useful trigger as well.
   void selfUpdateStore.refresh({ toast: true, bypassWindow: true });
 
-  // WTF backup/restore jobs run in the engine and outlive any panel or modal, so their
-  // progress/outcome events are subscribed once per plugin load into a module-scope
+  // WTF backup/restore jobs (and the WoWDeck download) run in the engine and outlive
+  // any panel or modal, so their progress/outcome events are subscribed once per plugin load into a module-scope
   // lifecycle (wtfLifecycle.ts), not in a component that a modal would unmount.
   const offWtfEvents = api.onBackendEvent((event) => {
     wtfLifecycle.handleEvent(event);
+    // The WoWDeck download's bytes, for the update panel and the PR builds modal.
+    selfUpdateStore.handleEvent(event);
     if (event.event === "wtf.completed") {
       const toast = wtfCompletedToast(event.params);
       if (toast) {
@@ -407,6 +428,7 @@ export default definePlugin(() => {
   let resumeRegistration: { unregister(): void } | null = null;
   if (typeof SteamClient?.System?.RegisterForOnResumeFromSuspend === "function") {
     resumeRegistration = SteamClient.System.RegisterForOnResumeFromSuspend(() => {
+      void api.rpc("tradeskillmaster.wake").catch(() => {});
       void checkUpdateToast();
       void selfUpdateStore.refresh({ toast: true, bypassWindow: true });
     });

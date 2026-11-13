@@ -1,19 +1,11 @@
+import { RowChevron, RowGlyph, RowSpinner } from "../RowGlyph";
 import type { CSSProperties, ReactNode } from "react";
-import { Spinner } from "@decky/ui";
-import { FaChevronRight } from "react-icons/fa";
+import { type FooterLegendProps } from "@decky/ui";
+
 import { FocusRow } from "../FocusSlot";
 import { QAM_VIEW } from "../../qamState";
 
 export const VIEW = QAM_VIEW.settings;
-
-/**
- * The CurseForge section's key row. Also the Options jump's fallback
- * landing while CurseForge has no usable key: its sources toggle is
- * disabled in that state (optionsJump.ts), and the row that sets the key
- * up is the one place focus helps (its own sources row says "see
- * CurseForge above").
- */
-export const CURSE_KEY_ROW = "curseKey";
 
 /**
  * DEVICE (2026-10-13): on SteamOS 3.8.28 `bIsPassword` alone left the
@@ -32,9 +24,12 @@ export function SettingsRow({
   id,
   className,
   style,
+  actions,
   children,
 }: {
   id: string;
+  /** X / Y / Options actions for the whole row, shown in Steam's footer. */
+  actions?: FooterLegendProps;
   /** Extra classes on the row wrapper (the Options jump's blink, optionsJump.ts). */
   className?: string;
   /** The wrapper's inline style (the blink's shared phase). */
@@ -42,11 +37,12 @@ export function SettingsRow({
   children: ReactNode;
 }) {
   return (
-    <FocusRow view={VIEW} id={id} className={className} style={style}>
+    <FocusRow view={VIEW} id={id} className={className} style={style} actions={actions}>
       {children}
     </FocusRow>
   );
 }
 
-export const busyIcon = (busy: boolean, idle: ReactNode = <FaChevronRight />) =>
-  busy ? <Spinner style={{ width: "1.2em" }} /> : idle;
+/** A row's right-column glyph (the chevron by default), or Steam's spinner while it works; both centered. */
+export const busyIcon = (busy: boolean, idle?: ReactNode) =>
+  busy ? <RowSpinner /> : idle === undefined ? <RowChevron /> : <RowGlyph>{idle}</RowGlyph>;

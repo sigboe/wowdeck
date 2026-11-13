@@ -6,6 +6,7 @@
 // arrow keys cannot. --press walks there with real key presses instead (for testing
 // the navigation itself); it checks the label after every press and stops on the match.
 import { connect, evalIn } from "./cdp.mjs";
+import { elementLabel } from "./diagnostics.mjs";
 
 const argv = process.argv.slice(2);
 const flag = (name, dflt) => {
@@ -66,19 +67,7 @@ const jump = async () =>
         const all = [];
         const walk = (n) => { all.push(n); (n.m_rgChildren || []).forEach(walk); };
         walk(tree.Root);
-        const label = (n) => {
-          const e = n.m_element;
-          if (!e) return '';
-          // textContent would pick up <style> rules injected into the panel.
-          let t = '';
-          const w = e.ownerDocument.createTreeWalker(e, NodeFilter.SHOW_TEXT);
-          while (w.nextNode()) {
-            const p = w.currentNode.parentElement;
-            if (p && (p.tagName === 'STYLE' || p.tagName === 'SCRIPT')) continue;
-            t += w.currentNode.nodeValue + ' ';
-          }
-          return t.trim().replace(/\\s+/g, ' ').slice(0, 200);
-        };
+        const label = n => (${elementLabel})(n.m_element);
         // The tree holds a wrapper and an inner node for the same row; collapse them by
         // label and position so a search reports each target once.
         const items = [];

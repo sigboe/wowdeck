@@ -69,6 +69,8 @@ export const WOW_RETAIL_XPTR_FOLDER = "_xptr_";
 export const WOW_RETAIL_FOLDER = "_retail_";
 export const WOW_ANNIVERSARY_FOLDER = "_anniversary_";
 export const WOW_FOREVER_FOLDER = "_forever_";
+export const WOW_CLASSIC_TITAN_FOLDER = "_classic_titan_";
+export const WOW_CN_BETA_FOLDER = "_cn_beta_";
 export const WOW_ADDON_FOLDER_NAME = "AddOns";
 export const WOW_INTERFACE_FOLDER_NAME = "Interface";
 
@@ -84,6 +86,8 @@ export const WOW_FLAVOR_FOLDERS = [
   WOW_RETAIL_XPTR_FOLDER,
   WOW_ANNIVERSARY_FOLDER,
   WOW_FOREVER_FOLDER,
+  WOW_CLASSIC_TITAN_FOLDER,
+  WOW_CN_BETA_FOLDER,
 ] as const;
 
 export function getClientTypeForFolderName(folderName: string): WowClientType {
@@ -110,6 +114,10 @@ export function getClientTypeForFolderName(folderName: string): WowClientType {
       return WowClientType.Anniversary;
     case WOW_FOREVER_FOLDER:
       return WowClientType.Forever;
+    case WOW_CLASSIC_TITAN_FOLDER:
+      return WowClientType.ClassicTitan;
+    case WOW_CN_BETA_FOLDER:
+      return WowClientType.ClassicCnBeta;
     default:
       return WowClientType.None;
   }
@@ -139,6 +147,10 @@ export function getFolderNameForClientType(clientType: WowClientType): string | 
       return WOW_ANNIVERSARY_FOLDER;
     case WowClientType.Forever:
       return WOW_FOREVER_FOLDER;
+    case WowClientType.ClassicTitan:
+      return WOW_CLASSIC_TITAN_FOLDER;
+    case WowClientType.ClassicCnBeta:
+      return WOW_CN_BETA_FOLDER;
     default:
       return null;
   }

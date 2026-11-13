@@ -1,0 +1,4 @@
+eval@SharedJSContext --file=/tmp/third-close.js → {"removed":"Modal_88"} → tree="ModalDialogOverlay_Modal_87"
+eval@SharedJSContext --file=/tmp/third-close.js → {"removed":"Modal_87"} → tree="ModalDialogOverlay_Modal_85"
+eval@SharedJSContext --file=/tmp/third-close.js → {"removed":"Modal_85"} → tree="QuickAccess-NA" focus="" tab="Get Addons"
+probe tree → tree="QuickAccess-NA"

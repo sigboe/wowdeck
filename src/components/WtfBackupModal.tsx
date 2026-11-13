@@ -1,3 +1,4 @@
+import { RowChevron } from "./RowGlyph";
 import { ScrollBuffer } from "./ScrollBuffer";
 import { useEffect, useRef } from "react";
 import {
@@ -12,7 +13,7 @@ import {
   showModal,
 } from "@decky/ui";
 import { FileSelectionType, openFilePicker } from "@decky/api";
-import { FaChevronRight } from "react-icons/fa";
+
 import { wowupModalStyleCss } from "../sharedStyles";
 import { requestFocus } from "../focusMemory";
 import { STEAM, descriptionStyle, outcomeColor } from "../steamTheme";
@@ -198,7 +199,7 @@ function WtfBackupModal({ installation, closeModal }: ModalProps) {
                 onClick={() => openWtfCopyModal(installation)}
                 {...actionFocus("copy")}
               >
-                <FaChevronRight />
+                <RowChevron />
               </Field>
             )}
           </DialogControlsSection>
@@ -251,7 +252,7 @@ function WtfBackupModal({ installation, closeModal }: ModalProps) {
                     onSecondaryActionDescription={deleteOff ? undefined : "Delete"}
                     description={<BackupRowDescription backup={backup} />}
                   >
-                    <FaChevronRight />
+                    <RowChevron />
                   </Field>
                 );
               })}

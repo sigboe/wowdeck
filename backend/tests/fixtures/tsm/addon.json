@@ -1,0 +1,23 @@
+{
+  "isComplete": true,
+  "data": [
+    {
+      "addon": "TradeSkillMaster",
+      "channel": "release",
+      "version": "v4.15.4",
+      "url": "https://cdn.invalid/tsm.zip"
+    },
+    {
+      "addon": "TradeSkillMaster_AppHelper",
+      "channel": "release",
+      "version": "v4.15",
+      "url": "https://cdn.invalid/helper.zip"
+    },
+    {
+      "addon": "TradeSkillMaster",
+      "channel": "beta",
+      "version": "v4.16",
+      "url": "https://cdn.invalid/beta.zip"
+    }
+  ]
+}

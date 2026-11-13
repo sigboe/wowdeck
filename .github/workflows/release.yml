@@ -10,6 +10,10 @@ name: Release
 # A push whose version is already released (a rerun, or main moving without
 # a bump) publishes nothing; ci.yml's "Release gate" stops the second case
 # at the PR. Beta tags (v*-beta.*) belong to beta.yml.
+#
+# No job restores an Actions cache (no `cache:` on setup-node, `no-cache`
+# on setup-bun): a PR's code run by pr-build.yml can write cache entries
+# that this workflow would otherwise restore. See ci.yml "Caches".
 on:
   push:
     branches: [main]
@@ -41,6 +45,7 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.2
+          no-cache: true
       - id: plan
         run: |
           set -euo pipefail
@@ -69,7 +74,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm run lint
       - run: pnpm run format:check
@@ -94,6 +98,7 @@ jobs:
         with:
           # Keep in step with the nix-locked bun (flake.lock); see ci.yml.
           bun-version: 1.4.2
+          no-cache: true
       - run: bun install --frozen-lockfile
         working-directory: backend
       - run: bun run typecheck
@@ -121,6 +126,7 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.2
+          no-cache: true
       # The version's CHANGELOG.md section, written for players
       # (tools/release-notes.ts); a missing section fails the release here.
       - name: Release notes

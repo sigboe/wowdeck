@@ -66,6 +66,23 @@ path.
    setup, and you can set your own CurseForge key in Options if you
    prefer.
 
+## Discover and install addons
+
+Open **Get Addons** and pick the WoW installation you want to add to.
+Browse **Latest** for recently updated addons or **Popular** for the
+source's popular picks, or use **Search** to find an addon by name. The **Source**
+picker lets you choose which addon catalog to browse.
+
+![WoWDeck's Get Addons Latest view with controller glyphs, a source picker and addon results](docs/screenshot-discovery.png)
+
+Open an addon to read its description, then press
+<img src="docs/glyphs/button-x.svg" alt="(X)" height="16"> to install it.
+Installed addons appear in **My Addons**, where you can check for updates
+and manage them.
+
+If you already have an addon link, choose **Manual Install** and paste
+its CurseForge, GitHub or WowInterface URL, or a direct archive link.
+
 ## Updating
 
 The plugin is not in the official Decky store, so updates come from
@@ -140,10 +157,11 @@ the top of Options with the **Update** button.
 ## Troubleshooting
 
 - **Logs** live at `~/homebrew/logs/wowdeck/` on the Deck (`engine.log`
-  and `plugin.log`). Options → Diagnostics copies them in one tap.
-- **No WoW installation found.** Open Options → Installation and pick
-  the folder that holds `_retail_`, `_classic_` or another flavor
-  folder.
+  and `plugin.log`). Options → About → Diagnostics shows versions and
+  recent errors, and **Copy** puts them on the clipboard.
+- **No WoW installation found.** Press **Add WoW folder** on My Addons
+  or under Options → WoW installations, then pick the folder that holds
+  `_retail_`, `_classic_` or another flavor folder.
 - **CurseForge errors (403 or 429).** Set your own key under Options →
   CurseForge.
 - **Options → Updates names a new version but shows no Update panel.**

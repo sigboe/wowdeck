@@ -63,18 +63,42 @@ describe("manual installation", () => {
     expect(service.installations.list()).toHaveLength(before);
   });
 
-  test("display name applies to single-install adds only", async () => {
+  test("a partly added parent names only its sole new installation", async () => {
+    const { service } = makeService(join(ROOT, "partial-data"));
+    const parent = join(ROOT, "partial/World of Warcraft");
+    const retail = join(parent, "_retail_");
+    const era = join(parent, "_classic_era_");
+    for (const dir of [retail, era]) mkdirSync(join(dir, "Interface/AddOns"), { recursive: true });
+    await service.installations.addManual(retail, { displayName: "My Retail" });
+    const added = await service.installations.addManual(parent, { displayName: "My Era" });
+    expect(added.find(i => i.gameType === "classic_era")!.displayName).toBe("My Era");
+    expect(added.find(i => i.gameType === "retail")!.displayName).toBe("My Retail");
+  });
+
+  test("a parent adding multiple new installations ignores an ambiguous name", async () => {
+    const { service } = makeService(join(ROOT, "multiple-data"));
+    const parent = join(ROOT, "multiple/World of Warcraft");
+    for (const flavor of ["_retail_", "_classic_era_"]) {
+      mkdirSync(join(parent, flavor, "Interface/AddOns"), { recursive: true });
+    }
+    const added = await service.installations.addManual(parent, { displayName: "Ambiguous" });
+    expect(added).toHaveLength(2);
+    expect(added.every(i => i.displayName === i.clientName)).toBe(true);
+  });
+
+  test("a name applies to the only new installation and to single flavor adds", async () => {
+
     const era = join(ROOT, "wow/World of Warcraft/_classic_era_");
     mkdirSync(join(era, "Interface", "AddOns"), { recursive: true });
     writeFileSync(join(era, "WowClassic.exe"), "MZ");
 
-    // adding the WoW root yields two flavors; a display name would be
-    // ambiguous there and is ignored (documented behavior)
+    // Retail is already added; the name belongs to the new Era installation.
     const added = await service.installations.addManual(join(ROOT, "wow"), {
       displayName: "My Era Copy",
     });
     expect(added).toHaveLength(2);
-    expect(added.every((i) => i.displayName === i.clientName)).toBe(true);
+    expect(added.find(i => i.gameType === "classic_era")!.displayName).toBe("My Era Copy");
+    expect(added.find(i => i.gameType === "retail")!.displayName).toBe("Retail");
 
     // adding the flavor dir directly takes the custom name
     const single = await service.installations.addManual(era, { displayName: "My Era Copy" });

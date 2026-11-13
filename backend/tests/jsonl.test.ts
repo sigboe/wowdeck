@@ -21,6 +21,13 @@ describe("JsonlServer", () => {
     expect(lines).toEqual(['{"id":1,"result":{"backendVersion":"test","protocolVersion":1,"pid":123,"homeDir":"/home/test"}}']);
   });
 
+  test("answers a method with no result with a null result", async () => {
+    const { server, lines } = makeServer();
+    server.on("tradeskillmaster.refresh", async () => {});
+    await server.handleLine('{"id":5,"method":"tradeskillmaster.refresh","params":{}}');
+    expect(lines).toEqual(['{"id":5,"result":null}']);
+  });
+
   test("returns method_not_found for unknown methods", async () => {
     const { server, lines } = makeServer();
     await server.handleLine('{"id":2,"method":"nope","params":{}}');

@@ -56,7 +56,16 @@ export function isRpcEvent(msg: RpcMessage): msg is RpcEvent {
 // subtree, only wire-visible shapes here)
 // ---------------------------------------------------------------------------
 
-export type GameType = "retail" | "classic" | "classic_era" | "forever" | "classic_beta" | "ptr" | "beta";
+export type GameType =
+  | "retail"
+  | "classic"
+  | "classic_era"
+  | "forever"
+  | "classic_beta"
+  | "classic_titan"
+  | "cn_beta"
+  | "ptr"
+  | "beta";
 
 /** How an installation entered the installation list. */
 export type InstallationSource = "detected" | "manual";
@@ -73,8 +82,12 @@ export interface SteamGameLink {
   name: string;
 }
 
+export type InstallationPreferences = Partial<Pick<Installation, "autoUpdateEnabled" | "hidden">>;
+
 /** A World of Warcraft installation (one per game flavor). */
 export interface Installation {
+  autoUpdateEnabled: boolean;
+  hidden: boolean;
   id: string;
   gameType: GameType;
   /** Absolute path of the flavor root, e.g. .../World of Warcraft/_retail_ */
@@ -140,7 +153,9 @@ export interface Addon {
   autoUpdatePaused: boolean;
   /**
    * Updated within the last `newlyUpdatedHours` (PC-07; any successful
-   * update: manual, Update all, auto-update). My Addons tags and sorts it.
+   * update: manual, Update all, auto-update), unless a newer update has been
+   * discovered since. Discovery clears this durably until another successful
+   * update. Shared by status tags and My Addons sorting.
    */
   newlyUpdated: boolean;
   loadOnDemand: boolean;
@@ -185,6 +200,8 @@ export interface Addon {
    * the addon already follows Beta/Alpha.
    */
   canChangeChannel: boolean;
+  /** When provided, only these account-permitted channels may be chosen. */
+  allowedChannels?: ReleaseChannel[];
   /** For the My Addons Details action's result header — the backend's own WowAddon model already carries this. */
   thumbnailUrl: string | null;
 }
@@ -204,6 +221,24 @@ export interface SearchResultScreenshot {
   title: string | null;
 }
 
+/**
+ * The client/flavor a game version belongs to, as the provider identifies
+ * it. CurseForge reports this per version (its own gameVersionTypeId), so a
+ * version number never has to be guessed into a flavor: 3.80.x is Titan
+ * Reforged because the provider says so, not because 3.80 means anything to
+ * us. `retail` still spans expansions, which the version's major.minor
+ * names (11.x = The War Within, 12.x = Midnight, …).
+ */
+export type GameVersionClient =
+  | "retail"
+  | "classic_era"
+  | "anniversary"
+  | "wrath"
+  | "cataclysm"
+  | "mists"
+  | "titan_reforged"
+  | "forever";
+
 export interface SearchResult {
   providerId: string;
   externalId: string;
@@ -217,6 +252,18 @@ export interface SearchResult {
   latestVersion: string | null;
   /** WoW client the latest file targets (e.g. "11.0.2"), when known. */
   gameVersion: string | null;
+  /**
+   * Every game version the latest file targets, when the provider lists
+   * more than one (CurseForge's per-file list; TukUI's patch list); null
+   * when unknown. `gameVersion` is its first entry.
+   */
+  gameVersions: string[] | null;
+  /**
+   * The client/flavor of the entries in `gameVersions` the provider
+   * identifies, keyed by version (CurseForge's per-file type ids). Null
+   * when the provider doesn't say, as with TukUI's patch list.
+   */
+  gameVersionClients: Record<string, GameVersionClient> | null;
   /** Release day (YYYY-MM-DD) of the latest file, when the provider reports a real date. */
   releasedAt: string | null;
   /** Release channel of the latest file, when known. */
@@ -605,7 +652,40 @@ export interface WtfJobSnapshot {
 // Method parameter/result contracts
 // ---------------------------------------------------------------------------
 
+export interface TradeSkillMasterAccount {
+  account: string | null;
+  followedCount: number;
+  allowance: number | null;
+  follows: { realmId: number; name: string; region: string; gameVersion: string; auctionHouseType: string }[];
+}
+export interface TradeSkillMasterDestination {
+  tier: "free" | "gold" | "platinum";
+  followedCount: number;
+  allowance: number | null;
+  realms: { id: number; name: string; auctionHouseType: string; followed: boolean; owned: boolean; declined: boolean; updated: number | null }[];
+  regions: { id: number; name: string; updated: number | null }[];
+}
+export interface TradeSkillMasterAuthStatus {
+  state: "off" | "signingIn" | "signedIn" | "signedOut";
+  tier?: "free" | "gold" | "platinum";
+  channels?: string[];
+  account: string | null;
+}
+
 export interface MethodMap {
+  /** Local removal and optional account cleanup have independent outcomes. */
+  "tradeskillmaster.cleanupPreview": { params: { installationId: string }; result: TradeSkillMasterAccount["follows"] };
+  "tradeskillmaster.removeAddons": { params: { installationId: string; cleanupFollows?: boolean; cleanupPreview?: TradeSkillMasterAccount["follows"] }; result: { operations: OperationResult[]; cleanup?: { removed: TradeSkillMasterAccount["follows"]; leftBehind: TradeSkillMasterAccount["follows"]; error?: string } } };
+  "tradeskillmaster.account": { params: Record<string, never>; result: TradeSkillMasterAccount };
+  "tradeskillmaster.unfollow": { params: { realmId: number; auctionHouseType: string }; result: TradeSkillMasterAccount };
+  "tradeskillmaster.refresh": { params: { installationId?: string }; result: void };
+  "tradeskillmaster.wake": { params: Record<string, never>; result: void };
+  "tradeskillmaster.setFollow": { params: { installationId?: string; realmId: number; auctionHouseType: string; followed: boolean }; result: TradeSkillMasterDestination };
+  "tradeskillmaster.destination": { params: { installationId?: string }; result: TradeSkillMasterDestination };
+  "tradeskillmaster.status": { params: Record<string, never>; result: TradeSkillMasterAuthStatus };
+  "tradeskillmaster.signIn": { params: Record<string, never>; result: { authorizeUrl: string } };
+  "tradeskillmaster.cancel": { params: Record<string, never>; result: TradeSkillMasterAuthStatus };
+  "tradeskillmaster.signOut": { params: Record<string, never>; result: TradeSkillMasterAuthStatus };
   "system.getStatus": {
     params: Record<string, never>;
     result: {
@@ -644,6 +724,20 @@ export interface MethodMap {
      * failures are visible only in the engine's structured stderr log.
      * "available" carries the `offer`; whether it is installable says
      * whether the release has the WoWDeck.zip system.updateStage downloads.
+     * On a test build (X.Y.Z-test.N) the channel's newest build is always
+     * offered (`leaveTest`, older or not), so a test build's owner has the
+     * way back to a published channel; a genuinely newer build still offers
+     * as `update`.
+     *
+     * A PR build (X.Y.Z-pr.N or X.Y.Z-pr.N.K) is on its PR channel
+     * (GLOSSARY: PR channel) from the moment it first runs until the owner
+     * picks Stable or Beta (system.setUpdateChannel). The PR channel's
+     * source is the PR builds list, asked under the same daily cadence,
+     * failure backoff and once-per-version toast as Stable and Beta: a
+     * newer listed build of the same PR offers as `prUpdate`, and a listed
+     * PR with nothing newer answers "current". While the PR is not listed,
+     * the stored channel's newest build offers as `prClosed` or `prUnlisted`.
+     * A PR build that left its PR channel is on no channel, like a test build.
      */
     params: {
       /**
@@ -663,6 +757,13 @@ export interface MethodMap {
     result: {
       status: "current" | "available" | "unknown";
       currentVersion: string;
+      /**
+       * The update channel this answer served (GLOSSARY: Update channel,
+       * PR channel), so the channel modal can check its row and the panel
+       * can say "Up to date with PR #N". Null on no channel: a test build,
+       * or a PR build whose owner left its PR channel.
+       */
+      channel: ServedChannel | null;
       /**
        * The one release on offer, ready to render: the toast, the update
        * panel, its dot and the Options → Updates row all read it, so they
@@ -717,7 +818,8 @@ export interface MethodMap {
      * daily interval and any failure-backoff window, so the owner sees what
      * the new channel offers right away. Answers like system.updateCheck
      * (never spending the toast); "unknown" when the channel's source could
-     * not be asked. The channel is stored even then.
+     * not be asked. The channel is stored even then. On a PR build this
+     * leaves the PR channel (GLOSSARY: PR channel) for the picked one.
      */
     params: { channel: UpdateChannel };
     result: MethodMap["system.updateCheck"]["result"];
@@ -733,12 +835,75 @@ export interface MethodMap {
      * utilities/install_plugin, whose native prompt installs and reloads
      * the plugin. This engine never extracts or replaces its own
      * installed files, and nothing is staged on any failure.
+     *
+     * The download reports its bytes as `system.downloadProgress` events
+     * (total from Content-Length). system.cancelDownload aborts it: the
+     * partial file is deleted, nothing is staged, and `error.code` is
+     * "cancelled". A failure partway is "download_failed".
+     * A `prUpdate` offer stages through system.installPrBuild's path: the
+     * PR builds list is read again, the build must still be the offered
+     * version ("not_listed" otherwise), and its zip must match the
+     * published sha256.
      */
     params: Record<string, never>;
     result: {
       result: { artifact: string; version: string; sha256: string } | null;
       error: { code: string; message: string } | null;
     };
+  };
+  "system.listPrBuilds": {
+    /**
+     * The PR builds published right now (GLOSSARY: PR build), newest PR
+     * first, read from the list CI publishes on GitHub Pages beside the
+     * zips (ADR 0010). Asked only when the PR builds modal opens: one
+     * network call per call, no cache, no polling, no toast. Entries that
+     * do not match the published shape are left out. `builds` is null —
+     * never an RPC error — when the list could not be fetched or is not a
+     * list at all (offline, Pages down, garbage), so the modal can say it
+     * couldn't load and offer a retry; an empty array is "no PR builds
+     * right now".
+     */
+    params: Record<string, never>;
+    result: { builds: PrBuild[] | null };
+  };
+  "system.installPrBuild": {
+    /**
+     * Stage the PR build the owner confirmed (GLOSSARY: PR build) for
+     * Decky's own installer, like system.updateStage: read the list again
+     * (the zip's URL and sha256 never come from the caller), download the
+     * PR's WoWDeck.zip from Pages without any token, refuse it unless its
+     * sha256 matches the published one, verify the package (WoWDeck at
+     * exactly `version`), and leave it as a 0600 file in the OS temp dir.
+     * The caller hands the returned file:// artifact, version and sha256
+     * to utilities/install_plugin, whose native prompt confirms the
+     * install. The stored Stable or Beta choice is never touched; the
+     * installed build joins its PR channel when it first runs. Nothing is
+     * staged on any failure, and `error.code` says which:
+     * "list_unavailable" (the list couldn't load), "not_listed" (the PR
+     * left the list, or was rebuilt since the owner confirmed `version`),
+     * "download_failed", "checksum_mismatch", "archive_invalid" or
+     * "cancelled" (system.cancelDownload). The download reports its bytes
+     * as `system.downloadProgress` events, the total from the list's
+     * `zipSize`.
+     */
+    params: {
+      /** The PR's number. */
+      number: number;
+      /** The build's version the owner confirmed (X.Y.Z-pr.N or X.Y.Z-pr.N.K). */
+      version: string;
+    };
+    result: MethodMap["system.updateStage"]["result"];
+  };
+  "system.cancelDownload": {
+    /**
+     * Cancel the WoWDeck download in flight (system.updateStage or
+     * system.installPrBuild): its partial file is deleted, nothing is
+     * staged, and that call answers with `error.code` "cancelled".
+     * `cancelled` is false, and nothing happens, when no download is in
+     * flight (it already finished, or never started).
+     */
+    params: Record<string, never>;
+    result: { cancelled: boolean };
   };
   "installations.list": {
     params: Record<string, never>;
@@ -747,6 +912,10 @@ export interface MethodMap {
   "installations.detect": {
     params: Record<string, never>;
     result: { installations: Installation[] };
+  };
+  "installations.update": {
+    params: { installationId: string } & InstallationPreferences;
+    result: { installation: Installation };
   };
   "installations.select": {
     params: { installationId: string };
@@ -826,7 +995,7 @@ export interface MethodMap {
    * files may not match them). Unmanaged folders are not listed then.
    */
   "addons.list": {
-    params: Record<string, never>;
+    params: { installationId?: string };
     result: { addons: Addon[]; unverified?: true };
   };
   "addons.refresh": {
@@ -903,7 +1072,7 @@ export interface MethodMap {
   };
   "addons.install": {
     /** `channel`: install from that release channel and follow it (providers with channels only). */
-    params: { providerId: string; externalId: string; channel?: ReleaseChannel };
+    params: { providerId: string; externalId: string; channel?: ReleaseChannel; installationId?: string };
     result: AddonOperation;
   };
   /**
@@ -1111,7 +1280,7 @@ export interface MethodMap {
    * (like updateAll {allInstallations}); without it, the last known state.
    */
   "addons.updateSummary": {
-    params: { refresh?: boolean };
+    params: { refresh?: boolean; manual?: boolean };
     result: { installations: Array<{ installationId: string; displayName: string; updates: number }> };
   };
   "settings.set": {
@@ -1304,6 +1473,21 @@ export interface PluginSettings {
    * check). Missing or unknown in the stored file means Stable.
    */
   pluginUpdateChannel: UpdateChannel;
+  /**
+   * The PR whose PR channel the owner is on (GLOSSARY: PR channel): set
+   * when a PR build first runs, cleared when the owner picks Stable or
+   * Beta or a build that is no PR build runs. Engine-written only; it
+   * counts only while the running build is that PR's build.
+   */
+  pluginUpdatePrChannel: number | null;
+  /**
+   * Move to Stable after release (GLOSSARY: Update channel; default off):
+   * when a stable release our updater staged first runs while Beta is
+   * selected, select Stable instead of keeping Beta. Set through
+   * settings.set from the channel modal, shown there only while Beta is
+   * selected. Off leaves Beta selected, as before the toggle existed.
+   */
+  pluginMoveToStableAfterRelease: boolean;
   /** Last engine-start version; engine-written only. Null before the first start. */
   pluginUpdateLastRunVersion: string | null;
   /** Last successfully verified updater package; engine-written only. */
@@ -1346,7 +1530,17 @@ export interface PluginSettings {
   newlyUpdatedHours: number;
 }
 
+export interface TradeSkillMasterDiagnostics {
+  enabled: boolean;
+  signedIn: boolean;
+  tier: "free" | "gold" | "platinum" | null;
+  connected: boolean;
+  lastPush: number | null;
+  followedCount: number;
+}
+
 export interface Diagnostics {
+  tradeSkillMaster?: TradeSkillMasterDiagnostics;
   backendVersion: string;
   protocolVersion: number;
   platform: string;
@@ -1429,21 +1623,84 @@ export interface FundingLink {
 // ---------------------------------------------------------------------------
 
 /**
- * The WoWDeck update channels (GLOSSARY): which builds the owner is offered.
- * String ids, so a later build source (PR builds, say) is one more id here —
- * no other contract or stored-setting change.
+ * The WoWDeck update channels the owner can pick (GLOSSARY: Update
+ * channel). The PR channel is not one of them: a PR build joins it by
+ * running, never by a pick (ServedChannel).
  */
 export const UPDATE_CHANNELS = ["stable", "beta"] as const;
 export type UpdateChannel = (typeof UPDATE_CHANNELS)[number];
 
 /**
+ * One PR build (GLOSSARY: PR build) as the PR builds modal lists it: a
+ * build of an open pull request a maintainer labeled `pr-build`, published
+ * by CI beside the list the engine reads (ADR 0010). Every field comes
+ * from that list, which is untrusted data: `title` is the PR title as its
+ * author wrote it and is shown as plain text only.
+ */
+export interface PrBuild {
+  /** The pull request number. */
+  number: number;
+  /** The PR title, as written; never rendered as markup. */
+  title: string;
+  /** The PR author's GitHub login. */
+  author: string;
+  /** X.Y.Z-pr.N or X.Y.Z-pr.N.K (the Kth build of the PR). */
+  version: string;
+  /** The 40-hex commit the build was made from. */
+  headSha: string;
+  /** When CI built it, ISO 8601 UTC. */
+  builtAt: string;
+  /** The zip's size in bytes. */
+  zipSize: number;
+}
+
+/**
+ * The update channel an answer served (system.updateCheck's `channel`):
+ * Stable or Beta, or the PR channel of the running PR build (GLOSSARY: PR
+ * channel) with its PR's number and title. `title` is the PR builds list's
+ * untrusted text, shown as plain text only; null until the list has named
+ * the PR.
+ */
+export type ServedChannel =
+  | { kind: UpdateChannel }
+  | { kind: "pr"; number: number; title: string | null };
+
+/**
+ * Where the PR channel's PR stood when its answer was stored
+ * (PluginUpdateSnapshot.pr): still on the PR builds list, merged, closed
+ * without merging, or open but unlisted (its label was removed).
+ */
+export type PrChannelState = "listed" | "merged" | "closed" | "unlisted";
+
+/** The PR channel's part of a stored answer (PluginUpdateSnapshot.pr). */
+export interface PrChannelSnapshot {
+  /** The pull request's number. */
+  number: number;
+  /** The PR's title from the list; null when the list never named it. */
+  title: string | null;
+  state: PrChannelState;
+}
+
+/** The kinds a PR channel offer can take (PluginUpdateOffer.kind). */
+export const PR_CHANNEL_OFFER_KINDS = ["prUpdate", "prMergedBeta", "prMergedBuilding", "prClosed", "prUnlisted"] as const;
+
+/**
  * A WoWDeck release offered by system.updateCheck, with its text decided
  * engine-side. "update" offers a newer build; "switchToStable" offers the
- * latest stable, older than the running beta, to an owner who left Beta.
+ * latest stable, older than the running beta, to an owner who left Beta;
+ * "leaveTest" offers the channel's newest build, older or not, to an owner
+ * running a test build (X.Y.Z-test.N, or a PR build off its PR channel),
+ * the way out of a test build. The PR
+ * channel's kinds (PR_CHANNEL_OFFER_KINDS): "prUpdate" offers a newer
+ * listed build of the running PR build's own PR. "prMergedBeta" offers
+ * the beta containing its merge as an update, even below the running
+ * version; "prMergedBuilding" is informational and never installable.
+ * `prClosed` and `prUnlisted` offer the stored channel's newest build,
+ * older or not, keeping the PR channel.
  */
 export interface PluginUpdateOffer {
-  kind: "update" | "switchToStable";
-  /** X.Y.Z or X.Y.Z-beta.N, without a leading v. */
+  kind: "update" | "switchToStable" | "leaveTest" | (typeof PR_CHANNEL_OFFER_KINDS)[number];
+  /** X.Y.Z, X.Y.Z-beta.N or (on the PR channel) X.Y.Z-pr.N.K, without a leading v. */
   version: string;
   /** The toast's and the update panel's line: "WoWDeck X available" or "Switch to stable X". */
   headline: string;
@@ -1477,12 +1734,21 @@ export interface PluginUpdateSnapshot {
   channel?: UpdateChannel;
   /** The offered build's version (X.Y.Z or X.Y.Z-beta.N), without a leading v. */
   latestVersion: string;
+  /** Running PR version whose merge was confirmed in this Beta answer. */
+  mergedFromPr?: string;
   /** The release page to point the user at. */
   releaseUrl: string | null;
   /** The release's WoWDeck.zip asset, when the release published one. */
   downloadUrl: string | null;
   /** The release notes (the GitHub release body, Markdown); absent when it has none. */
   releaseNotes?: string;
+  /**
+   * Set exactly when the PR channel answered (GLOSSARY: PR channel): its
+   * PR and where it stood. A listed PR's latestVersion is its listed
+   * build; otherwise the fields above are the stored channel's newest
+   * build. Such an answer serves only that PR's channel.
+   */
+  pr?: PrChannelSnapshot;
 }
 
 /**
@@ -1514,8 +1780,16 @@ export interface EventMap {
   "addons.autoUpdated": { result: AutoUpdateResult };
   "operation.completed": { result: OperationResult };
   "operation.failed": { result: OperationResult };
+  "tradeskillmaster.changed": Record<string, never>;
   "addons.changed": { addonIds: string[] };
   "wtf.progress": { job: WtfJobSnapshot };
+  /**
+   * Bytes of the WoWDeck download in flight (system.updateStage,
+   * system.installPrBuild), in order: one at the start (received 0), at
+   * most one per percent while it runs, and one when the last byte lands.
+   * `total` is null when the size isn't known.
+   */
+  "system.downloadProgress": { version: string; received: number; total: number | null };
   "wtf.completed": {
     jobId: string;
     kind: WtfJobKind;

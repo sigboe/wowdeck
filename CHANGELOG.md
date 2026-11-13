@@ -6,6 +6,48 @@ What's new in each version of WoWDeck Addon Manager. The format follows
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-13
+
+### Added
+
+- Hide unused WoW installations from pickers and turn automatic checks and updates off per installation.
+
+- TradeSkillMaster shows auction prices for locally saved characters' realms, with account-wide follow management.
+- Install or uninstall both TradeSkillMaster addons beside auction refresh, with optional cleanup of eligible account follows.
+
+- My Addons marks a library no addon needs and shows it even with libraries hidden, so you can remove it.
+- The Steam picker shows each game's icon and app id, and whether it's linked by hand or automatically.
+- Addon details show every supported game version as colored tags with friendly names, including Titan Reforged.
+- Titan Reforged and China Beta installations are detected and can be added, so their addons install like any other client.
+- Try pull request builds in Options, follow updates, return when they close, or join Beta after merging.
+- WoWDeck's own downloads show a progress bar with how many MB have arrived. Press B to cancel one.
+- On Beta, turn on Move to Stable after release in the update channel picker to select Stable after preparing a stable update.
+- Install WowUp Companion from Options › Notifications to see addon updates inside WoW.
+
+### Changed
+
+- Options setup uses padded Steam rows and dialogs. Back up in WoW Settings Backup; diagnostics shows readable rows.
+- Row icons, chevrons and spinners in Options and dialogs stay centered beside descriptions, with consistent right alignment.
+- Press Right past any Options row to reach Update, then Left to return to your place.
+- A test build now shows the way out: pick Beta or Stable under Options › Updates to switch to it.
+
+- TradeSkillMaster has its own icon in Get Addons and account headings.
+
+### Fixed
+
+- Choosing Stable during an update check keeps your choice. Cancelling an update also stops preparation before the download.
+- Adding the last new version in a WoW folder keeps your chosen name and leaves existing names unchanged.
+- Previous versions reports loading errors and offers a retry; Options modals return focus after touch activation.
+- CurseForge key status stays current after clearing a key or retrying built-in access.
+
+- Addons lose the Updated tag when a newer update is found, until another update succeeds.
+
+- TradeSkillMaster confirmations restore focus, uninstall progress stays visible, and cleanup reports successful removals when account reads fail.
+
+- The WoWDeck update row in Options shows just the version change and no longer runs off the right edge.
+- Focus now lands on Install after you pick a file in Manual Install, even after changing the file picker's sort order.
+- Screen readers now name the Update channel button on WoWDeck's row in Options.
+
 ## [1.1.1] - 2026-11-07
 
 ### Added
@@ -130,7 +172,8 @@ First release.
 - Back up and restore your WoW settings.
 - Import and export addon lists that WowUp understands.
 
-[Unreleased]: https://github.com/sigboe/wowdeck/compare/v1.1.1...HEAD
+[Unreleased]: https://github.com/sigboe/wowdeck/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/sigboe/wowdeck/compare/v1.1.1...v1.2.0
 [1.1.1]: https://github.com/sigboe/wowdeck/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/sigboe/wowdeck/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/sigboe/wowdeck/compare/v1.0.0...v1.0.1

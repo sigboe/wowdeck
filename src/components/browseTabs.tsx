@@ -1,3 +1,4 @@
+import { RowSpinner } from "./RowGlyph";
 import { useEffect, useRef, useSyncExternalStore } from "react";
 import { openFilePicker } from "@decky/api";
 import { DialogButton, Field, Focusable, PanelSectionRow, Spinner, TextField } from "@decky/ui";
@@ -309,7 +310,7 @@ export function ListTab({
             description={<Status text={`${state.results.length} shown`} />}
             onClick={onLoadMore}
           >
-            {loading ? <Spinner style={{ width: "1.2em" }} /> : null}
+            {loading ? <RowSpinner /> : null}
           </Field>
         </PanelSectionRow>
       )}

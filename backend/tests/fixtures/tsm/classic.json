@@ -1,0 +1,8 @@
+[
+  { "version": "Classic Era", "folder": "_classic_era_", "key": "Classic-EU", "name": "Éra" },
+  { "version": "Classic Era - Hardcore", "folder": "_classic_era_", "key": "HC-EU", "name": "Hardcore" },
+  { "version": "Season of Discovery", "folder": "_classic_era_", "key": "SoD-EU", "name": "Découverte" },
+  { "version": "Classic Era - Fresh", "folder": "_anniversary_", "key": "Fresh-EU", "name": "Anniversaire" },
+  { "version": "Wrath", "folder": "_classic_", "key": "BCC-EU", "name": "Progression" },
+  { "version": "Forever", "folder": "_forever_", "key": "Forever-EU", "name": "Éternel" }
+]

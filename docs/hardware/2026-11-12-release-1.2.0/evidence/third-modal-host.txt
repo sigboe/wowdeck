@@ -1,0 +1,8 @@
+(modal, parent, props = {
+    strTitle: 'Decky Dialog',
+    bHideMainWindowForPopouts: false,
+}) => {
+    return showModalRaw(modal, parent || findSP() || window, props.strTitle, props, undefined, {
+        bHideActions: props.bHideActionIcons,
+    });
+}

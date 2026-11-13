@@ -8,7 +8,7 @@
 
 Small Node scripts (Node 22, no dependencies) that drive Steam's own CEF over
 an SSH tunnel. They are the default way to inspect and measure the UI, and they
-measured the findings in `docs/UI_DEVELOPMENT_BEST_PRACTICES.md` (S15–S25,
+measured the findings in `docs/ui/design-language.md` (S15–S25,
 case 12). Run them from a machine that can SSH to the Deck.
 `node help.mjs` prints the command list for about 500 tokens, which beats
 reading this file.
@@ -37,6 +37,24 @@ SSH commands have a 30-second process limit and do not reuse or stop existing
 SSH control sessions. The selected address is used for deployment, controller
 input and new debugger tunnels. No live device access is needed for the tests.
 
+`DECK_UI_PORT` defaults to 18080 and `DECK_MCP_PORT` to 9222. Both can
+be set in `local.env` or the environment. Give each device distinct ports.
+`up` requires the scripts port to be free and opens an owned SSH tunnel.
+When the MCP port is busy, it reports the holder and continues with scripts;
+the MCP still reads the holder's device. The runner records its tunnel PID
+and process start time. `down` restores autoUpdate and closes only that
+recorded process, then reports whether its ports are free. Missing or stale
+records leave other SSH sessions alone.
+
+A local backend manifest version different from the running engine makes
+plain `up` include the engine build and hash comparison automatically.
+Reload reporting waits for a new engine PID before printing its version.
+
+`probe text` includes scroll offsets before its bounded text, so a scrolled
+panel can be distinguished from its initial position. In a batch, quote JSON
+inside the run text, for example `deck run "rpc system.getStatus '{\"c\":\"s\"}'"`.
+A missing `--pick` path reports the field and asks for the full answer.
+
 For long evaluations, set a budget with `deck eval --t=120000 --file=script.js`.
 Use `--file=script.js` or `--stdin` to pass literal JavaScript without the
 batch parser removing quotes. For example:
@@ -49,6 +67,16 @@ JS
 
 The default evaluation budget is 10 seconds. A timeout stops waiting, not the
 page-side operation. Inspect its state before retrying an install or scan.
+
+`deck eval --active '<expr>'` evaluates against the document focus navigation
+uses: the document that owns the root of the active navigation tree, whether
+the QAM panel or a modal holds focus. The runner resolves it when the
+expression runs and exposes it as `doc`, so `doc.querySelector(...)` reaches
+the same controls `seek` walks. Each call resolves the tree again, so a later
+call after navigation sees the new document. When nothing has an active
+navigation tree the command fails instead of evaluating some other document.
+`--file`, `--stdin`, `--full` and `--t=ms` work the same as for a named
+target.
 
 For a manual debugger connection without deployment:
 
@@ -70,7 +98,7 @@ Every script takes a target by a substring of its title.
 
 | Script | Use |
 |---|---|
-| `deck` / `deck.mjs` | Start here. `deck up` wakes the Deck, opens the tunnel, builds, backs up, turns autoUpdate off, deploys what changed and reloads (`--engine` also patches, smoke-tests and swaps the engine; `--dry-run` lists what would deploy); `deck down` restores autoUpdate. `deck run 'open; wait plugin = WoWDeck; probe tab focus; shot'` runs steps in one call: every action prints what changed (focus, active nav tree, plugin tab, route, panel), `wait`/`expect` check probes, `rpc` calls the engine by its contract name, `shot` caps screenshots at 800 px, and `press` uses one virtual pad for the whole run. `deck help` lists the steps |
+| `deck` / `deck.mjs` | Start here. `deck up` wakes the Deck, opens the tunnel, builds, backs up, turns autoUpdate off, deploys what changed and reloads (`--engine` also patches, smoke-tests and swaps the engine; `--dry-run` lists what would deploy); `deck down` restores autoUpdate and closes its owned tunnel. `deck run 'open; wait plugin = WoWDeck; probe tab focus; shot'` runs steps in one call: every action prints what changed (focus, active nav tree, plugin tab, route, panel), `wait`/`expect` check probes, `rpc` calls the engine by its contract name, `shot` caps screenshots at 800 px, and `press` uses one virtual pad for the whole run. `deck help` lists the steps |
 | `help.mjs` | The command list, compact. Read this instead of the file |
 | `state.mjs [--pages]` | One line: pages, route, active plugin, QAM open/closed, focused text, view size. `--pages` adds the target titles |
 | `seek.mjs <target> <label> [--press] [--list] [--enter] [--reset]` | Focus the element whose text matches, in one call: it walks Steam's navigation tree and calls `BTakeFocus` on the match, so it crosses columns, scroll regions and text fields that arrow keys cannot. `--list` prints the matches, `--enter` presses Enter after, `--reset` opens the QAM on our panel first, `--press` steps there with real keys and checks after every press |
@@ -112,3 +140,73 @@ close side menus `window.DFL.Navigation.CloseSideMenus()`, go to a route
   (or the copies under a scratch directory) and search them: hashed class names
   map to readable names in `sp.js` (`Name:"hash"`), and the CSS shows the values.
 - Record what you measured, with date and method, in the guide (DEVICE tag).
+
+## Diagnostics
+
+These commands extend the existing CLI with ideas from
+[Decky Toolkit](https://github.com/jackhric/decky-toolkit). They require no
+additional plugin or MCP server.
+
+```sh
+tools/deck-ui/deck methods-check
+tools/deck-ui/deck diagnose
+tools/deck-ui/deck run 'log-mark; rpc system.getStatus; log 10 error --since=mark'
+tools/deck-ui/deck run 'log-mark; press a; log-wait "failed|complete" --since=mark --t=10000'
+tools/deck-ui/deck react '.wowdeck-root' --depth=12
+tools/deck-ui/deck reload-frontend
+```
+
+`diagnose` reports navigation state, the visible plugin tab, busy indicators,
+alerts, engine connectivity and version, the selected installation, and five
+recent error lines. Each failed probe reports its own error so the other
+results remain available. Busy counts describe visible indicators, not the
+engine's operation queue. A missing panel reports a null busy count.
+
+`log-mark` saves file identities and byte offsets for the current CLI run.
+`--since=mark` reads subsequent content, including new or truncated logs.
+`log-wait` waits on the device through one SSH connection and fails the batch
+on timeout. Without a checkpoint it also accepts matching existing lines.
+Queries inspect at most ten log files and the last 64 KiB of each, return at
+most 100 lines, and wait at most 20 seconds. Use `journalctl -u plugin_loader`
+over SSH for Decky's own logs.
+
+Diagnostic output caps at 6,000 characters and scrubs URLs and common
+credential assignments. Keep secrets out of logs; this filter cannot
+recognize every possible secret. React inspection returns at most 40 ancestor
+names with patch markers. It excludes props, hooks and application state.
+Missing React internals produce `supported: false`.
+
+`methods-check` compares literal frontend bridge calls with public Python
+methods and literal `rpc` calls with the engine contract. It needs no device.
+It does not resolve computed method names or verify runtime handler behavior.
+
+`reload-frontend` imports the local `dist/index.js` bundle into memory, without
+writing device files or restarting the backend. Build it first with
+`make build-frontend`, or select another bundle with `--file=<path>`. It uses
+the in-memory loading approach documented for DroidDeck. Import failures leave
+the old frontend loaded; a factory failure after unloading requires another
+reload. When WoWDeck's panel was open, it reopens the panel and restores the
+plugin tab and focused label. Missing controls fail with a restoration error.
+Other routes stay at their current location. An active WoWDeck panel closes
+before unloading so React can unmount its old controls.
+
+Reloading requires a device-test request under the repository's device policy.
+This command targets the configured Deck CEF tunnel; it does not connect to
+DroidDeck through adb. DroidDeck keeps its existing test workflow.
+
+Toast capture includes the notification alert container's children, including
+controller notices with hashed classes, and plugin toast elements. Nested
+matching elements count as one notice. Reset discards earlier history while
+ignoring notices that remain displayed until they leave. Explicit stop prints
+unread history and exits with failure if capture overflowed. Automatic cleanup
+uses the final stop response for history and completeness, with an earlier
+read available as fallback if stopping fails. Interruptions during the last
+step or cleanup exit nonzero.
+
+Notices removed before their text could be observed report incomplete capture.
+Detached DOM text cannot establish which descendants were displayed. A node
+reused within a delivery batch can also lose its earlier contents, so capture
+reports those occurrences as missed. Moving an unchanged previously observed
+notice within one batch preserves its existing entry. If that movement also
+changes its text, earlier evidence stays retained and the uncertain new
+occurrences report incomplete capture.

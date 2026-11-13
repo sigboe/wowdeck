@@ -4,8 +4,9 @@ import type { JsonlServer } from "../../bridge/jsonl";
 import type { HandlerDeps } from "./deps";
 import { PROTOCOL_VERSION, UPDATE_CHANNELS } from "../contracts";
 import { ValidationError } from "../../wow/errors";
+import { publicFields } from "../../wow/plugin/PrBuildList";
 
-export function register(server: JsonlServer, { store, registry, service, installationService, companionCoordinator, curseForgeAuth, recentErrors, backendVersion, pluginUpdate, updateStager, homeDir }: HandlerDeps): void {
+export function register(server: JsonlServer, { tsmData, store, registry, service, installationService, companionCoordinator, curseForgeAuth, recentErrors, backendVersion, pluginUpdate, updateStager, prBuilds, homeDir }: HandlerDeps): void {
   server.on("system.getStatus", async () => ({
     backendVersion: backendVersion,
     protocolVersion: PROTOCOL_VERSION,
@@ -28,7 +29,20 @@ export function register(server: JsonlServer, { store, registry, service, instal
 
   server.on("system.updateStage", async () => updateStager.stage());
 
+  // The modal's fields only: the zip's URL and checksum stay engine-side.
+  server.on("system.listPrBuilds", async () => {
+    const builds = await prBuilds.list();
+    return { builds: builds?.map(publicFields) ?? null };
+  });
+
+  // The zip's URL and checksum come from the list, read again by the
+  // stager, never from the caller.
+  server.on("system.installPrBuild", async ({ number, version }) => updateStager.stageListedPrBuild(number, version));
+
+  server.on("system.cancelDownload", async () => ({ cancelled: updateStager.cancel() }));
+
   server.on("system.diagnostics", async () => ({
+    tradeSkillMaster: tsmData?.diagnostics(),
     backendVersion: backendVersion,
     protocolVersion: PROTOCOL_VERSION,
     platform: `${process.platform}-${process.arch}`,

@@ -1,4 +1,4 @@
-import { describe, expect, test, beforeAll, afterAll, beforeEach, afterEach } from "bun:test";
+import { describe, expect, test, beforeAll, afterAll, beforeEach, afterEach, spyOn } from "bun:test";
 import { zipSync } from "fflate";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -17,6 +17,7 @@ const checkAll = (service: AddonService, options?: { autoUpdate?: boolean }) =>
 import { AddonProvider } from "../src/wow/providers/addon-provider";
 import { ProviderRegistry } from "../src/wow/providers/provider-registry";
 import { createStateStore } from "../src/wow/storage/StateStore";
+import { FaultInjectingFs, type StageFs } from "../src/wow/fs/StageFs";
 import { NetworkClient } from "../src/wow/net/network";
 import { DownloadService } from "../src/wow/downloads/DownloadService";
 import type { AddonSearchResult, WowAddon, WowInstallation } from "../src/wow/models";
@@ -441,6 +442,74 @@ describe("AddonService lifecycle", () => {
 });
 
 describe("newly updated window (PC-07)", () => {
+  test.each(["manual", "all", "automatic"])("discovery clears Updated until a successful %s update", async (mode) => {
+    const clock = spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
+    try {
+      const f = localFixture(`updated-invalidated-${mode}`, [
+        { id: "990", name: "Recent", version: "1.0", releaseId: "r1", folders: ["Recent"], prereleases: [{ channelType: AddonChannelType.Beta, version: "4.0-beta", releaseId: "b4", releaseDate: "2026-07-01T00:00:00.000Z" }] },
+      ]);
+      f.store.updateSettings({ newlyUpdatedHours: 1 });
+      const { addon } = await f.service.install({ intent: "install", providerId: "WowUpHub", externalId: "990", installation: f.installation });
+      const release = (version: string, releaseId: string) => {
+        Object.assign(f.provider.catalog[0]!, { version, releaseId });
+        f.versions["990"] = version;
+      };
+      release("2.0", "r2");
+      expect((await f.service.updateAddon(addon.id)).addon.newlyUpdated).toBe(true);
+      await f.service.refresh(f.installation);
+      expect((await listed(f, addon.id)).newlyUpdated).toBe(true);
+      const getAll = f.provider.getAll.bind(f.provider);
+      f.provider.getAll = async () => { throw new Error("provider down"); };
+      await f.service.refresh(f.installation);
+      expect((await listed(f, addon.id)).newlyUpdated).toBe(true);
+      f.provider.getAll = getAll;
+      clock.mockReturnValue(1_800_000_000_000 + 3_600_000);
+      expect((await listed(f, addon.id)).newlyUpdated).toBe(false);
+      clock.mockReturnValue(1_800_000_000_000);
+      release("3.0", "r3");
+      await f.service.refresh(f.installation);
+      expect(await listed(f, addon.id)).toMatchObject({ newlyUpdated: false, updateAvailable: true });
+      const registry = new ProviderRegistry();
+      registry.register(f.provider);
+      const restart = () => new AddonService(createStateStore(dirname(f.installation.location)), registry,
+        new DownloadService(makeNetwork(f.provider.catalog, f.versions), join(dirname(f.installation.location), "restart-dl")),
+        { addonsChanged: () => {}, operationResult: () => {} });
+      expect((await restart().listAddons(f.installation))[0]!.newlyUpdated).toBe(false);
+      renameSync(f.installation.location, `${f.installation.location}.away`);
+      try {
+        const failed = await f.service.updateAddon(addon.id);
+        expect(failed.operation.status).toBe("failed");
+        expect(failed.addon.newlyUpdated).toBe(false);
+      } finally {
+        renameSync(`${f.installation.location}.away`, f.installation.location);
+      }
+      release("2.0", "r2");
+      await f.service.refresh(f.installation);
+      expect((await f.service.updateAddon(addon.id)).addon.newlyUpdated).toBe(false);
+      const switched = await f.service.setChannel(addon.id, AddonChannelType.Beta);
+      expect(switched.operation.status).toBe("installed");
+      expect(switched.addon).toMatchObject({ channel: "beta", newlyUpdated: false });
+      expect((await restart().listAddons(f.installation))[0]!.newlyUpdated).toBe(false);
+      await f.service.setChannel(addon.id, AddonChannelType.Stable);
+      clock.mockReturnValue(1_800_000_000_000 + 1_800_000);
+      release("3.0", "r3");
+      await f.service.refresh(f.installation);
+      if (mode === "manual") await f.service.updateAddon(addon.id);
+      else if (mode === "all") await f.service.updateAll(f.installation);
+      else {
+        f.store.updateSettings({ autoUpdate: true });
+        await f.service.autoUpdate(async () => "not_running");
+      }
+      expect((await listed(f, addon.id)).newlyUpdated).toBe(true);
+      clock.mockReturnValue(1_800_000_000_000 + 3_600_000);
+      expect((await listed(f, addon.id)).newlyUpdated).toBe(true);
+      clock.mockReturnValue(1_800_000_000_000 + 5_400_000);
+      expect((await listed(f, addon.id)).newlyUpdated).toBe(false);
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
   test("an addon counts as newly updated until the window has passed", () => {
     const addon = {
       id: "a",
@@ -710,7 +779,7 @@ function stored(f: { service: AddonService; installation: WowInstallation }, id:
 }
 
 /** A service with its own provider, store and AddOns folder, for tests that must not share state. */
-function localFixture(name: string, catalog: CatalogEntry[]) {
+function localFixture(name: string, catalog: CatalogEntry[], fs?: StageFs) {
   const localProvider = new FakeProvider(catalog);
   const localVersions: Record<string, string> = Object.fromEntries(catalog.map((c) => [c.id, c.version]));
   const registry = new ProviderRegistry();
@@ -729,7 +798,7 @@ function localFixture(name: string, catalog: CatalogEntry[]) {
     defaultAddonChannelType: 0,
     source: "detected",
   };
-  const store = createStateStore(localRoot);
+  const store = createStateStore(localRoot, fs);
   store.setInstallations([localInstallation]);
   const operations: OperationResult[] = [];
   const changed: string[][] = [];
@@ -1317,6 +1386,20 @@ describe("automatic updates (WF-02)", () => {
     await checkAll(f.service);
     expect(f.store.addons.all().find((a) => a.externalId === "810")!.installedVersion).toBe("1.0.0");
     expect(await f.service.autoUpdate(notRunning)).toBeNull();
+  });
+
+  test("installation preferences exclude automatic candidates while manual updates still work", async () => {
+    const f = localFixture("auto-installation-preferences", catalog());
+    await f.service.install({ intent: "install", providerId: "WowUpHub", externalId: "810", installation: f.installation });
+    publish(f);
+    await f.service.refresh(f.installation);
+    f.store.updateSettings({ autoUpdate: true });
+    f.service.installations.update(f.installation.id, { autoUpdateEnabled: false });
+    expect(await f.service.autoUpdate(notRunning)).toBeNull();
+    f.service.installations.update(f.installation.id, { autoUpdateEnabled: true, hidden: true });
+    expect(await f.service.autoUpdate(notRunning)).toBeNull();
+    await f.service.updateAll(f.installation);
+    expect(f.store.addons.all().find(a => a.externalId === "810")!.installedVersion).toBe("2.0.0");
   });
 
   test("on: updates every waiting addon except ignored ones and a rolled-back release", async () => {
@@ -2185,5 +2268,98 @@ describe("addon list import keeps libraries libraries (WF-21)", () => {
       f.installation,
     );
     expect(record(f, "Lib")!.isDependency).toBe(false);
+  });
+});
+
+describe("folders-changed callback", () => {
+  /** A fixture whose service reports each folders-changed call into `calls`. */
+  const watched = (name: string, catalog: CatalogEntry[]) => {
+    const fs = new FaultInjectingFs();
+    const f = localFixture(name, catalog, fs);
+    const calls: [string, string[]][] = [];
+    f.service.onFoldersChanged = (installationId, folders) => {
+      calls.push([installationId, [...folders].sort()]);
+    };
+    return { ...f, fs, calls };
+  };
+
+  test("each committed install, dependency, rollback and removal reports its folders once", async () => {
+    const f = watched("folders-changed", [
+      { id: "900", name: "Lib", version: "1.0.0", releaseId: "l1", folders: ["Lib"] },
+      { id: "901", name: "Suite", version: "1.0.0", releaseId: "s1", folders: ["Suite", "SuiteData"], requiredDependencyIds: ["900"] },
+    ]);
+    f.store.updateSettings({ keepPreviousVersions: true });
+    const id = f.installation.id;
+
+    const { addon: suite } = await f.service.install({ intent: "install", providerId: "WowUpHub", externalId: "901", installation: f.installation });
+    // The addon's own commit, then the library's, each on its own.
+    expect(f.calls).toEqual([[id, ["Suite", "SuiteData"]], [id, ["Lib"]]]);
+
+    f.calls.length = 0;
+    f.provider.catalog[1]!.version = "1.1.0";
+    f.provider.catalog[1]!.releaseId = "s2";
+    f.versions["901"] = "1.1.0";
+    await f.service.refresh(f.installation);
+    expect((await f.service.updateAddon(suite.id)).operation.status).toBe("updated");
+    expect(f.calls).toEqual([[id, ["Suite", "SuiteData"]]]);
+
+    f.calls.length = 0;
+    expect((await f.service.rollback(suite.id)).operation.status).toBe("installed");
+    expect(f.calls).toEqual([[id, ["Suite", "SuiteData"]]]);
+
+    f.calls.length = 0;
+    const lib = f.store.addons.all().find((a) => a.externalId === "900")!;
+    expect((await f.service.removeAddon(suite.id, { removeLibraries: true })).status).toBe("removed");
+    expect(f.calls).toEqual([[id, ["Suite", "SuiteData"]], [id, ["Lib"]]]);
+    expect(f.store.addons.get(lib.id)).toBeUndefined();
+
+    f.calls.length = 0;
+    mkdirSync(join(f.addonsPath, "Loose"));
+    writeFileSync(join(f.addonsPath, "Loose", "Loose.toc"), "## Title: Loose\n");
+    expect((await f.service.removeUnmanagedFolder(f.installation, "Loose")).status).toBe("removed");
+    expect(f.calls).toEqual([[id, ["Loose"]]]);
+  });
+
+  test("a failed install, rollback or removal reports nothing", async () => {
+    const f = watched("folders-unchanged", [{ id: "910", name: "Solo", version: "1.0.0", releaseId: "o1", folders: ["Solo"] }]);
+    const { addon } = await f.service.install({ intent: "install", providerId: "WowUpHub", externalId: "910", installation: f.installation });
+    f.calls.length = 0;
+
+    f.fs.failAt("folder.install");
+    expect((await f.service.reinstall(addon.id)).operation.status).toBe("failed");
+    f.fs.clear();
+    // Nothing is kept, so there is nothing to roll back to.
+    expect((await f.service.rollback(addon.id)).operation.status).toBe("failed");
+    f.fs.failAt("state.write");
+    expect((await f.service.removeAddon(addon.id)).status).toBe("failed");
+    mkdirSync(join(f.addonsPath, "Loose"));
+    writeFileSync(join(f.addonsPath, "Loose", "Loose.toc"), "## Title: Loose\n");
+    f.fs.failAt("folder.backup");
+    expect((await f.service.removeUnmanagedFolder(f.installation, "Loose")).status).toBe("failed");
+    f.fs.clear();
+
+    expect(f.calls).toEqual([]);
+  });
+
+  test("a callback that throws leaves the committed install a success and its library installed", async () => {
+    const f = localFixture("folders-throw", [
+      { id: "920", name: "Lib", version: "1.0.0", releaseId: "l1", folders: ["Lib"] },
+      { id: "921", name: "Suite", version: "1.0.0", releaseId: "s1", folders: ["Suite"], requiredDependencyIds: ["920"] },
+    ]);
+    f.service.onFoldersChanged = () => {
+      throw new Error("refresh exploded");
+    };
+    const logs: string[] = [];
+    const originalError = console.error;
+    console.error = (...args: unknown[]) => { logs.push(args.map(String).join(" ")); };
+    try {
+      const { operation } = await f.service.install({ intent: "install", providerId: "WowUpHub", externalId: "921", installation: f.installation });
+      expect(operation.status).toBe("installed");
+    } finally {
+      console.error = originalError;
+    }
+    expect(f.store.addons.all().find((a) => a.externalId === "920")?.isDependency).toBe(true);
+    expect(existsSync(join(f.addonsPath, "Lib", "Lib.toc"))).toBe(true);
+    expect(logs.filter((l) => l.includes("refresh exploded"))).toHaveLength(2);
   });
 });

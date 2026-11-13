@@ -1,0 +1,8 @@
+seek Manage --enter → pressed Enter on "Manage" (jump) → tree="ModalDialogOverlay_Modal_59" focus="Unfollow" tab=null
+probe items → items="Unfollow | Done"
+press b → tree="QuickAccess-NA" focus="Manage" tab="Get Addons"
+probe focus → focus="Manage"
+seek Uninstall --enter → pressed Enter on "Uninstall" (jump) → tree="ModalDialogOverlay_Modal_60" focus="" tab=null
+probe items → items="Uninstall both | Cancel"
+press b → tree="QuickAccess-NA" focus="Uninstall" tab="Get Addons"
+probe focus → focus="Uninstall"

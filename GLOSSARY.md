@@ -34,7 +34,8 @@ or last plugin tab.
 _Avoid_: tab row, pill row, browse nav bar
 
 **Destination**:
-One of the four Get Addons lists: Search, Latest, Popular, Manual Install.
+One of the Get Addons lists: Search, Latest, Popular, Manual Install, and
+the TradeSkillMaster destination while that source is on.
 _Avoid_: browse tab, sub-tab, category
 
 **Catalogue**:
@@ -52,6 +53,47 @@ Its pane holds two labeled paths — From a link (a pasted URL) and From a
 file (a local .zip/.rar/.7z picked with Steam's file picker). Distinct from
 a *manual installation*, which is a WoW install added by hand in Options.
 _Avoid_: From URL (the pre-2026-10-24 name), Install from URL, install from file
+
+**TradeSkillMaster**:
+An addon source like the others, for the TradeSkillMaster addon and its
+TradeSkillMaster_AppHelper library (the source lists the library as required
+by the addon). Shown in Options' addon sources, off until the user turns it
+on, and usable only while the user is also signed in to a TradeSkillMaster
+account. Turning it on starts sign-in; successful sign-in turns the source
+on. While usable it owns the
+TradeSkillMaster and TradeSkillMaster_AppHelper folders: no other source
+can claim or take them. A source left on while its session ended elsewhere
+(revoked, password changed) is **signed out**: a blue dot on Options and on
+its source row asks the user to sign in again, and its destination offers an
+Options jump to that row.
+_Avoid_: TSM app, TSM provider (in UI text), logged out
+
+**Developer addon**:
+A TradeSkillMaster or TradeSkillMaster_AppHelper folder that is a git
+checkout or carries a development version instead of a release. WoWDeck
+never matches or replaces it, whether the TradeSkillMaster source is on or
+not. Other addons' git checkouts are left alone as ignored addons.
+_Avoid_: dev build, dev copy
+
+**TradeSkillMaster destination**:
+The destination listed after Manual Install, present only while the
+TradeSkillMaster source is on, whether usable or signed out. It installs
+the addon for the active installation and shows the state of its auction
+data; while signed out it offers the way back to signing in instead.
+_Avoid_: TSM page, TSM tab
+
+**Auction data**:
+The price data TradeSkillMaster publishes per auction house and per region,
+written where the AppHelper library hands it to the addon. It belongs to the
+followed realms of the signed-in account.
+_Avoid_: TSM data, AppData, price strings
+
+**Followed realm**:
+An auction house on the signed-in TradeSkillMaster account's list: a realm,
+or one faction's house on a realm with separate faction houses. The list is
+the account's, shared with TradeSkillMaster's own app on other computers,
+and its length is capped by the account's tier.
+_Avoid_: tracked realm, subscribed realm, server
 
 **Library**:
 An addon installed only because another addon needs it. An addon needs a
@@ -89,9 +131,9 @@ _Avoid_: detail pane, chat pane, sidebar
 **Browse bar**:
 The single picker row of the pane: one self-contained component rendered above
 the result lists. It decides which of its segments exist for the active
-destination (Popular → Source, Category; Latest → Source; Search and Manual
-Install have no bar), draws them in the fixed order Source then Category, and
-hides
+destination (Popular → Source, Category; Latest → Source; Search, Manual
+Install and TradeSkillMaster have no bar), draws them in the fixed order
+Source then Category, and hides
 whatever the current sources cannot act on — disappearing entirely when
 nothing can be chosen. There is at most one bar row, ever; entering a
 destination lands focus on the first result row, never the bar.
@@ -103,7 +145,7 @@ Category segment (narrows the active source's list). Segments close up to the
 left when one of them is hidden. A segment's choices open in an in-pane menu
 (a list inside the pane, never a Steam popup — ADR 0002 revision 2026-10-24).
 A category is the active source's content grouping with provider-specific
-ids — it is never one of the four destinations.
+ids — it is never a destination.
 _Avoid_: menu, picker, dropdown row, tab
 
 **Options jump**:
@@ -124,19 +166,57 @@ the word stays for Steam-surface talk.
 A 10 px dot pinned to the top-right corner of a tab pill or button, saying
 "news here" in a semantic colour (`UpdateDot`, `updateDot.ts`). Orange, Decky's
 own notification-badge colour, marks a WoWDeck update: on the Options tab and
-the panel's Update button. No counts.
+the panel's Update button. Blue marks something the user must do: a signed-out
+source, on the Options tab and the source's row. No counts.
 _Avoid_: badge (that is the Steam library tile's).
 
 **Update channel**:
 Which WoWDeck builds the owner is offered: **Stable** (releases from `main`,
 "Recommended for most users.") or **Beta** (builds of every change merged into
-`next`, "Built from every merged change. Newer features, may have bugs.").
+`next`, "Built from every merged change. Newer features, may have bugs."), the
+two the owner picks, or the **PR channel** of a running PR build.
 Beta also offers a stable release when it is newer than the latest beta build;
 leaving Beta offers the latest stable even when it is older ("Switch to
 stable"). Set under Options › Updates › WoWDeck. Installing a beta selects Beta;
 installing a stable zip by hand selects Stable. An in-app stable update keeps
-Beta selected. A channel chosen in Options stays selected across restarts.
+Beta selected unless **Move to Stable after release** is on (off by default;
+in the channel picker while Beta is selected), which selects Stable as soon as the stable package is verified and staged. A channel chosen in Options stays selected across
+restarts.
+A test build (`X.Y.Z-test.N`, made for device testing, never published) is on
+no channel: no channel is checked, Check again is hidden, and the channel
+picker always offers the chosen channel's newest build ("Switch to beta X",
+"Switch to stable X") — the way out of a test build.
 _Avoid_: release channel (that is an addon's Stable/Beta/Alpha).
+
+**PR channel**:
+The update channel a PR build is on: its own pull request ("PR #210"). The
+owner never picks it from the list; installing the PR's build joins it, and
+picking Stable or Beta leaves it. It is checked like the other channels, so a
+newer build of the same PR is offered with the usual dot and toast; with
+nothing newer it reads "Up to date with PR #N". Once a beta contains the
+merged PR, the owner is moved to Beta and that beta is offered as the update,
+though its version sorts below the PR build's. A PR closed unmerged or no
+longer listed says so and offers the chosen Stable or Beta channel's newest
+build; the owner stays on the PR channel until pressing it, so a PR listed again
+offers its newer build. Nothing installs without the owner's press.
+_Avoid_: PR mode, PR track
+
+**Test build**:
+A WoWDeck build made by hand on a developer's machine, versioned
+`X.Y.Z-test.N`. It sits on no update channel; neither channel offers one.
+_Avoid_: PR build (that one comes from CI).
+
+**PR build**:
+A WoWDeck build CI made from an open pull request a maintainer labeled
+`pr-build`, versioned `X.Y.Z-pr.N` (`X.Y.Z` is the release it is based on, `N`
+the PR number; a rebuild adds a counter, `-pr.117.2`). It sits on its PR
+channel. Options › Updates › WoWDeck › channel picker › "PR builds…" lists the
+open, labeled PRs; installing one asks the owner to confirm first. A new commit
+rebuilds it when a maintainer pushed it; a push by anyone else removes the
+label and the PR leaves the list until a maintainer labels it again.
+Once the PR is merged and no beta contains it yet, the update panel says one
+is still building.
+_Avoid_: test build (that one is built by hand), preview.
 
 **Release notes**:
 What the offered WoWDeck build brings, written for players from our
@@ -171,6 +251,13 @@ _Avoid_: donation link, sponsor link
 Someone who funded WoWDeck and asked to be credited by name. Credit is
 opt-in only: a name with no link, amount or tier.
 _Avoid_: donor, backer, patron, sponsor
+
+**WowUp Companion**:
+WowUp's own in-game addon (WowUp Hub addon 27), which shows WoWDeck's update
+data inside WoW. It reads the companion data addon (`wowup_data_addon`) that
+WoWDeck writes, which is a different addon. Options › Notifications offers to
+install it into the active installation from WowUp Hub.
+_Avoid_: companion data addon (that is `wowup_data_addon`), WowUp addon
 
 ## Get Addons rework
 

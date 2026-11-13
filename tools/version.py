@@ -16,7 +16,7 @@ Usage:
     python3 tools/version.py check           # fail unless all three agree
     python3 tools/version.py set 1.0.0       # write it to all three
     python3 tools/version.py stamp 0.3.1-beta.57
-                                             # a beta build's version, CI only
+                                             # a beta or PR build's version, CI only
 
 `make version-set` and `make version-check` wrap `set` and `check`.
 `check` also runs in the packaging tests and in the release
@@ -24,9 +24,11 @@ workflow, so a tree whose files disagree can never produce a release: the
 tag, the GitHub Release, the zip inside it and the version Decky displays
 all come from the same number.
 
-`stamp` is `set` restricted to the X.Y.Z-beta.N form: the beta workflow
-(.github/workflows/beta.yml) stamps the build's version into its checkout
-before building and never commits it, so `next` keeps claiming the last
+`stamp` is `set` restricted to the X.Y.Z-beta.N form and a PR build's
+X.Y.Z-pr.N (rebuilt: X.Y.Z-pr.N.K): the beta workflow
+(.github/workflows/beta.yml), like the PR build workflow, stamps the build's
+version into its checkout before building and never commits it, so `next`
+keeps claiming the last
 stable version and `set` plus a merge into `main` stay the only way a
 release is made (.github/workflows/release.yml).
 """
@@ -47,8 +49,12 @@ VERSIONED_FILES = ("package.json", "plugin.json", "backend/package.json")
 # candidate can exercise the whole pipeline before the real launch.
 SEMVER = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$")
 
-# The only form `stamp` writes: tools/beta-release.ts's next-version output.
-BETA = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)-beta\.(0|[1-9]\d*)$")
+# The forms `stamp` writes: tools/beta-release.ts's next-version output
+# (X.Y.Z-beta.N), or a PR build's (X.Y.Z-pr.N, its rebuild X.Y.Z-pr.N.K).
+STAMPED = re.compile(
+    r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)"
+    r"(?:-beta\.(0|[1-9]\d*)|-pr\.([1-9]\d*)(?:\.([1-9]\d*))?)$"
+)
 
 
 class VersionError(SystemExit):
@@ -142,10 +148,12 @@ def set_version(version: str, root: Path | None = None) -> None:
         print(f"{path.relative_to(root)}: version {version}")
 
 
-def stamp_beta(version: str, root: Path | None = None) -> None:
-    """Write a beta build's version into the checkout being built; never committed."""
-    if not BETA.match(version):
-        raise VersionError(f"{version!r} is not a beta version (expected X.Y.Z-beta.N)")
+def stamp_build(version: str, root: Path | None = None) -> None:
+    """Write a beta or PR build's version into the checkout being built; never committed."""
+    if not STAMPED.match(version):
+        raise VersionError(
+            f"{version!r} is not a beta or PR build version (expected X.Y.Z-beta.N, X.Y.Z-pr.N or X.Y.Z-pr.N.K)"
+        )
     set_version(version, root)
 
 
@@ -179,7 +187,7 @@ def main(argv: list[str] | None = None) -> int:
     else:
         if len(args) != 1:
             raise VersionError("stamp takes exactly one version, e.g. `version.py stamp 0.3.1-beta.57`")
-        stamp_beta(args[0])
+        stamp_build(args[0])
     return 0
 
 

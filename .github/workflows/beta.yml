@@ -7,6 +7,10 @@ name: Beta
 # `<last stable tag, patch+1>-beta.<run number>` and is stamped into the
 # build only, never committed to `next`. The decisions live in
 # tools/beta-release.ts (tested); this workflow only feeds it and `gh`.
+#
+# No job here, nor ci.yml when called with a version, restores an Actions
+# cache: a PR's code run by pr-build.yml can write entries into `next`'s
+# cache scope. See ci.yml "Caches".
 on:
   push:
     branches: [next]
@@ -22,6 +26,11 @@ on:
       # The local dev shell. CI installs its own toolchain, so this never
       # changes what ships.
       - "flake.nix"
+      # Developer targets and repo tooling. CI uses only `make wowup`, which
+      # fetches a test reference; none of these ship in the zip.
+      - "Makefile"
+      - "tools/tidy.ts"
+      - "tools/tidy.test.ts"
 
 permissions:
   contents: read
@@ -45,6 +54,7 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.2
+          no-cache: true
       - id: next
         run: |
           set -euo pipefail
@@ -75,6 +85,7 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.2
+          no-cache: true
       - uses: actions/download-artifact@v4
         with:
           name: plugin-zip

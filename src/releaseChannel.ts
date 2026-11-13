@@ -34,8 +34,8 @@ export function installChannelChoices(result: SearchResult): ChannelChoice[] | n
 }
 
 /** The Release channel menu on an installed addon (My Addons): which channel it follows. */
-export function followChannelChoices(): ChannelChoice[] {
-  return CHANNELS.map((c) => ({ value: c, label: CHANNEL_LABEL[c] }));
+export function followChannelChoices(channels: ReleaseChannel[] = CHANNELS): ChannelChoice[] {
+  return channels.map((c) => ({ value: c, label: CHANNEL_LABEL[c] }));
 }
 
 /** Status tag for an addon on a pre-release channel; none for Stable. */

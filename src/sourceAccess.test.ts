@@ -71,6 +71,7 @@ describe("browseBarItems", () => {
     expect(BROWSE_BAR_ITEMS).toEqual({
       search: [],
       url: [],
+      tsm: [],
       latest: ["source"],
       popular: ["source", "category"],
     });

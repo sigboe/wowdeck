@@ -1,0 +1,5 @@
+eval@SharedJSContext --file=/tmp/rc-clear.js → RC globals removed
+reload-frontend → frontend reloaded in memory; backend unchanged; tree="QuickAccess-NA" focus="GET ADDONS" route="/routes/library/home" plugin="WoWDeck" tab="Get Addons"
+rpc installations.list --pick=installations[].id,i… → {"installations[].id":["351cab445486","032c354a655f","5e80311f078e"],"installations[].selected":[false,false,true],"installations[].autoUpdateEnabled":[true,false,true],"installations[].hidden":[true,false,false]}
+FAIL RPC pick path autoUpdate is missing; use --full without --pick to inspect the answer
+at: tree="QuickAccess-NA" focus="GET ADDONS" route="/routes/library/home" plugin="WoWDeck" tab="Get Addons"

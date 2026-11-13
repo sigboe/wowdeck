@@ -123,6 +123,52 @@ describe("QAM close collapse (UI-02 story 33)", () => {
     stop();
   });
 
+  test("a menu inside the archive picker does not end the session (DEVICE 2026-11-07)", async () => {
+    const qamWindow = fakeQamWindow();
+    (globalThis as { window?: unknown }).window = {
+      GamepadNavTree: {
+        m_context: {
+          m_controller: {
+            m_ActiveContext: {
+              m_rgGamepadNavigationTrees: [navTreeWindowElement(qamWindow, "QuickAccess_uid2")],
+            },
+          },
+        },
+      },
+    };
+    openWidenedSession();
+    machine.enterBrowsePane();
+    const stop = startQamVisibilityWatch();
+    const { browseArchive } = await import("../archivePicker");
+
+    let pick!: (r: { path: string }) => void;
+    const openPicker = (() =>
+      new Promise<{ path: string }>((resolve) => {
+        pick = resolve;
+      })) as unknown as Parameters<typeof browseArchive>[0];
+    const done = browseArchive(
+      openPicker,
+      async () => ({ result: null, error: null }),
+      "qam.browse.url",
+    );
+    // Recorded live: the picker hides the QAM; closing its sort menu shows
+    // the QAM and hides it again 9 ms later while the picker stays up.
+    qamWindow.fire(true);
+    qamWindow.fire(false);
+    qamWindow.fire(true);
+    expect(machine.widening.wide).toBe(true);
+
+    pick({ path: "/home/deck/Downloads/a.rar" });
+    await done;
+    qamWindow.fire(false);
+    expect(machine.enterBrowseSession()).toBe("pane");
+
+    // With the picker gone, a hide is a real close again.
+    qamWindow.fire(true);
+    expect(machine.widening.wide).toBe(false);
+    stop();
+  });
+
   test("a QAM close ends the browse session: collapsed and on the nav bar", () => {
     const qamWindow = fakeQamWindow();
     (globalThis as { window?: unknown }).window = {

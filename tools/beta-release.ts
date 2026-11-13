@@ -8,7 +8,7 @@
  * Tags arrive one per line on stdin; answers go to stdout, one per line.
  */
 
-// Semver numbers: no leading zeros, as tools/version.py's SEMVER and BETA.
+// Semver numbers: no leading zeros, as tools/version.py's SEMVER and STAMPED.
 const N = String.raw`(0|[1-9]\d*)`;
 const STABLE_TAG = new RegExp(`^v${N}\\.${N}\\.${N}$`);
 /** The only shape pruning ever matches, so stable tags can never be selected. */
@@ -39,8 +39,8 @@ export function betasToPrune(tags: string[], keep: number = BETAS_KEPT): string[
   return betasNewestFirst(tags).slice(keep);
 }
 
-/** `<newest stable tag with patch+1>-beta.<run number>`, e.g. 0.3.1-beta.57 after v0.3.0. */
-export function nextBetaVersion(tags: string[], runNumber: number): string {
+/** The newest stable tag with patch+1, e.g. 0.3.1 after v0.3.0; 0.0.1 before any. */
+export function nextPatchBase(tags: string[]): string {
   let newest: Triple = [0, 0, 0];
   for (const tag of tags) {
     const m = STABLE_TAG.exec(tag);
@@ -48,7 +48,12 @@ export function nextBetaVersion(tags: string[], runNumber: number): string {
     const triple: Triple = [Number(m[1]), Number(m[2]), Number(m[3])];
     if (compareTriples(triple, newest) > 0) newest = triple;
   }
-  return `${newest[0]}.${newest[1]}.${newest[2] + 1}-beta.${runNumber}`;
+  return `${newest[0]}.${newest[1]}.${newest[2] + 1}`;
+}
+
+/** `<newest stable tag with patch+1>-beta.<run number>`, e.g. 0.3.1-beta.57 after v0.3.0. */
+export function nextBetaVersion(tags: string[], runNumber: number): string {
+  return `${nextPatchBase(tags)}-beta.${runNumber}`;
 }
 
 async function main(argv: string[]): Promise<number> {

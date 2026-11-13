@@ -1,0 +1,4 @@
+press b → tree="QuickAccess-NA" focus="Install" tab="Get Addons"
+probe items → items="GET ADDONS | RC 1.2.0 fixture | Search | Latest | Popular | Manual Install | TradeSkillMaster | Look up | Browse… | Install"
+probe focus → focus="Install"
+probe text → text="scrollTop=[0,0] WoWDeck Manager GET ADDONS RC 1.2.0 fixture Search Latest Popular Manual Install TradeSkillMaster From a link Look up A GitHub repository URL, owner/repository or github:owner/repository, a WoWInterface addon URL, or a direct link to a .zip, .rar or .7z file From a file Browse… Pick a .zip, .rar or .7z archive on this Deck. Downloads, a USB stick and the SD card all work Only install archives from"

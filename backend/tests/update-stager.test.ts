@@ -9,10 +9,10 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { zipSync } from "fflate";
-import { NetworkError } from "../src/wow/net/network";
-import { stagedFileName, UpdateStager } from "../src/wow/plugin/UpdateStager";
+import { NetworkError, type DownloadOptions } from "../src/wow/net/network";
+import { stagedFileName, UpdateStager, type DownloadProgress } from "../src/wow/plugin/UpdateStager";
 import { normalizeVersion } from "../src/wow/plugin/PluginVersion";
-import type { PluginUpdateOffer, PluginUpdateSnapshot } from "../src/api/contracts";
+import type { PluginUpdateOffer, PluginUpdateSnapshot, UpdateChannel } from "../src/api/contracts";
 import { PluginUpdateCheck, type StagingAnswer } from "../src/wow/notifications/PluginUpdateCheck";
 
 const ROOT = "/tmp/opencode/wowdeck-tests/update-stager";
@@ -92,6 +92,41 @@ afterAll(() => {
 });
 
 describe("UpdateStager.stage", () => {
+  test("a partial authenticated download fails without restarting progress", async () => {
+    mkdirSync(ROOT, { recursive: true });
+    let attempts = 0;
+    const progress: DownloadProgress[] = [];
+    const stager = new UpdateStager({
+      async downloadToFile(_url: string, path: string, options?: DownloadOptions) {
+        attempts++;
+        writeFileSync(path, new Uint8Array([1, 2]));
+        options?.onProgress?.(2, 100);
+        throw new NetworkError("body interrupted");
+      },
+    }, { forStaging: async () => answerOf(), recordStagedVersion: () => {} }, () => "test-token", ROOT, (event) => progress.push(event));
+    expect((await stager.stage()).error?.code).toBe("download_failed");
+    expect(attempts).toBe(1);
+    expect(progress.map((event) => event.received)).toEqual([0, 2]);
+    expect(existsSync(join(ROOT, stagedFileName("0.2.0")))).toBe(false);
+  });
+  test.each(["release", "pr"])("cancel during %s metadata lookup stages nothing", async (path) => {
+    let release!: () => void;
+    const metadata = new Promise<void>((resolve) => { release = resolve; });
+    let downloads = 0;
+    let recorded = false;
+    const stager = new UpdateStager({ downloadToFile: async () => { downloads++; return 0; } }, {
+      forStaging: async () => { await metadata; return answerOf(); },
+      recordStagedVersion: () => { recorded = true; },
+    }, undefined, ROOT, undefined, { list: async () => { await metadata; return []; } });
+    const pending = path === "release" ? stager.stage() : stager.stageListedPrBuild(117, "1.1.2-pr.117");
+    expect(stager.cancel()).toBe(true);
+    release();
+    expect((await pending).error?.code).toBe("cancelled");
+    expect(downloads).toBe(0);
+    expect(recorded).toBe(false);
+    expect(stager.cancel()).toBe(false);
+  });
+
   test("downloads with the token, verifies, stages 0600, reports file:// and sha256", async () => {
     mkdirSync(ROOT, { recursive: true });
     const zip = pluginZip("0.2.0");
@@ -300,6 +335,9 @@ describe("UpdateStager.stage after the offered zip is gone", () => {
         },
         readChannel: () => "beta",
         writeChannel: () => {},
+        readPrChannel: () => null,
+        writePrChannel: () => {},
+        readMoveToStableAfterRelease: () => false,
       },
       { now: () => NOW },
     );
@@ -411,5 +449,209 @@ describe("UpdateStager.stage after the offered zip is gone", () => {
     expect(refreshes).toEqual([undefined, true]);
     expect(auths).toEqual(["Bearer ghp_test", undefined, "Bearer ghp_test"]);
     rmSync(join(ROOT, "wowdeck-update-0.2.1.zip"), { force: true });
+  });
+});
+
+describe("UpdateStager.stage: progress and cancel", () => {
+  /**
+   * A fake download that hands `zip` over in four chunks, reporting each
+   * against `contentLength` like NetworkClient.downloadToFile. `hold`
+   * waits after the first chunk until aborted; `failAfter` fails then.
+   * Either leaves a partial file behind, as an interrupted write could.
+   */
+  function chunkedStager(
+    zip: Uint8Array,
+    { contentLength = zip.length as number | null, hold = false, failAfter }: {
+      contentLength?: number | null;
+      hold?: boolean;
+      failAfter?: number;
+    } = {},
+  ) {
+    const progress: DownloadProgress[] = [];
+    let started!: () => void;
+    const downloading = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const net = {
+      async downloadToFile(_url: string, destination: string, options?: DownloadOptions): Promise<number> {
+        const size = Math.ceil(zip.length / 4);
+        for (let i = 0, received = 0; i < 4; i++) {
+          if (failAfter === i) throw new NetworkError("connection reset");
+          received = Math.min(zip.length, received + size);
+          writeFileSync(destination, zip.subarray(0, received));
+          options?.onProgress?.(received, contentLength);
+          started();
+          if (hold) {
+            await new Promise<void>((resolve) => options?.signal?.addEventListener("abort", () => resolve()));
+            throw new NetworkError("request aborted");
+          }
+        }
+        return zip.length;
+      },
+    };
+    const stager = new UpdateStager(
+      net,
+      { forStaging: async () => answerOf(), recordStagedVersion: () => {} },
+      undefined,
+      ROOT,
+      (event) => progress.push(event),
+    );
+    return { stager, progress, downloading };
+  }
+
+  const stagedFile = join(ROOT, "wowdeck-update-0.2.0.zip");
+
+  test("reports the download's bytes in order, against its Content-Length", async () => {
+    mkdirSync(ROOT, { recursive: true });
+    const zip = pluginZip("0.2.0");
+    const { stager, progress } = chunkedStager(zip);
+
+    const outcome = await stager.stage();
+
+    expect(outcome.error).toBeNull();
+    expect(progress[0]).toEqual({ version: "0.2.0", received: 0, total: zip.length });
+    expect(progress.at(-1)).toEqual({ version: "0.2.0", received: zip.length, total: zip.length });
+    const received = progress.map((p) => p.received);
+    expect(received).toEqual([...received].sort((a, b) => a - b));
+    expect(new Set(received).size).toBe(received.length);
+    rmSync(stagedFile, { force: true });
+  });
+
+  test("without a Content-Length the total is null, and the last event still lands", async () => {
+    mkdirSync(ROOT, { recursive: true });
+    const zip = pluginZip("0.2.0");
+    const { stager, progress } = chunkedStager(zip, { contentLength: null });
+
+    await stager.stage();
+
+    expect(progress.every((p) => p.total === null)).toBe(true);
+    expect(progress.at(-1)?.received).toBe(zip.length);
+    rmSync(stagedFile, { force: true });
+  });
+
+  test("cancel aborts the download: no partial file, nothing staged, answers cancelled", async () => {
+    mkdirSync(ROOT, { recursive: true });
+    const { stager, downloading } = chunkedStager(pluginZip("0.2.0"), { hold: true });
+
+    const staging = stager.stage();
+    await downloading;
+    expect(existsSync(stagedFile)).toBe(true);
+    expect(stager.cancel()).toBe(true);
+    const outcome = await staging;
+
+    expect(outcome).toEqual({
+      result: null,
+      error: { code: "cancelled", message: "The download was cancelled" },
+    });
+    expect(existsSync(stagedFile)).toBe(false);
+    expect(stager.cancel()).toBe(false);
+  });
+
+  test("a download that fails partway answers download_failed and leaves no partial file", async () => {
+    mkdirSync(ROOT, { recursive: true });
+    const { stager } = chunkedStager(pluginZip("0.2.0"), { failAfter: 2 });
+
+    const outcome = await stager.stage();
+
+    expect(outcome.error?.code).toBe("download_failed");
+    expect(existsSync(stagedFile)).toBe(false);
+  });
+});
+
+/**
+ * Move to Stable after release (GLOSSARY: Update channel): an in-app stable
+ * update staged from Beta, then that stable's first run, both on one
+ * persisted store like the engine's settings.
+ */
+describe("staging a stable release from Beta, then running it", () => {
+  const NOW = 1_800_000_000_000;
+  const ZIP_URL = "https://api.github.com/repos/sigboe/wowdeck/releases/assets/700000001";
+
+  function session(running: string, persisted: { channel: UpdateChannel; lastRun: string | null; staged: string | null; moveToStable: boolean }, prepare: () => Promise<Uint8Array> = async () => pluginZip("0.3.0")) {
+    const net = {
+      async getJson<T>(): Promise<T> {
+        throw new NetworkError("no check expected");
+      },
+      async downloadToFile(_url: string, destination: string): Promise<number> {
+        const zip = await prepare();
+        writeFileSync(destination, zip);
+        return zip.length;
+      },
+    };
+    const check = new PluginUpdateCheck(
+      net,
+      running,
+      undefined,
+      undefined,
+      {
+        // Beta's answer from an hour ago: stable 0.3.0, newer than the beta.
+        read: () => ({
+          checkedAt: NOW - 60 * 60 * 1000,
+          channel: "beta",
+          latestVersion: "0.3.0",
+          releaseUrl: "https://github.com/sigboe/wowdeck/releases/tag/v0.3.0",
+          downloadUrl: ZIP_URL,
+        }),
+        write: () => {},
+        readBackoff: () => null,
+        writeBackoff: () => {},
+        readToastShown: () => null,
+        writeToastShown: () => {},
+        readLastRunVersion: () => persisted.lastRun,
+        writeLastRunVersion: (version) => {
+          persisted.lastRun = version;
+        },
+        readStagedVersion: () => persisted.staged,
+        writeStagedVersion: (version) => {
+          persisted.staged = version;
+        },
+        readChannel: () => persisted.channel,
+        writeChannel: (channel) => {
+          persisted.channel = channel;
+        },
+        readMoveToStableAfterRelease: () => persisted.moveToStable,
+        readPrChannel: () => null,
+        writePrChannel: () => {},
+      },
+      { now: () => NOW },
+    );
+    return { check, stager: new UpdateStager(net, check, undefined, ROOT) };
+  }
+
+  test.each(["failed", "cancelled"])("%s staging leaves Beta selected with Move to Stable on", async (mode) => {
+    mkdirSync(ROOT, { recursive: true });
+    const persisted = { channel: "beta" as UpdateChannel, lastRun: "0.3.0-beta.2" as string | null, staged: null as string | null, moveToStable: true };
+    let release!: () => void;
+    let entered!: () => void;
+    const started = new Promise<void>((resolve) => { entered = resolve; });
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    const before = session("0.3.0-beta.2", persisted, async () => {
+      entered();
+      await held;
+      return mode === "failed" ? new Uint8Array([1, 2, 3]) : pluginZip("0.3.0");
+    });
+    const pending = before.stager.stage();
+    await started;
+    if (mode === "cancelled") expect(before.stager.cancel()).toBe(true);
+    release();
+    expect((await pending).result).toBeNull();
+    expect(persisted.channel).toBe("beta");
+    expect(persisted.staged).toBeNull();
+    expect(existsSync(join(ROOT, stagedFileName("0.3.0")))).toBe(false);
+  });
+
+  test.each([
+    { moveToStable: true, expected: "stable" },
+    { moveToStable: false, expected: "beta" },
+  ] as const)("Move to Stable after release $moveToStable: successful staging immediately selects $expected", async ({ moveToStable, expected }) => {
+    mkdirSync(ROOT, { recursive: true });
+    const persisted = { channel: "beta" as UpdateChannel, lastRun: "0.3.0-beta.2" as string | null, staged: null as string | null, moveToStable };
+    const before = session("0.3.0-beta.2", persisted);
+    expect((await before.stager.stage()).result?.version).toBe("0.3.0");
+    expect(before.check.channel()).toBe(expected);
+    expect(persisted.channel).toBe(expected);
+    const after = session("0.3.0", persisted);
+    expect(after.check.channel()).toBe(expected);
+    rmSync(join(ROOT, "wowdeck-update-0.3.0.zip"), { force: true });
   });
 });

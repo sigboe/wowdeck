@@ -67,7 +67,7 @@ export class UpdateToastGate {
       return none;
     }
 
-    const installations = this.service.installations.list().map((installation) => ({
+    const installations = this.service.installations.automatic().map((installation) => ({
       displayName: installation.displayName,
       updates: this.service.eligibleUpdatesFor(installation).length,
     }));

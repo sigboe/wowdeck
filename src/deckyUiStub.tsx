@@ -29,13 +29,29 @@ export const deckyUiStub = {
     children,
     disabled,
     "aria-label": ariaLabel,
-  }: Kids & { disabled?: boolean; "aria-label"?: string }) => (
-    <button disabled={disabled} aria-label={ariaLabel}>
+    onClick,
+  }: Kids & { disabled?: boolean; "aria-label"?: string; onClick?: () => void }) => (
+    <button disabled={disabled} aria-label={ariaLabel} onClick={onClick}>
       {children}
     </button>
   ),
-  ButtonItem: ({ children, disabled }: Kids & { disabled?: boolean }) => (
-    <button disabled={disabled}>{children}</button>
+  ButtonItem: ({
+    children,
+    label,
+    description,
+    disabled,
+    onClick,
+  }: Kids & {
+    label?: ReactNode;
+    description?: ReactNode;
+    disabled?: boolean;
+    onClick?: () => void;
+  }) => (
+    <button disabled={disabled} onClick={onClick}>
+      {label && <span>{label}: </span>}
+      {children}
+      {description && <small>{description}</small>}
+    </button>
   ),
   DialogButtonPrimary: ({ children, disabled }: Kids & { disabled?: boolean }) => (
     <button disabled={disabled}>{children}</button>
@@ -47,20 +63,28 @@ export const deckyUiStub = {
     children,
     onSecondaryActionDescription,
     onMenuActionDescription,
+    onCancelButton,
+    onCancelActionDescription,
+    onClick,
   }: Kids & {
     label?: ReactNode;
     description?: ReactNode;
     disabled?: boolean;
     onSecondaryActionDescription?: string;
     onMenuActionDescription?: string;
+    /** B's action: a button labeled "B: <its description>". */
+    onCancelButton?: () => void;
+    onCancelActionDescription?: string;
+    onClick?: () => void;
   }) => (
-    <div data-disabled={disabled ? "true" : undefined}>
+    <div data-disabled={disabled ? "true" : undefined} onClick={onClick}>
       <b>{label}</b>
       <i>{description}</i>
       {children}
       <footer>
         {onSecondaryActionDescription && <span>X: {onSecondaryActionDescription}</span>}
         {onMenuActionDescription && <span>Menu: {onMenuActionDescription}</span>}
+        {onCancelButton && <button onClick={onCancelButton}>B: {onCancelActionDescription}</button>}
       </footer>
     </div>
   ),
@@ -73,7 +97,28 @@ export const deckyUiStub = {
   TextField: ({ "aria-label": ariaLabel }: { "aria-label"?: string }) =>
     ariaLabel ? <input aria-label={ariaLabel} /> : null,
   Spinner: () => <span role="progressbar" />,
-  ProgressBarWithInfo: () => <div role="progressbar" />,
+  // Steam's ProgressBarWithInfo is itself a Field row: its label and B action.
+  ProgressBarWithInfo: ({
+    label,
+    sOperationText,
+    onCancelButton,
+    onCancelActionDescription,
+  }: {
+    label?: ReactNode;
+    sOperationText?: ReactNode;
+    onCancelButton?: () => void;
+    onCancelActionDescription?: string;
+  }) => (
+    <div>
+      <b>{label}</b>
+      <div role="progressbar">{sOperationText}</div>
+      {onCancelButton && (
+        <footer>
+          <button onClick={onCancelButton}>B: {onCancelActionDescription}</button>
+        </footer>
+      )}
+    </div>
+  ),
   DropdownItem: (p: {
     label?: string;
     menuLabel?: string;
@@ -99,6 +144,22 @@ export const deckyUiStub = {
   ),
   DialogBodyText: box,
   MenuSeparator: box,
-  ToggleField: box,
+  ToggleField: ({
+    label,
+    checked,
+    onChange,
+  }: {
+    label?: string;
+    checked?: boolean;
+    onChange?: (on: boolean) => void;
+  }) => (
+    <input
+      type="checkbox"
+      aria-label={label}
+      checked={checked ?? false}
+      readOnly={!onChange}
+      onChange={(e) => onChange?.(e.target.checked)}
+    />
+  ),
   showModal: () => ({ Close: () => {} }),
 };

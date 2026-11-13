@@ -25,6 +25,18 @@ copied state with addons stripped and `autoUpdate` off, then `addons.refresh`.
 - A local archive on the Deck: any absolute path under the deck user's home
   (for example `~/Downloads/<name>.rar`); the file provider takes it as-is.
 
+## File picker
+
+Steam's picker is a modal (`tree` = `ModalDialogOverlay_*`) driven by focus
+navigation. Enter on the archive itself completes the picker and closes the
+modal — there is no Select button after it, and seeking one is a runner
+error, not a failed pick. Manual Install's flow, for example:
+
+```sh
+tools/deck-ui/deck run 'open; seek Manual Install --enter; seek Browse… --enter;
+  wait tree ~ Modal; seek BNetToast.zip --enter; wait tree !~ Modal; probe items'
+```
+
 ## Text fields
 
 Pad A on a focused field opens the on-screen keyboard (B closes it). To fill
@@ -33,8 +45,11 @@ target (in-memory only).
 
 ## Toasts
 
-The virtual pad's "Controller connected/disconnected" toasts cover ours: poll
-`notificationtoasts` `innerText` every 0.5 s while the press runs.
+The virtual pad pops "Controller connected/disconnected" toasts beside ours.
+Capture them with the runner instead of polling: `toast-start` before the
+action retains every notice's complete text in order, `toast-read` after it
+returns the history (`toast-start` … `toast-read` in one `deck run`), and the
+run's exit cleans the observer up and prints the capture either way.
 
 ## Clipboard (Copy path, Copy Diagnostics, Export)
 
@@ -62,3 +77,23 @@ over CDP with the source text, newlines included.
 Steam's screensaver swallows synthetic input; if focus stops moving, ask the
 owner to disable it for the run. In-memory style or nav-node trials are undone
 by a Steam UI reload; remove them when done.
+
+## Plugin-update offers with a fake older version
+
+Use a released-form version older than the channel's newest release (for
+example `0.1.9`) so real GitHub releases produce an update offer. A
+`-test.N` version uses the leave-test flow instead.
+
+1. Record the current local version files and the device's chosen update
+   channel (`settings.get`) before changing either.
+2. Run `make version-set VERSION=0.1.9` (or `nix develop -c make
+   version-set VERSION=0.1.9`). This keeps `package.json`, `plugin.json`
+   and `backend/package.json` in sync. The engine reads its reported version
+   from the backend manifest compiled into the binary; editing only the root
+   manifest does not change it.
+3. Run `tools/deck-ui/deck up --engine` to rebuild and deploy the engine too.
+   Check `system.getStatus --pick=backendVersion,pid` before testing the offer.
+4. After the pass, restore the device's original update channel and run
+   `deck down`. Restore the three local version files to their recorded
+   contents, preserving any changes that predated the pass. Leave the tested
+   build installed unless the brief requests a replacement.

@@ -12,6 +12,8 @@
  * - getAll: POST /v1/mods with modIds (upstream getAllIds); missing ids
  *   are reported as errors (SourceRemovedAddonError semantics).
  * - Downloads carry the X-Api-Key header (upstream getDownloadAuth).
+ * - Each file's full gameVersions list is surfaced (upstream 3ee2c948,
+ *   WowUp 2.25.4); the field is CurseForge's own wire API.
  *
  * Deviations (documented):
  * - The API key is user-supplied at runtime (upstream embeds it at build
@@ -61,6 +63,7 @@ import type {
   CfSearchModsResponse,
 } from "./curseforge-models";
 import { PROVIDER_ID } from "../../../api/providers";
+import type { GameVersionClient } from "../../../api/contracts";
 
 const CF_API_BASE_DEFAULT = "https://api.curseforge.com/v1";
 /** CurseForge's WoW "Addons" content class (gameId=1's only class, confirmed live via classesOnly=true). */
@@ -127,9 +130,46 @@ const GAME_TYPE_LISTS: Array<{ flavor: string; typeId: number; matches: WowClien
     typeId: 79434,
     matches: [WowClientType.Classic, WowClientType.ClassicPtr],
   },
-  { flavor: "wow-wrath-titan", typeId: 81212, matches: [] },
+  { flavor: "wow-wrath-titan", typeId: 81212, matches: [WowClientType.ClassicTitan] },
   { flavor: "wow-forever", typeId: 88568, matches: [WowClientType.Forever, WowClientType.ClassicBeta] },
 ];
+
+/**
+ * CurseForge's gameVersionTypeId → the client/flavor we name and color it
+ * by. The ids are the ones in GAME_TYPE_LISTS above (upstream's list); the
+ * flavor is what lets the Details header label a version by the client the
+ * provider says it belongs to instead of guessing from its number. Adding a
+ * patch ("3.80.3") needs no entry — the type id already covers it.
+ */
+const CURSEFORGE_CLIENT_TYPES: Record<number, GameVersionClient> = {
+  517: "retail",
+  67408: "classic_era",
+  73246: "anniversary",
+  73713: "wrath",
+  77522: "cataclysm",
+  79434: "mists",
+  81212: "titan_reforged",
+  88568: "forever",
+};
+
+/**
+ * Pair a file's versions with the clients CurseForge identified. The live
+ * API's sortableGameVersions carry gameVersion and line up with
+ * gameVersions; fixtures may omit gameVersion, in which case index order
+ * is the same pairing.
+ */
+function gameVersionClients(file: CfFile): Record<string, GameVersionClient> | undefined {
+  const clients: Record<string, GameVersionClient> = {};
+  const sortable = file.sortableGameVersions ?? [];
+  file.gameVersions.forEach((version, index) => {
+    const client = sortable.find((sv) => sv.gameVersion === version) ?? sortable[index];
+    const flavor = client ? CURSEFORGE_CLIENT_TYPES[client.gameVersionTypeId] : undefined;
+    if (flavor) {
+      clients[version] = flavor;
+    }
+  });
+  return Object.keys(clients).length > 0 ? clients : undefined;
+}
 
 /** CurseForge FileRelationType → the dependency kinds we keep. */
 const CF_RELATION: Record<number, AddonDependencyType | undefined> = {
@@ -724,6 +764,12 @@ export class CurseForgeProvider extends AddonProvider {
         downloadUrl: f.downloadUrl ?? websiteDownloadUrl(addon.id, f.id),
         folders: f.modules.map((m) => m.name),
         gameVersion: f.gameVersions[0] ?? "",
+        // The full per-file list (CurseForge wire field): a multi-flavor
+        // release targets retail and classic versions at once.
+        gameVersions: f.gameVersions.length > 1 ? f.gameVersions : undefined,
+        // Which client each listed version belongs to, from CurseForge's
+        // own type ids — never guessed from the version number.
+        gameVersionClients: gameVersionClients(f),
         releaseDate: f.fileDate,
         // CurseForge relationType: 1 embedded library, 2 optional, 3
         // required (4 tool, 5 incompatible, 6 include are not kept). Only

@@ -7,7 +7,9 @@ import {
   badgeState,
   filterSteamGames,
   likelyWowFirst,
+  pickerRowMarker,
   shouldAutoCheck,
+  shortcutIconUrl,
   shortcutsFrom,
   updateSummaryText,
 } from "./steamLibrary";
@@ -137,5 +139,58 @@ describe("automatic Steam attachments", () => {
   test("turning off automatic attachment keeps only the explicit manual choice", () => {
     expect(linkedSteamGames(installs, wow, false)).toEqual([wow]);
     expect(linkedSteamGames(installs, null, false)).toEqual([]);
+  });
+});
+
+describe("pickerRowMarker (#151)", () => {
+  const wow = { appId: 42, name: "World of Warcraft" };
+  const bnet = { appId: 43, name: "Battle.net" };
+  test("the manual link is Currently linked", () => {
+    expect(pickerRowMarker(wow, { manual: wow, detected: [], autoLinkOn: true })).toBe(
+      "Currently linked",
+    );
+  });
+  test("a detected link is Linked automatically only while automatic linking is on", () => {
+    expect(pickerRowMarker(bnet, { manual: null, detected: [bnet], autoLinkOn: true })).toBe(
+      "Linked automatically",
+    );
+    expect(pickerRowMarker(bnet, { manual: null, detected: [bnet], autoLinkOn: false })).toBeNull();
+  });
+  test("an entry both linked by hand and detected is Currently linked", () => {
+    expect(pickerRowMarker(wow, { manual: wow, detected: [wow], autoLinkOn: true })).toBe(
+      "Currently linked",
+    );
+  });
+  test("an unlinked entry has no marker", () => {
+    expect(pickerRowMarker(bnet, { manual: wow, detected: [wow], autoLinkOn: true })).toBeNull();
+  });
+});
+
+describe("shortcutIconUrl (#152)", () => {
+  const overview = { appid: 42, icon_data: "UE5H", icon_data_format: "png" };
+  const store = (url: string | null) => ({
+    GetAppOverviewByAppID: (id: number) => (id === 42 ? overview : null),
+    GetIconURLForApp: (app: unknown) => (app === overview ? url : "wrong overview"),
+  });
+  test("Steam's icon URL for the entry with that app id", () => {
+    expect(shortcutIconUrl(store("data:image/png;base64,UE5H"), 42)).toBe(
+      "data:image/png;base64,UE5H",
+    );
+  });
+  test("no icon yet, no entry, an empty URL or no store: undefined (a blank slot)", () => {
+    expect(shortcutIconUrl(store(null), 42)).toBeUndefined();
+    expect(shortcutIconUrl(store(""), 42)).toBeUndefined();
+    expect(shortcutIconUrl(store("data:x"), 7)).toBeUndefined();
+    expect(shortcutIconUrl(undefined, 42)).toBeUndefined();
+    expect(shortcutIconUrl({}, 42)).toBeUndefined();
+  });
+  test("a store that throws gives undefined", () => {
+    const broken = {
+      GetAppOverviewByAppID: () => {
+        throw new Error("gone");
+      },
+      GetIconURLForApp: () => "data:x",
+    };
+    expect(shortcutIconUrl(broken, 42)).toBeUndefined();
   });
 });

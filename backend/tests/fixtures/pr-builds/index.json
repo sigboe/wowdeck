@@ -1,0 +1,26 @@
+{
+  "builds": [
+    {
+      "number": 171,
+      "title": "<b>Urgent</b> fix: [click here](https://evil.example) & more",
+      "author": "octocat",
+      "version": "1.1.2-pr.171",
+      "headSha": "8f3c1d2e4b5a69788796a5b4c3d2e1f0a9b8c7d6",
+      "builtAt": "2026-11-09T18:42:07Z",
+      "zipSize": 73104512,
+      "sha256": "3b7e5a0c9d1f2e4a6b8c0d2e4f6a8b0c2d4e6f8a0b2c4d6e8f0a2b4c6d8e0f2a",
+      "zipUrl": "https://sigboe.github.io/wowdeck/pr/171/WoWDeck.zip"
+    },
+    {
+      "number": 117,
+      "title": "Add PR builds to the channel picker",
+      "author": "sigboe",
+      "version": "1.1.2-pr.117.2",
+      "headSha": "0123456789abcdef0123456789abcdef01234567",
+      "builtAt": "2026-11-08T09:15:00Z",
+      "zipSize": 72998400,
+      "sha256": "a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90",
+      "zipUrl": "https://sigboe.github.io/wowdeck/pr/117/WoWDeck.zip"
+    }
+  ]
+}

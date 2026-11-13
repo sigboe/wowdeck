@@ -1,14 +1,14 @@
 /**
  * Options › About: which rows appear, in what order, from the engine's
  * about.get answer. Support WoWDeck (hidden without Funding links) and
- * Supporters (hidden without names) come before Third-party notices, which
- * always shows; each row opens its own modal.
+ * Supporters (hidden without names) come before Third-party notices and
+ * Diagnostics, which always show; each row opens its own modal.
  */
 
 import type { AboutInfo, FundingLink } from "./types";
 
 /** An About row, also its focus-memory id in Options (SettingsRow). */
-export type AboutRowId = "supportWoWDeck" | "showSupporters" | "thirdPartyNotices";
+export type AboutRowId = "supportWoWDeck" | "showSupporters" | "thirdPartyNotices" | "diagnostics";
 
 export interface AboutRow {
   id: AboutRowId;
@@ -34,6 +34,12 @@ const NOTICES_ROW: AboutRow = {
   description: "What WoWDeck is built from, and under which licenses",
 };
 
+const DIAGNOSTICS_ROW: AboutRow = {
+  id: "diagnostics",
+  label: "Diagnostics",
+  description: "Versions and recent errors to share when asking for help",
+};
+
 /**
  * The rows in display order. `info` is null until about.get first answers;
  * rows that need its data stay hidden until then.
@@ -43,6 +49,7 @@ export function aboutRows(info: AboutInfo | null): AboutRow[] {
     ...(info?.funding.length ? [SUPPORT_ROW] : []),
     ...(info?.supporters.length ? [SUPPORTERS_ROW] : []),
     NOTICES_ROW,
+    DIAGNOSTICS_ROW,
   ];
 }
 

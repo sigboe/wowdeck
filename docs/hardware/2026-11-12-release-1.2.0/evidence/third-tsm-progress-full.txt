@@ -1,0 +1,8 @@
+eval@SharedJSContext --file=/tmp/third-start2.js → isolated tsm → tree="ModalDialogOverlay_Modal_92" focus="Install TradeSkillMaster" tab=null
+seek Install TradeSkillMaster --enter → pressed Enter on "Install TradeSkillMaster" (jump) → focus="Working…"
+eval@SharedJSContext --file=/tmp/third-close2.js → undefined → tree="QuickAccess-NA" focus="" tab="Get Addons"
+eval@SharedJSContext --file=/tmp/third-reopen.js → isolated tsm → tree="ModalDialogOverlay_Modal_93" focus="Working…" tab=null
+eval@SharedJSContext --file=/tmp/third-busy-state.… → {"loaded":true,"busy":true}
+eval@SharedJSContext --file=/tmp/third-fail2.js → settle → focus="Install TradeSkillMaster"
+eval@SharedJSContext --file=/tmp/third-failure-sta… → {"loaded":true,"busy":false,"error":"Installation failed. Try again."}
+eval@SharedJSContext --file=/tmp/third-close3.js → undefined → tree="QuickAccess-NA" focus="" tab="Get Addons"

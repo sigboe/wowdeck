@@ -21,12 +21,13 @@ import {
   isNeverTouched,
   filterAddons,
   isLibrary,
+  isUnneededLibrary,
   isUnmanaged,
   rowQuickAction,
   sortAddons,
   type AddonActionId,
 } from "../addonRow";
-import { QamProgressBar } from "./QamProgressBar";
+import { ProgressRow } from "./ProgressRow";
 import { STEAM, descriptionStyle } from "../steamTheme";
 import { QAM_VIEW } from "../qamState";
 import { addonSession } from "../session";
@@ -79,10 +80,13 @@ export function InstalledView({ addons, loading, restoreRows, multipleInstallati
       addons.filter(
         (a) =>
           (showIgnored || !a.ignored) &&
-          (showLibraries || !isLibrary(a)) &&
+          // An unneeded library stays in view: hiding it is how they pile up unseen.
+          (showLibraries ||
+            !isLibrary(a) ||
+            isUnneededLibrary(a, { unverified: addonsUnverified })) &&
           (showUnmanaged || !isUnmanaged(a)),
       ),
-    [addons, showIgnored, showLibraries, showUnmanaged],
+    [addons, showIgnored, showLibraries, showUnmanaged, addonsUnverified],
   );
   const visible = useMemo(() => sortAddons(filterAddons(shown, filter)), [shown, filter]);
 
@@ -93,7 +97,7 @@ export function InstalledView({ addons, loading, restoreRows, multipleInstallati
 
   const openChannelMenu = (addon: Addon, afterPick?: () => void) => {
     const current = addon.channel ?? "stable";
-    showChoiceMenu("Release channel", followChannelChoices(), current, (c) => {
+    showChoiceMenu("Release channel", followChannelChoices(addon.allowedChannels), current, (c) => {
       afterPick?.();
       // The marked channel is already followed: nothing to install.
       if (c !== current) {
@@ -115,6 +119,8 @@ export function InstalledView({ addons, loading, restoreRows, multipleInstallati
       websiteUrl: addon.externalUrl,
       latestVersion: addon.availableVersion ?? addon.version,
       gameVersion: addon.gameVersion,
+      gameVersions: addon.gameVersion ? [addon.gameVersion] : null,
+      gameVersionClients: null,
       releasedAt: null,
       channel: null,
       screenshots: [],
@@ -194,7 +200,7 @@ export function InstalledView({ addons, loading, restoreRows, multipleInstallati
       >
         <PanelSectionRow>
           {updatingAll ? (
-            <QamProgressBar
+            <ProgressRow
               indeterminate
               sOperationText={
                 updatingAll === "all"
@@ -350,7 +356,7 @@ function AddonRow({
   // Pause/Resume and the PAUSED tag only mean something with auto-update on.
   const { autoUpdate } = useSyncExternalStore(settingsStore.subscribe, settingsStore.get).settings;
   const memory = focusTarget(VIEW, `addon:${addon.id}`);
-  const desc = addonRowDescription(addon);
+  const desc = addonRowDescription(addon, { unverified });
   // Rows that are never updated read like a row that is switched off (S23).
   const greyed = addon.ignored || isUnmanaged(addon);
   const quick = locked ? null : rowQuickAction(addon);

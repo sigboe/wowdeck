@@ -1,0 +1,1 @@
+FAIL rpc params are not JSON: {\path\:\/home/deck/Applications/World; run quoting: rpc installations.add '{"c":"s"}' (wrap the JSON in single quotes inside the run text)

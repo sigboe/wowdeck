@@ -1,0 +1,6 @@
+Holding a second virtual pad over SSH (pad.py --stdin), then killing it and
+probing the notification DOM:
+$ tools/deck-ui/deck run 'probe toasts'
+toasts="Controller Disconnected Xbox 360 controller"
+(Earlier probe while the pad was still connected: toasts="none" — the
+connect notice had already auto-dismissed.)

@@ -1,0 +1,4 @@
+diagnose → {"ui":{"tree":"GamepadUI_Full_Root","focus":"","route":"/routes/library/home","plugin":"WoWDeck","tab":null},"panel":{"tab":null,"busy":null,"alerts":[]},"engine":{"backendVersion":"1.2.0","protocolVersion":1,"pid":153893},"installations":{"count":3,"active":[{"id":"5e80311f078e","gameType":"forever"}]},"errors":[]}
+open → tree="QuickAccess-NA" focus=null tab="My Addons"
+probe tab focus → tab="My Addons" focus="none"
+probe items → items="MY ADDONS | Forever | Update all (2)"

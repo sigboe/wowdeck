@@ -1,0 +1,2 @@
+target SharedJSContext → target=SharedJSContext
+eval --file=/tmp/rc-reload.js → plugin reload requested

@@ -5,6 +5,8 @@
  * stderr (stdout is the protocol stream).
  */
 
+import { TradeSkillMasterData } from "./wow/tsm/TradeSkillMasterData";
+import { TradeSkillMasterAuth, TradeSkillMasterProvider } from "./wow/tsm/TradeSkillMasterAuth";
 import { tmpdir } from "node:os";
 import { version } from "../package.json";
 import { join } from "node:path";
@@ -30,6 +32,8 @@ import { UpdateToastGate } from "./wow/notifications/UpdateToastGate";
 import { UpdateCheck } from "./wow/notifications/UpdateCheck";
 import { PluginUpdateCheck } from "./wow/notifications/PluginUpdateCheck";
 import { UpdateStager } from "./wow/plugin/UpdateStager";
+import { PrBuildList } from "./wow/plugin/PrBuildList";
+import { PrBuildFollow } from "./wow/plugin/PrBuildFollow";
 import { CurseForgeAuthService } from "./wow/providers/curseforge/CurseForgeKeyAuth";
 import { WtfBackupService } from "./wow/wtf/WtfBackupService";
 import { WtfJobRunner, type WtfJobTarget } from "./wow/wtf/WtfJobRunner";
@@ -54,6 +58,12 @@ const HUB_URL = process.env.WOWDECK_HUB_URL ?? "https://hub.wowup.io";
  * `/releases/latest`: the Beta channel lists the releases beside it.
  */
 const RELEASES_URL = process.env.WOWDECK_RELEASES_URL ?? "https://api.github.com/repos/sigboe/wowdeck/releases/latest";
+/**
+ * The PR builds list CI publishes on GitHub Pages from the `pr-builds`
+ * branch (ADR 0010, docs/development.md "PR builds"); each build's zip must
+ * be served from the same host.
+ */
+const PR_BUILDS_URL = process.env.WOWDECK_PR_BUILDS_URL ?? "https://sigboe.github.io/wowdeck/index.json";
 
 const dataDir = process.env.WOWDECK_DATA_DIR ?? join(tmpdir(), "wowdeck");
 const homeDir = process.env.HOME ?? "/home/deck";
@@ -61,7 +71,7 @@ const homeDir = process.env.HOME ?? "/home/deck";
 const store = createStateStore(dataDir);
 const network = new NetworkClient();
 /**
- * The optional GitHub token (Options › GitHub), read live: a token saved
+ * The optional GitHub token (Options › Addon sources › GitHub), read live: a token saved
  * later in the session is picked up by the next request. The GitHub addon
  * source, the WoWDeck update check, its staging and About all share it.
  */
@@ -90,7 +100,12 @@ registry.register(new GitHubProvider(network, githubToken));
 registry.register(new WowInterfaceProvider(network));
 registry.register(new ZipProvider());
 registry.register(new FileProvider());
+const tsmAuth = new TradeSkillMasterAuth(dataDir, BACKEND_VERSION, registry);
+const tsmProvider = new TradeSkillMasterProvider(tsmAuth);
+registry.register(tsmProvider);
+const tsmData = new TradeSkillMasterData(tsmAuth, tsmProvider, store, dataDir, () => server.emit("tradeskillmaster.changed", {}));
 registry.attachStore(store);
+void tsmAuth.restore();
 
 // One dedicated health check at startup, not on every screen open —
 // fire-and-forget so a slow/unreachable CurseForge never delays the
@@ -132,6 +147,7 @@ const service = new AddonService(
   undefined,
   join(dataDir, "inspect"),
 );
+service.onFoldersChanged = (id, folders) => tsmData.foldersChanged(id, folders);
 const catalogue = new Catalogue(registry);
 const installationService = service.installations;
 // Discovery also refreshes Steam attachments while the QAM is closed. It never opts into updates.
@@ -154,6 +170,11 @@ const about = new About({
   rawBaseUrl: process.env.WOWDECK_ABOUT_URL,
   tokenProvider: githubToken,
 });
+const prBuilds = new PrBuildList(network, PR_BUILDS_URL);
+// The PR channel's source (GLOSSARY: PR channel). A PR's own state comes from
+// the repo's API, unauthenticated: the repo is public, and no token ever
+// reaches a PR build's check.
+const prBuildFollow = new PrBuildFollow(prBuilds, network, RELEASES_URL.replace(/\/releases\/latest$/, ""));
 const pluginUpdate = new PluginUpdateCheck(
   network,
   BACKEND_VERSION,
@@ -178,11 +199,16 @@ const pluginUpdate = new PluginUpdateCheck(
     writeStagedVersion: (version) => store.updateSettings({ pluginUpdateStagedVersion: version }),
     readChannel: () => store.settings.pluginUpdateChannel,
     writeChannel: (channel) => store.updateSettings({ pluginUpdateChannel: channel }),
+    readPrChannel: () => store.settings.pluginUpdatePrChannel,
+    writePrChannel: (pr) => store.updateSettings({ pluginUpdatePrChannel: pr }),
+    readMoveToStableAfterRelease: () => store.settings.pluginMoveToStableAfterRelease,
   },
-  { onGitHubAsk: () => void about.refresh() },
+  { onGitHubAsk: () => void about.refresh(), prChannel: prBuildFollow },
 );
 
-const updateStager = new UpdateStager(network, pluginUpdate, githubToken);
+const updateStager = new UpdateStager(network, pluginUpdate, githubToken, undefined, (event) =>
+  server.emit("system.downloadProgress", event), prBuilds,
+);
 
 const server = new JsonlServer();
 
@@ -211,6 +237,8 @@ function wtfJobTarget(installationId?: string): WtfJobTarget {
 }
 
 const deps: HandlerDeps = {
+  tsmAuth,
+  tsmData,
   backendVersion: BACKEND_VERSION,
   homeDir,
   store,
@@ -223,6 +251,7 @@ const deps: HandlerDeps = {
   updateToastGate,
   pluginUpdate,
   updateStager,
+  prBuilds,
   curseForgeAuth,
   curseForgeProvider,
   wtfService,

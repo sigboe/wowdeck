@@ -21,25 +21,39 @@ const ids = (rows: ReturnType<typeof aboutRows>) => rows.map((row) => row.id);
 
 describe("aboutRows", () => {
   test("Third-party notices shows with the notices text", () => {
-    expect(ids(aboutRows(info()))).toEqual(["thirdPartyNotices"]);
+    expect(ids(aboutRows(info()))).toEqual(["thirdPartyNotices", "diagnostics"]);
   });
 
   test("Third-party notices always shows: unreadable notices, and before about.get answers", () => {
-    expect(ids(aboutRows(info({ notices: null })))).toEqual(["thirdPartyNotices"]);
-    expect(ids(aboutRows(null))).toEqual(["thirdPartyNotices"]);
+    expect(ids(aboutRows(info({ notices: null })))).toEqual(["thirdPartyNotices", "diagnostics"]);
+    expect(ids(aboutRows(null))).toEqual(["thirdPartyNotices", "diagnostics"]);
+  });
+});
+
+describe("aboutRows: Diagnostics", () => {
+  test("always shows, last, before about.get answers too", () => {
+    expect(ids(aboutRows(null)).slice(-1)[0]).toBe("diagnostics");
+    expect(ids(aboutRows(info({ supporters: ["Ada Lovelace"] }))).slice(-1)[0]).toBe("diagnostics");
+  });
+
+  test("the row reads Diagnostics", () => {
+    const row = aboutRows(null).slice(-1)[0]!;
+    expect(row.label).toBe("Diagnostics");
+    expect(row.description).toBe("Versions and recent errors to share when asking for help");
   });
 });
 
 describe("aboutRows: Supporters", () => {
   test("hidden while there are no names, and before about.get answers", () => {
-    expect(ids(aboutRows(info({ supporters: [] })))).toEqual(["thirdPartyNotices"]);
-    expect(ids(aboutRows(null))).toEqual(["thirdPartyNotices"]);
+    expect(ids(aboutRows(info({ supporters: [] })))).toEqual(["thirdPartyNotices", "diagnostics"]);
+    expect(ids(aboutRows(null))).toEqual(["thirdPartyNotices", "diagnostics"]);
   });
 
   test("with names it shows, before Third-party notices", () => {
     expect(ids(aboutRows(info({ supporters: ["Ada Lovelace"] })))).toEqual([
       "showSupporters",
       "thirdPartyNotices",
+      "diagnostics",
     ]);
   });
 
@@ -54,22 +68,24 @@ describe("aboutRows: Support WoWDeck", () => {
   const link = { kind: "web" as const, name: "Ko-fi", url: "https://ko-fi.com/wowdeck" };
 
   test("hidden while there are no Funding links, and before about.get answers", () => {
-    expect(ids(aboutRows(info({ funding: [] })))).toEqual(["thirdPartyNotices"]);
-    expect(ids(aboutRows(null))).toEqual(["thirdPartyNotices"]);
+    expect(ids(aboutRows(info({ funding: [] })))).toEqual(["thirdPartyNotices", "diagnostics"]);
+    expect(ids(aboutRows(null))).toEqual(["thirdPartyNotices", "diagnostics"]);
   });
 
   test("with links it shows first", () => {
     expect(ids(aboutRows(info({ funding: [link] })))).toEqual([
       "supportWoWDeck",
       "thirdPartyNotices",
+      "diagnostics",
     ]);
   });
 
-  test("the full order is Support WoWDeck, Supporters, Third-party notices", () => {
+  test("the full order is Support WoWDeck, Supporters, Third-party notices, Diagnostics", () => {
     expect(ids(aboutRows(info({ funding: [link], supporters: ["Ada Lovelace"] })))).toEqual([
       "supportWoWDeck",
       "showSupporters",
       "thirdPartyNotices",
+      "diagnostics",
     ]);
   });
 
@@ -153,6 +169,7 @@ describe("lastAboutInfo", () => {
       "supportWoWDeck",
       "showSupporters",
       "thirdPartyNotices",
+      "diagnostics",
     ]);
   });
 });

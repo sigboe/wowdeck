@@ -56,6 +56,16 @@ describe("StateStore normalizes stored settings (RF-07)", () => {
     expect(new StateStore(path).load().settings.pluginUpdateChannel).toBe("stable");
   });
 
+  test("Move to Stable after release: off when missing or garbage, a stored choice is kept", () => {
+    const path = join(mkdtempSync(join(tmpdir(), "state-store-")), "state.json");
+    writeFileSync(path, JSON.stringify({ settings: {} }));
+    expect(new StateStore(path).load().settings.pluginMoveToStableAfterRelease).toBe(false);
+    writeFileSync(path, JSON.stringify({ settings: { pluginMoveToStableAfterRelease: true } }));
+    expect(new StateStore(path).load().settings.pluginMoveToStableAfterRelease).toBe(true);
+    writeFileSync(path, JSON.stringify({ settings: { pluginMoveToStableAfterRelease: "yes" } }));
+    expect(new StateStore(path).load().settings.pluginMoveToStableAfterRelease).toBe(false);
+  });
+
   test("a stored answer keeps its channel; one from before channels has none", () => {
     const path = join(mkdtempSync(join(tmpdir(), "state-store-")), "state.json");
     const answer = { checkedAt: 123, latestVersion: "0.2.1-beta.3", releaseUrl: null, downloadUrl: null };
@@ -63,6 +73,39 @@ describe("StateStore normalizes stored settings (RF-07)", () => {
     expect(new StateStore(path).load().settings.lastPluginUpdate).toEqual({ ...answer, channel: "beta" });
     writeFileSync(path, JSON.stringify({ settings: { lastPluginUpdate: answer } }));
     expect(new StateStore(path).load().settings.lastPluginUpdate).toEqual(answer);
+  });
+
+  test("the PR channel: a PR number is kept; anything else is no PR channel", () => {
+    const path = join(mkdtempSync(join(tmpdir(), "state-store-")), "state.json");
+    writeFileSync(path, JSON.stringify({ settings: {} }));
+    expect(new StateStore(path).load().settings.pluginUpdatePrChannel).toBeNull();
+    writeFileSync(path, JSON.stringify({ settings: { pluginUpdatePrChannel: 117 } }));
+    expect(new StateStore(path).load().settings.pluginUpdatePrChannel).toBe(117);
+    for (const bad of [0, -3, 1.5, "117", true]) {
+      writeFileSync(path, JSON.stringify({ settings: { pluginUpdatePrChannel: bad } }));
+      expect(new StateStore(path).load().settings.pluginUpdatePrChannel).toBeNull();
+    }
+  });
+
+  test("a PR channel's stored answer keeps its PR; a broken PR part drops the answer", () => {
+    const path = join(mkdtempSync(join(tmpdir(), "state-store-")), "state.json");
+    const answer = {
+      checkedAt: 123,
+      channel: "beta" as const,
+      latestVersion: "1.1.2-pr.117.2",
+      releaseUrl: "https://github.com/sigboe/wowdeck/pull/117",
+      downloadUrl: null,
+    };
+    const pr = { number: 117, title: "Add PR builds", state: "listed" as const };
+    writeFileSync(path, JSON.stringify({ settings: { lastPluginUpdate: { ...answer, pr } } }));
+    expect(new StateStore(path).load().settings.lastPluginUpdate).toEqual({ ...answer, pr });
+    const untitled = { ...pr, title: null };
+    writeFileSync(path, JSON.stringify({ settings: { lastPluginUpdate: { ...answer, pr: untitled } } }));
+    expect(new StateStore(path).load().settings.lastPluginUpdate).toEqual({ ...answer, pr: untitled });
+    for (const broken of [{ ...pr, number: "117" }, { ...pr, state: "draft" }, { ...pr, title: 4 }, "117"]) {
+      writeFileSync(path, JSON.stringify({ settings: { lastPluginUpdate: { ...answer, pr: broken } } }));
+      expect(new StateStore(path).load().settings.lastPluginUpdate).toBeNull();
+    }
   });
 
   test("garbage values fall back to their defaults; good ones are kept", () => {

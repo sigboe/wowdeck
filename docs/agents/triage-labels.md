@@ -14,3 +14,11 @@ they use a `Status:` line (see `issue-tracker.md`).
 
 When a skill mentions a role (e.g. "apply the AFK-ready triage label"), use the
 corresponding label string from this table.
+
+## `pr-build`
+
+`pr-build` sits outside the triage roles. It goes on pull requests, never
+issues, and it is a maintainer's approval of the PR's head commit: CI builds
+the labeled PR and publishes it for owners to install
+(`docs/development.md` "PR builds"). The maintainer adds or removes it after
+reviewing the code; triage leaves it as it finds it.

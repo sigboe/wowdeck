@@ -1,0 +1,8 @@
+seek Z-A --enter → pressed Enter on "Z-A" (jump) → tree="ModalDialogOverlay_Modal_71" focus="Z-A"
+probe items → items="Z-A | zip, rar, 7z | clients Folder 11/12/2026, 11:16:02 PM | _retail_ Folder 11/12/2026, 11:17:40 PM | ZZZ-RCFixture.zip 202 B 11/12/2026, 11:1 | AAA-RCFixture.zip 202 B 11/12/2026, 11:1 | Select this file"
+seek AAA-RCFixture.zip --enter → pressed Enter on "AAA-RCFixture.zip 202 B 11/12/2026, 11:17:35 PM" (jump) → tree="QuickAccess-NA" focus="Install" tab="Get Addons"
+probe focus → focus="Install"
+probe items → items="GET ADDONS | RC 1.2.0 fixture | Search | Latest | Popular | Manual Install | TradeSkillMaster | Look up | Browse… | Install"
+seek Install --enter → pressed Enter on "Install" (jump)
+FAIL wait text ~ RC Fixture: text="scrollTop=[0,0] WoWDeck Manager F6 GET ADDONS F7 RC 1.2.0 fixture Search Latest Popular Manual Install TradeSkillMaster From a link Look up A GitHub repository URL, owner/repository or github:owner/repository, a WoWInterface addon URL, or a direct link to a .zip, .rar or .7z file From a file Browse… Pick a .zip, .rar or .7z archive on this Deck. Downloads, a USB stick and the SD card all work Only install archive"
+at: tree="QuickAccess-NA" focus="Install" route="/routes/library/home" plugin="WoWDeck" tab="Get Addons"

@@ -1,0 +1,8 @@
+open → plugin="WoWDeck" tab="Options"
+seek Options → found "Options" (jump, 4 matches) → focus="OPTIONS"
+key left → focus="GET ADDONS" tab="Get Addons"
+seek Manual Install --enter → pressed Enter on "Manual Install" (jump) → focus=""
+probe items → items="GET ADDONS | RC 1.2.0 fixture | Search | Latest | Popular | Manual Install | TradeSkillMaster | Look up | Browse… | Install"
+seek Browse… --enter → pressed Enter on "Browse…" (jump) → tree="ModalDialogOverlay_Modal_71" tab=null
+probe items → items="A-Z | zip, rar, 7z | Applications Folder 11/9/2026, 6:40:13 P | Desktop Folder 6/28/2026, 11:29:31 AM | Documents Folder 7/3/2025, 1:56:45 PM | dot-steam.bak.1777445779 Folder 4/29/202 | Downloads Folder 11/7/2026, 2:41:39 PM | emudeck Folder 3/28/2024, 8:35:52 PM | fgmod Folder 8/11/2025, 9:18:32 AM | Games Folder 3/20/2026, 10:36:31 AM | git Folder 9/27/2026, 4:36:08 PM | homebrew Folder 9/26/2026, 3:24:31 PM | Music Folder 1/18/2022, 1:28:02 PM | naiseika-repair-backups Folder 11/5/2026 | nixos Folder 1/12/2026, 1:25:16 PM | Pictures Folder 6/17/2026, 12:24:57 PM | Projects Folder 10/24/2026, 6:57:35 PM | Public Folder 1/18/2022, 1:28:02 PM | rxp-vault Folder 10/2/2026, 9:17:19 AM | sdgyrodsu Folder 12/26/2023, 7:33:55 PM"
+probe text → text="scrollTop=[0,0,0] Show Hidden Files A-Z zip, rar, 7z Applications Folder 11/9/2026, 6:40:13 PM Desktop Folder 6/28/2026, 11:29:31 AM Documents Folder 7/3/2025, 1:56:45 PM dot-steam.bak.1777445779 Folder 4/29/2026, 8:55:45 AM Downloads Folder 11/7/2026, 2:41:39 PM emudeck Folder 3/28/2024, 8:35:52 PM fgmod Folder 8/11/2025, 9:18:32 AM Games Folder 3/20/2026, 10:36:31 AM git Folder 9/27/2026, 4:36:08 PM homebrew Fold"

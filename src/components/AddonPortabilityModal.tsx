@@ -1,3 +1,4 @@
+import { RowSpinner } from "./RowGlyph";
 import { ScrollBuffer } from "./ScrollBuffer";
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import {
@@ -406,7 +407,7 @@ function AddonPortabilityModal({
                   description={<span style={descriptionStyle}>Copy it or save it to a file</span>}
                   onClick={() => !exporting && !!installationId && void runExport()}
                 >
-                  {exporting ? <Spinner style={{ width: "1.2em" }} /> : null}
+                  {exporting ? <RowSpinner /> : null}
                 </Field>
               </DialogControlsSection>
               {exportError && muted(exportError, STEAM.danger)}
@@ -431,7 +432,7 @@ function AddonPortabilityModal({
                     }
                     onClick={() => !saving && void saveExportToFile()}
                   >
-                    {saving ? <Spinner style={{ width: "1.2em" }} /> : null}
+                    {saving ? <RowSpinner /> : null}
                   </Field>
                   {muted(
                     `${exportMeta.exportedCount} addon(s) exported${
@@ -469,7 +470,7 @@ function AddonPortabilityModal({
                   }
                   onClick={() => !loadingFile && void loadFromFile()}
                 >
-                  {loadingFile ? <Spinner style={{ width: "1.2em" }} /> : null}
+                  {loadingFile ? <RowSpinner /> : null}
                 </Field>
               </DialogControlsSection>
 

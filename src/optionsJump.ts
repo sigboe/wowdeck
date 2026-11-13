@@ -23,11 +23,19 @@ import { QAM_VIEW } from "./qamState";
 import { firstFocusableMarkedSource } from "./sourceAccess";
 import type { ProviderInfo } from "./types";
 import { createStore } from "./store";
+import { PROVIDER_ID } from "../backend/src/api/providers";
 
 const ROW_KEY_PREFIX = "provider:";
 
 /** The sources section's focus-memory key for a provider's row. */
 export const sourceRowKey = (providerId: string): string => `${ROW_KEY_PREFIX}${providerId}`;
+
+/**
+ * The jump's fallback landing while CurseForge has no usable key ("Set up
+ * CurseForge"): CurseForge's own source row, a `>` row in that state that
+ * opens the key modal. A marked toggle that can be pressed still lands first.
+ */
+export const CURSE_KEY_ROW = sourceRowKey(PROVIDER_ID.Curse);
 
 /** One jump's arrival state: the marked provider ids, and where focus lands. */
 export interface SourceJump {
@@ -69,8 +77,8 @@ function set(jump: SourceJump | null): void {
 /**
  * Jump to Options carrying `marked`: their rows in the sources section
  * blink-highlight, and focus lands on the first of them that can take focus,
- * or `fallbackKey` when none can (the CurseForge key row for "Set up
- * CurseForge", whose own toggle is disabled until that key exists). Landing
+ * or `fallbackKey` when none can (CurseForge's `>` row for "Set up
+ * CurseForge", which has no toggle until that key exists). Landing
  * goes through the same focus-memory restore every Options visit uses — the
  * row is remembered before the tab switch, the remounting panel replays it,
  * and a row whose section has not loaded yet (providers, the CurseForge key

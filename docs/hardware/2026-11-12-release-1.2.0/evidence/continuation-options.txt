@@ -1,0 +1,8 @@
+seek My Addons → found "My Addons" (jump, 5 matches)
+key right → focus="GET ADDONS" tab="Get Addons"
+key right → focus="OPTIONS" tab="Options"
+seek WoW Settings Backup --enter → pressed Enter on "" (jump) → focus=""
+probe items → items="OPTIONS | RC 1.2.0 fixture | Find WoW installations Looks in Steam, L | Add WoW folder The World of Warcraft fol | Export addon list Share it with WowUp or | Import addon list From another computer  | WoW Settings Backup No WTF folder yet. S | Manage backups Restore, delete or import | GitHub | Previous versions On · 1.2 GB for 39 add | Update channel | World of Warcraft in Steam World of Warc | Updates inside WoW Shown in game when th | Support WoWDeck Scan a code with your ph | Third-party notices What WoWDeck is buil | Diagnostics Versions and recent errors t"
+press b → focus=null plugin=null tab=null
+FAIL no match for "Manage"; focusables here: Notifications Quick Settings Performance | Decky WoWDeck TunnelDeck MagicPods TabMa | Decky | WoWDeck | TunnelDeck | MagicPods
+at: tree="QuickAccess-NA" focus=null route="/routes/library/home" plugin=null tab=null

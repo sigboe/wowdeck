@@ -1,0 +1,10 @@
+probe items → items="OPTIONS | Forever | Find WoW installations Looks in Steam, L | Add WoW folder The World of Warcraft fol | Export addon list Share it with WowUp or | Import addon list From another computer  | WoW Settings Backup Last backup 23 hours | Manage backups Restore, delete or import | GitHub | Previous versions On · 1.2 GB for 39 add | Update channel | World of Warcraft in Steam World of Warc | Updates inside WoW Shown in game when th | Third-party notices What WoWDeck is buil | Diagnostics Versions and recent errors t | Support WoWDeck Scan a code with your ph"
+seek Diagnostics --enter → pressed Enter on "DiagnosticsVersions and recent errors to share when asking for help" (jump) → tree="ModalDialogOverlay_Modal_54" focus="TradeSkillMaster Enabled: Yes · Signed in: Yes · T" tab=null
+probe text → text="scrollTop=[0] Diagnostics TradeSkillMaster Enabled: Yes · Signed in: Yes · Tier: free · Connected: Yes · Last push: 11/12/2026, 11:06:54 PM · Followed realms: 3 Backend version 1.2.0 Decky version v3.3.1 WoWDeck version 1.1.2-pr.211.4 Platform linux-x64 WoW installations Client: Forever Beta · Companion addon: No; Client: Classic Era · Companion addon: Yes; Client: Forever · Companion addon: Yes Addon sources S"
+press b → tree="QuickAccess-NA" focus="Diagnostics Versions and recent errors to share wh" tab="Options"
+probe focus → focus="Diagnostics Versions and recent errors to share wh"
+seek Update channel --enter → pressed Enter on "Update channel" (jump) → tree="ModalDialogOverlay_Modal_55" focus="Stable Recommended for most users." tab=null
+probe items → items="Stable Recommended for most users. | Beta Built from every merged change. New | PR builds… Builds of open pull requests,"
+probe text → text="scrollTop=[] WoWDeck Update Channel Stable Recommended for most users. Beta Built from every merged change. Newer features, may have bugs. PR builds… Builds of open pull requests, for testing changes before they are released."
+press b → tree="QuickAccess-NA" focus="Update channel" tab="Options"
+probe focus → focus="Update channel"

@@ -1,5 +1,6 @@
+import { RowChevron } from "../RowGlyph";
 import { Field, PanelSection } from "@decky/ui";
-import { FaChevronRight } from "react-icons/fa";
+
 import type { Installation } from "../../types";
 import { descriptionStyle } from "../../steamTheme";
 import { openAddonPortabilityModal } from "../AddonPortabilityModal";
@@ -33,7 +34,7 @@ export function AddonListSection({ installations, selectedId, onChanged }: Props
           description={<span style={descriptionStyle}>Share it with WowUp or another device</span>}
           onClick={() => installations.length > 0 && openPortability("export")}
         >
-          <FaChevronRight />
+          <RowChevron />
         </Field>
       </SettingsRow>
       <SettingsRow id="import">
@@ -44,7 +45,7 @@ export function AddonListSection({ installations, selectedId, onChanged }: Props
           description={<span style={descriptionStyle}>From another computer or WowUp</span>}
           onClick={() => installations.length > 0 && openPortability("import")}
         >
-          <FaChevronRight />
+          <RowChevron />
         </Field>
       </SettingsRow>
     </PanelSection>

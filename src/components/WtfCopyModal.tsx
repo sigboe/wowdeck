@@ -1,3 +1,4 @@
+import { RowChevron } from "./RowGlyph";
 import { ScrollBuffer } from "./ScrollBuffer";
 import { useState } from "react";
 import {
@@ -12,7 +13,7 @@ import {
   Spinner,
   showModal,
 } from "@decky/ui";
-import { FaChevronRight } from "react-icons/fa";
+
 import { wowupModalStyleCss } from "../sharedStyles";
 import { STEAM, outcomeColor } from "../steamTheme";
 import type { Installation, WtfBackupInfo, WtfCopySource } from "../types";
@@ -185,7 +186,7 @@ function WtfCopyModal({ installation, closeModal }: ModalProps) {
                         onOKActionDescription={okActionLabel(blockedReasonFor(current), "Copy")}
                         description={currentSettingsDescription(current, now)}
                       >
-                        <FaChevronRight />
+                        <RowChevron />
                       </Field>
                     );
                   }
@@ -199,7 +200,7 @@ function WtfCopyModal({ installation, closeModal }: ModalProps) {
                       onOKActionDescription={okActionLabel(blockedReasonFor(backup), "Copy")}
                       description={<BackupRowDescription backup={backup} />}
                     >
-                      <FaChevronRight />
+                      <RowChevron />
                     </Field>
                   );
                 })}

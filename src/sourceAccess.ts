@@ -66,6 +66,7 @@ export type BrowseBarItem = "source" | "category";
 export const BROWSE_BAR_ITEMS: Record<GetAddonsTab, readonly BrowseBarItem[]> = {
   search: [],
   url: [],
+  tsm: [],
   latest: ["source"],
   popular: ["source", "category"],
 };
@@ -132,13 +133,13 @@ export function sourceOffDescription(providerId: string): string | null {
 
 /**
  * The Options jump's landing row (ADR 0002, story 17): the first of the
- * marked providers' rows, in the sources section's own order, that can take
- * focus — the section disables exactly the rows that need setup (a source
- * without its API key), and "find the right toggle immediately" means a
- * toggle that can be pressed. Rows the section never shows (allowEdit
- * false) are not landing rows. Null when no marked row can take focus; the
- * caller's fallback row lands then (the CurseForge key row for "Set up
- * CurseForge", whose toggle is disabled precisely in that state).
+ * marked providers' rows, in the sources section's own order, that has a
+ * toggle to press — a source without its API key shows a `>` key row
+ * instead, and "find the right toggle immediately" means a toggle that can
+ * be pressed. Rows the section never shows (allowEdit false) are not
+ * landing rows. Null when no marked row has such a toggle; the
+ * caller's fallback row lands then (CurseForge's `>` key row for "Set up
+ * CurseForge", which shows no toggle precisely in that state).
  */
 export function firstFocusableMarkedSource(
   providers: readonly ProviderInfo[],

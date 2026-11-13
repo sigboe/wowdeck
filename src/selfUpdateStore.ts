@@ -10,9 +10,10 @@
 import type { Store } from "./store";
 import { createStore } from "./store";
 import type { rpcVia } from "./services/envelope";
-import type { UpdateChannel } from "./types";
+import type { BackendEvent, PrBuild, UpdateChannel } from "./types";
 import {
   pluginUpdateToast,
+  prChannelLine,
   type PluginUpdateInfo,
   type StagedUpdate,
   type UpdateRequestResult,
@@ -25,7 +26,23 @@ export interface SelfUpdateState {
   staging: boolean;
   /** A Check again is running: the panel's button and the Updates row say "Checking…". */
   checking: boolean;
+  /**
+   * The WoWDeck download in flight (system.downloadProgress), while
+   * `staging`; null before it starts, after it lands (Decky's handoff) and
+   * outside staging.
+   */
+  download: DownloadProgress | null;
 }
+
+/** Bytes of the WoWDeck download so far; `total` is null when its size isn't known. */
+export interface DownloadProgress {
+  received: number;
+  total: number | null;
+}
+
+/** How a PR build install from the PR builds modal ended. */
+export type PrInstallResult =
+  { kind: "installed" } | { kind: "cancelled" } | { kind: "failed"; error: string };
 
 /** How a Check again ended; each has its own toast. */
 export type CheckAgainResult =
@@ -87,7 +104,58 @@ export interface SelfUpdateStore extends Pick<Store<SelfUpdateState>, "get" | "s
    * waits it out, then forces its own.
    */
   checkAgain(): Promise<CheckAgainResult>;
+  /**
+   * Install a PR build the owner confirmed in the PR builds modal: stage it
+   * in the engine (system.installPrBuild), with the same download progress
+   * and cancel as runUpdate, then hand it to Decky's installer. A cancelled
+   * download resolves "cancelled", with no toast. One stage runs at a time:
+   * a press while one runs resolves "failed".
+   */
+  installPrBuild(build: PrBuild): Promise<PrInstallResult>;
+  /**
+   * B while the download runs: ask the engine to cancel it. The stage
+   * answers "cancelled", which ends silently. Asks nothing when no
+   * download runs.
+   */
+  cancelDownload(): Promise<void>;
+  /** `system.downloadProgress`, forwarded once per plugin load (index.tsx). */
+  handleEvent(event: BackendEvent): void;
 }
+
+/** What shows in place of the button while staging; null when nothing stages. */
+export function downloadView(
+  state: Pick<SelfUpdateState, "staging" | "download">,
+): { text: string; percent: number | null } | null {
+  if (!state.staging) {
+    return null;
+  }
+  const { download } = state;
+  if (download === null) {
+    return { text: "Preparing…", percent: null };
+  }
+  const { received, total } = download;
+  if (total === null) {
+    return {
+      text: received === 0 ? "Downloading…" : `Downloading ${mb(received)} MB`,
+      percent: null,
+    };
+  }
+  if (received >= total) {
+    return { text: "Preparing…", percent: null };
+  }
+  return {
+    text: `Downloading ${mb(received)} of ${mb(total)} MB`,
+    percent: total === 0 ? 0 : Math.floor((received / total) * 100),
+  };
+}
+
+/** Bytes as megabytes with one decimal, the way Steam counts downloads. */
+function mb(bytes: number): string {
+  return (bytes / 1_000_000).toFixed(1);
+}
+
+/** Before the first progress event: the download has started, its size not yet known. */
+const DOWNLOAD_STARTING: DownloadProgress = { received: 0, total: null };
 
 /**
  * How long a held answer stays fresh on this side: the engine's own cadence
@@ -101,7 +169,12 @@ export interface SelfUpdateStore extends Pick<Store<SelfUpdateState>, "get" | "s
 export const ANSWER_FRESH_MS = 15 * 60 * 1000;
 
 export function createSelfUpdateStore(deps: SelfUpdateDeps): SelfUpdateStore {
-  const store = createStore<SelfUpdateState>({ info: null, staging: false, checking: false });
+  const store = createStore<SelfUpdateState>({
+    info: null,
+    staging: false,
+    checking: false,
+    download: null,
+  });
   const { rpc, toast, toastError, requestUpdate } = deps;
   const now = deps.now ?? Date.now;
   /** When the engine last answered with a checked status; 0 until then. */
@@ -119,7 +192,6 @@ export function createSelfUpdateStore(deps: SelfUpdateDeps): SelfUpdateStore {
    * is what keeps a double press to one request and one toast.
    */
   let checkAgainFlight: Promise<CheckAgainResult> | null = null;
-
   /** Show an engine answer; only one that could check counts as fresh. */
   const land = (answer: PluginUpdateInfo) => {
     answeredAt = answer.status === "unknown" ? 0 : now();
@@ -163,21 +235,23 @@ export function createSelfUpdateStore(deps: SelfUpdateDeps): SelfUpdateStore {
   return {
     get: store.get,
     subscribe: store.subscribe,
-    refresh(opts = {}) {
-      if (!opts.bypassWindow && now() - answeredAt < ANSWER_FRESH_MS) {
-        return Promise.resolve();
+    async refresh(opts = {}) {
+      if (opts.bypassWindow || now() - answeredAt >= ANSWER_FRESH_MS) {
+        await check(opts.toast === true);
       }
-      return check(opts.toast === true).then(() => undefined);
     },
     async runUpdate() {
       if (store.get().staging) {
         return;
       }
-      store.patch({ staging: true });
+      store.patch({ staging: true, download: DOWNLOAD_STARTING });
       try {
         const outcome = await rpc("system.updateStage");
+        store.patch({ download: null });
         if (!outcome.result) {
-          toast("Couldn't update WoWDeck", outcome.error?.message ?? "Try again later");
+          if (outcome.error?.code !== "cancelled") {
+            toast("Couldn't update WoWDeck", outcome.error?.message ?? "Try again later");
+          }
           return;
         }
         const requested = await requestUpdate(outcome.result);
@@ -187,7 +261,7 @@ export function createSelfUpdateStore(deps: SelfUpdateDeps): SelfUpdateStore {
       } catch (e) {
         toastError("Couldn't update WoWDeck", e);
       } finally {
-        store.patch({ staging: false });
+        store.patch({ staging: false, download: null });
         // A check in flight since before staging may land the stale answer;
         // let it, then ask again.
         await inFlight;
@@ -211,14 +285,69 @@ export function createSelfUpdateStore(deps: SelfUpdateDeps): SelfUpdateStore {
       }
       store.patch({ checking: true });
       checkAgainFlight = (async () => {
-        const result = checkAgainResult(await check(false, true));
-        toast(checkAgainToast(result));
+        const answer = await check(false, true);
+        const result = checkAgainResult(answer);
+        toast((result.kind === "current" && prChannelLine(answer)) || checkAgainToast(result));
         return result;
       })().finally(() => {
         checkAgainFlight = null;
         store.patch({ checking: false });
       });
       return checkAgainFlight;
+    },
+    async installPrBuild(build) {
+      if (store.get().staging) {
+        return { kind: "failed", error: "Another WoWDeck download is running" };
+      }
+      store.patch({ staging: true, download: DOWNLOAD_STARTING });
+      try {
+        let staged: StagedUpdate;
+        try {
+          const outcome = await rpc("system.installPrBuild", {
+            number: build.number,
+            version: build.version,
+          });
+          store.patch({ download: null });
+          if (outcome.error?.code === "cancelled") {
+            return { kind: "cancelled" };
+          }
+          if (!outcome.result) {
+            return {
+              kind: "failed",
+              error: outcome.error?.message ?? "Couldn't prepare the PR build. Try again",
+            };
+          }
+          staged = outcome.result;
+        } catch {
+          return { kind: "failed", error: "Couldn't prepare the PR build. Try again" };
+        }
+        const requested = await requestUpdate(staged);
+        return requested.success
+          ? { kind: "installed" }
+          : {
+              kind: "failed",
+              error: requested.error ?? "Couldn't install the PR build. Try again",
+            };
+      } finally {
+        store.patch({ staging: false, download: null });
+      }
+    },
+    async cancelDownload() {
+      if (store.get().download === null) {
+        return;
+      }
+      try {
+        await rpc("system.cancelDownload");
+      } catch {
+        // A lost answer: the stage's own answer still ends the run.
+      }
+    },
+    handleEvent(event) {
+      if (event.event !== "system.downloadProgress" || store.get().download === null) {
+        return;
+      }
+      const { received, total } = event.params;
+      store.patch({ download: { received, total } });
     },
     async getChannel() {
       try {
@@ -236,7 +365,9 @@ function checkAgainResult(answer: PluginUpdateInfo | null): CheckAgainResult {
   if (answer === null || answer.failed || answer.status === "unknown") {
     return { kind: "failed" };
   }
-  return answer.offer ? { kind: "available", version: answer.offer.version } : { kind: "current" };
+  return answer.offer && answer.offer.kind !== "prMergedBuilding"
+    ? { kind: "available", version: answer.offer.version }
+    : { kind: "current" };
 }
 
 function checkAgainToast(result: CheckAgainResult): string {

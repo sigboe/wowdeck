@@ -16,6 +16,12 @@ on:
         required: false
         default: ""
 
+# Caches: a beta build (inputs.version set) restores no Actions cache.
+# pr-build.yml runs a PR's code under pull_request_target, where it can
+# reach the runner's cache token and write any cache entry into the base
+# branch's scope, which runs on `next` restore. A beta must not build from
+# such an entry. Runs that publish nothing keep their caches. See
+# docs/adr/0010-pr-builds-on-pages.md.
 jobs:
   frontend:
     name: Frontend
@@ -35,12 +41,14 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: pnpm
+          # No cache for a beta build; see "Caches" above.
+          cache: ${{ inputs.version == '' && 'pnpm' || '' }}
       # The frontend suite runs on bun (package.json "test"); keep the
       # version in step with the backend job's nix-locked bun.
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.2
+          no-cache: ${{ inputs.version != '' }}
       - run: pnpm install --frozen-lockfile
       - run: pnpm run lint
       - run: pnpm run format:check
@@ -69,6 +77,7 @@ jobs:
           # ~82 MB; current "latest" is ~109 MB), and release binaries
           # must match what local builds produce.
           bun-version: 1.4.2
+          no-cache: ${{ inputs.version != '' }}
       - run: bun install --frozen-lockfile
         working-directory: backend
       - run: bun run typecheck
@@ -79,9 +88,9 @@ jobs:
         working-directory: backend
       - run: bun test
         working-directory: backend
-      # The beta workflow's version and prune decisions (tools/beta-release.ts)
-      # and the release gate (tools/release-check.ts).
-      - run: bun test ./tools
+      # These release helpers need no frontend dependencies. The frontend
+      # job runs all tools tests, including the jsdom-backed Deck runner.
+      - run: bun test ./tools/beta-release.test.ts ./tools/pr-build.test.ts ./tools/release-check.test.ts ./tools/release-notes.test.ts
       # The tests run the engine at its committed version: they mock that
       # version as the latest stable release, which a beta version can never
       # be. A beta build then stamps its version and rebuilds the engine

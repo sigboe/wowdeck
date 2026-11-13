@@ -1,11 +1,14 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import {
   closeStalePanel,
+  isOffChannel,
   panelOffer,
   pluginUpdateDot,
   pluginUpdateRow,
   pluginUpdateToast,
+  prChannelLine,
   releaseNotesAction,
+  updateChannelChoice,
   requestPluginUpdate,
   UPDATE_CHANNEL_ROWS,
   type PluginUpdateInfo,
@@ -15,6 +18,7 @@ import { UPDATE_CHANNELS } from "../backend/src/api/contracts";
 const info = (over: Partial<PluginUpdateInfo>): PluginUpdateInfo => ({
   status: "current",
   currentVersion: "0.1.1",
+  channel: { kind: "stable" },
   offer: null,
   checked: true,
   failed: false,
@@ -126,22 +130,90 @@ describe("releaseNotesAction: Y on the panel's Update button", () => {
   });
 });
 
+describe("isOffChannel (a test build, or a PR build that left its PR channel)", () => {
+  test("true when the answer served no channel", () => {
+    expect(isOffChannel(info({ currentVersion: "1.0.2-test.114", channel: null }))).toBe(true);
+    expect(isOffChannel(info({ currentVersion: "1.0.2-pr.117.2", channel: null }))).toBe(true);
+  });
+
+  test("false on Stable, Beta and a PR channel", () => {
+    expect(isOffChannel(info({ channel: { kind: "stable" } }))).toBe(false);
+    expect(isOffChannel(info({ currentVersion: "1.1.2-beta.29", channel: { kind: "beta" } }))).toBe(
+      false,
+    );
+    const onPr = info({
+      currentVersion: "1.0.2-pr.117.2",
+      channel: { kind: "pr", number: 117, title: "Fix" },
+    });
+    expect(isOffChannel(onPr)).toBe(false);
+  });
+
+  test("false before the engine answered", () => {
+    expect(isOffChannel(null)).toBe(false);
+  });
+});
+
+describe("a leaveTest offer (the way out of a test build)", () => {
+  const LEAVE_TEST = info({
+    status: "available",
+    currentVersion: "1.0.2-test.114",
+    channel: null,
+    offer: {
+      kind: "leaveTest",
+      version: "1.0.2-beta.27",
+      headline: "Switch to beta 1.0.2-beta.27",
+      buttonLabel: "Switch to beta 1.0.2-beta.27",
+      toastBody: "Switch in Options",
+      rowLabel: "Switch to beta 1.0.2-beta.27",
+      releaseNotes: null,
+      releaseUrl: "https://github.com/sigboe/wowdeck/releases/tag/v1.0.2-beta.27",
+      installable: true,
+    },
+  });
+
+  test("the Updates row names the switch and the version transition", () => {
+    expect(pluginUpdateRow(LEAVE_TEST)).toEqual({
+      label: "Switch to beta 1.0.2-beta.27",
+      description: "1.0.2-test.114 → 1.0.2-beta.27",
+    });
+  });
+
+  test("a pr build's rebuild gets the same wording as a test build", () => {
+    const fromPr = { ...LEAVE_TEST, currentVersion: "1.0.2-pr.117.2" };
+    expect(isOffChannel(fromPr)).toBe(true);
+    expect(pluginUpdateRow(fromPr)).toEqual({
+      label: "Switch to beta 1.0.2-beta.27",
+      description: "1.0.2-pr.117.2 → 1.0.2-beta.27",
+    });
+    expect(panelOffer(fromPr)?.kind).toBe("leaveTest");
+  });
+
+  test("the panel offers it and toasts once, like any installable offer", () => {
+    expect(panelOffer(LEAVE_TEST)?.kind).toBe("leaveTest");
+    expect(pluginUpdateToast({ ...LEAVE_TEST, toastPending: true })).toEqual({
+      title: "Switch to beta 1.0.2-beta.27",
+      body: "Switch in Options",
+    });
+  });
+});
+
 describe("pluginUpdateRow", () => {
-  test("an offer: current → offered with the release link", () => {
+  test("an offer: the version transition only, so it fits the QAM", () => {
     expect(pluginUpdateRow(UPDATE)).toEqual({
       label: "WoWDeck update available",
-      description: "0.1.1 → 0.2.0 · https://github.com/sigboe/wowdeck/releases/tag/v0.2.0",
+      description: "0.1.1 → 0.2.0",
     });
+    expect(pluginUpdateRow(UPDATE).description).not.toContain("https://");
   });
 
   test("names an offer without its zip too", () => {
     expect(pluginUpdateRow(NO_ZIP).label).toBe("WoWDeck update available");
   });
 
-  test("a switch says Switch to stable X", () => {
+  test("a switch says Switch to stable X and names the versions", () => {
     expect(pluginUpdateRow(SWITCH)).toEqual({
       label: "Switch to stable 0.3.0",
-      description: "0.3.1-beta.57 → 0.3.0 · https://x",
+      description: "0.3.1-beta.57 → 0.3.0",
     });
   });
 
@@ -157,6 +229,100 @@ describe("pluginUpdateRow", () => {
       label: "WoWDeck 0.1.1",
       description: "Couldn't check for a newer release",
     });
+  });
+});
+
+describe("the PR channel (GLOSSARY: PR channel)", () => {
+  const PR_117 = { kind: "pr", number: 117, title: "Add PR builds to the channel picker" } as const;
+  /** A PR build on its PR channel, with nothing newer listed. */
+  const CURRENT = info({ status: "current", currentVersion: "1.1.2-pr.117.2", channel: PR_117 });
+  /** The engine's offer of the PR's newer build. */
+  const NEWER = info({
+    status: "available",
+    currentVersion: "1.1.2-pr.117.2",
+    channel: PR_117,
+    offer: {
+      kind: "prUpdate",
+      version: "1.1.2-pr.117.3",
+      headline: "PR #117 has a newer build",
+      buttonLabel: "Update to 1.1.2-pr.117.3",
+      toastBody: "Update in Options",
+      rowLabel: "PR #117 has a newer build",
+      releaseNotes: null,
+      releaseUrl: "https://github.com/sigboe/wowdeck/pull/117",
+      installable: true,
+    },
+  });
+
+  test("nothing newer: the panel reads Up to date with PR #N, with no offer and no dot", () => {
+    expect(prChannelLine(CURRENT)).toBe("Up to date with PR #117");
+    expect(panelOffer(CURRENT)).toBeNull();
+    expect(pluginUpdateDot(CURRENT)).toBeNull();
+    expect(pluginUpdateRow(CURRENT)).toEqual({
+      label: "WoWDeck 1.1.2-pr.117.2",
+      description: "Up to date with PR #117",
+    });
+  });
+
+  test("a newer build of the PR: the panel's offer, the dot, the row and the toast", () => {
+    expect(prChannelLine(NEWER)).toBeNull();
+    expect(panelOffer(NEWER)?.buttonLabel).toBe("Update to 1.1.2-pr.117.3");
+    expect(pluginUpdateDot(NEWER)).toBe("update");
+    expect(pluginUpdateRow(NEWER)).toEqual({
+      label: "PR #117 has a newer build",
+      description: "1.1.2-pr.117.2 → 1.1.2-pr.117.3",
+    });
+    expect(pluginUpdateToast({ ...NEWER, toastPending: true })).toEqual({
+      title: "PR #117 has a newer build",
+      body: "Update in Options",
+    });
+    expect(releaseNotesAction(panelOffer(NEWER))).toBeNull();
+  });
+
+  test("no panel line on Stable, Beta or off any channel", () => {
+    expect(prChannelLine(info({ status: "current" }))).toBeNull();
+    expect(prChannelLine(info({ status: "current", channel: null }))).toBeNull();
+    expect(prChannelLine(null)).toBeNull();
+  });
+
+  test("a PR channel that couldn't check says so, not up to date", () => {
+    const failed = info({ ...CURRENT, status: "unknown", failed: true });
+    expect(prChannelLine(failed)).toBeNull();
+    expect(pluginUpdateRow(failed).description).toBe("Couldn't check for a newer release");
+  });
+});
+
+describe("the channel modal's rows (updateChannelChoice)", () => {
+  test("on a PR channel: the PR's row is checked, with its title; Stable and Beta stay pickable", () => {
+    const onPr = info({
+      currentVersion: "1.1.2-pr.117.2",
+      channel: { kind: "pr", number: 117, title: "Add PR builds to the channel picker" },
+    });
+    expect(updateChannelChoice(onPr, "beta")).toEqual({
+      checked: null,
+      pr: { name: "PR #117", description: "Add PR builds to the channel picker" },
+    });
+  });
+
+  test("a PR the list never titled still gets its row", () => {
+    const untitled = info({
+      currentVersion: "1.1.2-pr.117.2",
+      channel: { kind: "pr", number: 117, title: null },
+    });
+    expect(updateChannelChoice(untitled, "stable").pr).toEqual({
+      name: "PR #117",
+      description: "",
+    });
+  });
+
+  test("on Stable or Beta: the stored channel is checked, and no PR row is offered", () => {
+    expect(updateChannelChoice(info({}), "stable")).toEqual({ checked: "stable", pr: null });
+    expect(updateChannelChoice(null, "beta")).toEqual({ checked: "beta", pr: null });
+  });
+
+  test("off any channel (a test build): no row is checked", () => {
+    const test = info({ currentVersion: "1.0.2-test.114", channel: null });
+    expect(updateChannelChoice(test, "beta")).toEqual({ checked: null, pr: null });
   });
 });
 

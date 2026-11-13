@@ -1,0 +1,4 @@
+tunnel: closed pid 1117892 to deck@10.10.1.39; 18080 free,9222 free
+down: nothing to restore
+tunnel: closed pid 1121090 to deck@10.10.1.39; 18080 free,9222 free
+down: nothing to restore

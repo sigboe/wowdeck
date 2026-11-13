@@ -1,0 +1,9 @@
+eval@SharedJSContext --file=/tmp/third-install-sta… → isolated tsm → tree="ModalDialogOverlay_Modal_87" focus="Install TradeSkillMaster"
+seek Install TradeSkillMaster --enter → pressed Enter on "Install TradeSkillMaster" (jump) → focus="Working…"
+probe text → text="scrollTop=[] TradeSkillMaster Could not load followed realms Working… Refresh auction data No auction data yet No saved character evidence in this installation To discover a realm or region, create a character there (or use an existing one), log in, then log out to save WoW settings. For Classic, enable TradeSkillMaster and AppHelper before logging in and out. This list uses locally saved settings, not live ch"
+press b → no change
+eval@SharedJSContext --file=/tmp/third-install-rem… → isolated tsm → tree="ModalDialogOverlay_Modal_88"
+probe text → text="scrollTop=[] TradeSkillMaster Could not load followed realms Working… Refresh auction data No auction data yet No saved character evidence in this installation To discover a realm or region, create a character there (or use an existing one), log in, then log out to save WoW settings. For Classic, enable TradeSkillMaster and AppHelper before logging in and out. This list uses locally saved settings, not live ch"
+eval@SharedJSContext --file=/tmp/third-install-fai… → released failure → focus="Install TradeSkillMaster"
+probe text → text="scrollTop=[] TradeSkillMaster Could not load followed realms Install TradeSkillMaster Refresh auction data No auction data yet No saved character evidence in this installation To discover a realm or region, create a character there (or use an existing one), log in, then log out to save WoW settings. For Classic, enable TradeSkillMaster and AppHelper before logging in and out. This list uses locally saved setti"
+press b → no change

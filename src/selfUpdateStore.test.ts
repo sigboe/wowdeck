@@ -1,12 +1,14 @@
 /// <reference types="bun-types" />
 import { describe, expect, test } from "bun:test";
+import { panelOffer, pluginUpdateDot, prChannelLine } from "./pluginUpdate";
 import type { PluginUpdateInfo, StagedUpdate, UpdateRequestResult } from "./pluginUpdate";
-import { createSelfUpdateStore, type SelfUpdateDeps } from "./selfUpdateStore";
+import { createSelfUpdateStore, downloadView, type SelfUpdateDeps } from "./selfUpdateStore";
 import type { UpdateChannel } from "./types";
 
 const info = (over: Partial<PluginUpdateInfo>): PluginUpdateInfo => ({
   status: "current",
   currentVersion: "0.1.1",
+  channel: { kind: "stable" },
   offer: null,
   checked: true,
   failed: false,
@@ -63,6 +65,7 @@ function harness() {
   };
   let stageGate: { promise: Promise<unknown>; resolve: (v: unknown) => void } | null = null;
   let installResult: UpdateRequestResult = { success: true };
+  let installGate: { promise: Promise<unknown>; resolve: (v: unknown) => void } | null = null;
   /** The params of each system.setUpdateChannel ask, in order. */
   const channelParams: unknown[] = [];
   let channelAnswer: PluginUpdateInfo | Error = available;
@@ -93,7 +96,20 @@ function harness() {
         // Like the engine: only a notify ask may report the toast.
         return params?.notify ? answer : { ...answer, toastPending: false };
       }
+      if (method === "system.cancelDownload") {
+        // Like the engine: the download in flight answers "cancelled".
+        const inFlight = stageGate !== null;
+        if (inFlight) {
+          stageAnswer = {
+            result: null,
+            error: { code: "cancelled", message: "The download was cancelled" },
+          };
+          stageGate!.resolve(null);
+        }
+        return { cancelled: inFlight };
+      }
       if (stageGate) await stageGate.promise;
+      stageGate = null;
       if (stageAnswer instanceof Error) throw stageAnswer;
       return stageAnswer;
     }) as SelfUpdateDeps["rpc"],
@@ -101,6 +117,7 @@ function harness() {
     toastError: (title, e) => toasts.push(e instanceof Error ? `${title}: ${e.message}` : title),
     requestUpdate: async (what) => {
       calls.push(`install ${what.version}`);
+      if (installGate) await installGate.promise;
       return installResult;
     },
     now: () => nowMs,
@@ -128,6 +145,10 @@ function harness() {
       stageGate = deferred<unknown>();
       return () => stageGate!.resolve(null);
     },
+    holdInstall: () => {
+      installGate = deferred<unknown>();
+      return () => installGate!.resolve(null);
+    },
     install: (next: UpdateRequestResult) => {
       installResult = next;
     },
@@ -143,7 +164,12 @@ function harness() {
 describe("self-update store: refresh", () => {
   test("a trigger with no answer asks the engine, lands the answer, and tells subscribers", async () => {
     const h = harness();
-    expect(h.store.get()).toEqual({ info: null, staging: false, checking: false });
+    expect(h.store.get()).toEqual({
+      info: null,
+      staging: false,
+      checking: false,
+      download: null,
+    });
     const heard: number[] = [];
     h.store.subscribe(() => heard.push(h.store.get().info?.offer?.version === "0.2.0" ? 1 : 0));
 
@@ -151,7 +177,12 @@ describe("self-update store: refresh", () => {
     expect(h.calls).toEqual(["system.updateCheck"]);
 
     await refreshing;
-    expect(h.store.get()).toEqual({ info: available, staging: false, checking: false });
+    expect(h.store.get()).toEqual({
+      info: available,
+      staging: false,
+      checking: false,
+      download: null,
+    });
     expect(heard).toContain(1);
   });
 
@@ -226,6 +257,46 @@ describe("self-update store: refresh", () => {
     h.advance(60_000); // still fresh: a surface trigger would not re-ask…
     await h.store.refresh({ toast: true, bypassWindow: true }); // …but a wake always does
     expect(h.calls).toEqual(["system.updateCheck", "system.updateCheck"]);
+  });
+});
+
+describe("self-update store: on the PR channel", () => {
+  const PR_117 = { kind: "pr", number: 117, title: "Add PR builds to the channel picker" } as const;
+  const current = info({ currentVersion: "1.1.2-pr.117.2", channel: PR_117 });
+
+  test("Options asks only the update check: the PR channel lives in it", async () => {
+    const h = harness();
+    h.answer(current);
+
+    await h.store.refresh();
+
+    expect(h.calls).toEqual(["system.updateCheck"]);
+    expect(h.store.get().info?.channel).toEqual(PR_117);
+  });
+
+  test("Check again on an up-to-date PR channel says which PR it is up to date with", async () => {
+    const h = harness();
+    h.answer(current);
+
+    expect(await h.store.checkAgain()).toEqual({ kind: "current" });
+    expect(h.checkParams).toEqual([{ force: true }]);
+    expect(h.toasts).toEqual(["Up to date with PR #117"]);
+  });
+
+  test("Update on the PR's newer build stages it like any update", async () => {
+    const h = harness();
+    h.answer(
+      info({
+        ...current,
+        status: "available",
+        offer: { ...offerOf("1.1.2-pr.117.3")!, kind: "prUpdate" },
+      }),
+    );
+    await h.store.refresh();
+
+    await h.store.runUpdate();
+
+    expect(h.calls.slice(1, 3)).toEqual(["system.updateStage", "install 0.2.0"]);
   });
 });
 
@@ -393,6 +464,94 @@ describe("self-update store: runUpdate", () => {
   });
 });
 
+describe("self-update store: download progress and cancel", () => {
+  const progress = (received: number, total: number | null) =>
+    ({ event: "system.downloadProgress", params: { version: "0.2.0", received, total } }) as const;
+
+  test("shows Downloading X of Y MB from the engine's events, then Preparing… during Decky's handoff", async () => {
+    const h = harness();
+    const releaseStage = h.holdStage();
+    const releaseInstall = h.holdInstall();
+
+    const running = h.store.runUpdate();
+    expect(downloadView(h.store.get())).toEqual({ text: "Downloading…", percent: null });
+    h.store.handleEvent(progress(0, 73_104_512));
+    expect(downloadView(h.store.get())).toEqual({ text: "Downloading 0.0 of 73.1 MB", percent: 0 });
+    h.store.handleEvent(progress(36_552_256, 73_104_512));
+    expect(downloadView(h.store.get())).toEqual({
+      text: "Downloading 36.6 of 73.1 MB",
+      percent: 50,
+    });
+    h.store.handleEvent(progress(73_104_512, 73_104_512));
+    expect(downloadView(h.store.get())).toEqual({ text: "Preparing…", percent: null });
+
+    releaseStage();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(h.calls).toContain("install 0.2.0");
+    expect(downloadView(h.store.get())).toEqual({ text: "Preparing…", percent: null });
+    releaseInstall();
+    await running;
+    expect(downloadView(h.store.get())).toBeNull();
+    expect(h.store.get().download).toBeNull();
+  });
+
+  test("without a known size it counts what has arrived", async () => {
+    const h = harness();
+    const release = h.holdStage();
+    const running = h.store.runUpdate();
+
+    h.store.handleEvent(progress(5_000_000, null));
+    expect(downloadView(h.store.get())).toEqual({ text: "Downloading 5.0 MB", percent: null });
+    release();
+    await running;
+  });
+
+  test("progress with nothing downloading changes nothing", () => {
+    const h = harness();
+
+    h.store.handleEvent(progress(1, 2));
+
+    expect(h.store.get().download).toBeNull();
+    expect(downloadView(h.store.get())).toBeNull();
+  });
+
+  test("Cancel stops the download silently: no toast, nothing handed to Decky, the button comes back", async () => {
+    const h = harness();
+    h.holdStage();
+    const running = h.store.runUpdate();
+    h.store.handleEvent(progress(1_000_000, 73_104_512));
+
+    await h.store.cancelDownload();
+    await running;
+
+    expect(h.calls).toEqual(["system.updateStage", "system.cancelDownload", "system.updateCheck"]);
+    expect(h.toasts).toEqual([]);
+    expect(h.store.get().staging).toBe(false);
+    expect(downloadView(h.store.get())).toBeNull();
+  });
+
+  test("Cancel with nothing downloading asks nothing", async () => {
+    const h = harness();
+
+    await h.store.cancelDownload();
+
+    expect(h.calls).toEqual([]);
+  });
+
+  test("a download that failed partway says so, and Update can be pressed again", async () => {
+    const h = harness();
+    h.stage({
+      result: null,
+      error: { code: "download_failed", message: "Couldn't download the update. Try again" },
+    });
+
+    await h.store.runUpdate();
+
+    expect(h.toasts).toEqual(["Couldn't update WoWDeck: Couldn't download the update. Try again"]);
+    expect(h.store.get().staging).toBe(false);
+  });
+});
+
 describe("self-update store: setChannel", () => {
   const beta = info({ status: "available", offer: offerOf("0.3.0-beta.4") });
 
@@ -533,4 +692,92 @@ describe("self-update store: checkAgain", () => {
     await Promise.all([options, pressed]);
     expect(h.checkParams).toEqual([{ force: true }]);
   });
+});
+
+test("merged-building is visible without a button, dot or toast", async () => {
+  const h = harness();
+  h.answer(
+    info({
+      status: "available",
+      channel: { kind: "pr", number: 117, title: null },
+      offer: {
+        ...offerOf("1.1.2-pr.117")!,
+        kind: "prMergedBuilding",
+        installable: false,
+        headline: "PR #117 was merged. A beta with it is still building",
+      },
+    }),
+  );
+  await h.store.refresh({ toast: true });
+  expect(prChannelLine(h.store.get().info)).toBe(
+    "PR #117 was merged. A beta with it is still building",
+  );
+  expect(panelOffer(h.store.get().info)).toBeNull();
+  expect(pluginUpdateDot(h.store.get().info)).toBeNull();
+  expect(h.toasts).toEqual([]);
+});
+
+test("ready merged beta shows the update dot and stages through Decky", async () => {
+  const h = harness();
+  h.answer(
+    info({
+      currentVersion: "1.1.2-pr.117.2",
+      status: "available",
+      channel: { kind: "beta" },
+      toastPending: true,
+      offer: { ...offerOf("1.1.2-beta.43")!, kind: "prMergedBeta" },
+    }),
+  );
+  await h.store.refresh({ toast: true });
+  expect(pluginUpdateDot(h.store.get().info)).toBe("update");
+  expect(panelOffer(h.store.get().info)?.buttonLabel).toBe("Update");
+  expect(h.toasts).toEqual(["WoWDeck 1.1.2-beta.43 available: Update in Options"]);
+  await h.store.runUpdate();
+  expect(h.calls).toContain("system.updateStage");
+  expect(h.calls).toContain("install 0.2.0");
+});
+
+describe("closed and unlisted PR recovery", () => {
+  test.each(["prClosed", "prUnlisted"] as const)(
+    "%s shows the return offer and accepts a relisted build",
+    async (kind) => {
+      const h = harness();
+      const headline = kind === "prClosed" ? "PR #117 was closed" : "PR #117 is no longer listed";
+      const fallback = info({
+        status: "available",
+        currentVersion: "1.1.2-pr.117",
+        channel: { kind: "pr", number: 117, title: "Add PR builds to the channel picker" },
+        offer: {
+          ...offerOf("1.1.1")!,
+          kind,
+          headline,
+          rowLabel: headline,
+          buttonLabel: "Switch to stable 1.1.1",
+          toastBody: "Switch in Options",
+        },
+      });
+      h.answer(fallback);
+      await h.store.refresh();
+      expect(panelOffer(h.store.get().info)?.headline).toBe(headline);
+      expect(panelOffer(h.store.get().info)?.buttonLabel).toBe("Switch to stable 1.1.1");
+      expect(pluginUpdateDot(h.store.get().info)).toBe("update");
+      expect(h.store.get().info?.channel).toEqual(fallback.channel);
+      expect(h.channelParams).toEqual([]);
+      h.answer(
+        info({
+          ...fallback,
+          offer: {
+            ...offerOf("1.1.2-pr.117.2")!,
+            kind: "prUpdate",
+            headline: "PR #117 has a newer build",
+            buttonLabel: "Update to 1.1.2-pr.117.2",
+          },
+        }),
+      );
+      await h.store.checkAgain();
+      expect(panelOffer(h.store.get().info)?.kind).toBe("prUpdate");
+      expect(pluginUpdateDot(h.store.get().info)).toBe("update");
+      expect(h.channelParams).toEqual([]);
+    },
+  );
 });

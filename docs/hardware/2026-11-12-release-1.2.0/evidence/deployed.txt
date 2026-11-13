@@ -1,0 +1,15 @@
+92318163134a75e74eca541d24dbaf2a776bcc6aa2c47489deb1ae61375f1d61  /home/deck/homebrew/plugins/wowdeck/dist/index.js
+f6debcaabe498035aba0a3d573838e9b6f7f71bb250ee9bd7470832542a3d27f  /home/deck/homebrew/plugins/wowdeck/main.py
+727be29088edca784d05e0c8d53965c8ed5ba8541d8ff4af7edbf774fb8e4e8d  /home/deck/homebrew/plugins/wowdeck/bin/wowdeck-x86_64
+{
+  "version": "1.1.2-pr.211.4",
+  "name": "WoWDeck",
+  "author": "sigboe",
+  "flags": [],
+  "api_version": 1,
+  "publish": {
+    "tags": ["game"],
+    "description": "Manage World of Warcraft addons: install, update and remove addons from your Deck.",
+    "image": "https://raw.githubusercontent.com/sigboe/wowdeck/main/docs/screenshot.png"
+  }
+}

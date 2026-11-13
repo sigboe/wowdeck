@@ -1,7 +1,7 @@
 // Guideline audit for the view currently on screen in one Steam CEF target.
 // Run: node audit-view.mjs <target>  (sets the Field class, then runs this; read-only)
 //
-// Checks the measurable rules of docs/UI_DEVELOPMENT_BEST_PRACTICES.md:
+// Checks the measurable rules of the UI guide (docs/ui/):
 // - INSET (S10, S8): content inside an element that is highlighted on focus
 //   must keep space from the highlight's edges. Reports focus targets whose
 //   visible content comes closer than MIN_INSET px to their own box.

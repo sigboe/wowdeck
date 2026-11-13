@@ -54,6 +54,31 @@ describe("toWireSearchResult release facts", () => {
   });
 });
 
+describe("toWireSearchResult game versions", () => {
+  test("passes the per-file list through when the provider has one", () => {
+    const wire = toWireSearchResult(result([file({ gameVersions: ["11.0.2", "1.15.9"] })]));
+    expect(wire.gameVersion).toBe("11.0.2");
+    expect(wire.gameVersions).toEqual(["11.0.2", "1.15.9"]);
+  });
+
+  test("is null when the file lists none", () => {
+    expect(toWireSearchResult(result([file()])).gameVersions).toBeNull();
+    expect(toWireSearchResult(result([file()])).gameVersionClients).toBeNull();
+  });
+
+  test("passes the provider's client ids through", () => {
+    const wire = toWireSearchResult(
+      result([
+        file({
+          gameVersions: ["12.1.5", "3.80.2"],
+          gameVersionClients: { "12.1.5": "retail", "3.80.2": "titan_reforged" },
+        }),
+      ]),
+    );
+    expect(wire.gameVersionClients).toEqual({ "12.1.5": "retail", "3.80.2": "titan_reforged" });
+  });
+});
+
 describe("toWireSearchResult required dependencies (WF-11)", () => {
   test("counts the required dependencies of the file that would be installed", () => {
     const deps = [

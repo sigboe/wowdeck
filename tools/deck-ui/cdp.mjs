@@ -1,9 +1,9 @@
 // Shared CDP helpers for the deck-ui scripts (Node 22, no dependencies).
-const PORT = process.env.DECK_UI_PORT || "18080";
+const port = () => process.env.DECK_UI_PORT || "18080";
 const TIMEOUT = 10000;
 
 export async function targets() {
-  const res = await fetch(`http://localhost:${PORT}/json`, { signal: AbortSignal.timeout(TIMEOUT) });
+  const res = await fetch(`http://localhost:${port()}/json`, { signal: AbortSignal.timeout(TIMEOUT) });
   if (!res.ok) throw new Error(`CEF targets: HTTP ${res.status}`);
   return res.json();
 }

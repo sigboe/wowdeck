@@ -1,23 +1,32 @@
 /**
- * Pure UI-decision logic for the Options CurseForge section, pulled out
- * of SettingsView.tsx so it's unit-testable without @decky/ui — mirrors
- * the pattern already established for diagnosticsText
+ * Pure UI-decision logic for the CurseForge source row and its key modal,
+ * pulled out of the components so it's unit-testable without @decky/ui —
+ * mirrors the pattern already established for diagnosticsText
  * (src/diagnostics.ts) and nextSelectableId (src/shoulderNav.ts).
  */
 
-import type { CurseForgeAuthStatus } from "./types";
+import type { CurseForgeAuthStatus, ProviderInfo } from "./types";
 
 /**
- * Visibility rule: the CurseForge section (and the Providers list's
- * "Using your API key" line) is shown unless the bundled key is both
- * present and confirmed valid by an actual check. Anything short of a
- * confirmed `valid` — absent, confirmed `invalid`, merely `unvalidated`
- * (hasn't been checked yet this session), or `unknown` (a transient
- * network/rate-limit/server hiccup) — keeps the section visible, since
- * none of those states are a proven-working bundled key.
+ * What the CurseForge row in Addon sources offers:
+ * - `keyRow`: a `>` row that opens the key modal (no usable key);
+ * - `ownKeyToggle`: the source toggle, its Options button (≡) "API key"
+ *   opening the same modal (the player's own key is the one in use);
+ * - `toggle`: a plain toggle (built-in access works).
+ *
+ * "Usable" is the engine's `configured` rule: some key is not known to be
+ * rejected. Built-in access that is unchecked or briefly failing still counts.
  */
-export function shouldShowCurseForgeKeySection(status: CurseForgeAuthStatus): boolean {
-  return !(status.bundledPresent && status.bundledStatus === "valid");
+export type CurseForgeRowState = "keyRow" | "ownKeyToggle" | "toggle";
+
+export function curseForgeRowState(
+  provider: ProviderInfo,
+  auth: CurseForgeAuthStatus | null,
+): CurseForgeRowState {
+  if (!provider.configured) {
+    return "keyRow";
+  }
+  return auth?.activeSource === "user" ? "ownKeyToggle" : "toggle";
 }
 
 /** Reports whether the stored user key is usable, invalid, or not yet verified — never the key value itself. */

@@ -49,7 +49,7 @@ function recordingStack() {
     calls.push(`regenerate ${ids?.join(",") ?? "all"}`);
   };
   const check = new UpdateCheck(service, companion);
-  return { store, service, check, calls };
+  return { store, service, check, calls, dir };
 }
 
 /** Checking one installation: rescan, ask the providers, rewrite its companion data. */
@@ -130,4 +130,44 @@ describe("checking every installation (RF-11)", () => {
     await check.checkAll();
     expect(calls).toEqual(["regenerate A", ...CHECK_B, "autoUpdate"]);
   });
+});
+
+test("automatic checks skip quiet installations but manual refresh and Update all include them", async () => {
+  const { store, service, check, calls } = recordingStack();
+  store.setInstallations([installation("A"), { ...installation("B"), autoUpdateEnabled: false }, { ...installation("C"), hidden: true }]);
+  await check.checkAll();
+  expect(calls).toEqual([...CHECK_A, "autoUpdate"]);
+  expect(await check.updateSummary(false)).toEqual([{ installationId: "A", displayName: "A", updates: 0 }]);
+  calls.length = 0;
+  await check.refresh(service.installations.require("B"));
+  expect(calls).toEqual([...CHECK_B, "list B"]);
+  calls.length = 0;
+  await check.updateAllInstallations();
+  expect(calls).toContain("scan B");
+  expect(calls).toContain("scan C");
+  expect(calls).toContain("updateAll C");
+});
+
+test("installation preferences default on legacy state and survive hiding and reload", () => {
+  const { dir, service } = recordingStack();
+  expect(service.installations.listed()[0]).toMatchObject({ autoUpdateEnabled: true, hidden: false });
+  service.installations.update("A", { hidden: true });
+  expect(service.installations.automatic().map(i => i.id)).toEqual(["B"]);
+  const reloaded = createStateStore(dir);
+  expect(reloaded.installations.find(i => i.id === "A")).toMatchObject({ hidden: true, autoUpdateEnabled: true });
+  expect(service.installations.update("A", { hidden: false })).toMatchObject({ autoUpdateEnabled: true, hidden: false });
+  service.installations.update("A", { autoUpdateEnabled: false });
+  service.installations.update("A", { hidden: true });
+  expect(service.installations.update("A", { hidden: false }).autoUpdateEnabled).toBe(false);
+});
+
+
+test("Steam background checks skip quiet installations; explicit Check again scans them", async () => {
+  const { store, check, calls } = recordingStack();
+  store.setInstallations([installation("A"), { ...installation("B"), hidden: true }]);
+  await check.updateSummary(true);
+  expect(calls).toEqual([...CHECK_A, "autoUpdate"]);
+  calls.length = 0;
+  await check.updateSummary(true, true);
+  expect(calls).toEqual(FULL_CHECK);
 });

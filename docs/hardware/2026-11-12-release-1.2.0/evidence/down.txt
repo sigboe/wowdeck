@@ -1,0 +1,2 @@
+tunnel: closed pid 1111994 to deck@10.10.1.39; 18080 free,9222 free
+down: autoUpdate on again

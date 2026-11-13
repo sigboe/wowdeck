@@ -1,0 +1,323 @@
+name: PR build
+
+# A maintainer puts the `pr-build` label on a pull request and this workflow
+# builds it and publishes it to GitHub Pages, where Options › Updates ›
+# WoWDeck › "PR builds…" lists it. See GLOSSARY.md ("PR build"),
+# docs/adr/0010-pr-builds-on-pages.md and docs/development.md "PR builds".
+#
+# Every choice (build, strip the label, unlist, the version, the next list,
+# the cap, the PR comment) comes from tools/pr-build.ts (tested); this file
+# only feeds it and `gh`.
+#
+# pull_request_target runs with the base repository's secrets and a token
+# that can write, even for a fork's PR. So:
+# - decide and publish run only the default branch's tools/, never PR code;
+# - build runs the PR's code with a read-only token and no outputs anyone
+#   downstream trusts: publish takes only the zip's bytes from it;
+# - only strip-label (the label) and publish (the pr-builds branch and the
+#   PR comment) hold write permissions;
+# - no job restores an Actions cache. The PR's code in build can reach the
+#   runner's cache token, which `permissions` does not limit, and write any
+#   cache entry into the base branch's scope. So decide and publish (which
+#   hold a token or feed one), build itself, and the beta and release
+#   workflows never restore one (see ci.yml "Caches").
+on:
+  pull_request_target:
+    types: [reopened, synchronize, labeled, unlabeled, closed]
+
+permissions: {}
+
+env:
+  GH_TOKEN: ${{ github.token }}
+  REPO: ${{ github.repository }}
+  PR: ${{ github.event.pull_request.number }}
+
+jobs:
+  decide:
+    name: Decide
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      action: ${{ steps.decide.outputs.action }}
+      version: ${{ steps.decide.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          sparse-checkout: tools
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+          no-cache: true
+      # A sender who is no collaborator gets a 404, which is no role.
+      - id: decide
+        env:
+          EVENT: ${{ github.event.action }}
+          LABEL: ${{ github.event.label.name }}
+          LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+          SENDER: ${{ github.event.sender.login }}
+        run: |
+          set -euo pipefail
+          role="$(gh api "repos/${REPO}/collaborators/${SENDER}/permission" --jq .role_name 2>/dev/null)" || role=none
+          facts="$(jq -n \
+            --arg event "$EVENT" \
+            --arg label "$LABEL" \
+            --argjson labels "$LABELS" \
+            --argjson maintainer "$(bun tools/pr-build.ts is-maintainer "$role")" \
+            '{event: $event, labeled: ($labels | any(. == "pr-build")), senderIsMaintainer: $maintainer}
+              + (if $label == "" then {} else {label: $label} end)')"
+          action="$(bun tools/pr-build.ts action <<< "$facts")"
+          echo "sender ${SENDER} (${role}), ${EVENT}: ${action}"
+          echo "action=${action}" >> "$GITHUB_OUTPUT"
+          if [ "$action" != build ]; then exit 0; fi
+          # The list as published; none yet (no branch, or no index.json)
+          # is an empty list.
+          index="$RUNNER_TEMP/index.json"
+          if ! gh api -H "Accept: application/vnd.github.raw+json" \
+            "repos/${REPO}/contents/index.json?ref=pr-builds" > "$index" 2> "$RUNNER_TEMP/err"; then
+            grep -q "HTTP 404" "$RUNNER_TEMP/err" || { cat "$RUNNER_TEMP/err" >&2; exit 1; }
+            rm -f "$index"
+          fi
+          version="$(git ls-remote --tags --refs origin 'refs/tags/v*' \
+            | sed 's#.*refs/tags/##' \
+            | bun tools/pr-build.ts next-version "$PR" "$index")"
+          echo "version ${version}"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+  strip-label:
+    name: Strip the label
+    needs: decide
+    if: needs.decide.outputs.action == 'strip-label'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    # Removing the label with this token starts no new run, so publish
+    # unlists the PR in this run. A label already gone is fine.
+    steps:
+      - run: |
+          set -euo pipefail
+          if ! out="$(gh api -X DELETE "repos/${REPO}/issues/${PR}/labels/pr-build" 2>&1)"; then
+            grep -q "HTTP 404" <<< "$out" || { echo "$out" >&2; exit 1; }
+          fi
+
+  build:
+    name: Build
+    needs: decide
+    if: needs.decide.outputs.action == 'build'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    # A newer push to the same PR supersedes this build.
+    concurrency:
+      group: pr-build-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    env:
+      VERSION: ${{ needs.decide.outputs.version }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          # The label approves this head (ADR 0010). Only this read-only,
+          # cache-free build job may execute PR code; publish stays trusted.
+          allow-unsafe-pr-checkout: true
+          persist-credentials: false
+      # The engine bundles backend/package.json's version at build time
+      # and the zip ships package.json and plugin.json; never committed.
+      # A PR branched before tools/version.py knew -pr versions fails
+      # here: rebase it onto next.
+      - run: python3 tools/version.py stamp "$VERSION"
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      # No dependency cache: on pull_request_target it is the base
+      # branch's cache, and this job runs code no one has merged.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: oven-sh/setup-bun@v2
+        with:
+          # Keep in step with the nix-locked bun; see ci.yml.
+          bun-version: 1.4.2
+          no-cache: true
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run build
+      - run: bun install --frozen-lockfile
+        working-directory: backend
+      - run: bun run build
+        working-directory: backend
+      # The bundled key, as in a release; see docs/curseforge-api-key.md.
+      - run: python3 tools/package.py
+        env:
+          CURSEFORGE_API_KEY: ${{ secrets.CURSEFORGE_API_KEY }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pr-build-zip
+          path: build/WoWDeck.zip
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    name: Publish
+    needs: [decide, strip-label, build]
+    if: >-
+      always()
+      && needs.decide.result == 'success'
+      && needs.decide.outputs.action != 'skip'
+      && (needs.build.result == 'success' || needs.build.result == 'skipped')
+      && (needs.strip-label.result == 'success' || needs.strip-label.result == 'skipped')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      pages: read
+    # One publish at a time, so no two runs amend the branch at once.
+    # GitHub keeps one waiting run per group and cancels an older waiting
+    # one; the next publish drops whatever that run would have unlisted,
+    # and a cancelled build is re-run from the Actions tab.
+    concurrency:
+      group: pr-builds-pages
+      cancel-in-progress: false
+    env:
+      ACTION: ${{ needs.decide.outputs.action }}
+      VERSION: ${{ needs.decide.outputs.version }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      TITLE: ${{ github.event.pull_request.title }}
+      AUTHOR: ${{ github.event.pull_request.user.login }}
+      GIT_AUTHOR_NAME: github-actions[bot]
+      GIT_AUTHOR_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+      GIT_COMMITTER_NAME: github-actions[bot]
+      GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          sparse-checkout: tools
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+          no-cache: true
+      - if: env.ACTION == 'build'
+        uses: actions/download-artifact@v4
+        with:
+          name: pr-build-zip
+          path: ${{ runner.temp }}/zip
+
+      # The branch without its zips: trees only, so the amend below
+      # uploads just the new zip. No branch yet (the owner creates it, see
+      # docs/development.md) leaves nothing to unlist, but a build fails.
+      - id: site
+        name: Read the pr-builds branch
+        run: |
+          set -euo pipefail
+          gh auth setup-git
+          url="https://github.com/${REPO}.git"
+          rc=0
+          git ls-remote --exit-code --heads "$url" pr-builds > /dev/null || rc=$?
+          if [ "$rc" = 2 ]; then
+            if [ "$ACTION" = build ]; then
+              echo "::error::The pr-builds branch does not exist yet; see docs/development.md \"PR builds\"."
+              exit 1
+            fi
+            echo "::notice::No pr-builds branch, so nothing is listed."
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          elif [ "$rc" != 0 ]; then
+            exit "$rc"
+          fi
+          git clone --quiet --filter=blob:none --depth=1 --no-checkout --branch pr-builds "$url" "$RUNNER_TEMP/site"
+          git -C "$RUNNER_TEMP/site" read-tree HEAD
+          if [ -n "$(git -C "$RUNNER_TEMP/site" ls-tree HEAD index.json)" ]; then
+            git -C "$RUNNER_TEMP/site" show HEAD:index.json > "$RUNNER_TEMP/index.json"
+          else
+            echo '{"builds": []}' > "$RUNNER_TEMP/index.json"
+          fi
+          echo "exists=true" >> "$GITHUB_OUTPUT"
+
+      - id: plan
+        if: steps.site.outputs.exists == 'true'
+        name: Plan the publish
+        run: |
+          set -euo pipefail
+          index="$RUNNER_TEMP/index.json"
+          # Every listed PR and this one, as GitHub has them now.
+          numbers="$(jq -r --argjson pr "$PR" '[.builds[].number, $pr] | unique | .[]' "$index")"
+          prs="$(for n in $numbers; do
+            gh api "repos/${REPO}/pulls/${n}" \
+              --jq '{number, state, labels: [.labels[].name], headSha: .head.sha}'
+          done | jq -s .)"
+          build=null
+          if [ "$ACTION" = build ]; then
+            zip="$RUNNER_TEMP/zip/WoWDeck.zip"
+            sha256="$(sha256sum "$zip" | cut -d' ' -f1)"
+            echo "WoWDeck.zip sha256 ${sha256}"
+            pages="$(gh api "repos/${REPO}/pages" --jq .html_url)"
+            build="$(jq -n \
+              --argjson number "$PR" \
+              --arg title "$TITLE" \
+              --arg author "$AUTHOR" \
+              --arg version "$VERSION" \
+              --arg headSha "$HEAD_SHA" \
+              --arg builtAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+              --argjson zipSize "$(stat -c %s "$zip")" \
+              --arg sha256 "$sha256" \
+              --arg zipUrl "${pages%/}/pr/${PR}/WoWDeck.zip" \
+              '$ARGS.named')"
+          fi
+          jq -n --argjson pr "$PR" --arg action "$ACTION" --argjson prs "$prs" --argjson build "$build" \
+            '{pr: $pr, action: $action, prs: $prs} + (if $build == null then {} else {build: $build} end)' \
+            | bun tools/pr-build.ts publish "$index" > "$RUNNER_TEMP/plan.json"
+          cat "$RUNNER_TEMP/plan.json"
+
+      # One commit, amended and force-pushed: the old zips stay on GitHub
+      # as the same blobs, so only a new zip is uploaded. The lease refuses
+      # the push if the branch moved since it was read.
+      - if: steps.site.outputs.exists == 'true'
+        name: Write the pr-builds branch
+        working-directory: ${{ runner.temp }}/site
+        run: |
+          set -euo pipefail
+          plan="$RUNNER_TEMP/plan.json"
+          listed="$(jq -r '.index.builds[].number' "$plan")"
+          git ls-files -- pr/ | while read -r path; do
+            n="${path#pr/}"
+            if ! grep -qx "${n%%/*}" <<< "$listed"; then
+              git update-index --force-remove -- "$path"
+            fi
+          done
+          if [ "$(jq -r .upload "$plan")" = true ]; then
+            blob="$(git hash-object -w "$RUNNER_TEMP/zip/WoWDeck.zip")"
+            git update-index --add --cacheinfo "100644,${blob},pr/${PR}/WoWDeck.zip"
+          fi
+          jq .index "$plan" > "$RUNNER_TEMP/next-index.json"
+          blob="$(git hash-object -w "$RUNNER_TEMP/next-index.json")"
+          git update-index --add --cacheinfo "100644,${blob},index.json"
+          tree="$(git write-tree --missing-ok)"
+          old="$(git rev-parse HEAD)"
+          if [ "$tree" = "$(git rev-parse "HEAD^{tree}")" ]; then
+            echo "pr-builds is unchanged"
+            exit 0
+          fi
+          commit="$(git commit-tree "$tree" -m "PR builds")"
+          git push --force-with-lease="refs/heads/pr-builds:${old}" origin "${commit}:refs/heads/pr-builds"
+
+      # The PR's one comment, found by the marker on its first line.
+      - if: steps.site.outputs.exists == 'true'
+        name: Comment on the PR
+        run: |
+          set -euo pipefail
+          plan="$RUNNER_TEMP/plan.json"
+          body="$(jq -r '.comment.body // empty' "$plan")"
+          if [ -z "$body" ]; then exit 0; fi
+          marker="$(head -n 1 <<< "$body")"
+          id="$(gh api --paginate "repos/${REPO}/issues/${PR}/comments" \
+            | jq -r --arg marker "$marker" \
+              '.[] | select(.user.login == "github-actions[bot]" and (.body | startswith($marker))) | .id' \
+            | head -n 1)"
+          if [ -n "$id" ]; then
+            gh api -X PATCH "repos/${REPO}/issues/comments/${id}" -f body="$body" > /dev/null
+          elif [ "$(jq -r .comment.create "$plan")" = true ]; then
+            gh api "repos/${REPO}/issues/${PR}/comments" -f body="$body" > /dev/null
+          fi

@@ -41,7 +41,24 @@ compares display strings.
 | `ClassicEraPtr` | `_classic_era_ptr_` | "Classic Era PTR" | *(not exposed)* |
 | `Anniversary` | `_anniversary_` | "Anniversary" | *(not exposed)* |
 | `Forever` | `_forever_` | "Forever" | `forever` |
+| `ClassicTitan` | `_classic_titan_` | "Titan Reforged" | `classic_titan` |
+| `ClassicCnBeta` | `_cn_beta_` | "China Beta" (name unverified, see below) | `cn_beta` |
 | `None` | *(no match)* | "Unknown" | — |
+
+### Verifying a folder name
+
+Run `tools/wow-client-folders.sh` (curl and jq, read-only). It lists every
+Blizzard product code with the folder its config names, so a new client's
+folder comes from the CDN config rather than a guess. Hashes come from
+BlizzTrack, a third-party site; the config itself is Blizzard's CDN. Last run
+(2026-11-09): 13/13 products, including `wow_classic_titan` → `_classic_titan_`
+and `wow_cn_beta` → `_cn_beta_`. Wrath Classic and Cataclysm Classic have no
+product code in that list, so they have no install folder.
+
+**China Beta display name is unverified.** BlizzTrack titles `wow_cn_beta` the
+same as `wow_classic_beta` ("WoW: Forever - Beta"), so it doesn't identify the
+China build. "China Beta" follows the folder and region only; confirm the
+player-facing name before release.
 
 ### Where each column lives
 

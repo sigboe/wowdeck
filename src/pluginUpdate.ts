@@ -18,6 +18,46 @@ import type { DotColor } from "./updateDot";
 export type PluginUpdateInfo = MethodMap["system.updateCheck"]["result"];
 
 /**
+ * Whether the answer served no update channel: a test build (X.Y.Z-test.N)
+ * or a PR build whose owner left its PR channel. Its Check again is hidden
+ * and the channel modal checks no row: picking a channel is the way out
+ * (the engine then offers that channel's newest build, `leaveTest`).
+ */
+export function isOffChannel(info: PluginUpdateInfo | null): boolean {
+  return info !== null && info.channel === null;
+}
+
+/**
+ * The update panel's line on a PR channel with nothing newer (GLOSSARY: PR
+ * channel): "Up to date with PR #N". Null otherwise, including when the
+ * check couldn't run.
+ */
+export function prChannelLine(info: PluginUpdateInfo | null): string | null {
+  if (info?.offer?.kind === "prMergedBuilding") return info.offer.headline;
+  if (info?.channel?.kind !== "pr" || info.status !== "current") {
+    return null;
+  }
+  return `Up to date with PR #${info.channel.number}`;
+}
+
+/**
+ * What the channel modal shows: the stored channel's row checked, or on a
+ * PR channel the PR's own row, checked, above Stable and Beta (both then
+ * pickable: a pick leaves the PR channel). The PR's row is never offered
+ * otherwise. Off any channel no row is checked.
+ */
+export function updateChannelChoice(
+  info: PluginUpdateInfo | null,
+  stored: UpdateChannel,
+): { checked: UpdateChannel | null; pr: { name: string; description: string } | null } {
+  const served = info?.channel;
+  if (served?.kind === "pr") {
+    return { checked: null, pr: { name: `PR #${served.number}`, description: served.title ?? "" } };
+  }
+  return { checked: info !== null && served === null ? null : stored, pr: null };
+}
+
+/**
  * The "WoWDeck Update Channel" modal's rows (GLOSSARY: Update channel),
  * after Valve's Steam Client Update Channel: a name and one line each.
  */
@@ -95,20 +135,28 @@ export function pluginUpdateDot(info: PluginUpdateInfo | null): DotColor | null 
 
 /**
  * The Options → Updates row, informational only (the panel holds the
- * button): WoWDeck's own version state. "unknown" (repo unreachable —
- * private beyond the token's reach, offline, rate limited) reads as
- * "couldn't check", never as a failure.
+ * button): WoWDeck's own version state. An offer names just the version
+ * transition — the release URL is one unbreakable token that ran past the
+ * QAM's edge, and the row's Y action already opens the release notes.
+ * "unknown" (repo unreachable — private beyond the token's reach, offline,
+ * rate limited) reads as "couldn't check", never as a failure.
  */
 export function pluginUpdateRow(info: PluginUpdateInfo): { label: string; description: string } {
   const { offer } = info;
   if (offer) {
     return {
       label: offer.rowLabel,
-      description: `${info.currentVersion} → ${offer.version} · ${offer.releaseUrl}`,
+      description:
+        offer.kind === "prMergedBuilding"
+          ? offer.headline
+          : `${info.currentVersion} → ${offer.version}`,
     };
   }
   if (info.status === "current") {
-    return { label: `WoWDeck ${info.currentVersion}`, description: "Up to date" };
+    return {
+      label: `WoWDeck ${info.currentVersion}`,
+      description: prChannelLine(info) ?? "Up to date",
+    };
   }
   return {
     label: `WoWDeck ${info.currentVersion}`,

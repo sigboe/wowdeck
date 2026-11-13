@@ -418,7 +418,7 @@ export function createAddonSession(deps: AddonSessionDeps): AddonSession {
         await reloadAddons();
       } catch (e) {
         store.patch({
-          findWowResult: "Couldn't find WoW. Try again, or add its folder in Options.",
+          findWowResult: "Couldn't find WoW. Try again, or add its folder.",
         });
         toastError("Couldn't find installations", e);
       } finally {

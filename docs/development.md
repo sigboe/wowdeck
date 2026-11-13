@@ -6,7 +6,9 @@
 - [Third-party code](#third-party-code)
 - [Toolchain](#toolchain)
 - [Common tasks](#common-tasks)
+- [Branches and worktrees](#branches-and-worktrees)
 - [Testing on a real Steam Deck](#testing-on-a-real-steam-deck)
+- [Fixture installations](#fixture-installations)
 - [Checklists](#checklists)
   - [Add an RPC method](#add-an-rpc-method)
   - [Add a setting](#add-a-setting)
@@ -70,7 +72,10 @@ own. Without Nix, install those packages from your distro and run
 ### Workflow skills
 
 The agent guidelines reference two skill sets. The project's own skills
-(`deck-test`, `unslop`) live in `.claude/skills/`. The `mattpocock/skills`
+(`deck-test`, `droiddeck-test`, `unslop`) live in `.claude/skills/`.
+The device-test folders are also symlinked from `.agents/skills/` for Codex
+discovery. In Codex, type `$deck-test` or `$droiddeck-test` to select them.
+Both agents use the same instructions and supporting files. The `mattpocock/skills`
 set (`to-spec`, `to-tickets`, `triage`, `implement`, `writing-for-agents`, …)
 is vendored into `.agents/skills/` and tracked by `skills-lock.json` so
 OpenCode can load it too. OpenCode cannot use Claude Code plugins, and Claude
@@ -87,8 +92,50 @@ make build     # build frontend (rollup) and backend (bun compile)
 make test      # frontend, engine and packaging tests
 make lint      # eslint + prettier + tsc
 make package   # build distributable plugin zip in build/
+make tidy      # list merged branches, worktrees and stashes; APPLY=1 removes them
 make clean
 ```
+
+## Branches and worktrees
+
+Feature branches start from `next` and come back to it through a PR
+(`AGENTS.md`, "Branching and merging"). Make a worktree by hand beside the
+main checkout, named for its ticket or topic:
+
+```bash
+git worktree add ../wowdeck-190 -b tools/190-tidy origin/next
+```
+
+Don't put one in `/tmp` or `.scratch/`. Claude Code and T3 Code keep their
+own worktrees in `.claude/worktrees/` and `~/.t3/worktrees/`; leave those
+where the tools put them. Worktrees already share their dependencies.
+pnpm and bun hardlink packages from their stores, so a second
+`node_modules` takes almost no disk space. A worktree's real cost is its
+build output, about 200 MB, most of it `backend/out`.
+
+After a PR merges into `next`, run `make tidy`. It fetches `origin`, asks
+`gh` for the open PRs, and prints every local branch, worktree and stash
+with a verdict:
+
+- `in next`: merging the branch into `origin/next` changes nothing.
+- `in PR #n`: the same against an open PR's head branch, so a pre-squash
+  backup of that PR's branch counts.
+- `landed (squashed)`: the merge conflicts, but at least 80% of the
+  branch's added lines (longer than 25 characters) are in `origin/next`.
+  Lines the branch only moved don't count. The other 20% leaves room for
+  lines rewritten in review, so check the branch first if that matters.
+- `unmerged`: everything else.
+
+Don't use `git branch --merged` for this. Squashing a branch before its
+PR merges gives it new commits, so git reports it as unmerged.
+
+`make tidy` only reports. `make tidy APPLY=1` removes the worktrees and
+branches marked `rm`, and prints each deleted branch's SHA with the command
+that restores it. It never removes `main`, `next`, the current branch,
+branches of open PRs, unmerged branches, locked worktrees, worktrees with
+uncommitted changes, or worktrees holding `.scratch/` notes. Removing a
+worktree deletes its ignored files with it: build output, `node_modules`,
+and any local `.env`. It lists stashes but never drops them.
 
 ## Releases
 
@@ -97,12 +144,16 @@ make clean
 after the merge. One version lives in `package.json`, `plugin.json` and
 `backend/package.json`, written and checked by `tools/version.py`.
 
-On `next`, before opening the PR into `main`:
+Prepare the release on a `release/X.Y.Z` branch off `next`, and push it
+once it has a commit. Never keep release prep in a stash. A stash stays
+on one machine and nobody else sees it, and the 1.2.0 version bump once
+sat in one unnoticed.
 
 1. In `CHANGELOG.md`, rename `[Unreleased]` to `[X.Y.Z] - <date>`, put a
    fresh empty `[Unreleased]` above it and update the link references.
 2. Run `make version-set VERSION=X.Y.Z` and commit both.
-3. Open the PR `next` → `main`.
+3. Merge `release/X.Y.Z` into `next` through a PR, then open the PR
+   `next` → `main`.
 
 The PR's "Release gate" check (`ci.yml`, `tools/release-check.ts`) fails
 while the version is already tagged, its changelog section is missing, or
@@ -126,8 +177,14 @@ update-hang that any other name causes).
 ### Betas
 
 Every push to `next` that changes more than docs (`*.md`, `docs/`) and
-dev-only files (`.claude/`, `deck-debug/`, `tools/deck-ui/`) is published by `.github/workflows/beta.yml` as a beta pre-release for the Beta
-update channel; nobody runs anything. It calls `ci.yml` with the beta
+dev-only files (`.claude/`, `deck-debug/`, `tools/deck-ui/`, the
+`Makefile`, `make tidy`) is published by `.github/workflows/beta.yml` as a
+beta pre-release for the Beta update channel; nobody runs anything.
+
+To merge a PR without a beta, put `[skip actions]` in the merge commit's
+subject (`gh pr merge <n> --merge --subject "… [skip actions]"`). GitHub
+then starts no workflow for that push. Use it when nothing in the PR
+reaches players, such as comment-only edits in `src/`. It calls `ci.yml` with the beta
 version, so the same gates must pass before anything is published; then it
 tags the merged commit `v<version>`, attaches the same `WoWDeck.zip`, uses
 `CHANGELOG.md`'s `[Unreleased]` section as the notes ("Small fixes and
@@ -140,6 +197,94 @@ the CI checkout only; it is never committed, so `next` keeps the last
 stable version and the release steps above are unchanged. The version and
 prune choices are `tools/beta-release.ts` (tests beside it); pruning only
 ever matches `v*-beta.*`, and `release.yml` ignores those tags.
+
+### PR builds
+
+A maintainer who wants players to try an open pull request puts the
+`pr-build` label on it. `.github/workflows/pr-build.yml` then builds the PR
+and publishes the zip to GitHub Pages. Owners install it from Options ›
+Updates › WoWDeck › channel picker › "PR builds…". Label a PR only after you
+have reviewed its head commit, because the build ships the bundled
+CurseForge key and runs on owners' devices. GitHub lets only people with
+triage access or higher add labels. `GLOSSARY.md` ("PR build") and ADR 0010
+explain why the builds are hosted this way.
+
+The workflow runs on the label going on or off, on every push to the PR, and
+on the PR closing or reopening:
+
+- Adding the label builds the PR. A push by a maintainer (triage access or
+  higher) rebuilds it, and so does a maintainer reopening it.
+- A push by anyone else removes the label and takes the build off the list.
+  Review the new commits, then label the PR again. Only a push does this.
+  If someone else reopens the PR, the label stays on and the PR stays
+  unlisted.
+- Removing the label, merging the PR or closing it takes the build off the
+  list and deletes its zip.
+
+To check the approval gate, use a fork owned by an account with no
+collaborator access. After a maintainer labels the PR and its build appears,
+push another commit from that account. The label and build listing should
+disappear until a maintainer reviews and labels the PR again.
+Check the published list as well as the label before approving the new head.
+Then push as a maintainer and check that the label stays and the published
+build names the new commit without relabeling.
+
+The version is `<last stable tag, patch+1>-pr.<PR number>`, and each
+rebuild adds a counter (`1.1.2-pr.117`, then `1.1.2-pr.117.2`).
+`index.json` remembers the last version published for every PR, so a PR
+that left the list and is labeled again counts on (`1.1.2-pr.117.3`)
+rather than starting over. A version never names two different builds.
+`tools/version.py stamp` writes it into the build's checkout only. A PR
+branched from a `next` older than the `-pr` versions fails at that step.
+Rebase it onto `next`.
+
+The bot keeps one comment on the PR and edits it on each build. It shows
+the version, the commit, the zip's size and sha256, and a download link
+that works without a GitHub login. Pages holds at most 10 PR builds, about
+73 MB each. Publish refuses an 11th and says so in the comment. Remove the label
+from a PR nobody needs any more, then label the new one again.
+
+`tools/pr-build.ts` makes every choice (tests beside it). The workflow
+reads the PR's state from GitHub, passes it in and carries out the answer.
+Its four jobs hold different permissions:
+
+- `decide` runs the default branch's `tools/` with a read-only token. It
+  picks the action and the version.
+- `strip-label` can only edit the PR's labels.
+- `build` checks out the PR's head commit and builds it with a read-only
+  token and the CurseForge key. It uploads the zip as an artifact.
+- `publish` runs no code from the PR. It takes only the zip from `build`,
+  computes its sha256, writes `pr/<number>/WoWDeck.zip` and `index.json` to
+  the `pr-builds` branch, and edits the PR comment. It is the only job that
+  can push.
+
+None of these jobs restores an Actions cache, and neither do the beta and
+release builds. A read-only token doesn't stop the PR's code in `build`
+from writing cache entries into the base branch's scope, and runs on
+`next` and `main` would restore them. Keep `cache:` off `setup-node` and
+`no-cache: true` on `setup-bun` in any job that publishes or holds a write
+token. `ci.yml` drops its caches only when `beta.yml` calls it with a
+version.
+
+The `pr-builds` branch is the Pages site and holds a single commit. Each
+publish clones it without file contents, replaces that commit and
+force-pushes, so it uploads only the new zip. `index.json` lists every PR
+build. Its format is in the header of `tools/pr-build.ts`. Each publish
+also drops builds whose PR has closed, lost its label or moved past the
+built commit. GitHub keeps only one publish waiting and cancels an older
+one that is still waiting. The next publish removes whatever that run
+would have taken off the list. Rerun a cancelled build from the Actions
+tab.
+
+The owner sets up the repository once, by hand:
+
+1. Create the `pr-build` label.
+2. Create the `pr-builds` branch with an empty `index.json`
+   (`{"builds": []}`) as its only commit, and no ruleset on it.
+3. Turn on Pages, deploying from the `pr-builds` branch, root folder.
+
+Until the branch exists, a build fails at publish and nothing is written.
+Until Pages is on, a build fails at publish before it pushes anything.
 
 ### Branch protection
 
@@ -169,6 +314,26 @@ Inspect the UI with the `tools/deck-ui/` scripts over an SSH tunnel
 covers console and network history and views no script reaches. Deck rules:
 `AGENTS.md` ("The owner's Steam Deck"); the test procedure is the `deck-test`
 skill (`.claude/skills/deck-test/SKILL.md`).
+
+## Fixture installations
+
+`tools/wow-fixtures.sh` builds fake WoW installations, one per client folder,
+so every client type can be tested without the real game. The executables
+are empty files; each fixture reports game version `1.0.0.99999`.
+
+```sh
+tools/wow-fixtures.sh                       # all clients under ~/wowdeck-fixtures
+tools/wow-fixtures.sh --only wow_cn_beta,_classic_titan_
+tools/wow-fixtures.sh --root DIR --clean    # rebuild from scratch
+```
+
+Fixtures live in their own root, apart from any real install. Register that
+root with `installations.add {"path": "<root>"}`; `installations.remove`
+takes each one out again. On a device, run the script there, with the root
+inside the plugin's data directory:
+`ssh <host> 'bash -s -- --root ~/homebrew/data/wowdeck/fixtures' < tools/wow-fixtures.sh`.
+A new client folder goes into the script's `CLIENTS` list too; the test
+`backend/tests/wow-fixtures-script.test.ts` fails until it does.
 
 ## Checklists
 

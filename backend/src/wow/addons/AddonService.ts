@@ -33,7 +33,7 @@ import { AddonInstaller, AddonRemover } from "./AddonInstaller";
 import { AddonTransactions, TransactionFailure } from "./AddonTransaction";
 import { InstallationRecovery } from "./InstallationRecovery";
 import { RecoveryActions } from "./RecoveryActions";
-import { hasNewerPrerelease, installsFolder, latestFile, updateCandidate } from "./releaseChannel";
+import { channelToWire, hasNewerPrerelease, installsFolder, latestFile, updateCandidate } from "./releaseChannel";
 import { cacheUsage, clearAll, dropPrevious, keptRelease, readPrevious, restoredSource } from "./RollbackCache";
 import { repairSharedFolders } from "./SharedFolderRepair";
 import { AddonListPortability } from "./AddonPortability";
@@ -47,6 +47,15 @@ import { getClientTypeLabel } from "../utils/gametype";
 import { gameVersionForInstallation } from "../utils/gameversion";
 import { WOWUP_DATA_ADDON_FOLDER_NAME } from "../notifications/constants";
 import { PROVIDER_ID } from "../../api/providers";
+import {
+  isDeveloperAddon,
+  blocksTradeSkillMasterRemoval,
+  isTradeSkillMasterDevelopmentVersion,
+  isReservedFolder,
+  retainsFolder,
+  takesOverRecord,
+  tradeSkillMasterFolders,
+} from "../tsm/TradeSkillMasterFolders";
 import { needsUpdate, updateStatus } from "./addonStatus";
 import {
   WARNING_FOLDERS_MISSING,
@@ -187,19 +196,20 @@ function releaseMetadata(
   files: AddonSearchResultFile[] | undefined,
   file: AddonSearchResultFile | undefined,
 ): AddonPatch {
-  return {
+  const metadata: AddonPatch = {
     hasNewerPrerelease: hasNewerPrerelease(files),
     latestVersion: file?.version ?? addon.latestVersion,
     externalLatestReleaseId: file?.externalId ?? addon.externalLatestReleaseId,
   };
+  if (file && addon.lastUpdatedAt !== undefined && needsUpdate({ ...addon, ...metadata })) {
+    metadata.newlyUpdatedInvalidated = true;
+  }
+  return metadata;
 }
 
-/**
- * Providers that match unmanaged folders, in precedence order (upstream's):
- * an exact fingerprint, then TOC project ids, with TukUI's name guess after
- * CurseForge's id. GitHub only installs by URL.
- */
+/** TSM owns its named folders first; other providers keep their existing precedence. */
 const SCAN_ORDER: readonly AddonProviderType[] = [
+  PROVIDER_ID.TradeSkillMaster,
   PROVIDER_ID.WowUpHub,
   PROVIDER_ID.Curse,
   PROVIDER_ID.TukUI,
@@ -268,6 +278,14 @@ function withNeeds(wire: Addon, record: AddonRecord, needs: LibraryNeeds): Addon
 }
 
 export class AddonService {
+  /**
+   * Called once per committed folder operation (an install of any intent,
+   * each dependency on its own, a Roll back, a managed, library or
+   * unmanaged removal) with the installation and the folders it touched;
+   * never for a failed one. A throw is logged and never changes the
+   * operation's result or what follows it.
+   */
+  onFoldersChanged?: (installationId: string, folders: string[]) => void;
   #installer: AddonInstaller;
   /** The engine's one addon transaction runner: installs, updates, removals and Roll back commit through it. */
   readonly #transactions: AddonTransactions;
@@ -345,7 +363,11 @@ export class AddonService {
       const matches = new Map<string, ScanMatch>();
       const available = this.registry.available();
       for (const provider of SCAN_ORDER.flatMap((name) => available.filter((p) => p.name === name))) {
-        const unmatched = folders.filter((f) => !matches.has(f.name) && f.ignoreReason === undefined);
+        const tradeSkillMasterUsable = this.#tradeSkillMasterUsable();
+        const unmatched = folders.filter((f) => !matches.has(f.name) && f.ignoreReason === undefined &&
+          !isTradeSkillMasterDevelopmentVersion(f) &&
+          !isReservedFolder(f.name, provider.name, tradeSkillMasterUsable) &&
+          !records.forInstallation(installation.id).some((r) => r.isIgnored && recordFolders(r).includes(f.name)));
         try {
           for (const [folderName, match] of await provider.scan(installation, unmatched)) {
             if (!matches.has(folderName)) {
@@ -425,11 +447,18 @@ export class AddonService {
 
       if (found) {
         const existing = current(found);
-        const installedFolderList = [...new Set([...folderNames, ...(existing.installedFolderList ?? [])])];
+        const retainedFolders = (existing.installedFolderList ?? []).filter((name) => retainsFolder(match, name, matches));
+        const installedFolderList = [...new Set([...folderNames, ...retainedFolders])];
         change(existing.id, {
+          ...(takesOverRecord(match, existing.providerName)
+            ? { providerName: match.addon.providerName, externalId: match.addon.externalId,
+                installedExternalReleaseId: undefined, downloadUrl: match.latestFile.downloadUrl,
+                latestVersion: match.latestFile.version, externalLatestReleaseId: match.latestFile.externalId,
+                dependencies: match.latestFile.dependencies ?? [], installedArchiveHash: undefined }
+            : {}),
           installedFolderList,
           installedFolders: installedFolderList.join(", "),
-          installedVersion: toc?.version ?? existing.installedVersion,
+          installedVersion: this.registry.get(match.addon.providerName)?.normalizeVersion?.(toc?.version ?? existing.installedVersion ?? "") ?? toc?.version ?? existing.installedVersion,
           name: match.addon.name || existing.name,
           author: match.addon.author ?? existing.author,
           thumbnailUrl: match.addon.thumbnailUrl ?? existing.thumbnailUrl,
@@ -437,7 +466,9 @@ export class AddonService {
           updatedAt: Date.now(),
         });
       } else {
-        created.push(scannedAddonRecord(match, installation, groupFolders, toc));
+        const record = scannedAddonRecord(match, installation, groupFolders, toc);
+        record.installedVersion = this.registry.get(match.addon.providerName)?.normalizeVersion?.(record.installedVersion ?? "") ?? record.installedVersion;
+        created.push(record);
       }
     }
 
@@ -673,6 +704,7 @@ export class AddonService {
     externalId: string,
   ): Promise<AddonOperation> {
     return this.#wired(this.#gate.run(async (records) => {
+      this.#requireFolderSource(providerId, [folderName]);
       const folder = await this.#requireUnmanagedFolder(installation, folderName);
       const version = getTocForGameType2(folder, installation.clientType)?.version;
       return this.#installUnlocked(records, {
@@ -699,6 +731,7 @@ export class AddonService {
   ): Promise<AddonOperation> {
     return this.#wired(this.#gate.run(async (records) => {
       const addon = records.require(addonId);
+      this.#requireFolderSource(providerId, recordFolders(addon));
       this.#requireReady(addon);
       const installation = this.installations.require(addon.installationId);
       const other = records.find(installation.id, providerId, externalId);
@@ -831,6 +864,25 @@ export class AddonService {
     return this.#wired(this.#gate.run((records) => this.#installUnlocked(records, request)));
   }
 
+  async #validateInstallFolders(providerId: string, folders: string[], installation: WowInstallation): Promise<void> {
+    this.#requireFolderSource(providerId, folders);
+    const protectedFolder = (await scanAddons(installation)).find((folder) =>
+      folders.includes(folder.name) && isDeveloperAddon(folder));
+    if (protectedFolder) throw new ValidationError(protectedFolder.name + " is a developer addon");
+  }
+
+  #requireFolderSource(providerId: string, folders: string[]): void {
+    const tradeSkillMasterUsable = this.#tradeSkillMasterUsable();
+    if (folders.some((name) => isReservedFolder(name, providerId, tradeSkillMasterUsable))) {
+      throw new ValidationError("TradeSkillMaster installs this addon");
+    }
+  }
+
+  /** TradeSkillMaster's source is on and signed in: its folders are reserved to it. */
+  #tradeSkillMasterUsable(): boolean {
+    return !!this.registry.usable(PROVIDER_ID.TradeSkillMaster);
+  }
+
   /** The install itself; callers hold the gate (`Gate.run` is not reentrant). */
   async #installUnlocked(
     records: AddonRecords,
@@ -856,6 +908,7 @@ export class AddonService {
       throw new ValidationError("That addon id isn't valid");
     }
     const searchResult = prefetched ?? (await this.#readAddon(provider, externalId, installation));
+    this.#requireFolderSource(providerId, (searchResult.files ?? []).flatMap((file) => file.folders));
 
     if (request.channel !== undefined && !provider.allowChannelChange) {
       throw new ValidationError(`${provider.name} has no release channels`);
@@ -864,7 +917,14 @@ export class AddonService {
     const existing = request.replaces ?? matched ?? records.find(installation.id, providerId, externalId);
     // A new source without release channels starts like a fresh install.
     const keptChannel = request.replaces && !provider.allowChannelChange ? undefined : existing?.channelType;
-    const channelType = request.channel ?? keptChannel ?? installation.defaultAddonChannelType;
+    const preferredChannel = request.channel ?? keptChannel ?? installation.defaultAddonChannelType;
+    const permitted = provider.permittedChannels?.();
+    const channelType = request.channel === undefined && permitted && !permitted.includes(preferredChannel)
+      ? AddonChannelType.Stable
+      : preferredChannel;
+    if (permitted && !permitted.includes(channelType)) {
+      throw new ValidationError("Release channel is not available for this account");
+    }
     // An adopt or source change that would not replace the folder would
     // leave it next to a second copy of the addon. A release that lists no
     // folders (WoWInterface) is checked on its archive (requiredFolder).
@@ -916,7 +976,7 @@ export class AddonService {
         autoUpdatePaused: undefined,
         skipReleaseId: undefined,
         // Every update path (manual, Update all, auto-update) ends here (PC-07).
-        ...(intent.stampUpdate ? { lastUpdatedAt: Date.now() } : {}),
+        ...(intent.stampUpdate ? { lastUpdatedAt: Date.now(), newlyUpdatedInvalidated: undefined } : {}),
         // An archive matched into a record keeps that record's name: a
         // clean catalogue name is not replaced by a colour-coded TOC title.
         ...(matched ? { name: matched.name } : {}),
@@ -938,6 +998,7 @@ export class AddonService {
         keepPreviousVersion:
           intent.keepPrevious === "always" || (!!existing && this.store.settings.keepPreviousVersions),
         requiredFolder: mustInstall,
+        validateFolders: (folders) => this.#validateInstallFolders(providerId, folders, installation),
         fetched,
         records,
         recordChange,
@@ -947,6 +1008,7 @@ export class AddonService {
       return { addon: existing ?? addon, operation };
     }
     const installed = records.require(addon.id);
+    this.#foldersChanged(installation.id, [...(existing ? recordFolders(existing) : []), ...recordFolders(installed)]);
 
     // Required dependencies install with it (apt/pacman-style: marked as
     // automatically installed: a library, see libraries.ts), one level
@@ -1134,6 +1196,10 @@ export class AddonService {
     }
     const metadata = releaseMetadata(addon, searchResult.files, updateCandidate(searchResult.files, addon));
     const latest: AddonRecord = { ...addon, ...metadata };
+    // Discovery survives even when downloading or installing the update fails.
+    if (metadata.newlyUpdatedInvalidated && !addon.newlyUpdatedInvalidated) {
+      records.patch(addonId, { newlyUpdatedInvalidated: true });
+    }
 
     if (!needsUpdate(latest)) {
       // Nothing to install, but what the provider said is kept, as a
@@ -1169,6 +1235,7 @@ export class AddonService {
     return toWireAddon(addon, {
       canReinstall: this.canReinstall(addon),
       canChangeChannel: this.canChangeChannel(addon),
+      allowedChannels: this.registry.usable(addon.providerName)?.permittedChannels?.().map(channelToWire),
       sourceOff: !!addon.providerName && !this.registry.usable(addon.providerName),
       canUpdate: updateStatus(addon, this.registry).canUpdate,
       newlyUpdatedMs: this.store.settings.newlyUpdatedHours * 3_600_000,
@@ -1186,7 +1253,7 @@ export class AddonService {
       return false;
     }
     const provider = this.registry.usable(addon.providerName);
-    const choice = addon.channelType !== AddonChannelType.Stable || !!addon.hasNewerPrerelease;
+    const choice = (provider?.permittedChannels?.().length ?? 0) > 1 || addon.channelType !== AddonChannelType.Stable || !!addon.hasNewerPrerelease;
     return !!provider?.allowChannelChange && choice;
   }
 
@@ -1285,7 +1352,7 @@ export class AddonService {
    */
   updateSummary(): { installationId: string; displayName: string; updates: number }[] {
     const out: { installationId: string; displayName: string; updates: number }[] = [];
-    for (const installation of this.installations.list()) {
+    for (const installation of this.installations.automatic()) {
       out.push({
         installationId: installation.id,
         displayName: installation.displayName,
@@ -1311,6 +1378,8 @@ export class AddonService {
         if (!previous) {
           throw new InstallError("No previous version is kept for this addon", addonId);
         }
+        const source = restoredSource(addon, previous);
+        await this.#validateInstallFolders(source.providerName ?? addon.providerName ?? "", previous.folders, installation);
         // The exchange, the record and the new previous version commit
         // together (AddonTransactions); a failure restores the start.
         const { cleanupWarning } = await this.#transactions.run(records, {
@@ -1352,6 +1421,7 @@ export class AddonService {
           error: null,
           ...(cleanupWarning && { cleanupWarning }),
         };
+        this.#foldersChanged(installation.id, [...recordFolders(addon), ...previous.folders]);
         this.events.operationResult(operation);
         this.events.addonsChanged([addonId]);
         return { addon: records.require(addonId), operation };
@@ -1359,6 +1429,15 @@ export class AddonService {
         return { addon, operation: this.#fail(operationId, addonId, err) };
       }
     }));
+  }
+
+  /** Tell onFoldersChanged about a committed folder operation; its throw is only logged. */
+  #foldersChanged(installationId: string, folders: string[]): void {
+    try {
+      this.onFoldersChanged?.(installationId, [...new Set(folders)]);
+    } catch (err) {
+      console.error(`[addons] folders-changed callback failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 
   async rollbackStatus(): Promise<{ bytes: number; count: number }> {
@@ -1424,7 +1503,7 @@ export class AddonService {
 
   async #runAutoUpdate(detect: () => Promise<GameRunning>): Promise<AutoUpdateResult | null> {
     // A recovery-required installation is refused (its addons are not candidates).
-    const candidates = this.installations.list().filter((i) => !this.recovery.required(i.id)).flatMap((installation) =>
+    const candidates = this.installations.automatic().filter((i) => !this.recovery.required(i.id)).flatMap((installation) =>
       this.addonsFor(installation.id).filter((a) => updateStatus(a, this.registry).canAutoUpdate),
     );
     if (candidates.length === 0) {
@@ -1436,7 +1515,7 @@ export class AddonService {
     } else {
       for (const addon of candidates) {
         try {
-          const updated = await this.#updateIfStill(addon.id, (a) => updateStatus(a, this.registry).canAutoUpdate);
+          const updated = await this.#updateIfStill(addon.id, (a) => this.installations.automatic().some(i => i.id === a.installationId) && updateStatus(a, this.registry).canAutoUpdate);
           const operation = updated?.operation;
           if (operation?.status === "updated") {
             result.updated.push(addon.name);
@@ -1500,6 +1579,32 @@ export class AddonService {
     return { operations, error: null };
   }
 
+  /** Grouped consent names exactly these folders, never an unrelated library. */
+  async removeTradeSkillMasterAddons(installation: WowInstallation): Promise<{ operations: OperationResult[] }> {
+    const names = tradeSkillMasterFolders;
+    const { addons } = await this.addonList(installation);
+    const operations: OperationResult[] = [];
+    for (const addon of addons.filter((a) => names.includes(a.folderName))) {
+      try {
+        const folders = await this.addonFolders(installation, addon.id);
+        const scanned = await scanAddons(installation);
+        if (scanned.some((f) => folders.folders.some((owned) => owned.name === f.name) &&
+            blocksTradeSkillMasterRemoval(f))) {
+          throw new ValidationError("Cannot remove a developer addon");
+        }
+        if (folders.folders.some((f) => !names.includes(f.name))) {
+          throw new ValidationError("This addon also owns folders not named in the confirmation. Remove it from My Addons.");
+        }
+        operations.push(addon.providerId
+          ? await this.removeAddon(addon.id)
+          : await this.removeUnmanagedFolder(installation, addon.folderName));
+      } catch (err) {
+        operations.push(this.#fail(this.nextOperationId(), addon.id, err));
+      }
+    }
+    return { operations };
+  }
+
   /**
    * Remove a managed addon and, when the user chose `removeLibraries`, the
    * libraries this removal leaves unneeded (ADR 0008), each in an addon
@@ -1526,6 +1631,7 @@ export class AddonService {
         }
         return this.#fail(operationId, addonId, err);
       }
+      this.#foldersChanged(installation.id, recordFolders(addon));
       await dropPrevious(installation, addonId);
       const followUps = needs ? await this.#removeLeftUnneeded(records, installation, needs, addonId) : [];
       const removedIds = [addonId, ...followUps.flatMap((f) => (f.status === "removed" && f.addonId ? [f.addonId] : []))];
@@ -1581,6 +1687,7 @@ export class AddonService {
       return failedOperation(operationId, library.id, err);
     }
     // Committed: its kept previous version goes as with any removal.
+    this.#foldersChanged(installation.id, recordFolders(library));
     await dropPrevious(installation, library.id);
     return { operationId, addonId: library.id, status: "removed", error: null, ...(cleanupWarning && { cleanupWarning }) };
   }
@@ -1610,6 +1717,7 @@ export class AddonService {
       } catch (err) {
         return this.#fail(operationId, addonId, err);
       }
+      this.#foldersChanged(installation.id, [folderName]);
       const operation: OperationResult = {
         operationId,
         addonId,

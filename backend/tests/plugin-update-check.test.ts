@@ -7,16 +7,22 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import type { PluginUpdateBackoff, PluginUpdateSnapshot, UpdateChannel } from "../src/api/contracts";
 import { NetworkError } from "../src/wow/net/network";
 import { DAY_MS, HOUR_MS } from "../src/wow/notifications/CheckCadence";
 import { compareVersions, PluginUpdateCheck } from "../src/wow/notifications/PluginUpdateCheck";
+import { PrBuildFollow } from "../src/wow/plugin/PrBuildFollow";
+import { PrBuildList } from "../src/wow/plugin/PrBuildList";
 
 const NOW = 1_800_000_000_000;
 const RELEASES = "https://github.com/sigboe/wowdeck/releases";
 /** A toast trigger (plugin load, wake): the only caller that may spend the toast. */
 const NOTIFY = { notify: true };
 const ZIP = "https://api.github.com/repos/sigboe/wowdeck/releases/assets/7";
+const PR_INDEX = "https://sigboe.github.io/wowdeck/index.json";
+const REPO_API = "https://api.github.com/repos/sigboe/wowdeck";
 const withZip = (tag: string) => ({ tag_name: tag, html_url: "https://x", assets: [{ name: "WoWDeck.zip", url: ZIP }] });
 
 function stampOf(over: Partial<PluginUpdateSnapshot> = {}): PluginUpdateSnapshot {
@@ -41,6 +47,8 @@ interface Harness {
   toastShown: () => string | null;
   /** The persisted update channel. */
   channel: () => UpdateChannel;
+  /** The persisted PR channel: the PR whose channel the owner is on. */
+  prChannel: () => number | null;
   lastRunVersion: () => string | null;
   /** A new engine session over the same persisted state (a restart). */
   restart: (over?: { currentVersion?: string; now?: number; respond?: (url: string) => unknown }) => void;
@@ -55,8 +63,12 @@ function makeCheck(options: {
   stored?: PluginUpdateSnapshot | null;
   toastShownFor?: string | null;
   channel?: UpdateChannel;
+  /** The stored PR channel; a running PR build joined it on its first start. */
+  prChannel?: number | null;
   lastRunVersion?: string | null;
   stagedVersion?: string | null;
+  /** Move to Stable after release (GLOSSARY: Update channel); off when unset. */
+  moveToStableAfterRelease?: boolean;
   now?: number;
 }): Harness {
   let calls = 0;
@@ -83,6 +95,7 @@ function makeCheck(options: {
     channel: options.channel ?? null,
     lastRunVersion: options.lastRunVersion === undefined ? currentVersion : options.lastRunVersion,
     stagedVersion: options.stagedVersion ?? null,
+    prChannel: options.prChannel ?? null,
   };
   let check = build();
   function build() {
@@ -117,8 +130,18 @@ function makeCheck(options: {
         writeChannel: (channel) => {
           persisted.channel = channel;
         },
+        readPrChannel: () => persisted.prChannel,
+        writePrChannel: (pr) => {
+          persisted.prChannel = pr;
+        },
+        readMoveToStableAfterRelease: () => options.moveToStableAfterRelease ?? false,
       },
-      { now: () => nowMs },
+      {
+        now: () => nowMs,
+        // The PR channel's source asks the same fake net: the PR builds list
+        // and, for a PR that left it, GitHub's API.
+        prChannel: new PrBuildFollow(new PrBuildList(net, PR_INDEX), net, REPO_API),
+      },
     );
   }
   return {
@@ -132,6 +155,7 @@ function makeCheck(options: {
     backoff: () => persisted.backoff,
     toastShown: () => persisted.toastShownFor,
     channel: () => persisted.channel ?? "stable",
+    prChannel: () => persisted.prChannel,
     lastRunVersion: () => persisted.lastRunVersion,
     restart(over = {}) {
       if (over.respond) respond = over.respond;
@@ -172,10 +196,63 @@ describe("compareVersions", () => {
     expect(compareVersions("0.3.0-beta.9", "0.3.0-beta.10")).toBe(-1);
   });
 
-  test("null for pre-releases other than -beta.N", () => {
+  test("a test build sorts above every beta of its release, below the release itself, tests by N", () => {
+    const ordered = [
+      "0.2.0",
+      "0.3.0-beta.12",
+      "0.3.0-beta.40",
+      "0.3.0-test.3",
+      "0.3.0-test.114",
+      "0.3.0",
+      "0.3.1-beta.1",
+    ];
+    for (let i = 0; i < ordered.length - 1; i++) {
+      expect(compareVersions(ordered[i]!, ordered[i + 1]!)).toBe(-1);
+      expect(compareVersions(ordered[i + 1]!, ordered[i]!)).toBe(1);
+    }
+    expect(compareVersions("0.3.0-test.9", "0.3.0-test.10")).toBe(-1);
+    expect(compareVersions("0.3.0-test.114", "0.3.0-beta.400")).toBe(1);
+  });
+
+  test("a pr build sorts like a test build: above every beta, below the release, by N", () => {
+    const ordered = ["0.3.0-beta.40", "0.3.0-pr.9", "0.3.0-pr.117", "0.3.0"];
+    for (let i = 0; i < ordered.length - 1; i++) {
+      expect(compareVersions(ordered[i]!, ordered[i + 1]!)).toBe(-1);
+      expect(compareVersions(ordered[i + 1]!, ordered[i]!)).toBe(1);
+    }
+    expect(compareVersions("0.3.0-pr.9", "0.3.0-pr.10")).toBe(-1);
+    expect(compareVersions("0.3.0-pr.117", "0.3.0-pr.117")).toBe(0);
+    expect(compareVersions("0.3.0-pr.117", "0.3.0-beta.400")).toBe(1);
+  });
+
+  test("a pr build's rebuild (-pr.N.K) sorts after -pr.N and by K, still below the release", () => {
+    const ordered = [
+      "0.3.0-beta.40",
+      "0.3.0-pr.117",
+      "0.3.0-pr.117.2",
+      "0.3.0-pr.117.10",
+      "0.3.0-pr.118",
+      "0.3.0",
+    ];
+    for (let i = 0; i < ordered.length - 1; i++) {
+      expect(compareVersions(ordered[i]!, ordered[i + 1]!)).toBe(-1);
+      expect(compareVersions(ordered[i + 1]!, ordered[i]!)).toBe(1);
+    }
+    expect(compareVersions("0.3.0-pr.117.2", "0.3.0-pr.117.2")).toBe(0);
+  });
+
+  test("null for pre-releases other than -beta.N, -test.N, -pr.N and -pr.N.K", () => {
+    expect(compareVersions("1.2.3-beta.1.2", "0.1.1")).toBeNull();
+    expect(compareVersions("1.2.3-test.1.2", "0.1.1")).toBeNull();
+    expect(compareVersions("1.2.3-pr.1.2.3", "0.1.1")).toBeNull();
+    expect(compareVersions("1.2.3-pr.1.x", "0.1.1")).toBeNull();
     expect(compareVersions("1.2.3-rc.1", "0.1.1")).toBeNull();
     expect(compareVersions("1.2.3-beta", "0.1.1")).toBeNull();
     expect(compareVersions("1.2.3-beta.x", "0.1.1")).toBeNull();
+    expect(compareVersions("1.2.3-test", "0.1.1")).toBeNull();
+    expect(compareVersions("1.2.3-alpha.1", "0.1.1")).toBeNull();
+    expect(compareVersions("1.2.3-pr", "0.1.1")).toBeNull();
+    expect(compareVersions("1.2.3-pr.x", "0.1.1")).toBeNull();
   });
 });
 
@@ -198,6 +275,7 @@ describe("PluginUpdateCheck", () => {
     expect(await check.check(NOTIFY)).toEqual({
       status: "available",
       currentVersion: "0.1.1",
+      channel: { kind: "stable" },
       offer: {
         kind: "update",
         version: "0.2.0",
@@ -582,6 +660,7 @@ describe("the once-a-day cap", () => {
     expect(await check.check(NOTIFY)).toEqual({
       status: "available",
       currentVersion: "0.1.1",
+      channel: { kind: "stable" },
       offer: {
         kind: "update",
         version: "0.2.0",
@@ -613,6 +692,7 @@ describe("the once-a-day cap", () => {
     expect(await check.check()).toEqual({
       status: "current",
       currentVersion: "0.2.0",
+      channel: { kind: "stable" },
       offer: null,
       checked: false,
       failed: false,
@@ -1191,6 +1271,33 @@ describe("the installed build sets the update channel", () => {
       expected: "beta",
     },
     {
+      name: "first run does not apply Move to Stable after release retroactively",
+      running: "0.3.0",
+      last: "0.3.0-beta.2",
+      staged: "0.3.0",
+      channel: "beta",
+      moveToStable: true,
+      expected: "beta",
+    },
+    {
+      name: "updater-installed beta keeps Beta with Move to Stable after release on",
+      running: "0.3.0-beta.3",
+      last: "0.3.0-beta.2",
+      staged: "0.3.0-beta.3",
+      channel: "beta",
+      moveToStable: true,
+      expected: "beta",
+    },
+    {
+      name: "same stable version keeps the player's Beta choice with Move to Stable after release on",
+      running: "0.3.0",
+      last: "0.3.0",
+      staged: "0.3.0",
+      channel: "beta",
+      moveToStable: true,
+      expected: "beta",
+    },
+    {
       name: "a different staged version does not mark a stable install",
       running: "0.3.0",
       last: "0.3.0-beta.2",
@@ -1230,12 +1337,21 @@ describe("the installed build sets the update channel", () => {
       channel: "beta",
       expected: "beta",
     },
-  ] as const)("$name", ({ running, last, staged, channel, expected }) => {
+  ] as Array<{
+    name: string;
+    running: string;
+    last: string | null;
+    staged: string | null;
+    channel: UpdateChannel;
+    moveToStable?: boolean;
+    expected: UpdateChannel;
+  }>)("$name", ({ running, last, staged, channel, moveToStable, expected }) => {
     const h = makeCheck({
       currentVersion: running,
       lastRunVersion: last,
       stagedVersion: staged,
       channel,
+      moveToStableAfterRelease: moveToStable,
       respond: () => [],
     });
     expect(h.check.channel()).toBe(expected);
@@ -1243,6 +1359,23 @@ describe("the installed build sets the update channel", () => {
     h.restart();
     expect(h.check.channel()).toBe(expected);
     expect(h.calls()).toBe(0);
+  });
+
+  test("Move to Stable after release: the stable update from Beta then checks like Stable", async () => {
+    const h = makeCheck({
+      currentVersion: "0.3.0",
+      lastRunVersion: "0.3.0-beta.2",
+      stagedVersion: "0.3.0",
+      channel: "beta",
+      moveToStableAfterRelease: true,
+      respond: (url) => (url.includes("/releases?") ? [withZip("v0.3.1-beta.1")] : withZip("v0.3.0")),
+    });
+    h.check.recordStagedVersion("0.3.0");
+    const result = await h.check.check({ force: true });
+    expect(h.askedUrl()).toContain("/releases/latest");
+    expect(result.status).toBe("current");
+    h.restart();
+    expect(h.check.channel()).toBe("stable");
   });
 
   test("choosing Stable on a beta survives a restart", async () => {
@@ -1257,4 +1390,516 @@ describe("the installed build sets the update channel", () => {
     expect(h.check.channel()).toBe("stable");
     expect(h.lastRunVersion()).toBe("0.3.0-beta.2");
   });
+});
+
+describe("a test build checks like any other, and always has the way out (established DEVICE 2026-11-04: 1.0.2-test.114 answered \"Couldn't check for updates\" and backed off)", () => {
+  test("the channel's newest build is offered as a leave-test switch, older or not", async () => {
+    const h = makeCheck({
+      currentVersion: "1.0.2-test.114",
+      channel: "beta",
+      respond: () => [withZip("v1.0.2-beta.27")],
+    });
+    const result = await h.check.check({ force: true });
+    expect(result.status).toBe("available");
+    expect(result.failed).toBe(false);
+    expect(h.backoff()).toBeNull();
+    expect(result.offer).toMatchObject({
+      kind: "leaveTest",
+      version: "1.0.2-beta.27",
+      headline: "Switch to beta 1.0.2-beta.27",
+      buttonLabel: "Switch to beta 1.0.2-beta.27",
+      rowLabel: "Switch to beta 1.0.2-beta.27",
+      toastBody: "Switch in Options",
+      installable: true,
+    });
+    expect(h.stamp()?.latestVersion).toBe("1.0.2-beta.27");
+  });
+
+  test("the leave-test offer names Stable on Stable's answer", async () => {
+    const h = makeCheck({
+      currentVersion: "1.0.2-test.114",
+      channel: "stable",
+      respond: () => withZip("v1.0.1"),
+    });
+    const result = await h.check.check({ force: true });
+    expect(result.status).toBe("available");
+    expect(result.offer).toMatchObject({
+      kind: "leaveTest",
+      version: "1.0.1",
+      headline: "Switch to stable 1.0.1",
+    });
+  });
+
+  test("a genuinely newer X.Y.Z is offered as a plain update, not a switch", async () => {
+    const h = makeCheck({
+      currentVersion: "1.0.2-test.114",
+      channel: "beta",
+      respond: () => [withZip("v1.0.3-beta.1")],
+    });
+    const result = await h.check.check({ force: true });
+    expect(result.status).toBe("available");
+    expect(result.offer).toMatchObject({ kind: "update", version: "1.0.3-beta.1" });
+  });
+
+  test("a pr build checks like a test build: leave-test offer, no Check again state", async () => {
+    const h = makeCheck({
+      currentVersion: "1.0.2-pr.117",
+      channel: "beta",
+      respond: () => [withZip("v1.0.2-beta.27")],
+    });
+    const result = await h.check.check({ force: true });
+    expect(result.status).toBe("available");
+    expect(result.failed).toBe(false);
+    expect(result.offer).toMatchObject({ kind: "leaveTest", version: "1.0.2-beta.27" });
+  });
+
+  test("a pr build's rebuild (X.Y.Z-pr.N.K) checks like a test build too", async () => {
+    const h = makeCheck({
+      currentVersion: "1.0.2-pr.117.2",
+      channel: "beta",
+      respond: () => [withZip("v1.0.2-beta.27")],
+    });
+    const result = await h.check.check({ force: true });
+    expect(result.status).toBe("available");
+    expect(result.failed).toBe(false);
+    expect(result.offer).toMatchObject({ kind: "leaveTest", version: "1.0.2-beta.27" });
+  });
+
+  test("a pr build never toasts: its way out waits in Options", async () => {
+    const h = makeCheck({
+      currentVersion: "1.0.2-pr.117.2",
+      channel: "beta",
+      respond: () => [withZip("v1.0.2-beta.27")],
+    });
+    const result = await h.check.check(NOTIFY);
+    expect(result.offer).toMatchObject({ kind: "leaveTest", installable: true });
+    expect(result.toastPending).toBe(false);
+    expect(h.toastShown()).toBeNull();
+  });
+
+  test("Beta never offers a pr build, even a newer one", async () => {
+    const h = makeCheck({
+      currentVersion: "1.0.2-beta.27",
+      channel: "beta",
+      respond: () => [withZip("v1.0.3-pr.117.2"), withZip("v1.0.3-pr.117"), withZip("v1.0.2-beta.27")],
+    });
+    const result = await h.check.check({ force: true });
+    expect(result.status).toBe("current");
+    expect(result.offer).toBeNull();
+  });
+
+  test("Stable never offers a pr build, even a newer one", async () => {
+    const h = makeCheck({
+      currentVersion: "1.0.1",
+      channel: "stable",
+      respond: () => withZip("v1.0.2-pr.117"),
+    });
+    const result = await h.check.check({ force: true });
+    expect(result.offer).toBeNull();
+  });
+
+  test("a test-tagged release on the list is never offered to Beta", async () => {
+    const h = makeCheck({
+      currentVersion: "0.1.1",
+      channel: "beta",
+      respond: () => [withZip("v1.0.2-test.999"), withZip("v0.2.0")],
+    });
+    const result = await h.check.check({ force: true });
+    expect(result.status).toBe("available");
+    expect(result.offer?.version).toBe("0.2.0");
+    expect(h.stamp()?.latestVersion).toBe("0.2.0");
+  });
+
+  test("first start of a test build selects Beta", async () => {
+    const h = makeCheck({
+      currentVersion: "1.0.2-test.114",
+      lastRunVersion: null,
+      channel: "stable",
+      respond: () => [withZip("v1.0.2-beta.27")],
+    });
+    expect(h.check.channel()).toBe("beta");
+    const result = await h.check.check({ force: true });
+    expect(result.offer?.kind).toBe("leaveTest");
+  });
+
+  test.each(["stable", "beta"] as const)(
+    "first start of a pr build keeps the stored channel (%s): leaving returns the owner to it",
+    async (channel) => {
+      const h = makeCheck({
+        currentVersion: "1.0.2-pr.117.2",
+        lastRunVersion: "1.0.1",
+        stagedVersion: "1.0.2-pr.117.2",
+        channel,
+        respond: () => (channel === "stable" ? withZip("v1.0.1") : [withZip("v1.0.2-beta.27")]),
+      });
+      expect(h.check.channel()).toBe(channel);
+      h.restart();
+      expect(h.check.channel()).toBe(channel);
+    },
+  );
+
+  test("the leave-test offer toasts once per version like any offer", async () => {
+    const h = makeCheck({
+      currentVersion: "1.0.2-test.114",
+      channel: "beta",
+      respond: () => [withZip("v1.0.2-beta.27")],
+    });
+    const first = await h.check.check(NOTIFY);
+    expect(first.toastPending).toBe(true);
+    const again = await h.check.check({ ...NOTIFY, force: true });
+    expect(again.toastPending).toBe(false);
+  });
+});
+
+/**
+ * The PR channel (GLOSSARY: PR channel): a running PR build follows its
+ * own PR, answered from the PR builds list under the same cadence, backoff
+ * and toast rule as Stable and Beta. The list and GitHub's answers are the
+ * recorded fixtures in fixtures/pr-builds.
+ */
+describe("the PR channel: a PR build follows its own PR", () => {
+  const prFixture = (name: string): unknown =>
+    JSON.parse(readFileSync(join(import.meta.dir, "fixtures/pr-builds", name), "utf8"));
+  /** #171 at 1.1.2-pr.171; #117 at its second build, 1.1.2-pr.117.2. */
+  const LISTED = prFixture("index.json");
+  const WITHOUT_117 = {
+    builds: (LISTED as { builds: { number: number }[] }).builds.filter((b) => b.number !== 117),
+  };
+  const PULL_117 = `${REPO_API}/pulls/117`;
+  const TITLE = "Add PR builds to the channel picker";
+  const BETA = [withZip("v1.1.2-beta.42")];
+
+  /** A PR build on its PR channel; `list` is what the PR builds list answers. */
+  function onPrChannel(over: { currentVersion?: string; list?: unknown; github?: (url: string) => unknown } = {}) {
+    return makeCheck({
+      currentVersion: over.currentVersion ?? "1.1.2-pr.117",
+      channel: "beta",
+      prChannel: 117,
+      respond: (url) => {
+        if (url === PR_INDEX) return over.list ?? LISTED;
+        return over.github?.(url) ?? BETA;
+      },
+    });
+  }
+
+  test("a PR build's first start joins its PR channel; the stored Stable or Beta stays as the way back", async () => {
+    const h = makeCheck({
+      currentVersion: "1.1.2-pr.117.2",
+      lastRunVersion: "1.1.1",
+      channel: "stable",
+      respond: (url) => (url === PR_INDEX ? LISTED : withZip("v1.1.1")),
+    });
+    expect(h.prChannel()).toBe(117);
+    expect(h.channel()).toBe("stable");
+    const result = await h.check.check();
+    expect(result.channel).toEqual({ kind: "pr", number: 117, title: TITLE });
+  });
+
+  test("listed with nothing newer: current on the PR channel, without asking GitHub", async () => {
+    const asked: string[] = [];
+    const h = onPrChannel({
+      currentVersion: "1.1.2-pr.117.2",
+      github: (url) => {
+        asked.push(url);
+        return BETA;
+      },
+    });
+    const result = await h.check.check();
+    expect(result).toMatchObject({
+      status: "current",
+      offer: null,
+      channel: { kind: "pr", number: 117, title: TITLE },
+      checked: true,
+      failed: false,
+      toastPending: false,
+    });
+    expect(asked).toEqual([]);
+    expect(h.stamp()?.pr).toEqual({ number: 117, title: TITLE, state: "listed" });
+  });
+
+  test("a newer listed build of the same PR is offered as a PR update", async () => {
+    const h = onPrChannel();
+    const result = await h.check.check();
+    expect(result.status).toBe("available");
+    expect(result.offer).toEqual({
+      kind: "prUpdate",
+      version: "1.1.2-pr.117.2",
+      headline: "PR #117 has a newer build",
+      buttonLabel: "Update to 1.1.2-pr.117.2",
+      toastBody: "Update in Options",
+      rowLabel: "PR #117 has a newer build",
+      releaseNotes: null,
+      releaseUrl: "https://github.com/sigboe/wowdeck/pull/117",
+      installable: true,
+    });
+    expect(result.channel).toEqual({ kind: "pr", number: 117, title: TITLE });
+  });
+
+  test("a notify check toasts the newer build once per version; a later rebuild toasts again", async () => {
+    const h = onPrChannel();
+    expect((await h.check.check(NOTIFY)).toastPending).toBe(true);
+    expect((await h.check.check(NOTIFY)).toastPending).toBe(false);
+    h.restart();
+    expect((await h.check.check(NOTIFY)).toastPending).toBe(false);
+    const rebuilt = structuredClone(LISTED) as { builds: { number: number; version: string }[] };
+    rebuilt.builds.find((b) => b.number === 117)!.version = "1.1.2-pr.117.3";
+    h.restart({ respond: (url) => (url === PR_INDEX ? rebuilt : BETA) });
+    const later = await h.check.check({ ...NOTIFY, force: true });
+    expect(later.offer?.version).toBe("1.1.2-pr.117.3");
+    expect(later.toastPending).toBe(true);
+  });
+
+  test("the daily cadence: inside the day the stored answer serves without the network", async () => {
+    const h = onPrChannel();
+    await h.check.check();
+    const calls = h.calls();
+    h.restart({ now: NOW + DAY_MS - 1 });
+    const cached = await h.check.check();
+    expect(h.calls()).toBe(calls);
+    expect(cached).toMatchObject({ checked: false, offer: { kind: "prUpdate" }, channel: { kind: "pr", number: 117 } });
+    h.restart({ now: NOW + DAY_MS });
+    expect((await h.check.check()).checked).toBe(true);
+    expect(h.calls()).toBeGreaterThan(calls);
+  });
+
+  test("a list that can't load backs off like any failed check", async () => {
+    const h = onPrChannel({ list: new NetworkError("offline") });
+    const failed = await h.check.check();
+    expect(failed).toMatchObject({
+      status: "unknown",
+      failed: true,
+      channel: { kind: "pr", number: 117, title: null },
+    });
+    expect(h.backoff()).toEqual({ failedAt: NOW, failures: 1 });
+    const calls = h.calls();
+    h.restart({ now: NOW + HOUR_MS - 1 });
+    expect((await h.check.check()).checked).toBe(false);
+    expect(h.calls()).toBe(calls);
+  });
+
+  test("Check again asks the list at once on the PR channel", async () => {
+    const h = onPrChannel({ currentVersion: "1.1.2-pr.117.2" });
+    await h.check.check();
+    const calls = h.calls();
+    const again = await h.check.check({ force: true });
+    expect(again).toMatchObject({ status: "current", checked: true, channel: { kind: "pr", number: 117 } });
+    expect(h.calls()).toBeGreaterThan(calls);
+  });
+
+  test("a stored Stable answer never serves the PR channel", async () => {
+    const h = makeCheck({
+      currentVersion: "1.1.2-pr.117",
+      channel: "stable",
+      prChannel: 117,
+      stored: stampOf({ checkedAt: NOW - HOUR_MS, channel: "stable", latestVersion: "1.1.1" }),
+      respond: (url) => (url === PR_INDEX ? LISTED : withZip("v1.1.1")),
+    });
+    const result = await h.check.check();
+    expect(result.checked).toBe(true);
+    expect(result.offer?.kind).toBe("prUpdate");
+  });
+
+  test("picking Stable or Beta leaves the PR channel and checks that channel at once", async () => {
+    const h = onPrChannel();
+    await h.check.check();
+    const switched = await h.check.setChannel("beta");
+    expect(h.prChannel()).toBeNull();
+    expect(h.channel()).toBe("beta");
+    expect(switched).toMatchObject({
+      checked: true,
+      channel: null,
+      offer: { kind: "leaveTest", version: "1.1.2-beta.42" },
+    });
+    h.restart();
+    expect(h.prChannel()).toBeNull();
+    expect((await h.check.check()).offer?.kind).toBe("leaveTest");
+  });
+
+  test("a PR no longer listed offers the stored channel's newest build, still on the PR channel", async () => {
+    const h = onPrChannel({
+      currentVersion: "1.1.2-pr.117.2",
+      github: (url) => (url === PULL_117 ? prFixture("pull-117-closed.json") : BETA),
+    });
+    // The title the list named while the PR was listed is kept.
+    await h.check.check();
+    h.restart({
+      respond: (url) =>
+        url === PR_INDEX ? WITHOUT_117 : url === PULL_117 ? prFixture("pull-117-closed.json") : BETA,
+    });
+    const result = await h.check.check({ force: true });
+    expect(result.channel).toEqual({ kind: "pr", number: 117, title: TITLE });
+    expect(result.offer).toMatchObject({ kind: "prClosed", version: "1.1.2-beta.42", headline: "PR #117 was closed" });
+    expect(h.stamp()?.pr).toEqual({ number: 117, title: TITLE, state: "closed" });
+    expect(h.prChannel()).toBe(117);
+  });
+
+  for (const state of ["closed", "unlisted"] as const) {
+    test.each(["stable", "beta"] as const)(
+      `a ${state} PR offers stored %s even older, and relisting replaces that offer`,
+      async (channel) => {
+        const h = makeCheck({
+          currentVersion: "1.1.2-pr.117",
+          channel,
+          prChannel: 117,
+          respond: (url) =>
+            url === PR_INDEX
+              ? WITHOUT_117
+              : url === PULL_117
+                ? prFixture(state === "closed" ? "pull-117-closed.json" : "pull-117-open.json")
+                : channel === "stable"
+                  ? withZip("v1.1.1")
+                  : BETA,
+        });
+        const result = await h.check.check(NOTIFY);
+        expect(result).toMatchObject({
+          status: "available",
+          channel: { kind: "pr", number: 117 },
+          offer: {
+            kind: state === "closed" ? "prClosed" : "prUnlisted",
+            headline: state === "closed" ? "PR #117 was closed" : "PR #117 is no longer listed",
+            buttonLabel:
+              channel === "stable" ? "Switch to stable 1.1.1" : "Switch to beta 1.1.2-beta.42",
+            version: channel === "stable" ? "1.1.1" : "1.1.2-beta.42",
+            installable: true,
+          },
+          toastPending: true,
+        });
+        expect(h.channel()).toBe(channel);
+        expect(h.prChannel()).toBe(117);
+        expect((await h.check.forStaging()).offer).toEqual(result.offer);
+        expect((await h.check.check(NOTIFY)).toastPending).toBe(false);
+        h.restart({ respond: (url) => (url === PR_INDEX ? LISTED : BETA) });
+        const relisted = await h.check.check({ ...NOTIFY, force: true });
+        expect(relisted).toMatchObject({
+          channel: { kind: "pr", number: 117, title: TITLE },
+          offer: { kind: "prUpdate", version: "1.1.2-pr.117.2" },
+          toastPending: true,
+        });
+        expect(h.channel()).toBe(channel);
+        expect(h.prChannel()).toBe(117);
+      },
+    );
+  }
+
+  test("a build that is no PR build leaves the PR channel when it first runs", () => {
+    const h = makeCheck({
+      currentVersion: "1.1.2-beta.43",
+      lastRunVersion: "1.1.2-pr.117.2",
+      prChannel: 117,
+      respond: () => BETA,
+    });
+    expect(h.prChannel()).toBeNull();
+  });
+
+  test("the answer names the channel it served: Stable, Beta, or none on a test build", async () => {
+    const stable = makeCheck({ currentVersion: "1.1.1", channel: "stable", respond: () => withZip("v1.1.1") });
+    expect((await stable.check.check()).channel).toEqual({ kind: "stable" });
+    const beta = makeCheck({ currentVersion: "1.1.2-beta.42", channel: "beta", respond: () => BETA });
+    expect((await beta.check.check()).channel).toEqual({ kind: "beta" });
+    const test = makeCheck({ currentVersion: "1.1.2-test.9", channel: "beta", respond: () => BETA });
+    expect((await test.check.check()).channel).toBeNull();
+    const offline = makeCheck({ currentVersion: "1.1.1", respond: () => new NetworkError("offline") });
+    expect((await offline.check.check()).channel).toEqual({ kind: "stable" });
+  });
+});
+
+describe("merged PR transition", () => {
+  const fixture = (name: string): unknown =>
+    JSON.parse(readFileSync(join(import.meta.dir, "fixtures/pr-builds", name), "utf8"));
+  function merged(comparison: unknown) {
+    return makeCheck({
+      currentVersion: "1.1.2-pr.117.2",
+      channel: "stable",
+      prChannel: 117,
+      respond: (url) => {
+        if (url === PR_INDEX) return { builds: [] };
+        if (url.includes("/pulls/")) return fixture("pull-117-merged.json");
+        if (url.includes("/compare/")) return comparison;
+        return (fixture("releases-after-merge.json") as object[]).map((release) => ({
+          ...release,
+          assets: [{ name: "WoWDeck.zip", url: ZIP }],
+        }));
+      },
+    });
+  }
+  test("an explicit Stable choice wins over an in-flight merged PR check", async () => {
+    let release!: (value: unknown) => void;
+    let entered!: () => void;
+    const waiting = new Promise<void>((resolve) => { entered = resolve; });
+    const comparison = new Promise<unknown>((resolve) => { release = resolve; });
+    const h = makeCheck({
+      currentVersion: "1.1.2-pr.117.2", channel: "stable", prChannel: 117,
+      respond: (url) => {
+        if (url === PR_INDEX) return { builds: [] };
+        if (url.includes("/pulls/")) return fixture("pull-117-merged.json");
+        if (url.includes("/compare/")) { entered(); return comparison; }
+        if (url.endsWith("/latest")) return withZip("1.1.2");
+        return (fixture("releases-after-merge.json") as object[]).map((r) => ({ ...r, assets: [{ name: "WoWDeck.zip", url: ZIP }] }));
+      },
+    });
+    const pending = h.check.check();
+    await waiting;
+    const choice = h.check.setChannel("stable");
+    release(fixture("compare-merge-to-beta43.json"));
+    await pending;
+    expect((await choice).offer?.version).toBe("1.1.2");
+    expect(h.channel()).toBe("stable");
+    expect(h.prChannel()).toBeNull();
+  });
+  test("containing beta becomes the persisted channel and normal update, surviving restart and later checks", async () => {
+    const h = merged(fixture("compare-merge-to-beta43.json"));
+    const answer = await h.check.check(NOTIFY);
+    expect(answer.channel).toEqual({ kind: "beta" });
+    expect(answer.offer).toMatchObject({
+      kind: "prMergedBeta",
+      version: "1.1.2-beta.43",
+      buttonLabel: "Update",
+    });
+    expect(answer.toastPending).toBe(true);
+    expect(h.channel()).toBe("beta");
+    expect(h.prChannel()).toBeNull();
+    h.restart();
+    expect((await h.check.check(NOTIFY)).toastPending).toBe(false);
+    expect((await h.check.forStaging()).offer?.version).toBe("1.1.2-beta.43");
+    expect((await h.check.check({ force: true })).channel).toEqual({ kind: "beta" });
+    h.restart({ currentVersion: "1.1.2-beta.43" });
+    expect((await h.check.check()).offer).toBeNull();
+  });
+  test("a refresh never replaces a verified beta with one lacking the merge", async () => {
+    let contains = true;
+    const h = makeCheck({
+      currentVersion: "1.1.2-pr.117.2", channel: "stable", prChannel: 117,
+      respond: (url) => {
+        if (url === PR_INDEX) return { builds: [] };
+        if (url.includes("/pulls/")) return fixture("pull-117-merged.json");
+        if (url.includes("/compare/")) return contains ? fixture("compare-merge-to-beta43.json") : { status: "behind" };
+        return [withZip(contains ? "1.1.2-beta.43" : "1.1.2-beta.42")];
+      },
+    });
+    expect((await h.check.check()).offer?.version).toBe("1.1.2-beta.43");
+    contains = false;
+    const refreshed = await h.check.forStaging({ refresh: true });
+    expect(refreshed.offer?.kind).toBe("prMergedBuilding");
+    expect(refreshed.downloadUrl).toBeNull();
+    expect(h.prChannel()).toBe(117);
+    expect((await h.check.check()).channel).toMatchObject({ kind: "pr", number: 117 });
+  });
+  test.each(["behind", "unreadable"])(
+    "merged with %s comparison stays PR without installation or toast",
+    async (state) => {
+      const h = merged(
+        state === "behind" ? fixture("compare-merge-to-beta42.json") : new NetworkError("offline"),
+      );
+      const answer = await h.check.check(NOTIFY);
+      expect(answer.channel).toMatchObject({ kind: "pr", number: 117 });
+      expect(answer.offer).toMatchObject({
+        kind: "prMergedBuilding",
+        installable: false,
+        headline: "PR #117 was merged. A beta with it is still building",
+      });
+      expect(answer.toastPending).toBe(false);
+      expect(h.channel()).toBe("stable");
+      expect(h.prChannel()).toBe(117);
+    },
+  );
 });

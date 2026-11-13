@@ -11,7 +11,7 @@
  */
 
 import type { Toc } from "./toc/toc";
-import type { SteamGameLink } from "../api/contracts";
+import type { GameVersionClient, SteamGameLink } from "../api/contracts";
 import { AddonChannelType, type AddonIgnoreReason, type AddonProviderType, AddonDependencyType, WowClientType } from "./types";
 
 /** Serializable stand-in for fs.Stats. */
@@ -26,6 +26,8 @@ export interface FsStats {
 
 /** A WoW installation flavor the user can manage. Persisted. */
 export interface WowInstallation {
+  autoUpdateEnabled?: boolean;
+  hidden?: boolean;
   id: string;
   clientType: WowClientType;
   /** Absolute path of the flavor root, e.g. .../World of Warcraft/_retail_ */
@@ -117,6 +119,8 @@ export interface WowAddon {
    * `updatedAt` is not usable for this: provider scans rewrite it.
    */
   lastUpdatedAt?: number;
+  /** A newer update was discovered after the last successful update. */
+  newlyUpdatedInvalidated?: boolean;
 }
 
 /**
@@ -140,6 +144,13 @@ export interface AddonSearchResultFile {
   version: string;
   folders: string[];
   gameVersion: string;
+  /** Every game version the file targets, when the provider lists them (CurseForge, TukUI). */
+  gameVersions?: string[];
+  /**
+   * The client/flavor of entries in `gameVersions` that the provider
+   * identifies, keyed by version (CurseForge's per-file type ids).
+   */
+  gameVersionClients?: Record<string, GameVersionClient>;
   downloadUrl: string;
   releaseDate: string;
   dependencies?: AddonSearchResultDependency[];
@@ -165,6 +176,7 @@ export interface ProviderCategory {
 }
 
 export interface AddonSearchResult {
+  allowedChannels?: AddonChannelType[];
   author: string;
   downloadCount?: number;
   favoriteCount?: number;

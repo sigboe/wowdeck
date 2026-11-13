@@ -8,6 +8,7 @@ import type { UpdateCheck } from "../../wow/notifications/UpdateCheck";
 import type { UpdateToastGate } from "../../wow/notifications/UpdateToastGate";
 import type { PluginUpdateCheck } from "../../wow/notifications/PluginUpdateCheck";
 import type { UpdateStager } from "../../wow/plugin/UpdateStager";
+import type { PrBuildList } from "../../wow/plugin/PrBuildList";
 import type { ProviderRegistry } from "../../wow/providers/provider-registry";
 import type { CurseForgeAuthService } from "../../wow/providers/curseforge/CurseForgeKeyAuth";
 import type { CurseForgeProvider } from "../../wow/providers/curseforge/CurseForgeProvider";
@@ -18,6 +19,8 @@ import type { RecentErrorsBuffer } from "../../diagnostics/RecentErrors";
 import type { About } from "../../about/About";
 
 export interface HandlerDeps {
+  tsmData: import("../../wow/tsm/TradeSkillMasterData").TradeSkillMasterData;
+  tsmAuth: import("../../wow/tsm/TradeSkillMasterAuth").TradeSkillMasterAuth;
   backendVersion: string;
   homeDir: string;
   store: StateStore;
@@ -33,6 +36,8 @@ export interface HandlerDeps {
   pluginUpdate: PluginUpdateCheck;
   /** Stages the newer release for Decky's installer (system.updateStage). */
   updateStager: UpdateStager;
+  /** The published PR builds (system.listPrBuilds). */
+  prBuilds: PrBuildList;
   curseForgeAuth: CurseForgeAuthService;
   curseForgeProvider: CurseForgeProvider;
   wtfService: WtfBackupService;

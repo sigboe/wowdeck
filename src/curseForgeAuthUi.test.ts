@@ -1,7 +1,7 @@
 /// <reference types="bun-types" />
 import { describe, expect, test } from "bun:test";
-import { shouldShowCurseForgeKeySection, userKeyStatusLabel } from "./curseForgeAuthUi";
-import type { CurseForgeAuthStatus } from "./types";
+import { curseForgeRowState, userKeyStatusLabel } from "./curseForgeAuthUi";
+import type { CurseForgeAuthStatus, ProviderInfo } from "./types";
 
 function status(overrides: Partial<CurseForgeAuthStatus> = {}): CurseForgeAuthStatus {
   return {
@@ -13,43 +13,6 @@ function status(overrides: Partial<CurseForgeAuthStatus> = {}): CurseForgeAuthSt
     ...overrides,
   };
 }
-
-describe("shouldShowCurseForgeKeySection", () => {
-  test("hidden when the bundled key is confirmed valid", () => {
-    expect(shouldShowCurseForgeKeySection(status({ bundledStatus: "valid" }))).toBe(false);
-  });
-
-  test("shown when there is no bundled key at all", () => {
-    expect(
-      shouldShowCurseForgeKeySection(
-        status({ bundledPresent: false, bundledStatus: "unvalidated" }),
-      ),
-    ).toBe(true);
-  });
-
-  test("shown when the bundled key is confirmed invalid", () => {
-    expect(shouldShowCurseForgeKeySection(status({ bundledStatus: "invalid" }))).toBe(true);
-  });
-
-  // A transient failure (not yet a confirmed verdict either way) must
-  // still show the section — only a confirmed `valid` bundled key
-  // hides it.
-  test("shown while bundled status is merely unknown (a transient failure)", () => {
-    expect(shouldShowCurseForgeKeySection(status({ bundledStatus: "unknown" }))).toBe(true);
-  });
-
-  test("shown during the brief unvalidated startup window", () => {
-    expect(shouldShowCurseForgeKeySection(status({ bundledStatus: "unvalidated" }))).toBe(true);
-  });
-
-  test("a configured-but-inactive user key never affects visibility on its own", () => {
-    expect(
-      shouldShowCurseForgeKeySection(
-        status({ bundledStatus: "valid", userConfigured: true, userStatus: "valid" }),
-      ),
-    ).toBe(false);
-  });
-});
 
 describe("userKeyStatusLabel", () => {
   test("not configured", () => {
@@ -91,5 +54,74 @@ describe("userKeyStatusLabel", () => {
       const label = userKeyStatusLabel(status({ userConfigured: true, userStatus }));
       expect(label).not.toMatch(/[a-f0-9]{20,}/i); // no hex-ish long strings
     }
+  });
+});
+
+describe("curseForgeRowState", () => {
+  // The engine's `configured` is the usability rule: true while some key
+  // (built-in or the player's) is not known to be rejected.
+  const curse = (configured: boolean): ProviderInfo => ({
+    id: "Curse",
+    name: "CurseForge",
+    enabled: configured,
+    available: configured,
+    requiresApiKey: true,
+    configured,
+    allowEdit: true,
+    catalogSearch: true,
+    discovers: true,
+  });
+
+  test("no usable key: a > row that opens the key modal", () => {
+    const rejected = status({ activeSource: "none", bundledStatus: "invalid" });
+    expect(curseForgeRowState(curse(false), rejected)).toBe("keyRow");
+    const noBundled = status({
+      activeSource: "none",
+      bundledPresent: false,
+      bundledStatus: "unvalidated",
+    });
+    expect(curseForgeRowState(curse(false), noBundled)).toBe("keyRow");
+  });
+
+  test("both keys rejected: still the > row", () => {
+    const both = status({
+      activeSource: "none",
+      bundledStatus: "invalid",
+      userConfigured: true,
+      userStatus: "invalid",
+    });
+    expect(curseForgeRowState(curse(false), both)).toBe("keyRow");
+  });
+
+  test("the player's own key in use: a toggle with the API key action", () => {
+    for (const userStatus of ["valid", "unknown", "unvalidated"] as const) {
+      const own = status({
+        activeSource: "user",
+        bundledStatus: "invalid",
+        userConfigured: true,
+        userStatus,
+      });
+      expect(curseForgeRowState(curse(true), own)).toBe("ownKeyToggle");
+    }
+  });
+
+  test("built-in access working: a plain toggle", () => {
+    expect(curseForgeRowState(curse(true), status())).toBe("toggle");
+  });
+
+  test("built-in access not yet checked or briefly failing counts as usable", () => {
+    for (const bundledStatus of ["unvalidated", "unknown"] as const) {
+      expect(curseForgeRowState(curse(true), status({ bundledStatus }))).toBe("toggle");
+    }
+  });
+
+  test("a saved key the built-in access outranks: a plain toggle", () => {
+    const shadowed = status({ userConfigured: true, userStatus: "valid" });
+    expect(curseForgeRowState(curse(true), shadowed)).toBe("toggle");
+  });
+
+  test("auth status still loading: the provider's usability decides", () => {
+    expect(curseForgeRowState(curse(false), null)).toBe("keyRow");
+    expect(curseForgeRowState(curse(true), null)).toBe("toggle");
   });
 });

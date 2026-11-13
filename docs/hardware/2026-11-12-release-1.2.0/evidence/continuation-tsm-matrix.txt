@@ -1,0 +1,20 @@
+target SharedJSContext → target=SharedJSContext
+eval --file=/tmp/rc-tsm-neither.js → neither
+probe text → text="scrollTop=[0,0,0] WoWDeck Manager F6 GET ADDONS F7 RC 1.2.0 fixture Search Latest Popular Manual Install TradeSkillMaster TradeSkillMaster Could not load followed realms Install TradeSkillMaster Refresh auction data No auction data yet No saved character evidence in this installation To discover a realm or region, create a character there (or use an existing one), log in, then log out to save WoW settings. For Clas"
+probe items → items="GET ADDONS | RC 1.2.0 fixture | Search | Latest | Popular | Manual Install | TradeSkillMaster | Could not load followed realms | Install TradeSkillMaster | Refresh auction data | No auction data yet | No saved character evidence in this inst"
+target SharedJSContext → target=SharedJSContext
+eval --file=/tmp/rc-tsm-main.js → main → focus="Uninstall"
+probe text → text="scrollTop=[0,0,0] WoWDeck Manager F6 GET ADDONS F7 RC 1.2.0 fixture Search Latest Popular Manual Install TradeSkillMaster TradeSkillMaster Could not load followed realms Uninstall Refresh auction data No auction data yet No saved character evidence in this installation To discover a realm or region, create a character there (or use an existing one), log in, then log out to save WoW settings. For Classic, enable Tra"
+probe items → items="GET ADDONS | RC 1.2.0 fixture | Search | Latest | Popular | Manual Install | TradeSkillMaster | Could not load followed realms | Uninstall | Refresh auction data | No auction data yet | No saved character evidence in this inst"
+target SharedJSContext → target=SharedJSContext
+eval --file=/tmp/rc-tsm-helper.js → helper
+probe text → text="scrollTop=[0,0,0] WoWDeck Manager F6 GET ADDONS F7 RC 1.2.0 fixture Search Latest Popular Manual Install TradeSkillMaster TradeSkillMaster Could not load followed realms Uninstall Refresh auction data No auction data yet No saved character evidence in this installation To discover a realm or region, create a character there (or use an existing one), log in, then log out to save WoW settings. For Classic, enable Tra"
+probe items → items="GET ADDONS | RC 1.2.0 fixture | Search | Latest | Popular | Manual Install | TradeSkillMaster | Could not load followed realms | Uninstall | Refresh auction data | No auction data yet | No saved character evidence in this inst"
+target SharedJSContext → target=SharedJSContext
+eval --file=/tmp/rc-tsm-busy.js → busy → focus="Working…"
+probe text → text="scrollTop=[0,0,0] WoWDeck Manager F6 GET ADDONS F7 RC 1.2.0 fixture Search Latest Popular Manual Install TradeSkillMaster TradeSkillMaster Could not load followed realms Working… Refresh auction data No auction data yet No saved character evidence in this installation To discover a realm or region, create a character there (or use an existing one), log in, then log out to save WoW settings. For Classic, enable Trad"
+probe items → items="GET ADDONS | RC 1.2.0 fixture | Search | Latest | Popular | Manual Install | TradeSkillMaster | Could not load followed realms | Working… | Refresh auction data | No auction data yet | No saved character evidence in this inst"
+target SharedJSContext → target=SharedJSContext
+eval --file=/tmp/rc-tsm-failure.js → failure → focus="Install TradeSkillMaster"
+probe text → text="scrollTop=[0,0,0] WoWDeck Manager F6 GET ADDONS F7 RC 1.2.0 fixture Search Latest Popular Manual Install TradeSkillMaster TradeSkillMaster Could not load followed realms Install TradeSkillMaster Refresh auction data No auction data yet No saved character evidence in this installation To discover a realm or region, create a character there (or use an existing one), log in, then log out to save WoW settings. For Clas"
+probe items → items="GET ADDONS | RC 1.2.0 fixture | Search | Latest | Popular | Manual Install | TradeSkillMaster | Could not load followed realms | Install TradeSkillMaster | Refresh auction data | No auction data yet | No saved character evidence in this inst | RC deterministic failure"

@@ -1,0 +1,5 @@
+seek Options → found "Options" (jump, 5 matches) → focus="OPTIONS"
+key left → focus="GET ADDONS" tab="Get Addons"
+seek TradeSkillMaster --enter → pressed Enter on "TradeSkillMaster" (jump) → focus="Install TradeSkillMaster"
+probe text → text="scrollTop=[0,0,0] WoWDeck Manager F6 GET ADDONS F7 RC 1.2.0 fixture Search Latest Popular Manual Install TradeSkillMaster TradeSkillMaster Could not load followed realms Install TradeSkillMaster Refresh auction data No auction data yet No saved character evidence in this installation To discover a realm or region, create a character there (or use an existing one), log in, then log out to save WoW settings. For Clas"
+probe items → items="GET ADDONS | RC 1.2.0 fixture | Search | Latest | Popular | Manual Install | TradeSkillMaster | Could not load followed realms | Install TradeSkillMaster | Refresh auction data | No auction data yet | No saved character evidence in this inst"

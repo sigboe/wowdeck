@@ -1,6 +1,7 @@
+import { RowChevron } from "../RowGlyph";
 import { useSyncExternalStore } from "react";
 import { Field, PanelSection, ToggleField } from "@decky/ui";
-import { FaChevronRight } from "react-icons/fa";
+
 import { descriptionStyle } from "../../steamTheme";
 import { settingsStore } from "../../settings";
 import type { SteamGame } from "../../steamLibrary";
@@ -55,9 +56,18 @@ export function SteamLibrarySection() {
                   : "Pick its library entry (WoW or Battle.net) to show addon updates there"}
             </span>
           }
-          onClick={() => openSteamGamePicker(linkedSteamGame, (g) => void linkSteamGame(g))}
+          onClick={() =>
+            openSteamGamePicker(
+              {
+                manual: linkedSteamGame,
+                detected: linkedSteamGames(installations, null),
+                autoLinkOn: settings.steamAutoLink,
+              },
+              (g) => void linkSteamGame(g),
+            )
+          }
         >
-          <FaChevronRight />
+          <RowChevron />
         </Field>
       </SettingsRow>
       {linked.length > 0 && (

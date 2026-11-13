@@ -13,7 +13,7 @@
  * record written by desktop WowUp still type-checks; `Unknown` names a
  * provider before it is set.
  */
-export type AddonProviderType = "TukUI" | "WowInterface" | "WowUpHub" | "GitHub" | "RaiderIO" | "Zip" | "File" | "WowUpCompanion" | "Wago" | "Curse" | "Unknown";
+export type AddonProviderType = "TukUI" | "WowInterface" | "WowUpHub" | "GitHub" | "RaiderIO" | "Zip" | "File" | "WowUpCompanion" | "Wago" | "Curse" | "Unknown" | "TradeSkillMaster";
 export enum AddonChannelType {
   Stable,
   Beta,
@@ -43,4 +43,6 @@ export enum WowClientType {
   Anniversary,
   Forever,
   None,
+  ClassicTitan,
+  ClassicCnBeta,
 }
