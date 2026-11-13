@@ -143,3 +143,12 @@ This resolves the earlier native-install boundary and containing-beta
 prerequisite. The installed-beta identity and persistence evidence is
 recorded in the PR-build continuation. A later beta is still needed to
 verify normal subsequent Beta updates.
+
+
+The subsequent-beta check also passed: Beta .52 offered and installed .53
+through the normal Beta update path and Decky confirmation. The engine
+reported .53, Beta remained saved, the active PR remained cleared and
+diagnostics reported no errors. The linked PR-build report contains the
+final identity hashes and native-install evidence. This completes the
+software continuation for the merged-PR return path. The stated human
+input, display, account and in-game limits remain.
