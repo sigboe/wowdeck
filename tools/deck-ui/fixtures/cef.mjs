@@ -1,4 +1,5 @@
 // In-memory CEF for CLI regression tests. Never opens a socket or drives a device.
+import net from "node:net";
 import vm from "node:vm";
 import childProcess from "node:child_process";
 import { syncBuiltinESMExports } from "node:module";
@@ -24,7 +25,31 @@ globalThis.setTimeout = (callback, delay, ...args) => {
 if (process.env.CEF_DEPLOY || process.env.CEF_PAD || process.env.CEF_LOG_HOME) {
   const original = childProcess.spawnSync;
   let uploaded = false;
+  let reloaded = false;
+  globalThis.__fixtureReloaded = () => { reloaded = true; };
+  globalThis.__fixturePid = () => reloaded ? 456 : 123;
+  if (process.env.CEF_DEPLOY) {
+    tunnelOpened = false;
+    net.createServer = () => {
+      const server = new EventEmitter();
+      server.listen = (_opts, cb) => { queueMicrotask(() => tunnelOpened ? server.emit("error", new Error("busy")) : cb()); return server; };
+      server.close = cb => cb();
+      return server;
+    };
+    const originalSpawn = childProcess.spawn;
+    childProcess.spawn = (cmd, args, opts) => {
+      if (cmd !== "ssh" || !args.includes("-N")) return originalSpawn(cmd, args, opts);
+      const child = new EventEmitter();
+      child.pid = process.pid;
+      child.unref = () => {};
+      tunnelOpened = true;
+      console.log(`fixture: tunnel ${args.at(-1)}`);
+      queueMicrotask(() => child.emit("spawn"));
+      return child;
+    };
+  }
   childProcess.spawnSync = (cmd, args, opts) => {
+    if (cmd === "patchelf" && process.env.CEF_DEPLOY) return { status: 0, stdout: "", stderr: "" };
     if (cmd !== "ssh") return original(cmd, args, opts);
     if (opts.timeout !== (args.includes("-N") ? 15000 : 30000) || opts.killSignal !== "SIGKILL" || !args.includes("ControlPath=none")) {
       throw new Error("unbounded or shared SSH connection");
@@ -41,14 +66,15 @@ if (process.env.CEF_DEPLOY || process.env.CEF_PAD || process.env.CEF_LOG_HOME) {
     if (process.env.CEF_DEPLOY === "guard-fail" && script.includes("> ") && script.includes("/guard.json")) {
       return { status: 1, stdout: "", stderr: "guard write failed" };
     }
-    if (script.startsWith("cat > ")) uploaded = true;
+    if (script.startsWith("cat > ") || script.includes("/bin/.wowdeck-x86_64.new")) uploaded = true;
     let stdout = "";
-    if (uploaded && script.startsWith("sha256sum ")) {
+    if ((uploaded || process.env.CEF_DEPLOY === "engine-only") && script.startsWith("sha256sum ")) {
       const root = path.resolve(path.dirname(process.argv[1]), "../..");
-      stdout = [["dist/index.js", "dist/index.js"], ["main.py", "main.py"]].map(([local, remote]) =>
+      stdout = [["dist/index.js", "dist/index.js"], ["main.py", "main.py"], ...(uploaded && process.env.CEF_DEPLOY === "engine-only" ? [["backend/out/wowdeck-x86_64", "bin/wowdeck-x86_64"]] : [])].map(([local, remote]) =>
         `${createHash("sha256").update(readFileSync(path.join(root, local))).digest("hex")}  /home/deck/homebrew/plugins/wowdeck/${remote}`,
       ).join("\n");
     }
+    if (script.includes("timeout 20 ./wowdeck-x86_64")) stdout = '{"id":1,"result":{}}';
     return { status: 0, stdout, stderr: "" };
   };
   if (process.env.CEF_PAD) childProcess.spawn = (command, args) => {
@@ -171,6 +197,7 @@ let focus = process.env.CEF_FOCUS || "Get Addons";
 let tab = "Get Addons";
 const element = (text) => ({
   textContent: text, innerText: text, ownerDocument: document,
+  querySelectorAll: () => [], scrollHeight: 800, clientHeight: 400, scrollTop: 160,
   getBoundingClientRect: () => ({ x: 0, y: 0, right: 100, bottom: 30, width: 100, height: 30 }),
 });
 const document = {
@@ -216,13 +243,14 @@ const context = vm.createContext({
   },
   DeckyBackend: { call: async (_loader, _plugin, _rpc, method, params) => {
     if (process.env.CEF_RELOAD_TRACE) throw new Error("frontend reload must not call the backend");
+    if (_loader === "loader/reload_plugin") globalThis.__fixtureReloaded?.();
     if (_loader === "loader/reload_plugin" && process.env.CEF_DEPLOY === "reload-fail") {
       throw new Error("reload rejected");
     }
     if (process.env.CEF_DEPLOY) {
       console.log(`fixture: rpc ${method} ${JSON.stringify(params)}`);
       if (method === "settings.get") return { settings: { autoUpdate: true } };
-      if (method === "system.getStatus") return { pid: 123, backendVersion: "fixture" };
+      if (method === "system.getStatus") return { pid: globalThis.__fixturePid(), backendVersion: globalThis.__fixturePid() === 123 ? "old-fixture" : "fixture" };
     }
     if (process.env.CEF_DIAG && method === "system.getStatus") return { pid: 42, backendVersion: "fixture", protocolVersion: 1, homeDir: "PRIVATE" };
     if (process.env.CEF_DIAG && method === "installations.list") return { installations: [{ id: "retail", gameType: "retail", selected: true, path: "PRIVATE" }] };

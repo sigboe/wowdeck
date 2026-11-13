@@ -29,6 +29,8 @@
             _7zz # engine 7z extraction tests (RAR tests skip without unfree unrar)
             git # tools/tidy.ts: merge-tree --write-tree needs git 2.38+
             gh # tools/tidy.ts: open PRs protect their branches
+            iproute2 # deck-test tunnel diagnostics: ss identifies busy local ports
+            procps # deck-test tunnel diagnostics: ps names the holder and its remote host
             wakeonlan # deck-test skill: wakes the sleeping Steam Deck over its USB Ethernet adapter
           ];
         };

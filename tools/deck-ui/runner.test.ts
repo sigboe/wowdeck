@@ -65,7 +65,7 @@ test("CDP connection, protocol and evaluation failures exit with an error", asyn
   }
 });
 
-for (const mode of ["ok", "guard-fail", "reload-fail"]) {
+for (const mode of ["ok", "guard-fail", "reload-fail", "engine-only"]) {
   test(`deployment ${mode}: backs up within plugin data and saves the guard before changing settings`, async () => {
     const root = mkdtempSync(path.join(tmpdir(), "wowdeck-runner-"));
     try {
@@ -73,7 +73,10 @@ for (const mode of ["ok", "guard-fail", "reload-fail"]) {
       mkdirSync(scripts, { recursive: true });
       mkdirSync(path.join(root, "backend/src/api"), { recursive: true });
       mkdirSync(path.join(root, "dist"));
-      for (const name of ["deck.mjs", "cdp.mjs", "connection.mjs", "diagnostics.mjs", "toast.mjs", "active.mjs"]) copyFileSync(path.join(here, name), path.join(scripts, name));
+      mkdirSync(path.join(root, "backend/out"), { recursive: true });
+      writeFileSync(path.join(root, "backend/out/wowdeck-x86_64"), "fixture engine version changed");
+      if (mode === "engine-only") writeFileSync(path.join(root, "backend/package.json"), JSON.stringify({ version: "new-fixture" }));
+      for (const name of ["deck.mjs", "cdp.mjs", "connection.mjs", "tunnel.mjs", "diagnostics.mjs", "toast.mjs", "active.mjs"]) copyFileSync(path.join(here, name), path.join(scripts, name));
       copyFileSync(path.join(here, "../../backend/src/api/contracts.ts"), path.join(root, "backend/src/api/contracts.ts"));
       writeFileSync(path.join(root, "dist/index.js"), "fixture frontend");
       writeFileSync(path.join(root, "main.py"), "fixture bridge");
@@ -97,6 +100,8 @@ for (const mode of ["ok", "guard-fail", "reload-fail"]) {
         expect(r.code).toBe(0);
         expect(r.text).toContain("fixture: tunnel fixture");
         expect(r.text).toContain("reloaded fixture");
+        expect(r.text).toContain("engine pid 123→456");
+        if (mode === "engine-only") expect(r.text).toContain("up: deployed engine");
         expect(r.text.indexOf("/guard.json")).toBeLessThan(r.text.indexOf("fixture: rpc settings.set"));
       }
     } finally {
@@ -541,4 +546,25 @@ test("frontend reload restores a control whose full label exceeds the compact fo
     expect(result.code).toBe(0);
     expect(result.text).toContain("frontend reloaded in memory");
   } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("missing RPC projection reports the field without a TypeError", async () => {
+  const r = await cli("deck.mjs", ["rpc", "system.getStatus", "--pick=absent"]);
+  expect(r.code).toBe(1);
+  expect(r.text).toContain("RPC pick path absent is missing");
+  expect(r.text).not.toContain("TypeError");
+});
+
+test("invalid run JSON explains the working quoted form", async () => {
+  const r = await cli("deck.mjs", ["run", 'rpc system.getStatus {"c":"s"}']);
+  expect(r.code).toBe(1);
+  expect(r.text).toContain(`run quoting: rpc system.getStatus '{"c":"s"}'`);
+});
+
+
+test("text probe reports the panel's scroll position", async () => {
+  const r = await cli("deck.mjs", ["run", 'probe text; eval "window.DFL.getFocusNavController().GetActiveNavTree().m_Root.m_element.scrollTop=300"; probe text']);
+  expect(r.code).toBe(0);
+  expect(r.text).toContain("scrollTop=[160]");
+  expect(r.text).toContain("scrollTop=[300]");
 });

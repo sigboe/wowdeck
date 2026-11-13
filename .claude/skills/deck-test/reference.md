@@ -77,3 +77,23 @@ over CDP with the source text, newlines included.
 Steam's screensaver swallows synthetic input; if focus stops moving, ask the
 owner to disable it for the run. In-memory style or nav-node trials are undone
 by a Steam UI reload; remove them when done.
+
+## Plugin-update offers with a fake older version
+
+Use a released-form version older than the channel's newest release (for
+example `0.1.9`) so real GitHub releases produce an update offer. A
+`-test.N` version uses the leave-test flow instead.
+
+1. Record the current local version files and the device's chosen update
+   channel (`settings.get`) before changing either.
+2. Run `make version-set VERSION=0.1.9` (or `nix develop -c make
+   version-set VERSION=0.1.9`). This keeps `package.json`, `plugin.json`
+   and `backend/package.json` in sync. The engine reads its reported version
+   from the backend manifest compiled into the binary; editing only the root
+   manifest does not change it.
+3. Run `tools/deck-ui/deck up --engine` to rebuild and deploy the engine too.
+   Check `system.getStatus --pick=backendVersion,pid` before testing the offer.
+4. After the pass, restore the device's original update channel and run
+   `deck down`. Restore the three local version files to their recorded
+   contents, preserving any changes that predated the pass. Leave the tested
+   build installed unless the brief requests a replacement.
