@@ -1,0 +1,2 @@
+target SharedJSContext → target=SharedJSContext
+eval --file=/tmp/rc-self.js --full → ["system.updateStage",{"starting":{"info":null,"staging":true,"checking":false,"download":{"received":0,"total":null}}},{"progress":{"info":null,"staging":true,"checking":false,"download":{"received":512,"total":1024}}},"system.cancelDownload","system.updateCheck",{"cancelled":{"info":{"status":"current","currentVersion":"1.2.0","channel":"stable"},"staging":false,"checking":false,"download":null}}]

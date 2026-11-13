@@ -1,6 +1,6 @@
 {
   "name": "wowdeck-backend",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "description": "Standalone WoW addon management engine for the WoWDeck Addon Manager Decky plugin",
   "type": "module",
   "private": true,

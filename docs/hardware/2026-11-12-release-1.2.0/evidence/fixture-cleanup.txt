@@ -1,0 +1,2 @@
+addon storage types list list
+fixture directory removed

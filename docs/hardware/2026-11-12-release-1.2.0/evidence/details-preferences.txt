@@ -1,0 +1,9 @@
+seek Details! --enter → pressed Enter on "Details! Damage MeterCurseForge · by Terciob · Details.20261109.15410.172Complet" (jump) → tree="ModalDialogOverlay_Modal_64" focus="Details! Damage Meter Terciob 376.4M downloads Det" tab=null
+probe text → text="scrollTop=[0,0,0] Details! Damage Meter Terciob 376.4M downloads Details.20261109.15410.172 Updated 9 Nov CURSEFORGECATACLYSMWRATHMOPANNIVERSARYCLASSIC ERATITAN REFORGEDMIDNIGHTFOREVER Description Most powerful, reliable, handsome, damage meter for World of Warcraft. Support Details! and get exclusive content: patreon.com/detailsaddon Details! does work on Retail WOW and implements new data not available on Blizzar"
+probe items → items="Details! Damage Meter Terciob 376.4M dow"
+shot /home/sigurdb/project/wowdeck-release-1.2.0/d… → /home/sigurdb/project/wowdeck-release-1.2.0/docs/hardware/2026-11-12-release-1.2.0/evidence/details.png 800x450
+press b → tree="QuickAccess-NA" focus="Details! Damage Meter CurseForge · by Terciob · De" tab="Get Addons"
+seek Get Addons → found "Get Addons" (jump, 4 matches) → focus="GET ADDONS"
+key right → focus="OPTIONS" tab="Options"
+seek RC 1.2.0 fixture --enter → pressed Enter on "RC 1.2.0 fixture" (jump) → tree="ModalDialogOverlay_Modal_65" focus="RC 1.2.0 fixture" tab=null
+probe items → items="RC 1.2.0 fixture | Forever Beta | Classic Era | Forever | Cancel"

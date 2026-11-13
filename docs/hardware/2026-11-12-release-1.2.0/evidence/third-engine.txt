@@ -1,0 +1,14 @@
+{"method":"DEVICE isolated engine fixture","name":"successful acquisition marks Updated","result":"passed"}
+{"method":"DEVICE isolated engine fixture","name":"provider offer invalidates Updated across persistence restart","result":"passed"}
+{"method":"DEVICE isolated engine fixture","name":"failed acquisition leaves Updated clear","result":"passed"}
+{"method":"DEVICE isolated engine fixture","name":"withdrawn offer does not restore Updated","result":"passed"}
+{"method":"DEVICE isolated engine fixture","name":"channel changes leave Updated clear","result":"passed"}
+{"method":"DEVICE isolated engine fixture","name":"scheduler global off, hidden, per-installation off, game running skip matrix","result":"passed"}
+{"method":"DEVICE isolated engine fixture","name":"scheduler eligible acquisition","result":"passed"}
+{"method":"DEVICE isolated engine fixture","name":"manual update-all acquires while hidden and auto off","result":"passed"}
+{"method":"DEVICE isolated engine fixture","name":"real isolated dependency archive mutation and parent removal","result":"passed"}
+{"method":"DEVICE isolated engine fixture","name":"local character discovery from isolated WTF files","result":"passed"}
+{"method":"DEVICE isolated engine fixture","name":"auction file pruning, unknown preservation, replacement","result":"passed"}
+{"method":"DEVICE isolated engine fixture","name":"cross-flavor local character faction discovery","result":"passed"}
+{"method":"DEVICE isolated engine fixture","name":"auction staging write failure preserves previous file","result":"passed"}
+{"method":"DEVICE isolated engine fixture","name":"TSM protected developer-copy removal keeps isolated files","result":"passed"}

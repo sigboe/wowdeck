@@ -1,0 +1,6 @@
+eval@SharedJSContext --file=/tmp/rc-clear.js → RC globals removed
+reload-frontend → frontend reloaded in memory; backend unchanged; tree="QuickAccess-NA" focus="GET ADDONS" route="/routes/library/home" plugin="WoWDeck" tab="Get Addons"
+open → no change
+seek GET ADDONS → found "Get Addons" (jump, 4 matches)
+key right → focus="OPTIONS" tab="Options"
+seek Previous versions → found "Previous versionsOn · 1.2 GB for 39 addons" (jump) → focus="Previous versions On · 1.2 GB for 39 addons"

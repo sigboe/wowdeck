@@ -1,0 +1,588 @@
+bun test v1.4.2 (744846f84)
+
+src/installationPreferences.test.tsx:
+(pass) Hide locks Auto updates off and unhiding restores its remembered value [218.07ms]
+
+src/selfUpdateStore.test.ts:
+(pass) self-update store: refresh > a trigger with no answer asks the engine, lands the answer, and tells subscribers [1.00ms]
+(pass) self-update store: refresh > concurrent triggers share one in-flight fetch [0.26ms]
+(pass) self-update store: refresh > a toast trigger joining an in-flight fetch still gets its toast [0.22ms]
+(pass) self-update store: refresh > a toast trigger joining a toast ask shares it [0.14ms]
+(pass) self-update store: refresh > only a toast trigger asks the engine with notify [0.14ms]
+(pass) self-update store: refresh > opening Options right after plugin load re-asks nothing [0.12ms]
+(pass) self-update store: refresh > a stale answer is re-asked on the next trigger [0.13ms]
+(pass) self-update store: refresh > wake and load re-ask even inside the freshness window [0.11ms]
+(pass) self-update store: on the PR channel > Options asks only the update check: the PR channel lives in it [0.13ms]
+(pass) self-update store: on the PR channel > Check again on an up-to-date PR channel says which PR it is up to date with [0.28ms]
+(pass) self-update store: on the PR channel > Update on the PR's newer build stages it like any update [0.39ms]
+(pass) self-update store: the load/wake toast > the load trigger toasts when the engine reports the version's toast pending [0.17ms]
+(pass) self-update store: the load/wake toast > a toast the engine already fired for this version stays quiet [0.16ms]
+(pass) self-update store: the load/wake toast > a cached answer (engine served its snapshot) toasts only when it is the version's first [0.11ms]
+(pass) self-update store: the load/wake toast > a check that could not run stays quiet [0.16ms]
+(pass) self-update store: the load/wake toast > an Options visit never toasts, even for a pending version [0.15ms]
+(pass) self-update store: a check that cannot run > keeps the held answer, silently, and the next trigger retries [0.21ms]
+(pass) self-update store: a check that cannot run > an answer that could not check is not fresh: the next Options visit re-asks [0.13ms]
+(pass) self-update store: a check that cannot run > a later failed ask keeps the answer already shown [0.13ms]
+(pass) self-update store: runUpdate > stages in the engine, hands off to Decky's installer, and reports the run [0.22ms]
+(pass) self-update store: runUpdate > a second press while staging starts nothing new [0.17ms]
+(pass) self-update store: runUpdate > an engine staging refusal says so and re-enables the button [0.17ms]
+(pass) self-update store: runUpdate > Decky's installer refusing says so [0.16ms]
+(pass) self-update store: runUpdate > afterwards the panel shows the engine's current answer, even inside the freshness window [0.16ms]
+(pass) self-update store: runUpdate > a check in flight since before staging cannot leave its stale answer showing [0.16ms]
+(pass) self-update store: runUpdate > a failed run refreshes the answer too [0.15ms]
+(pass) self-update store: runUpdate > a staging failure the engine cannot phrase is still said [0.21ms]
+(pass) self-update store: download progress and cancel > shows Downloading X of Y MB from the engine's events, then Preparing… during Decky's handoff [1.60ms]
+(pass) self-update store: download progress and cancel > without a known size it counts what has arrived [0.13ms]
+(pass) self-update store: download progress and cancel > progress with nothing downloading changes nothing [0.05ms]
+(pass) self-update store: download progress and cancel > Cancel stops the download silently: no toast, nothing handed to Decky, the button comes back [0.20ms]
+(pass) self-update store: download progress and cancel > Cancel with nothing downloading asks nothing [0.07ms]
+(pass) self-update store: download progress and cancel > a download that failed partway says so, and Update can be pressed again [0.16ms]
+(pass) self-update store: setChannel > stores the channel in the engine and shows the check it answers with [0.28ms]
+(pass) self-update store: setChannel > the switch's answer is fresh: opening Options right after re-asks nothing [0.13ms]
+(pass) self-update store: setChannel > a check in flight when the channel switches cannot overwrite the new channel's answer [0.20ms]
+(pass) self-update store: setChannel > a failed switch says so and keeps what is shown [0.23ms]
+(pass) self-update store: getChannel > reads the channel the engine stored, including one just switched to [0.28ms]
+(pass) self-update store: getChannel > an unreadable channel says so and resolves null [0.16ms]
+(pass) self-update store: checkAgain > asks the engine with force even inside the freshness window, and lands its answer [0.24ms]
+(pass) self-update store: checkAgain > checking is true while it runs, false once it lands [0.13ms]
+(pass) self-update store: checkAgain > each outcome has its own toast [0.26ms]
+(pass) self-update store: checkAgain > a failed network attempt is a failure, even though the engine serves the stored offer [0.18ms]
+(pass) self-update store: checkAgain > a second press while one runs joins it: one ask, one toast [0.15ms]
+(pass) self-update store: checkAgain > a press during a trigger's unforced ask waits it out, then forces its own [0.20ms]
+(pass) self-update store: checkAgain > a trigger during a Check again joins it [0.17ms]
+(pass) merged-building is visible without a button, dot or toast [0.28ms]
+(pass) ready merged beta shows the update dot and stages through Decky [0.26ms]
+(pass) closed and unlisted PR recovery > prClosed shows the return offer and accepts a relisted build [0.24ms]
+(pass) closed and unlisted PR recovery > prUnlisted shows the return offer and accepts a relisted build [0.05ms]
+
+backend/tests/installation-matrix.test.ts:
+{"component":"detection","flavor":"_retail_","validity":"confirmed","sources":["custom"]}
+{"component":"detection","flavor":"_ptr_","validity":"addon-data","sources":["custom"]}
+{"component":"detection","flavor":"_classic_beta_","validity":"likely","sources":["custom"]}
+{"component":"detection","flavor":"_classic_era_","validity":"confirmed","sources":["custom"]}
+(pass) installation matrix > detect registers exactly the valid installations [12.03ms]
+(pass) installation matrix > selecting each installation switches scan scope and search context [4.02ms]
+(pass) installation matrix > install → update lifecycle on the selected installation [34.73ms]
+{"component":"detection","flavor":"_retail_","validity":"confirmed","sources":["custom"]}
+{"component":"detection","flavor":"_ptr_","validity":"addon-data","sources":["custom"]}
+{"component":"detection","flavor":"_classic_beta_","validity":"likely","sources":["custom"]}
+{"component":"detection","flavor":"_classic_era_","validity":"confirmed","sources":["custom"]}
+(pass) installation matrix > manual installation joins the list and survives re-detection [10.12ms]
+(pass) installation matrix > leftover/empty/malformed flavors never become selectable [0.17ms]
+(pass) installation matrix > full state survives an engine restart [1.98ms]
+
+backend/tests/installation-registry.test.ts:
+{"component":"detection","flavor":"_retail_","validity":"confirmed","sources":["prefix-registry"]}
+{"component":"detection","flavor":"_classic_beta_","validity":"addon-data","sources":["prefix-registry"]}
+{"component":"detection","flavor":"_classic_era_","validity":"likely","sources":["prefix-registry"]}
+{"component":"detection","flavor":"_retail_","validity":"confirmed","sources":["prefix-registry"]}
+{"component":"detection","flavor":"_classic_beta_","validity":"addon-data","sources":["prefix-registry"]}
+{"component":"detection","flavor":"_classic_era_","validity":"likely","sources":["prefix-registry"]}
+(pass) a C drive flavor entry discovers every sibling and preserves validity tiers [31.50ms]
+{"component":"prefix-registry","reason":"missing-registry"}
+{"component":"detection","flavor":"_retail_","validity":"confirmed","sources":["prefix-registry"]}
+(pass) a Lutris prefix under the default Games library is visited without system.yml [6.75ms]
+{"component":"detection","flavor":"_retail_","validity":"confirmed","sources":["prefix-registry"]}
+{"component":"prefix-registry","reason":"unmapped-drive"}
+(pass) D drive symlinks discover an SD install without following raw device entries [13.10ms]
+{"component":"detection","flavor":"_retail_","validity":"confirmed","sources":["prefix-registry"]}
+{"component":"detection","flavor":"_classic_beta_","validity":"confirmed","sources":["prefix-registry"]}
+{"component":"detection","flavor":"_classic_era_","validity":"confirmed","sources":["prefix-registry"]}
+{"component":"detection","flavor":"_forever_","validity":"confirmed","sources":["prefix-registry"]}
+{"component":"detection","flavor":"_retail_","validity":"confirmed","sources":["custom","prefix-registry"]}
+{"component":"detection","flavor":"_classic_beta_","validity":"confirmed","sources":["custom","prefix-registry"]}
+{"component":"detection","flavor":"_classic_era_","validity":"confirmed","sources":["custom","prefix-registry"]}
+{"component":"detection","flavor":"_forever_","validity":"confirmed","sources":["custom","prefix-registry"]}
+(pass) recorded Z path shapes find Retail beside Forever and Beta and retain registry priority [13.69ms]
+{"component":"detection","flavor":"_retail_","validity":"confirmed","sources":["prefix-registry"]}
+{"component":"prefix-registry","reason":"ambiguous-path"}
+{"component":"detection","flavor":"_retail_","validity":"confirmed","sources":["prefix-registry"]}
+(pass) case differences resolve to disk names, while ambiguous segments are skipped [19.70ms]
+{"component":"prefix-registry","reason":"missing-registry"}
+{"component":"detection","flavor":"_classic_era_","validity":"confirmed","sources":["prefix-registry"]}
+(pass) lutris prefix registries discover an installation outside their prefix [6.73ms]
+{"component":"prefix-registry","reason":"missing-registry"}
+{"component":"detection","flavor":"_classic_era_","validity":"confirmed","sources":["prefix-registry"]}
+(pass) bottles prefix registries discover an installation outside their prefix [5.92ms]
+{"component":"prefix-registry","reason":"missing-registry"}
+{"component":"detection","flavor":"_classic_era_","validity":"confirmed","sources":["prefix-registry"]}
+(pass) flatpak-bottles prefix registries discover an installation outside their prefix [5.93ms]
+{"component":"prefix-registry","reason":"missing-registry"}
+{"component":"detection","flavor":"_classic_era_","validity":"confirmed","sources":["prefix-registry"]}
+(pass) custom prefix registries discover an installation outside their prefix [6.75ms]
+(pass) missing registry hits cannot stop other discoveries or expose registry data in logs [3.93ms]
+(pass) unreadable registry hits cannot stop other discoveries or expose registry data in logs [2.93ms]
+(pass) stale registry hits cannot stop other discoveries or expose registry data in logs [7.02ms]
+(pass) private-server registry hits cannot stop other discoveries or expose registry data in logs [5.54ms]
+(pass) unmapped registry hits cannot stop other discoveries or expose registry data in logs [5.65ms]
+(pass) ambiguous registry hits cannot stop other discoveries or expose registry data in logs [7.15ms]
+(pass) only WoW Blizzard keys supply paths; user.reg and product.db never supply candidates [13.76ms]
+(pass) each detected flavor logs every source that found it, without paths [9.65ms]
+(pass) registry discovery works when grep is unavailable or fails (%s) [1.99ms]
+(pass) registry discovery works when grep is unavailable or fails (/no-such-grep-executable) [1.89ms]
+(pass) grep handles newline filenames and searches batches beyond the first 128 registries [52.64ms]
+
+backend/tests/libraries.test.ts:
+(pass) who needs a library > a source list matches by provider and id, so equal ids on two providers don't mix [0.32ms]
+(pass) who needs a library > a TOC naming one of its folders, required or optional, whatever the provider and case [0.24ms]
+(pass) who needs a library > an addon that moved off CurseForge still needs the library its TOC names (takeover, Change source) [0.09ms]
+(pass) who needs a library > a library that moved off CurseForge stays needed by its dependant's TOC [0.15ms]
+(pass) who needs a library > an unmanaged folder's TOC counts; an addon's TOC naming its own folders doesn't [0.18ms]
+(pass) what a Remove leaves unneeded > the libraries only it needed, and those only they needed, dependants first [0.14ms]
+(pass) what a Remove leaves unneeded > never a library something else still needs, by source list or TOC [0.15ms]
+(pass) what a Remove leaves unneeded > never a library that was unneeded already, nor an addon the user chose [0.15ms]
+(pass) what a Remove leaves unneeded > a library kept (its removal failed) keeps the ones only it needed [0.11ms]
+(pass) library flags after an import > a library only if the list marks it and something needs it; others untouched [0.27ms]
+
+backend/tests/tsm-addons-rpc.test.ts:
+[rpc] addons.install failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.install failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.setChannel failed (invalid_request): TradeSkillMaster has no release channels
+[transaction] InjectedFault: Injected failure at state.write
+[transaction] InjectedFault: Injected failure at state.write
+[transaction] undo failed: InjectedFault: Injected failure at folder.restore
+[transaction] 000e991a-d5c5-4a29-8a93-a80160db02a3: undo stopped; work folder and marker kept
+(pass) addon RPC operations for flavor %s with beta entitlement %s [284.60ms]
+[rpc] addons.install failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.install failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.setChannel failed (invalid_request): TradeSkillMaster has no release channels
+[transaction] InjectedFault: Injected failure at state.write
+[transaction] InjectedFault: Injected failure at state.write
+[transaction] undo failed: InjectedFault: Injected failure at folder.restore
+[transaction] 57cee90c-3681-4783-b558-9ae3e0fbd6be: undo stopped; work folder and marker kept
+(pass) addon RPC operations for flavor %s with beta entitlement %s [276.54ms]
+[rpc] addons.install failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.install failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.setChannel failed (invalid_request): TradeSkillMaster has no release channels
+[transaction] InjectedFault: Injected failure at state.write
+[transaction] InjectedFault: Injected failure at state.write
+[transaction] undo failed: InjectedFault: Injected failure at folder.restore
+[transaction] fa8c5e11-16d4-4eb0-b86f-9fcea700ece6: undo stopped; work folder and marker kept
+(pass) addon RPC operations for flavor %s with beta entitlement %s [255.74ms]
+[rpc] addons.install failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.install failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.setChannel failed (invalid_request): TradeSkillMaster has no release channels
+[transaction] InjectedFault: Injected failure at state.write
+[transaction] InjectedFault: Injected failure at state.write
+[transaction] undo failed: InjectedFault: Injected failure at folder.restore
+[transaction] de9a07fb-f5b5-41c2-a661-a6f10b42c02a: undo stopped; work folder and marker kept
+(pass) addon RPC operations for flavor %s with beta entitlement %s [275.92ms]
+[rpc] addons.install failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.install failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.setChannel failed (invalid_request): TradeSkillMaster has no release channels
+[transaction] InjectedFault: Injected failure at state.write
+[transaction] InjectedFault: Injected failure at state.write
+[transaction] undo failed: InjectedFault: Injected failure at folder.restore
+[transaction] 085aeefd-4600-4fb5-9a0d-58954b0cd9ce: undo stopped; work folder and marker kept
+(pass) addon RPC operations for flavor %s with beta entitlement %s [256.54ms]
+[rpc] addons.install failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.install failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.setChannel failed (invalid_request): TradeSkillMaster has no release channels
+[transaction] InjectedFault: Injected failure at state.write
+[transaction] InjectedFault: Injected failure at state.write
+[transaction] undo failed: InjectedFault: Injected failure at folder.restore
+[transaction] d71bba5f-85ae-480e-b823-36ddc3103fd1: undo stopped; work folder and marker kept
+(pass) addon RPC operations for flavor %s with beta entitlement %s [256.20ms]
+[rpc] addons.install failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.install failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.setChannel failed (invalid_request): TradeSkillMaster has no release channels
+[transaction] InjectedFault: Injected failure at state.write
+[transaction] InjectedFault: Injected failure at state.write
+[transaction] undo failed: InjectedFault: Injected failure at folder.restore
+[transaction] 92529cb5-3233-49b1-b2a6-55e0e52667df: undo stopped; work folder and marker kept
+(pass) addon RPC operations for flavor %s with beta entitlement %s [264.39ms]
+[rpc] addons.install failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.install failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.setChannel failed (invalid_request): TradeSkillMaster has no release channels
+[transaction] InjectedFault: Injected failure at state.write
+[transaction] InjectedFault: Injected failure at state.write
+[transaction] undo failed: InjectedFault: Injected failure at folder.restore
+[transaction] 649254ab-7171-40a8-a940-cd280f91a436: undo stopped; work folder and marker kept
+(pass) addon RPC operations for flavor %s with beta entitlement %s [262.62ms]
+[rpc] addons.install failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.install failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.setChannel failed (invalid_request): TradeSkillMaster has no release channels
+[transaction] InjectedFault: Injected failure at state.write
+[transaction] InjectedFault: Injected failure at state.write
+[transaction] undo failed: InjectedFault: Injected failure at folder.restore
+[transaction] 234615a6-0821-4205-a4ba-2c2c586ba135: undo stopped; work folder and marker kept
+(pass) addon RPC operations for flavor %s with beta entitlement %s [253.82ms]
+[rpc] addons.install failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.install failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.setChannel failed (invalid_request): TradeSkillMaster has no release channels
+[transaction] InjectedFault: Injected failure at state.write
+[transaction] InjectedFault: Injected failure at state.write
+[transaction] undo failed: InjectedFault: Injected failure at folder.restore
+[transaction] d14259ef-9e43-4891-88b9-4a8fcb7b83bc: undo stopped; work folder and marker kept
+(pass) addon RPC operations for flavor %s with beta entitlement %s [258.27ms]
+[rpc] addons.install failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.install failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.setChannel failed (invalid_request): TradeSkillMaster has no release channels
+[transaction] InjectedFault: Injected failure at state.write
+[transaction] InjectedFault: Injected failure at state.write
+[transaction] undo failed: InjectedFault: Injected failure at folder.restore
+[transaction] 7c4c009c-4f59-4dac-877c-da350e015628: undo stopped; work folder and marker kept
+(pass) addon RPC operations for flavor %s with beta entitlement %s [219.83ms]
+[rpc] addons.install failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.install failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[transaction] InjectedFault: Injected failure at state.write
+[transaction] InjectedFault: Injected failure at state.write
+[transaction] undo failed: InjectedFault: Injected failure at folder.restore
+[transaction] 0151b0e4-7cf0-4934-a33e-260cbe40687e: undo stopped; work folder and marker kept
+(pass) addon RPC operations for flavor %s with beta entitlement %s [231.72ms]
+[rpc] addons.install failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.install failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[transaction] InjectedFault: Injected failure at state.write
+[transaction] InjectedFault: Injected failure at state.write
+[transaction] undo failed: InjectedFault: Injected failure at folder.restore
+[transaction] fe2701d8-7fbb-4db6-bb82-ae2c3985a590: undo stopped; work folder and marker kept
+(pass) addon RPC operations for flavor %s with beta entitlement %s [215.05ms]
+[rpc] addons.install failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.install failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[transaction] InjectedFault: Injected failure at state.write
+[transaction] InjectedFault: Injected failure at state.write
+[transaction] undo failed: InjectedFault: Injected failure at folder.restore
+[transaction] 1bd53817-64c8-4397-96cc-2cbf46a8a8d4: undo stopped; work folder and marker kept
+(pass) addon RPC operations for flavor %s with beta entitlement %s [255.79ms]
+[rpc] addons.install failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.install failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[transaction] InjectedFault: Injected failure at state.write
+[transaction] InjectedFault: Injected failure at state.write
+[transaction] undo failed: InjectedFault: Injected failure at folder.restore
+[transaction] 2c9a0337-afdf-483e-a662-d3db2c80c453: undo stopped; work folder and marker kept
+(pass) addon RPC operations for flavor %s with beta entitlement %s [259.76ms]
+[rpc] addons.install failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.install failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[transaction] InjectedFault: Injected failure at state.write
+[transaction] InjectedFault: Injected failure at state.write
+[transaction] undo failed: InjectedFault: Injected failure at folder.restore
+[transaction] cceeb0e8-5f2e-4002-aa32-b19f00235b65: undo stopped; work folder and marker kept
+(pass) addon RPC operations for flavor %s with beta entitlement %s [288.29ms]
+[rpc] addons.install failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.install failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[transaction] InjectedFault: Injected failure at state.write
+[transaction] InjectedFault: Injected failure at state.write
+[transaction] undo failed: InjectedFault: Injected failure at folder.restore
+[transaction] 26062f45-2c96-4ccc-9ffb-2a3fc70dcabd: undo stopped; work folder and marker kept
+(pass) addon RPC operations for flavor %s with beta entitlement %s [278.72ms]
+[rpc] addons.install failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.install failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[transaction] InjectedFault: Injected failure at state.write
+[transaction] InjectedFault: Injected failure at state.write
+[transaction] undo failed: InjectedFault: Injected failure at folder.restore
+[transaction] bdc2dc78-5e51-48ab-946c-9520c72f5ea3: undo stopped; work folder and marker kept
+(pass) addon RPC operations for flavor %s with beta entitlement %s [288.84ms]
+[rpc] addons.install failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.install failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[transaction] InjectedFault: Injected failure at state.write
+[transaction] InjectedFault: Injected failure at state.write
+[transaction] undo failed: InjectedFault: Injected failure at folder.restore
+[transaction] b5225899-1e75-4b83-81b8-916e716d6d4d: undo stopped; work folder and marker kept
+(pass) addon RPC operations for flavor %s with beta entitlement %s [307.22ms]
+[rpc] addons.install failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.install failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[transaction] InjectedFault: Injected failure at state.write
+[transaction] InjectedFault: Injected failure at state.write
+[transaction] undo failed: InjectedFault: Injected failure at folder.restore
+[transaction] c0cce7a5-77d4-4f0a-9fb9-1d1abfbf00e4: undo stopped; work folder and marker kept
+(pass) addon RPC operations for flavor %s with beta entitlement %s [282.91ms]
+[rpc] addons.install failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.install failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[transaction] InjectedFault: Injected failure at state.write
+[transaction] InjectedFault: Injected failure at state.write
+[transaction] undo failed: InjectedFault: Injected failure at folder.restore
+[transaction] 671a7b8f-617f-45ee-a139-a78b9eb44926: undo stopped; work folder and marker kept
+(pass) addon RPC operations for flavor %s with beta entitlement %s [262.38ms]
+[rpc] addons.install failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.install failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.changeSource failed (invalid_request): TradeSkillMaster installs this addon
+[rpc] addons.adopt failed (invalid_request): TradeSkillMaster installs this addon
+[transaction] InjectedFault: Injected failure at state.write
+[transaction] InjectedFault: Injected failure at state.write
+[transaction] undo failed: InjectedFault: Injected failure at folder.restore
+[transaction] 0ad9240c-6335-44d6-b114-c202d77f5527: undo stopped; work folder and marker kept
+(pass) addon RPC operations for flavor %s with beta entitlement %s [285.06ms]
+
+backend/tests/tsm-auction-data-file.test.ts:
+(pass) apply creates a missing file and read reports what it wrote [1.35ms]
+(pass) a missing or empty file reads as no entries, and applying nothing writes an empty file [0.46ms]
+(pass) CRLF managed lines are read and rewritten with LF; CRLF raw lines are kept verbatim [0.40ms]
+(pass) a last line without a final newline is kept and the managed lines follow on their own line [0.53ms]
+(pass) unknown and malformed lines stay verbatim before the managed entries and never give times [0.48ms]
+(pass) a multi-key update replaces only its keys and pruning drops unfollowed keys [0.57ms]
+(pass) empty updates still prune; region data and app info survive following nothing [0.34ms]
+(pass) updates for unfollowed realms are dropped, region updates are always written [0.30ms]
+(pass) newer data on disk wins unless forced; equal and newer times replace; unrelated tags and keys survive [1.07ms]
+(pass) read errors other than a missing file throw and apply reports the read step [0.54ms]
+(pass) a directory where the temp file goes fails the write; the file stays and an independent target still writes [1.25ms]
+(pass) a missing folder fails the write and leaves nothing behind [0.19ms]
+(pass) a leftover temp file or link is dropped, never written through [0.39ms]
+(pass) freshness excludes app info and takes the latest time per key across tags [0.22ms]
+(pass) the app info entry escapes the payload and round-trips through the file [0.64ms]
+
+ 124 pass
+ 0 fail
+ 2621 expect() calls
+Ran 124 tests across 7 files. [6.89s]

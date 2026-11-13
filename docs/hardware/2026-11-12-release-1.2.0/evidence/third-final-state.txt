@@ -1,0 +1,5 @@
+eval@SharedJSContext Object.keys(window).filter(k=… → undefined
+rpc settings.get --pick=settings.autoUpdate → true
+rpc installations.list --pick=installations[].id,i… → {"installations[].id":["351cab445486","032c354a655f","5e80311f078e"],"installations[].selected":[false,false,true],"installations[].autoUpdateEnabled":[true,false,true],"installations[].hidden":[true,false,false]}
+close → tree="GamepadUI_Full_Root" focus="" tab=null
+diagnose → {"ui":{"tree":"GamepadUI_Full_Root","focus":"","route":"/routes/library/home","plugin":"WoWDeck","tab":null},"panel":{"tab":null,"busy":null,"alerts":[]},"engine":{"backendVersion":"1.2.0","protocolVersion":1,"pid":155309},"installations":{"count":3,"active":[{"id":"5e80311f078e","gameType":"forever"}]},"errors":[]}

@@ -1,0 +1,4 @@
+target: deck
+ssh: deck@10.10.1.39
+tunnel: opened pid 1121090 to deck@10.10.1.39 on 18080, 9222
+up: the Deck already runs this build (--reload to reload anyway)

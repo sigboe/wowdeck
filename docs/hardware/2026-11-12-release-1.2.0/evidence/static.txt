@@ -1,0 +1,16 @@
+package.json 1.2.0
+backend/package.json 1.2.0
+plugin.json 1.2.0
+deck-test symlink True resolves /home/sigurdb/project/wowdeck-release-1.2.0/.claude/skills/deck-test
+
+name: deck-test
+description: >-
+  Automatically wake, deploy to and test the owner's Steam Deck through tools/deck-ui/deck under standing device-test approval. Use whenever the owner asks to test, verify, check, look at or reproduce something on the Deck or on device. Pass a brief as the argument: the build (branch or commit, engine change or not), every claim to verify, and anything the owner said about the run.
+context: fork
+
+droiddeck-test symlink True resolves /home/sigurdb/project/wowdeck-release-1.2.0/.claude/skills/droiddeck-test
+
+name: droiddeck-test
+description: Deploy to the owner's Android phone running DroidDeck (arm64 Steam in a proot container) and test there over adb and droiddeckctl. Use whenever the owner asks to test, verify, check or reproduce something on the phone, on DroidDeck, or on arm64.
+
+PyYAML unavailable

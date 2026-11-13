@@ -72,7 +72,10 @@ own. Without Nix, install those packages from your distro and run
 ### Workflow skills
 
 The agent guidelines reference two skill sets. The project's own skills
-(`deck-test`, `unslop`) live in `.claude/skills/`. The `mattpocock/skills`
+(`deck-test`, `droiddeck-test`, `unslop`) live in `.claude/skills/`.
+The device-test folders are also symlinked from `.agents/skills/` for Codex
+discovery. In Codex, type `$deck-test` or `$droiddeck-test` to select them.
+Both agents use the same instructions and supporting files. The `mattpocock/skills`
 set (`to-spec`, `to-tickets`, `triage`, `implement`, `writing-for-agents`, …)
 is vendored into `.agents/skills/` and tracked by `skills-lock.json` so
 OpenCode can load it too. OpenCode cannot use Claude Code plugins, and Claude

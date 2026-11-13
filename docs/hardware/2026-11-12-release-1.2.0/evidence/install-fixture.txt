@@ -1,0 +1,12 @@
+seek Manual Install --enter → pressed Enter on "Manual Install" (jump) → focus=""
+seek Browse --enter → pressed Enter on "Browse…" (jump) → tree="ModalDialogOverlay_Modal_63" tab=null
+seek Applications --enter → pressed Enter on "Applications Folder 11/9/2026, 6:40:13 PM" (jump) → focus="CardForge Folder 1/7/2026, 6:43:13 PM"
+seek World of Warcraft --enter → pressed Enter on "World of Warcraft Folder 11/12/2026, 11:08:46 PM" (jump) → focus="wowdeck-rc-120-fixture Folder 11/12/2026, 11:08:46"
+seek wowdeck-rc-120-fixture --enter → pressed Enter on "wowdeck-rc-120-fixture Folder 11/12/2026, 11:08:46 PM" (jump) → focus="RCFixture.zip 202 B 11/12/2026, 11:08:46 PM"
+seek RCFixture.zip --enter → pressed Enter on "RCFixture.zip 202 B 11/12/2026, 11:08:46 PM" (jump) → tree="QuickAccess-NA" focus="Install" tab="Get Addons"
+probe focus → focus="Install"
+seek Install --exact --enter → pressed Enter on "Install" (jump)
+probe text → text="scrollTop=[0,0] WoWDeck Manager F6 GET ADDONS F7 RC 1.2.0 fixture Search Latest Popular Manual Install TradeSkillMaster From a link Look up A GitHub repository URL, owner/repository or github:owner/repository, a WoWInterface addon URL, or a direct link to a .zip, .rar or .7z file From a file Browse… Pick a .zip, .rar or .7z archive on this Deck. Downloads, a USB stick and the SD card all work Only install archive"
+seek Get Addons → found "Get Addons" (jump, 5 matches) → focus="GET ADDONS"
+key left → focus="MY ADDONS" tab="My Addons"
+probe items → items="MY ADDONS | RC 1.2.0 fixture | All up to date"

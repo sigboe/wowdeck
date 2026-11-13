@@ -1,0 +1,4 @@
+probe tab focus → tab="Get Addons" focus="GET ADDONS"
+probe items → items="GET ADDONS | Forever | Search | Latest | Popular | Manual Install | TradeSkillMaster"
+FAIL no match for "Options"; focusables here: Notifications Quick Settings Performance | WoWDeck Manager F6 Get Addons F7 Forever | WoWDeck Manager | F6 Get Addons F7 Forever Search Latest P | F6 Get Addons F7 | Get Addons
+at: tree="QuickAccess-NA" focus="GET ADDONS" route="/routes/library/plugin" plugin="WoWDeck" tab="Get Addons"
