@@ -1,0 +1,2 @@
+seek Forever --enter → pressed Enter on "Forever" (jump) → tree="ModalDialogOverlay_Modal_61" focus="Forever" tab=null
+probe items → items="Classic Era | Forever | Cancel"

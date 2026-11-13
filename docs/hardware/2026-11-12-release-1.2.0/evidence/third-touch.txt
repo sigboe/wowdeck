@@ -1,0 +1,5 @@
+{"x":184.002685546875,"y":666.0400390625,"text":"Previous versions"}
+synthetic CDP touch dispatched
+probe tree → tree="ModalDialogOverlay_Modal_89"
+probe text → text="scrollTop=[0,0,0] Previous versions Keep previous versions After an update, an addon's Options menu can roll it back Space used … Clear previous versions Close"
+press b → tree="QuickAccess-NA" focus="Previous versions On · 1.2 GB for 39 addons" tab="Options"

@@ -1,0 +1,6 @@
+eval@SharedJSContext --file=/tmp/rc-third-offer.js → {"info":{"status":"available","currentVersion":"1.2.0","channel":{"kind":"stable"},"offer":{"kind":"update","version":"1.2.1","headline":"WoWDeck 1.2.1 available","buttonLabel":"Update","toastBody":"Update in Options","rowLabel":"WoWDeck update available","releaseNotes":null,"releaseUrl":"https://example.invalid","installable":true},"checked":true,"failed":false,"toastPending":false},"staging":false,"checking":false,"download":null}
+seek Update channel → found "Update channel" (jump, 2 matches) → focus="Update channel"
+key left → focus=""
+probe focus → focus=""
+key right → focus="Update channel"
+probe focus → focus="Update channel"

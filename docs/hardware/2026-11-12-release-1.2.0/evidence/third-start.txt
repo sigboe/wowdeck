@@ -1,0 +1,7 @@
+reload-frontend --file=/tmp/rc-third.js → frontend reloaded in memory; backend unchanged; tree="QuickAccess-NA" focus="MY ADDONS" route="/routes/library/home" plugin="WoWDeck" tab="My Addons"
+seek MY ADDONS → found "My Addons" (jump, 5 matches)
+key right → focus="GET ADDONS" tab="Get Addons"
+key right → focus="OPTIONS" tab="Options"
+seek Previous versions --enter → pressed Enter on "Previous versionsOn · 1.2 GB for 39 addons" (jump) → tree="ModalDialogOverlay_Modal_78" focus="" tab=null
+probe text → text="scrollTop=[0,0,0] Previous versions Keep previous versions After an update, an addon's Options menu can roll it back Space used 1.2 GB for 39 addons Clear previous versions Close"
+press b → tree="QuickAccess-NA" focus="Previous versions On · 1.2 GB for 39 addons" tab="Options"

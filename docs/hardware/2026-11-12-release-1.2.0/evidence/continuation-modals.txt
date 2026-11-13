@@ -1,0 +1,18 @@
+seek Manage backups --enter → pressed Enter on "Manage backupsRestore, delete or import (WowUp backups too)" (jump) → tree="ModalDialogOverlay_Modal_73" focus="Back up now Save a copy of your settings" tab=null
+probe items → items="Back up now Save a copy of your settings | Import from file… Add a backup zip made  | Copy settings from another version… Brin"
+press b → tree="QuickAccess-NA" focus="Manage backups Restore, delete or import (WowUp ba" tab="Options"
+probe focus → focus="Manage backups Restore, delete or import (WowUp ba"
+seek GitHub --enter → pressed Enter on "GitHub" (jump) → tree="ModalDialogOverlay_Modal_74" focus="" tab=null
+probe items → items="Remove token | Save | Cancel"
+press b → tree="QuickAccess-NA" focus="GitHub" tab="Options"
+probe focus → focus="GitHub"
+seek World of Warcraft in Steam --enter → pressed Enter on "World of Warcraft in SteamWorld of Warcraft: its game page and tile show addon u" (jump) → tree="ModalDialogOverlay_Modal_75" focus="" tab=null
+probe items → items="World of Warcraft App 4221385996 · Curre | Card Forge MTG App 2520552948 | Dolphin App 4276264303 | Dolphin Emulator App 3926021613 | Firefox Web Browser App 3056841011 | Flatseal App 3187900243 | GeForce NOW App 2251963345 | Google Chrome (browser) App 3481229407 | Grayjay App 3750314366 | Guitar Hero III: Legends of Rock App 216 | KDE Plasma App 3316727340 | Konsole App 2829376539 | Link's Awakening DX HD App 2425346052 | Minecraft App 3054890945 | Super Mario 64 Plus App 3179033851 | Super Mario 64 Render96 App 3294529775 | Super Mario Bros. Wonder App 3062119203 | Super Mario Bros. Wonder (Ryujinx) App 2 | Super Mario Odyssey App 3767734737 | Super Mario Sunshine App 3511892380"
+press b → tree="QuickAccess-NA" focus="World of Warcraft in Steam World of Warcraft: its " tab="Options"
+probe focus → focus="World of Warcraft in Steam World of Warcraft: its "
+seek Previous versions --enter → pressed Enter on "Previous versionsOn · 1.2 GB for 39 addons" (jump) → tree="ModalDialogOverlay_Modal_76" focus="" tab=null
+probe items → items="Space used 1.2 GB for 39 addons | Clear previous versions | Close"
+press b → tree="QuickAccess-NA" focus="Previous versions On" tab="Options"
+seek Update channel --enter → pressed Enter on "Update channel" (jump) → tree="ModalDialogOverlay_Modal_77" focus="Stable Recommended for most users." tab=null
+probe items → items="Stable Recommended for most users. | Beta Built from every merged change. New | PR builds… Builds of open pull requests,"
+press b → tree="QuickAccess-NA" focus="Update channel" tab="Options"

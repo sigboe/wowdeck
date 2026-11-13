@@ -1,0 +1,9 @@
+press b → tree="QuickAccess-NA" focus="Previous versions On · 1.2 GB for 39 addons" tab="Options"
+eval@SharedJSContext --file=/tmp/rc-third-hook.js → isolated rollback fixture
+seek Previous versions --enter → pressed Enter on "Previous versionsOn · 1.2 GB for 39 addons" (jump) → tree="ModalDialogOverlay_Modal_80" focus="" tab=null
+wait text ~ Couldn → text="scrollTop=[0,0,0] Previous versions Keep previous versions After an update, an addon's Options menu can roll it back Space used Couldn't load previous versions Clear previous versions Try again Close"
+probe text → text="scrollTop=[0,0,0] Previous versions Keep previous versions After an update, an addon's Options menu can roll it back Space used Couldn't load previous versions Clear previous versions Try again Close"
+eval@SharedJSContext window.__rcRetry=true → true
+seek Try again --enter → pressed Enter on "Try again" (jump) → focus="Clear previous versions"
+FAIL wait text ~ 0: text="scrollTop=[] Previous versions Keep previous versions After an update, an addon's Options menu can roll it back Space used None kept Clear previous versions Close"
+at: tree="ModalDialogOverlay_Modal_80" focus="Clear previous versions" route="/routes/library/home" plugin="WoWDeck" tab=null

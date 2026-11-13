@@ -1,0 +1,15 @@
+seek Update channel --enter → pressed Enter on "Update channel" (jump) → tree="ModalDialogOverlay_Modal_56" focus="Stable Recommended for most users." tab=null
+seek PR builds --enter → pressed Enter on "PR builds… Builds of open pull requests, for testing changes before they are rel" (jump) → tree="ModalDialogOverlay_Modal_57" focus="Close"
+probe text → text="scrollTop=[] PR Builds No PR builds right now. Close"
+probe items → items="No PR builds right now. | Close"
+press b → tree="QuickAccess-NA" focus="Update channel" tab="Options"
+probe focus → focus="Update channel"
+seek Previous versions --enter → pressed Enter on "Previous versionsOn · 1.2 GB for 39 addons" (jump) → tree="ModalDialogOverlay_Modal_58" focus="" tab=null
+probe text → text="scrollTop=[0,0,0] Previous versions Keep previous versions After an update, an addon's Options menu can roll it back Space used 1.2 GB for 39 addons Clear previous versions Close"
+press b → tree="QuickAccess-NA" focus="Previous versions On" tab="Options"
+probe focus → focus="Previous versions On"
+seek Updates inside WoW --enter → pressed Enter on "Updates inside WoWShown in game when the WowUp Companion addon is installed. Ins" (jump) → focus="Updates inside WoW Shown in game when the WowUp Co"
+probe text → text="scrollTop=[1228.90625,0,0,0,0,0] WoWDeck Manager F6 OPTIONS F7 WOW INSTALLATIONS Active installation Version 1.60.1 Detected automatically Forever Find WoW installations Looks in Steam, Lutris and other game folders Add WoW folder The World of Warcraft folder, or a version folder such as _retail_ ADDON LIST Export addon list Share it with WowUp or another device Import addon list From another computer or WowUp SETTINGS BACKUP WoW"
+press b → focus=null plugin=null tab=null
+FAIL no match for "OPTIONS"; focusables here: Notifications Quick Settings Performance | Decky WoWDeck TunnelDeck MagicPods TabMa | Decky | WoWDeck | TunnelDeck | MagicPods
+at: tree="QuickAccess-NA" focus=null route="/routes/library/plugin" plugin=null tab=null

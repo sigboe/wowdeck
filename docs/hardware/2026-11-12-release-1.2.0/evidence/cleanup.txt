@@ -1,0 +1,4 @@
+rpc installations.select {"installationId":"5e8031… → {"installation":{"autoUpdateEnabled":true,"hidden":false,"id":"5e80311f078e","gameType":"forever","path":"/home/deck/Applications/World of Warcraft/_forever_","addonsPath":"/home/deck/Applications/World of Warcraft/_forever_/Interface/AddOns","displayName":"Forever","clientName":"Forever","clientFullName":"World of Warcraft: Forever","source":"detected","selected":true,"version":"1.60.1.70862","steamGames":[{"appId":4221385996,"name":"World of Warcraft"}]}}
+rpc installations.remove {"installationId":"d8949b… → {"installationId":"d8949b548cca"}
+close → tree="GamepadUI_Full_Root" focus="NON-STEAM 22" tab=null
+nav /library/home → focus="" route="/routes/library/home"

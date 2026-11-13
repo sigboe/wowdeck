@@ -1,0 +1,5 @@
+open → tree="QuickAccess-NA" focus="MY ADDONS" tab="My Addons"
+seek My Addons → found "My Addons" (jump, 5 matches)
+key right → focus="GET ADDONS" tab="Get Addons"
+probe text → text="scrollTop=[0,0] WoWDeck Manager F6 GET ADDONS F7 Forever Search Latest Popular Manual Install TradeSkillMaster"
+probe items → items="GET ADDONS | Forever | Search | Latest | Popular | Manual Install | TradeSkillMaster"

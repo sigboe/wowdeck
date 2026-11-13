@@ -1,0 +1,2 @@
+{"method":"DEVICE isolated engine fixture","case":"stable-after-beta preference true","result":"passed"}
+{"method":"DEVICE isolated engine fixture","case":"stable-after-beta preference false","result":"passed"}

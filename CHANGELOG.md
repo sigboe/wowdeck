@@ -6,6 +6,8 @@ What's new in each version of WoWDeck Addon Manager. The format follows
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-13
+
 ### Added
 
 - Hide unused WoW installations from pickers and turn automatic checks and updates off per installation.
@@ -15,7 +17,7 @@ What's new in each version of WoWDeck Addon Manager. The format follows
 
 - My Addons marks a library no addon needs and shows it even with libraries hidden, so you can remove it.
 - The Steam picker shows each game's icon and app id, and whether it's linked by hand or automatically.
-- Addon details show every game version a release supports as colored tags with friendly names, including Titan Reforged, so multi-game addons list them all.
+- Addon details show every supported game version as colored tags with friendly names, including Titan Reforged.
 - Titan Reforged and China Beta installations are detected and can be added, so their addons install like any other client.
 - Try pull request builds in Options, follow updates, return when they close, or join Beta after merging.
 - WoWDeck's own downloads show a progress bar with how many MB have arrived. Press B to cancel one.
@@ -29,8 +31,6 @@ What's new in each version of WoWDeck Addon Manager. The format follows
 - Press Right past any Options row to reach Update, then Left to return to your place.
 - A test build now shows the way out: pick Beta or Stable under Options › Updates to switch to it.
 
-### Changed
-
 - TradeSkillMaster has its own icon in Get Addons and account headings.
 
 ### Fixed
@@ -42,7 +42,7 @@ What's new in each version of WoWDeck Addon Manager. The format follows
 
 - Addons lose the Updated tag when a newer update is found, until another update succeeds.
 
-- TradeSkillMaster confirmations restore focus; uninstall progress stays visible during loading, and cleanup reports successful removals when account reads fail.
+- TradeSkillMaster confirmations restore focus, uninstall progress stays visible, and cleanup reports successful removals when account reads fail.
 
 - The WoWDeck update row in Options shows just the version change and no longer runs off the right edge.
 - Focus now lands on Install after you pick a file in Manual Install, even after changing the file picker's sort order.
@@ -172,7 +172,8 @@ First release.
 - Back up and restore your WoW settings.
 - Import and export addon lists that WowUp understands.
 
-[Unreleased]: https://github.com/sigboe/wowdeck/compare/v1.1.1...HEAD
+[Unreleased]: https://github.com/sigboe/wowdeck/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/sigboe/wowdeck/compare/v1.1.1...v1.2.0
 [1.1.1]: https://github.com/sigboe/wowdeck/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/sigboe/wowdeck/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/sigboe/wowdeck/compare/v1.0.0...v1.0.1

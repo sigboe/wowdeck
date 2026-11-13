@@ -1,0 +1,7 @@
+seek Applications --enter → pressed Enter on "Applications Folder 11/9/2026, 6:40:13 PM" (jump) → focus="CardForge Folder 1/7/2026, 6:43:13 PM"
+seek World of Warcraft --enter → pressed Enter on "World of Warcraft Folder 11/12/2026, 11:08:46 PM" (jump) → focus="wowdeck-rc-120-fixture Folder 11/12/2026, 11:08:46"
+seek wowdeck-rc-120-fixture --enter → pressed Enter on "wowdeck-rc-120-fixture Folder 11/12/2026, 11:08:46 PM" (jump) → focus="RCFixture.zip 202 B 11/12/2026, 11:08:46 PM"
+seek RCFixture.zip --enter → pressed Enter on "RCFixture.zip 202 B 11/12/2026, 11:08:46 PM" (jump) → tree="ModalDialogOverlay_Modal_61" focus="Forever"
+probe focus → focus="Forever"
+probe items → items="Classic Era | Forever | Cancel"
+probe text → text="scrollTop=[] Classic Era Forever Cancel"

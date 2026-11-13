@@ -1,0 +1,7 @@
+seek Previous versions → found "Previous versionsOn · None kept" (jump) → focus="Previous versions On · None kept"
+key right → focus="Update"
+probe focus → focus="Update"
+key left → focus="Previous versions On · None kept"
+probe focus → focus="Previous versions On · None kept"
+FAIL eval: ReferenceError: data is not defined
+at: tree="QuickAccess-NA" focus="Previous versions On · None kept" route="/routes/library/home" plugin="WoWDeck" tab="Options"

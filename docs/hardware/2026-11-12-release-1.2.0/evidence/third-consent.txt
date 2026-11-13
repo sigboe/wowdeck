@@ -1,0 +1,9 @@
+eval@SharedJSContext --file=/tmp/third-preview-err… → isolated consent → tree="ModalDialogOverlay_Modal_81" focus="" tab=null
+probe text → text="scrollTop=[0,0,0] Fixture uninstall Also unfollow realms added by wowdeck Cleanup changes your TradeSkillMaster account on all computers. Could not preview account cleanup. You can still remove the addons. Uninstall both Cancel"
+press b → tree="QuickAccess-NA" focus="OPTIONS" tab="Options"
+eval@SharedJSContext --file=/tmp/third-empty.js → isolated consent → tree="ModalDialogOverlay_Modal_82" focus="" tab=null
+probe text → text="scrollTop=[0,0,0] Fixture uninstall Also unfollow realms added by wowdeck Cleanup changes your TradeSkillMaster account on all computers. No eligible follows to remove. Uninstall both Cancel"
+press b → tree="QuickAccess-NA" focus="OPTIONS" tab="Options"
+eval@SharedJSContext --file=/tmp/third-eligible.js → isolated consent → tree="ModalDialogOverlay_Modal_83" focus="" tab=null
+probe text → text="scrollTop=[0,0,0] Fixture uninstall Also unfollow realms added by wowdeck Cleanup changes your TradeSkillMaster account on all computers. Fixture Realm EU · Retail Uninstall both Cancel"
+press b → tree="QuickAccess-NA" focus="OPTIONS" tab="Options"

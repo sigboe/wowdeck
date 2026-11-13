@@ -1,0 +1,6 @@
+eval@SharedJSContext --file=/tmp/third-key.js → isolated key → tree="ModalDialogOverlay_Modal_84" focus="No CurseForge key saved yet Built-in CurseForge ac" tab=null
+probe text → text="scrollTop=[] CurseForge API key No CurseForge key saved yet Built-in CurseForge access isn't working right now. You can add your own API key. Your CurseForge API key Save key Checked with CurseForge before it's saved Try built-in access again In case CurseForge only blocked it for a while Get a CurseForge API key Opens the CurseForge console in the browser Close"
+seek Try built-in access again --enter → pressed Enter on "Try built-in access again In case CurseForge only blocked it for a while" (jump) → focus="Get a CurseForge API key Opens the CurseForge cons"
+probe text → text="scrollTop=[] CurseForge API key No CurseForge key saved yet Built-in CurseForge access works. Your CurseForge API key Save key Checked with CurseForge before it's saved Get a CurseForge API key Opens the CurseForge console in the browser Close"
+press b → tree="QuickAccess-NA" focus="OPTIONS" tab="Options"
+eval@SharedJSContext --file=/tmp/third-calls.js → [{"m":"curseforge.authStatus"},{"m":"curseforge.authStatus"},{"m":"curseforge.authStatus"},{"m":"curseforge.authStatus"},{"m":"curseforge.recheckBundledKey"},{"m":"curseforge.authStatus"}]
