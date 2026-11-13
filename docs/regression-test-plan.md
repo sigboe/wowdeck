@@ -427,6 +427,12 @@ releases. The wording and gating did not change. A `lastPluginUpdate` saved
 by the earlier build (flat fields, markdown notes) is still served inside the
 interval, with plain-text notes.
 
+DEVICE 2026-11-13: [PR-build live results](hardware/2026-11-13-pr-builds/README.md)
+record publication, contributor revocation, maintainer rebuild, native follow
+installation and merged-waiting behavior. PU-34 is partial; the containing-beta
+return in PU-35, PU-40 and PU-42 remains pending.
+
+
 | ID | Pri | S | Steps | Expected |
 |---|---|---|---|---|
 | PU-1 | P1 | S | Repo private (the state until the public flip), no token or one GitHub won't accept for it: reload the plugin, open Options → Updates | Row "WoWDeck \<version\>" / "Couldn't check for a newer release"; **no toast, no error**; one log line `[plugin-update] check unavailable: … HTTP 404` (verified DEVICE 2026-10-25) |
