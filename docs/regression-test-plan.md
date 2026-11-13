@@ -429,8 +429,9 @@ interval, with plain-text notes.
 
 DEVICE 2026-11-13: [PR-build live results](hardware/2026-11-13-pr-builds/README.md)
 record publication, contributor revocation, maintainer rebuild, native follow
-installation and merged-waiting behavior. PU-34 is partial; the containing-beta
-return in PU-35, PU-40 and PU-42 remains pending.
+installation, merged-waiting behavior and native return to a containing beta.
+PU-34 remains partial for notifications and dots; PU-35 and PU-40 passed.
+PU-42 passed through the normal Beta .52-to-.53 offer and native install.
 
 
 | ID | Pri | S | Steps | Expected |

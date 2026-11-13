@@ -1,0 +1,5 @@
+open → focus=null plugin="WoWDeck" tab="My Addons"
+rpc system.getStatus → {"backendVersion":"1.1.2-beta.53","protocolVersion":1,"pid":159462,"homeDir":"/home/deck"}
+rpc settings.get --pick=settings.pluginUpdateChann… → {"settings.pluginUpdateChannel":"beta","settings.pluginUpdatePrChannel":null}
+rpc system.updateCheck → {"status":"current","currentVersion":"1.1.2-beta.53","channel":{"kind":"beta"},"offer":null,"checked":false,"failed":false,"toastPending":false}
+diagnose → {"ui":{"tree":"QuickAccess-NA","focus":null,"route":"/routes/library/plugin","plugin":"WoWDeck","tab":"My Addons"},"panel":{"tab":"My Addons","busy":0,"alerts":[]},"engine":{"backendVersion":"1.1.2-beta.53","protocolVersion":1,"pid":159462},"installations":{"count":3,"active":[{"id":"5e80311f078e","gameType":"forever"}]},"errors":[]}

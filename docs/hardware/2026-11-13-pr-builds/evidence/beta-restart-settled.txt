@@ -1,0 +1,3 @@
+rpc system.getStatus → {"backendVersion":"1.1.2-beta.52","protocolVersion":1,"pid":159235,"homeDir":"/home/deck"}
+rpc settings.get --pick=settings.pluginUpdateChann… → {"settings.pluginUpdateChannel":"beta","settings.pluginUpdatePrChannel":null}
+rpc system.updateCheck → {"status":"current","currentVersion":"1.1.2-beta.52","channel":{"kind":"beta"},"offer":null,"checked":false,"failed":false,"toastPending":false}

@@ -1,0 +1,6 @@
+rpc settings.get --pick=settings.pluginUpdateChann… → {"settings.pluginUpdateChannel":"beta","settings.pluginUpdatePrChannel":null}
+seek Update --exact --enter → pressed Enter on "Update" (jump) → focus=null
+wait text ~ Are you sure --t=20000 → text="scrollTop=[] Update WoWDeck Are you sure you want to update WoWDeck to version 1.1.2-beta.52? Update Cancel"
+expect text ~ 1.1.2-beta.52 → text="scrollTop=[] Update WoWDeck Are you sure you want to update WoWDeck to version 1.1.2-beta.52? Update Cancel"
+probe text → text="scrollTop=[] Update WoWDeck Are you sure you want to update WoWDeck to version 1.1.2-beta.52? Update Cancel"
+seek Update --exact --enter → pressed Enter on "Update" (jump) → focus="Updating"
