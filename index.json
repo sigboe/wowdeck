@@ -1,0 +1,21 @@
+{
+  "builds": [
+    {
+      "number": 251,
+      "title": "Keep the wide pane clear of Steam's bars in-game; close the keyboard after Enter",
+      "author": "sigboe",
+      "version": "1.2.1-pr.251.2",
+      "headSha": "d0cfb42a7962550f001333a80cd3b1d19a882375",
+      "builtAt": "2026-11-14T18:13:34Z",
+      "zipSize": 73778444,
+      "sha256": "f8bc2eb2d34f4ccd4b4086c4b3cdae1ab7d0b1b072ad3d3dc164bc6cad55accf",
+      "zipUrl": "https://sigboe.github.io/wowdeck/pr/251/WoWDeck.zip"
+    }
+  ],
+  "published": {
+    "210": "1.1.2-pr.210.5",
+    "211": "1.1.2-pr.211.5",
+    "225": "1.1.2-pr.225.3",
+    "251": "1.2.1-pr.251.2"
+  }
+}
