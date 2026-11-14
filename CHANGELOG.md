@@ -6,6 +6,10 @@ What's new in each version of WoWDeck Addon Manager. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- With a game running, the wide Get Addons view no longer slides under Steam's top and bottom bars.
+
 ## [1.2.0] - 2026-11-13
 
 ### Added
