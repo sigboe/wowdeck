@@ -30,13 +30,13 @@ path.
      over. Desktop Mode saves it to `~/Downloads`. **Browse** opens
      Decky's file picker in your home folder, showing only folders and
      zip files. Open `Downloads` and pick `WoWDeck.zip`.
-   - **Install Plugin from URL**. Paste the short link:
+   - **Install Plugin from URL**. Type the short link:
 
      ```
-     tinyurl.com/2bs8ts2h
+     is.gd/wowdeck
      ```
 
-     It is a TinyURL redirect to the long link below, and much easier to
+     It is an is.gd redirect to the long link below, and much easier to
      type on the Deck's keyboard:
 
      ```

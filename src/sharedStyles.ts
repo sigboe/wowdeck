@@ -33,8 +33,11 @@ export const QAM_MOTION_CSS = `.wowdeck-pane-slot {
      (under the OS bar, above Decky's title) and spans the full height. The
      left offset is the 48 px icon rail + the destination list's collapsed
      300 px, so the pane attaches to its right; it keeps the same DOM position
-     for gamepad flow-children navigation. */
-  position: fixed; top: 0; bottom: 0; left: 348px;
+     for gamepad flow-children navigation. While a game runs Steam draws its
+     status bar and button bar inside the QAM window, over the panel:
+     qamBars.ts measures them into --wowdeck-bar-top/bottom. */
+  position: fixed; top: var(--wowdeck-bar-top, 0px); bottom: var(--wowdeck-bar-bottom, 0px);
+  left: 348px;
   display: flex; flex-direction: column;
   width: 0; min-width: 0; opacity: 0; overflow: hidden;
   box-sizing: border-box; z-index: 7;

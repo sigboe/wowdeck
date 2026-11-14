@@ -13,6 +13,7 @@ import {
   type GamepadEvent,
 } from "@decky/ui";
 import type { Installation, ProviderInfo } from "../types";
+import { usePaneBarInsets } from "../steamDom/qamBars";
 import * as api from "../services/backend";
 import {
   BROWSE_TABS,
@@ -121,6 +122,7 @@ export function GetAddonsTab({
   const installationRef = useRef<HTMLDivElement>(null);
   const [landingOnInstallation] = useState(landOnInstallation);
   const paneRef = useRef<HTMLDivElement>(null);
+  const paneSlotRef = useRef<HTMLDivElement>(null);
   // The destination rows, so Left out of the pane can put focus back on the
   // highlighted one (Steam's own back navigation did not).
   const destinationRefs = useRef<Partial<Record<GetAddonsTab, HTMLDivElement>>>({});
@@ -135,6 +137,8 @@ export function GetAddonsTab({
   // drops at once, but the pane must stay beside the list until the QAM has
   // slid back over it (PC-08), or the slide would carry an empty strip.
   const [layoutWide, setLayoutWide] = useState(() => qamWideningStatus().applied);
+  // In-game, Steam's status and button bars sit over the pinned pane.
+  usePaneBarInsets(paneSlotRef, layoutWide);
   // The destination whose browse UI the pane shows. Focus is the only thing
   // that changes it (no press), and it is mirrored from the session so a
   // modal round-trip (G4) comes back on the same destination.
@@ -618,6 +622,7 @@ export function GetAddonsTab({
         // survives widening and collapsing, the widen motion animates from
         // existing DOM state, not a swap.
         <div
+          ref={paneSlotRef}
           className={`wowdeck-pane-slot${layoutWide ? " wowdeck-pane-slot-open" : ""}`}
           aria-hidden={!wide}
         >
