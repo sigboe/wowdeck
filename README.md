@@ -33,10 +33,10 @@ path.
    - **Install Plugin from URL**. Type the short link:
 
      ```
-     tinyurl.com/getwowdeck
+     is.gd/wowdeck
      ```
 
-     It is a TinyURL redirect to the long link below, and much easier to
+     It is an is.gd redirect to the long link below, and much easier to
      type on the Deck's keyboard:
 
      ```
