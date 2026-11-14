@@ -9,6 +9,7 @@ What's new in each version of WoWDeck Addon Manager. The format follows
 ### Fixed
 
 - With a game running, the wide Get Addons view no longer slides under Steam's top and bottom bars.
+- Pressing Enter on the on-screen keyboard to search, look up a link or filter My Addons now closes the keyboard.
 
 ## [1.2.0] - 2026-11-13
 
