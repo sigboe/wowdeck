@@ -401,6 +401,13 @@ export default definePlugin(() => {
     }
     void loadSummary();
   });
+  // Update all's progress (#253) goes to the module-scope addon session at
+  // plugin-load scope, so a QAM closed and reopened mid-run still shows it.
+  const offUpdateAllProgress = api.onBackendEvent((event) => {
+    if (event.event === "addons.updateAllProgress") {
+      addonSession.updateAllProgress(event.params);
+    }
+  });
 
   // BEYOND-05: the addons section on the linked WoW entry's game page (the
   // linked game comes from the settings store, which Options updates).
@@ -471,6 +478,7 @@ export default definePlugin(() => {
     onDismount() {
       offWtfEvents();
       offAutoUpdate();
+      offUpdateAllProgress();
       unpatchGamePage();
       stopHomeBadge();
       stopQamVisibilityWatch();

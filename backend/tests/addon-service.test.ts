@@ -23,7 +23,7 @@ import { DownloadService } from "../src/wow/downloads/DownloadService";
 import type { AddonSearchResult, WowAddon, WowInstallation } from "../src/wow/models";
 import type { Toc } from "../src/wow/toc/toc";
 import { AddonChannelType, AddonDependencyType, WowClientType, type AddonProviderType } from "../src/wow/types";
-import type { OperationResult } from "../src/api/contracts";
+import type { OperationResult, UpdateAllProgress } from "../src/api/contracts";
 
 const roots: string[] = [];
 
@@ -802,6 +802,7 @@ function localFixture(name: string, catalog: CatalogEntry[], fs?: StageFs) {
   store.setInstallations([localInstallation]);
   const operations: OperationResult[] = [];
   const changed: string[][] = [];
+  const progress: UpdateAllProgress[] = [];
   // Each download's URL, in order: a test waits on it to act while an install runs.
   const downloads: string[] = [];
   const network = makeNetwork(localProvider.catalog, localVersions);
@@ -817,6 +818,7 @@ function localFixture(name: string, catalog: CatalogEntry[], fs?: StageFs) {
     {
       addonsChanged: (ids) => changed.push(ids),
       operationResult: (op) => operations.push(op),
+      updateAllProgress: (p) => progress.push(p),
     },
   );
   return {
@@ -828,6 +830,7 @@ function localFixture(name: string, catalog: CatalogEntry[], fs?: StageFs) {
     addonsPath,
     operations,
     changed,
+    progress,
     downloads,
   };
 }
@@ -1200,6 +1203,117 @@ describe("update all installations (WF-13)", () => {
     await checkAll(f.service, { autoUpdate: false });
     const second = await f.service.updateAllInstallations();
     expect(second.map((o) => o.status)).toEqual(["failed", "updated"]);
+  });
+});
+
+describe("Update all progress (#253)", () => {
+  /** Four addons with a new release each, checked so every one is an eligible update. */
+  async function fourUpdates(name: string) {
+    const f = localFixture(name, [
+      { id: "811", name: "Alpha", version: "1.0.0", releaseId: "a1", folders: ["Alpha"] },
+      { id: "812", name: "Bravo", version: "1.0.0", releaseId: "b1", folders: ["Bravo"] },
+      { id: "813", name: "Charlie", version: "1.0.0", releaseId: "c1", folders: ["Charlie"] },
+      { id: "814", name: "Delta", version: "1.0.0", releaseId: "d1", folders: ["Delta"] },
+    ]);
+    const ids: Record<string, string> = {};
+    for (const entry of [...f.provider.catalog]) {
+      const { addon } = await f.service.install({ intent: "install", providerId: "WowUpHub", externalId: entry.id, installation: f.installation });
+      ids[entry.name] = addon.id;
+      Object.assign(entry, { version: "2.0.0", releaseId: `${entry.releaseId}-2` });
+      f.versions[entry.id] = "2.0.0";
+    }
+    await f.service.refresh(f.installation);
+    return { f, ids };
+  }
+
+  test("reports the total first, then one step per addon, naming the next one", async () => {
+    const { f } = await fourUpdates("progress-steps");
+    const names = f.service.eligibleUpdatesFor(f.installation).map((a) => a.name);
+    expect(names).toHaveLength(4);
+    await f.service.updateAll(f.installation);
+    expect(f.progress).toEqual([
+      { done: 0, total: 4, failed: 0, addonName: names[0]! },
+      { done: 1, total: 4, failed: 0, addonName: names[1]! },
+      { done: 2, total: 4, failed: 0, addonName: names[2]! },
+      { done: 3, total: 4, failed: 0, addonName: names[3]! },
+      { done: 4, total: 4, failed: 0, addonName: null },
+    ]);
+  });
+
+  test("a failed, an already current and an ignored-mid-run addon each still count as done", async () => {
+    const { f, ids } = await fourUpdates("progress-outcomes");
+    // Bravo fails: its provider lost it.
+    f.provider.catalog = f.provider.catalog.filter((c) => c.name !== "Bravo");
+    // Charlie looks updatable but the provider still has what is installed: current.
+    f.store.addons.patch(ids.Charlie!, { externalLatestReleaseId: "newer-than-provider" });
+    f.provider.catalog.find((c) => c.name === "Charlie")!.releaseId = "c1";
+    // Delta is ignored while the run goes on, before its turn.
+    const ignoring: Promise<unknown>[] = [];
+    const progress = f.progress;
+    progress.push = (...items) => {
+      for (const p of items) {
+        if (p.addonName === "Delta" && ignoring.length === 0) {
+          ignoring.push(f.service.setIgnored(ids.Delta!, true));
+        }
+      }
+      return Array.prototype.push.apply(progress, items);
+    };
+
+    const operations = await f.service.updateAll(f.installation);
+    await Promise.all(ignoring);
+
+    expect(ignoring).toHaveLength(1);
+    expect(operations.map((o) => [o.addonName, o.status])).toEqual(
+      expect.arrayContaining([["Bravo", "failed"], ["Charlie", "current"]]),
+    );
+    expect(operations.some((o) => o.addonName === "Delta")).toBe(false);
+    expect(progress.map((p) => p.done)).toEqual([0, 1, 2, 3, 4]);
+    expect(progress.every((p) => p.total === 4)).toBe(true);
+    // Only Bravo failed: current and skipped turns aren't failures.
+    expect(progress.at(-1)!.failed).toBe(1);
+    expect(progress.at(-1)!.addonName).toBeNull();
+  });
+
+  test("an addon whose update throws still counts as done", async () => {
+    const { f } = await fourUpdates("progress-thrown");
+    // The first update's turn throws before anything changes (recovery required meanwhile).
+    const require = spyOn(f.service.recovery, "require").mockImplementationOnce(() => {
+      throw new Error("recovery required");
+    });
+    const operations = await f.service.updateAll(f.installation);
+    require.mockRestore();
+    expect(operations.filter((o) => o.status === "failed")).toHaveLength(1);
+    expect(f.progress.map((p) => p.done)).toEqual([0, 1, 2, 3, 4]);
+    expect(f.progress.map((p) => p.failed)).toEqual([0, 1, 1, 1, 1]);
+  });
+
+  test("all installations make one run: one total, a count that never restarts", async () => {
+    const { f } = await fourUpdates("progress-all");
+    const classicRoot = join(dirname(f.installation.location), "_classic_");
+    mkdirSync(join(classicRoot, "Interface", "AddOns"), { recursive: true });
+    const classic: WowInstallation = { ...f.installation, id: "inst-progress-all-classic", location: classicRoot, label: "_classic_", displayName: "Classic" };
+    f.store.setInstallations([f.installation, classic]);
+    f.provider.catalog.push({ id: "816", name: "Foxtrot", version: "1.0.0", releaseId: "f1", folders: ["Foxtrot"] });
+    f.versions["816"] = "1.0.0";
+    await f.service.install({ intent: "install", providerId: "WowUpHub", externalId: "816", installation: classic });
+    Object.assign(f.provider.catalog.at(-1)!, { version: "2.0.0", releaseId: "f2" });
+    f.versions["816"] = "2.0.0";
+    await checkAll(f.service, { autoUpdate: false });
+    f.progress.length = 0;
+
+    const operations = await f.service.updateAllInstallations();
+
+    expect(operations).toHaveLength(5);
+    expect(f.progress.map((p) => [p.done, p.total])).toEqual([[0, 5], [1, 5], [2, 5], [3, 5], [4, 5], [5, 5]]);
+    expect(f.progress[4]!.addonName).toBe("Foxtrot");
+    expect(f.progress.at(-1)!.addonName).toBeNull();
+  });
+
+  test("nothing to update reports no progress", async () => {
+    const f = localFixture("progress-none", [{ id: "815", name: "Echo", version: "1.0.0", releaseId: "e1", folders: ["Echo"] }]);
+    await f.service.install({ intent: "install", providerId: "WowUpHub", externalId: "815", installation: f.installation });
+    await f.service.updateAll(f.installation);
+    expect(f.progress).toEqual([]);
   });
 });
 

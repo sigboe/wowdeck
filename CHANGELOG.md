@@ -6,6 +6,17 @@ What's new in each version of WoWDeck Addon Manager. The format follows
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-11-15
+
+### Changed
+
+- Update all shows a bar that fills as addons finish, naming the addon it's on and how far the run has got.
+
+### Fixed
+
+- With a game running, the wide Get Addons view no longer slides under Steam's top and bottom bars.
+- Pressing Enter on the on-screen keyboard to search, look up a link or filter My Addons now closes the keyboard.
+
 ## [1.2.0] - 2026-11-13
 
 ### Added
@@ -172,7 +183,8 @@ First release.
 - Back up and restore your WoW settings.
 - Import and export addon lists that WowUp understands.
 
-[Unreleased]: https://github.com/sigboe/wowdeck/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/sigboe/wowdeck/compare/v1.2.1...HEAD
+[1.2.1]: https://github.com/sigboe/wowdeck/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/sigboe/wowdeck/compare/v1.1.1...v1.2.0
 [1.1.1]: https://github.com/sigboe/wowdeck/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/sigboe/wowdeck/compare/v1.0.1...v1.1.0

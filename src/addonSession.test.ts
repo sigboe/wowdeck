@@ -1,6 +1,6 @@
 /// <reference types="bun-types" />
 import { describe, expect, test } from "bun:test";
-import type { Addon, Installation, SearchResult } from "./types";
+import type { Addon, Installation, SearchResult, UpdateAllProgress } from "./types";
 import {
   catalogueResult,
   createAddonSession,
@@ -244,13 +244,46 @@ describe("addon session: list reads", () => {
     let barDuringRead: string | null = null;
     session.subscribe(() => {
       if (session.get().loads > 0) {
-        barDuringRead = session.get().updatingAll;
+        barDuringRead = session.get().updatingAll?.scope ?? null;
       }
     });
     await session.actions.updateAll("installation");
     expect(barDuringRead!).toBe("installation");
     expect(session.get().updatingAll).toBeNull();
     expect(reads).toBe(2);
+  });
+
+  test("Update all progress: checking until the engine counts, then each step, cleared when the run ends (#253)", async () => {
+    const step = (done: number, total: number, addonName: string | null): UpdateAllProgress => ({
+      done,
+      total,
+      failed: 0,
+      addonName,
+    });
+    let finish!: (value: { operations: [] }) => void;
+    const { session } = harness({
+      "addons.list": { addons: [] },
+      "addons.updateAll": () => new Promise((resolve) => (finish = resolve)),
+    });
+    // No run going: ignored.
+    session.updateAllProgress(step(0, 3, "Bagnon"));
+    expect(session.get().updatingAll).toBeNull();
+
+    const run = session.actions.updateAll("all");
+    expect(session.get().updatingAll).toEqual({ scope: "all", progress: null });
+    session.updateAllProgress(step(0, 3, "Bagnon"));
+    session.updateAllProgress(step(1, 3, "Details"));
+    expect(session.get().updatingAll).toEqual({
+      scope: "all",
+      progress: step(1, 3, "Details"),
+    });
+
+    finish({ operations: [] });
+    await run;
+    expect(session.get().updatingAll).toBeNull();
+    // A late event from the finished run doesn't bring the bar back.
+    session.updateAllProgress(step(3, 3, null));
+    expect(session.get().updatingAll).toBeNull();
   });
 
   test("a row stays busy while another action on it runs, past an earlier read", async () => {

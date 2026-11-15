@@ -46,6 +46,7 @@ import { revealRemembered } from "../focusMemory";
 import { openAddonDetailsModal, resultDetails } from "./AddonDetailsModal";
 import { showChoiceMenu } from "./choiceMenu";
 import { requireInstallation } from "./requireInstallation";
+import { hideOnScreenKeyboard } from "../steamDom/virtualKeyboard";
 
 /**
  * The four browse destinations (Search, Latest, Popular, Manual Install) and
@@ -164,7 +165,12 @@ export function SearchTab({
     return <ZeroCapabilityScreen screen={screen} onOpenSources={sources.openSources} />;
   }
 
-  const doSearch = () => runSearch(api.rpc);
+  // Enter on the on-screen keyboard runs the search; close the keyboard so
+  // the results it would cover show.
+  const doSearch = () => {
+    hideOnScreenKeyboard();
+    return runSearch(api.rpc);
+  };
   const helper = searchHelperText(sources.providers, installationLabel(installation));
 
   return (
@@ -323,7 +329,10 @@ export function ManualInstallTab({ sources }: { sources: SourceControls }) {
     urlDestination.subscribe,
     urlDestination.get,
   );
-  const resolve = () => resolveUrl(api.rpc);
+  const resolve = () => {
+    hideOnScreenKeyboard();
+    return resolveUrl(api.rpc);
+  };
   const view = browseFocusView("url");
 
   return (

@@ -131,6 +131,7 @@ const service = new AddonService(
       void companionCoordinator.regenerate();
     },
     autoUpdated: (result) => server.emit("addons.autoUpdated", { result }),
+    updateAllProgress: (progress) => server.emit("addons.updateAllProgress", progress),
     operationResult: (result: OperationResult) => {
       server.emit(result.status === "failed" ? "operation.failed" : "operation.completed", { result });
       // Surface recent failures in diagnostics — result.error is

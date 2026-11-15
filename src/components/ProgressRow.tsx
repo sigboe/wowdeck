@@ -17,19 +17,22 @@ interface UntypedFieldProps {
  * a 270 px minimum width. Inline, in the QAM's 268 px row, the bar ran ~136 px
  * past the panel's edge (DEVICE, 2026-10-16). Wrapped in another Field, the
  * bar sat in a narrow right column and its text wrapped (DEVICE, 2026-11-12).
- * So: never wrap it; the label goes above (`childrenLayout="below"`) and the
- * bar takes the full width (244 of 244 px in the QAM, 584 of 584 in a modal).
+ * So: never wrap it; the label goes above and a description below
+ * (`childrenLayout="below"`), and the bar takes the full width (244 of 244 px
+ * in the QAM, 584 of 584 in a modal).
  * Row actions (B cancels) go straight on it.
  */
 export function ProgressRow({
   label,
+  description,
   ...props
 }: Omit<ProgressBarWithInfoProps, "childrenContainerWidth" | "layout"> & UntypedFieldProps) {
   const row = {
     ...props,
     label,
+    description,
     childrenContainerWidth: "max",
-    ...(label === undefined ? {} : { childrenLayout: "below" }),
+    ...(label === undefined && description === undefined ? {} : { childrenLayout: "below" }),
   } as ProgressBarWithInfoProps;
   return <ProgressBarWithInfo {...row} />;
 }

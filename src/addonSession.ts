@@ -6,6 +6,7 @@ import type {
   StateFileRecoveryStatus,
   ReleaseChannel,
   SearchResult,
+  UpdateAllProgress,
 } from "./types";
 import { createStore, type Store } from "./store";
 import {
@@ -54,8 +55,12 @@ export interface AddonSessionState {
    * views show them unavailable.
    */
   switching: boolean;
-  /** Null, or which Update all runs: this installation or every one (WF-13). */
-  updatingAll: null | "installation" | "all";
+  /**
+   * Null, or the Update all that runs: this installation or every one
+   * (WF-13), and how far the engine says it has got (#253): null while it
+   * is still checking, before its first addons.updateAllProgress.
+   */
+  updatingAll: null | { scope: "installation" | "all"; progress: UpdateAllProgress | null };
   showIgnored: boolean;
   /** My Addons text filter (WF-06); blank shows everything. */
   filter: string;
@@ -108,6 +113,8 @@ export interface AddonSession extends Pick<Store<AddonSessionState>, "get" | "su
    * change reads the list again, after the running actions end.
    */
   addonsChanged(addonIds: readonly string[]): void;
+  /** The engine's addons.updateAllProgress; ignored with no Update all running. */
+  updateAllProgress(progress: UpdateAllProgress): void;
   setFilter(filter: string): void;
   setShowIgnored(showIgnored: boolean): void;
   /** Re-read the installations; the engine says which one is active. */
@@ -327,7 +334,7 @@ export function createAddonSession(deps: AddonSessionDeps): AddonSession {
   const shared = createAddonActions({
     ...deps,
     rpc: watchedRpc,
-    setUpdatingAll: (updatingAll) => store.patch({ updatingAll }),
+    setUpdatingAll: (scope) => store.patch({ updatingAll: scope && { scope, progress: null } }),
     begin,
     settled: settle,
   });
@@ -374,6 +381,12 @@ export function createAddonSession(deps: AddonSessionDeps): AddonSession {
     setShowIgnored: (showIgnored) => store.patch({ showIgnored }),
     reloadInstallations,
     reloadAddons,
+    updateAllProgress(progress) {
+      const { updatingAll } = store.get();
+      if (updatingAll) {
+        store.patch({ updatingAll: { ...updatingAll, progress } });
+      }
+    },
     addonsChanged(addonIds) {
       const { busy } = store.get();
       // No ids: the engine can't say which (an installation changed).

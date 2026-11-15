@@ -42,7 +42,7 @@ function recordingStack() {
   service.scanInstallation = async (i) => (calls.push(`scan ${i.id}`), []);
   service.refresh = async (i) => (calls.push(`refresh ${i.id}`), { updated: 0, failed: 0 });
   service.autoUpdate = async () => (calls.push("autoUpdate"), null);
-  service.updateAll = async (i) => (calls.push(`updateAll ${i.id}`), []);
+  service.updateAllInstallations = async () => (calls.push("updateAll"), []);
   service.listAddons = async (i) => (calls.push(`list ${i.id}`), []);
   const companion = new CompanionSyncCoordinator(service);
   companion.regenerate = async (ids) => {
@@ -89,10 +89,11 @@ describe("checking every installation (RF-11)", () => {
     expect(calls).toEqual([]);
   });
 
-  test("Update all installations: the check without auto-update, then updates each", async () => {
+  test("Update all installations: the check without auto-update, then one run updating every one", async () => {
     const { check, calls } = recordingStack();
     await check.updateAllInstallations();
-    expect(calls).toEqual([...CHECK_A, ...CHECK_B, "updateAll A", "updateAll B"]);
+    // Every installation is checked before the run starts, so its total is known up front (#253).
+    expect(calls).toEqual([...CHECK_A, ...CHECK_B, "updateAll"]);
   });
 
   test("My Addons' refresh checks only that installation, then lists it", async () => {
@@ -142,10 +143,13 @@ test("automatic checks skip quiet installations but manual refresh and Update al
   await check.refresh(service.installations.require("B"));
   expect(calls).toEqual([...CHECK_B, "list B"]);
   calls.length = 0;
+  // The real run, so it shows which installations' updates it takes.
+  service.updateAllInstallations = AddonService.prototype.updateAllInstallations.bind(service);
+  service.eligibleUpdatesFor = (i) => (calls.push(`updates of ${i.id}`), []);
   await check.updateAllInstallations();
   expect(calls).toContain("scan B");
   expect(calls).toContain("scan C");
-  expect(calls).toContain("updateAll C");
+  expect(calls).toContain("updates of C");
 });
 
 test("installation preferences default on legacy state and survive hiding and reload", () => {

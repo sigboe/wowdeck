@@ -10,6 +10,7 @@ export type {
   Addon,
   ArchivePreview,
   AutoUpdateResult,
+  UpdateAllProgress,
   CurseForgeAuthStatus,
   Diagnostics,
   FoundInstallation,

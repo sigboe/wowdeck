@@ -3,7 +3,7 @@
  * English only, fixed formats, so tests are deterministic.
  */
 
-import type { OperationResult } from "./types";
+import type { OperationResult, UpdateAllProgress } from "./types";
 
 /** "1 addon", "3 addons" (C02: never "addon(s)"). */
 export function plural(n: number, one: string, many = `${one}s`): string {
@@ -144,4 +144,52 @@ export function lastAutoUpdateLine(
         .filter(Boolean)
         .join("; ") || "nothing to update";
   return `Last run ${dayAndTime(r.at, now)}: ${what}`;
+}
+
+/**
+ * What the Update all row shows (#253), laid out like Steam's downloads:
+ * a blue status line over the bar, and under it the addon being updated
+ * (empty while none is). `percent` null shows a spinner instead of the bar.
+ */
+export interface UpdateAllRowView {
+  status: string;
+  addon: string;
+  percent: number | null;
+}
+
+/**
+ * The Update all row (#253, S17). A spinner while every installation is
+ * checked (this installation's count is known at once, so it starts) or
+ * when one addon updates (a one-share bar would sit at 0 %); else a bar of
+ * finished addons, the status counting the one being worked on, one ahead.
+ * The percent rounds down, so it never claims more than is done.
+ */
+export function updateAllRow(
+  progress: UpdateAllProgress | null,
+  scope: "installation" | "all",
+): UpdateAllRowView {
+  if (!progress) {
+    return {
+      status: scope === "all" ? "Checking for updates" : "Starting",
+      addon: "",
+      percent: null,
+    };
+  }
+  const { done, total, failed } = progress;
+  const failures = failed > 0 ? ` · ${failed} failed` : "";
+  const bar = total > 1;
+  if (done >= total) {
+    return {
+      status: bar ? `Done · ${done} of ${total}${failures}` : `Done${failures}`,
+      addon: "",
+      percent: bar ? 100 : null,
+    };
+  }
+  return {
+    status: bar
+      ? `Updating ${done + 1} of ${total} · ${Math.floor((done / total) * 100)}%${failures}`
+      : "Updating",
+    addon: progress.addonName?.trim() ?? "",
+    percent: bar ? (done / total) * 100 : null,
+  };
 }

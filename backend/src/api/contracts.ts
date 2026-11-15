@@ -1775,6 +1775,21 @@ export interface AutoUpdateResult {
   skipped: string | null;
 }
 
+/**
+ * How far an Update all run has got (addons.updateAllProgress, #253). Each
+ * candidate is an equal share; its turn ends whatever the outcome.
+ */
+export type UpdateAllProgress = {
+  /** Candidates whose turn has ended: updated, current, failed, thrown or skipped. Only goes up. */
+  done: number;
+  /** Candidates, fixed when the run starts: one count across every installation for allInstallations. */
+  total: number;
+  /** Turns so far that ended in a failure (failed or thrown); current and skipped ones aren't failures. */
+  failed: number;
+  /** The candidate now being worked on; null once the last one is done. */
+  addonName: string | null;
+};
+
 export interface EventMap {
   /** An automatic update ran and updated or failed something (WF-02). */
   "addons.autoUpdated": { result: AutoUpdateResult };
@@ -1782,6 +1797,12 @@ export interface EventMap {
   "operation.failed": { result: OperationResult };
   "tradeskillmaster.changed": Record<string, never>;
   "addons.changed": { addonIds: string[] };
+  /**
+   * Update all (addons.updateAll) progress, in order: one when the total is
+   * known (done 0, the first candidate), then one as each candidate's turn
+   * ends, the last with done equal to total. None when nothing qualifies.
+   */
+  "addons.updateAllProgress": UpdateAllProgress;
   "wtf.progress": { job: WtfJobSnapshot };
   /**
    * Bytes of the WoWDeck download in flight (system.updateStage,

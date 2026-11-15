@@ -154,8 +154,12 @@ inactive tabs show only their icon: three uppercase labels overflow 268 px
 label, never a bare `Dropdown`.
 
 **S17 [PROJECT] MUST** send every toast through `pluginToast` (plugin icon,
-trimmed body), and SHOULD show progress where the work is: a
-`ProgressBarWithInfo` (Update all, WTF jobs) instead of a spinner and text.
+trimmed body), and SHOULD show progress where the work is: a determinate
+`ProgressBarWithInfo` (Update all, WTF jobs) once the amount of work is
+known, and a spinner with a label before that. Don't use an indeterminate
+bar when there's nothing to measure. Players read it as frozen (#253). One
+unit of work gets a spinner too, since a one-share bar sits at 0 % until it
+vanishes.
 Toasts are for results that arrive while the user may be elsewhere (A6).
 
 **S18 [PROJECT] SHOULD** put browsing and searching on a full-screen route with

@@ -12,6 +12,7 @@ import {
   showModal,
 } from "@decky/ui";
 import { TextRow } from "./TextRow";
+import { hideOnScreenKeyboard } from "../steamDom/virtualKeyboard";
 
 /**
  * The My Addons text filter (WF-06), behind a glyph-only button so the list
@@ -31,6 +32,7 @@ function FilterAddonsModal({
 }) {
   const [text, setText] = useState(current);
   const apply = (value: string) => {
+    hideOnScreenKeyboard();
     onApply(value);
     closeModal?.();
   };

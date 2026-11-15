@@ -6,9 +6,10 @@ import {
   importResultLine,
   lastAutoUpdateLine,
   plural,
+  updateAllRow,
   updateAllToast,
 } from "./text";
-import type { OperationResult } from "./types";
+import type { OperationResult, UpdateAllProgress } from "./types";
 
 describe("copy helpers (C02, C10)", () => {
   test("plural", () => {
@@ -96,5 +97,75 @@ describe("lastAutoUpdateLine (C10, C11)", () => {
     expect(
       lastAutoUpdateLine({ at, updated: [], failed: [], skipped: "WoW was running" }, now),
     ).toBe("Last run today at 14:32: postponed (WoW was running)");
+  });
+});
+
+describe("updateAllRow (#253)", () => {
+  const step = (over: Partial<UpdateAllProgress>): UpdateAllProgress => ({
+    done: 0,
+    total: 11,
+    failed: 0,
+    addonName: "Deadly Boss Mods",
+    ...over,
+  });
+
+  test("every installation, before the total is known: a spinner that says it's checking", () => {
+    expect(updateAllRow(null, "all")).toEqual({
+      status: "Checking for updates",
+      addon: "",
+      percent: null,
+    });
+  });
+
+  test("this installation: its count is known from the start, so no checking step", () => {
+    expect(updateAllRow(null, "installation")).toEqual({
+      status: "Starting",
+      addon: "",
+      percent: null,
+    });
+  });
+
+  test("one addon: a spinner and its name, never a bar stuck at 0 %", () => {
+    expect(updateAllRow(step({ total: 1 }), "installation")).toEqual({
+      status: "Updating",
+      addon: "Deadly Boss Mods",
+      percent: null,
+    });
+  });
+
+  test("several addons: a bar of finished ones, the status one ahead", () => {
+    expect(updateAllRow(step({ done: 0 }), "all")).toEqual({
+      status: "Updating 1 of 11 · 0%",
+      addon: "Deadly Boss Mods",
+      percent: 0,
+    });
+    expect(updateAllRow(step({ done: 3 }), "installation")).toEqual({
+      status: "Updating 4 of 11 · 27%",
+      addon: "Deadly Boss Mods",
+      percent: (3 / 11) * 100,
+    });
+    expect(updateAllRow(step({ done: 10, failed: 2 }), "installation")).toMatchObject({
+      status: "Updating 11 of 11 · 90% · 2 failed",
+      percent: (10 / 11) * 100,
+    });
+  });
+
+  test("the end: a full bar while the list is read again", () => {
+    const end = step({ done: 11, addonName: null });
+    expect(updateAllRow(end, "all")).toEqual({
+      status: "Done · 11 of 11",
+      addon: "",
+      percent: 100,
+    });
+    expect(updateAllRow({ ...end, failed: 1 }, "all").status).toBe("Done · 11 of 11 · 1 failed");
+    expect(updateAllRow({ ...end, done: 1, total: 1 }, "all")).toEqual({
+      status: "Done",
+      addon: "",
+      percent: null,
+    });
+  });
+
+  test("a blank name leaves the line empty", () => {
+    expect(updateAllRow(step({ done: 1, addonName: "  " }), "installation").addon).toBe("");
   });
 });

@@ -18,7 +18,9 @@ Rules A1–A11 on async state and feedback, and the copy rules C01–C12.
 - Toasts go through `pluginToast` (S17). Search outcomes and URL-import errors
   are **inline** (`urlImportErrors.ts`, COMMIT 46e71b9).
 - Loading: a `Spinner` at the end of a list or in a row's right column;
-  long jobs use `ProgressBarWithInfo` (Update all, WTF jobs).
+  long jobs use a determinate `ProgressBarWithInfo` once the amount of work
+  is known (Update all, WTF jobs), and a spinner with a label before that
+  (S17).
 - Update-available toast: created in the `definePlugin` factory and on
   resume-from-suspend, rate-limited once a day by the backend. It is
   deliberately **not** shown on entering My Addons (COMMITS 7858f64, 06081bf).

@@ -8,7 +8,7 @@
  * See docs/wowup-provenance.md.
  */
 
-import type { Addon, AddonOperation, AutoUpdateResult, OperationResult } from "../../api/contracts";
+import type { Addon, AddonOperation, AutoUpdateResult, OperationResult, UpdateAllProgress } from "../../api/contracts";
 import type { ArchiveMatch, ArchivePreview, RecoveryRetryResult, RecoveryVerifyResult } from "../../api/contracts";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -72,6 +72,8 @@ export interface ServiceEvents {
   operationResult: (result: OperationResult) => void;
   /** An automatic update ran (WF-02). */
   autoUpdated?: (result: AutoUpdateResult) => void;
+  /** How far an Update all run has got (addons.updateAllProgress). */
+  updateAllProgress?: (progress: UpdateAllProgress) => void;
 }
 
 
@@ -1315,9 +1317,42 @@ export class AddonService {
   }
 
   async updateAll(installation: WowInstallation): Promise<OperationResult[]> {
-    const candidates = this.eligibleUpdatesFor(installation);
+    return this.#updateCandidates(this.eligibleUpdatesFor(installation));
+  }
+
+  /**
+   * Update all, across every installation (WF-13; upstream's "Update All
+   * Clients"). Run it after an update check of every installation
+   * (UpdateCheck): only the selected one is refreshed when its list is
+   * shown, so another one's metadata may be days old. Every installation's
+   * candidates make one run with one total. A failed update never stops
+   * the others (updateAll).
+   */
+  async updateAllInstallations(): Promise<OperationResult[]> {
+    return this.#updateCandidates(this.installations.list().flatMap((installation) => this.eligibleUpdatesFor(installation)));
+  }
+
+  /**
+   * Update each candidate that still qualifies when its turn comes, as one
+   * run. Progress (addons.updateAllProgress) reports the total once, then a
+   * step as each turn ends, whatever its outcome.
+   */
+  async #updateCandidates(candidates: AddonRecord[]): Promise<OperationResult[]> {
     const operations: OperationResult[] = [];
-    for (const candidate of candidates) {
+    const total = candidates.length;
+    const report = (done: number) => {
+      if (total === 0) {
+        return;
+      }
+      this.events.updateAllProgress?.({
+        done,
+        total,
+        failed: operations.filter((o) => o.status === "failed").length,
+        addonName: candidates[done]?.name ?? null,
+      });
+    };
+    report(0);
+    for (const [index, candidate] of candidates.entries()) {
       try {
         const updated = await this.#updateIfStill(candidate.id, (a) => updateStatus(a, this.registry).canUpdate);
         if (updated) {
@@ -1326,21 +1361,7 @@ export class AddonService {
       } catch (err) {
         operations.push({ ...failedOperation(this.nextOperationId(), candidate.id, err), addonName: candidate.name });
       }
-    }
-    return operations;
-  }
-
-  /**
-   * Update all, across every installation (WF-13; upstream's "Update All
-   * Clients"). Run it after an update check of every installation
-   * (UpdateCheck): only the selected one is refreshed when its list is
-   * shown, so another one's metadata may be days old. A failed update never
-   * stops the others (updateAll).
-   */
-  async updateAllInstallations(): Promise<OperationResult[]> {
-    const operations: OperationResult[] = [];
-    for (const installation of this.installations.list()) {
-      operations.push(...(await this.updateAll(installation)));
+      report(index + 1);
     }
     return operations;
   }

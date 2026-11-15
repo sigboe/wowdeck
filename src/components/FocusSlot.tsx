@@ -73,8 +73,28 @@ export function useRestoreFocus(view: string, enabled = true): void {
  * the toolbar for a progress bar) or moved (a reloaded list re-sorts the row
  * just updated), and Steam then leaves the controller on nothing (PC-16).
  * `anchorRef` is any element of the mounted view (for its document).
+ *
+ * Removing the focused element doesn't always fire focusout in Steam's
+ * Chromium: Update all's spinner row giving way to its bar left focus on
+ * nothing for the whole run (DEVICE 2026-11-15). So a view that swaps a
+ * control for another passes `swap`, naming what is shown; each change
+ * runs the same check after its render.
  */
-export function useRefocusWhenLost(view: string, anchorRef: RefObject<HTMLElement | null>): void {
+export function useRefocusWhenLost(
+  view: string,
+  anchorRef: RefObject<HTMLElement | null>,
+  swap?: string,
+): void {
+  const refocusIfLost = (win: Window, doc: Document) =>
+    // After the render that removed it: the remembered row is registered again by then.
+    win.requestAnimationFrame(() => {
+      const lost = !doc.activeElement || doc.activeElement === doc.body;
+      // Hidden: a modal or menu took over, or the QAM closed; their own restore applies.
+      if (lost && doc.visibilityState === "visible" && anchorRef.current?.isConnected) {
+        restoreFocus(view);
+      }
+    });
+
   useEffect(() => {
     const doc = anchorRef.current?.ownerDocument;
     const win = doc?.defaultView;
@@ -87,14 +107,7 @@ export function useRefocusWhenLost(view: string, anchorRef: RefObject<HTMLElemen
         return;
       }
       win.cancelAnimationFrame(frame);
-      // After the render that removed it: the remembered row is registered again by then.
-      frame = win.requestAnimationFrame(() => {
-        const lost = !doc.activeElement || doc.activeElement === doc.body;
-        // Hidden: a modal or menu took over, or the QAM closed; their own restore applies.
-        if (lost && doc.visibilityState === "visible" && anchorRef.current?.isConnected) {
-          restoreFocus(view);
-        }
-      });
+      frame = refocusIfLost(win, doc);
     };
     doc.addEventListener("focusout", onFocusOut, true);
     return () => {
@@ -102,6 +115,16 @@ export function useRefocusWhenLost(view: string, anchorRef: RefObject<HTMLElemen
       doc.removeEventListener("focusout", onFocusOut, true);
     };
   }, [view]);
+
+  useEffect(() => {
+    const doc = anchorRef.current?.ownerDocument;
+    const win = doc?.defaultView;
+    if (swap === undefined || !doc || !win) {
+      return;
+    }
+    const frame = refocusIfLost(win, doc);
+    return () => win.cancelAnimationFrame(frame);
+  }, [view, swap]);
 }
 
 /** A QAM row (PanelSectionRow) whose control keeps its place in focus memory. */

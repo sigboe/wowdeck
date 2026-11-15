@@ -27,7 +27,8 @@ import {
   sortAddons,
   type AddonActionId,
 } from "../addonRow";
-import { ProgressRow } from "./ProgressRow";
+import { updateAllRow } from "../text";
+import { UpdateAllRow } from "./UpdateAllRow";
 import { STEAM, descriptionStyle } from "../steamTheme";
 import { QAM_VIEW } from "../qamState";
 import { addonSession } from "../session";
@@ -91,7 +92,13 @@ export function InstalledView({ addons, loading, restoreRows, multipleInstallati
   const visible = useMemo(() => sortAddons(filterAddons(shown, filter)), [shown, filter]);
 
   const topRef = useRef<HTMLDivElement | null>(null);
-  useRefocusWhenLost(VIEW, topRef);
+  // Update all swaps the toolbar, its spinner row and its bar in one place.
+  const updateRow = updatingAll ? updateAllRow(updatingAll.progress, updatingAll.scope) : null;
+  useRefocusWhenLost(
+    VIEW,
+    topRef,
+    !updateRow ? "toolbar" : updateRow.percent === null ? "spinner" : "bar",
+  );
 
   const { actions } = addonSession;
 
@@ -199,15 +206,12 @@ export function InstalledView({ addons, loading, restoreRows, multipleInstallati
         }
       >
         <PanelSectionRow>
-          {updatingAll ? (
-            <ProgressRow
-              indeterminate
-              sOperationText={
-                updatingAll === "all"
-                  ? "Updating all installations…"
-                  : `Updating ${updates.length} addon${updates.length === 1 ? "" : "s"}…`
-              }
-            />
+          {updateRow ? (
+            // Under the button's focus id: focus waits on the row while the
+            // run goes, and goes back to the button when it returns.
+            <FocusSlot view={VIEW} id="updateAll">
+              <UpdateAllRow view={updateRow} />
+            </FocusSlot>
           ) : (
             <Focusable flow-children="row" style={{ display: "flex", gap: "8px", margin: "4px 0" }}>
               <DialogButton
