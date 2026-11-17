@@ -110,7 +110,12 @@ Workshop sources need more evidence before they can be supported.
 
 1. **Reviewed mappings.** Publishing `previewMappings` (see "Publication
    artifact contract") remains the stronger check and is still optional.
-2. **Focus after Restore.** The restore row disappears and focus lands
+2. **Recovery exports reach Steam Cloud.** Each Apply leaves a personal
+   export, "WoWDeck recovery <operation>", in the account's controller
+   configs. Steam syncs it, and on the Deck it came back after the local
+   folder was deleted. WoWDeck should remove it with
+   `DeletePersonalControllerConfiguration` once a restore no longer needs it.
+3. **Focus after Restore.** The restore row disappears and focus lands
    nowhere.
 3. **Abandoned native calls.** No native acknowledgement proves that a dead
    browser's call has settled, so its claim stays held and recovery stays
