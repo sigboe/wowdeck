@@ -227,6 +227,11 @@ const RULES: Rules = {
     normalize: normalizedVersion,
     userWritable: false,
   },
+  // The one-time rollout (#265): a state file without the key (a new install,
+  // or the first start after upgrading from a release before Controller
+  // layouts) reads as on. Every save writes the key, so from then on the
+  // stored value, an opt-out included, is what every later build loads.
+  controllerLayoutsEnabled: toggle(true),
   // Only ever stored after validation (settings.set checks the folder).
   wtfBackupDir: stringOrNull(true),
   wtfKeepSnapshots: {
