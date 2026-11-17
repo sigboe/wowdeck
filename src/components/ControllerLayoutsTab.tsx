@@ -5,6 +5,8 @@ import {
   layoutTargetContext,
   previewChoice,
 } from "../controllerLayoutPreviewSession";
+import { layoutRecovery, retryLayoutRestore } from "../controllerLayoutRecoverySession";
+import { Warning, WarningLine } from "./Warning";
 import { addonSession } from "../session";
 import { layoutTargets, possibleSharedTargets } from "../controllerLayoutTargets";
 import { useResource } from "../useResource";
@@ -45,10 +47,75 @@ export function ControllerLayoutsTab({ view }: { view: string }) {
   if (!sourceOn) {
     return null;
   }
-  return chosen ? (
-    <PreviewPane choice={chosen} view={view} />
-  ) : (
-    <CatalogueBody catalogue={catalogue} view={view} />
+  return (
+    <>
+      <RecoveryPane view={view} />
+      {chosen ? (
+        <PreviewPane choice={chosen} view={view} />
+      ) : (
+        <CatalogueBody catalogue={catalogue} view={view} />
+      )}
+    </>
+  );
+}
+
+function RecoveryPane({ view }: { view: string }) {
+  const state = useResource(layoutRecovery, "current");
+  const op = state.data?.operation;
+  useEffect(() => {
+    if (op) revealRemembered(view);
+  }, [view, op?.id]);
+  if (state.loading && !op)
+    return (
+      <PanelSectionRow>
+        <Field label="Checking previous controls…" />
+      </PanelSectionRow>
+    );
+  if (state.error)
+    return (
+      <PanelSectionRow>
+        <Field label="Couldn't read previous controls" description={state.error} />
+      </PanelSectionRow>
+    );
+  if (!op || op.phase === "failed" || op.phase === "restored") return null;
+  const available = !!op.recoveryId && ["succeeded", "recovery-required"].includes(op.phase);
+  return (
+    <PanelSectionRow>
+      <Field
+        focusable
+        {...focusTarget(view, "layout-recovery")}
+        label={
+          op.phase === "succeeded" ? "Restore previous controls" : "Previous controls need recovery"
+        }
+        description={
+          <Warning
+            heading={
+              state.data?.restoreFailed
+                ? "Couldn't restore previous controls"
+                : op.phase === "succeeded"
+                  ? "Previous controls are retained"
+                  : "Couldn't confirm previous controls"
+            }
+          >
+            <WarningLine text="Restoration needs the same account, controller and shared entries. If Steam can't establish them, your saved controls stay retained." />
+          </Warning>
+        }
+        onOKActionDescription={available ? "Restore" : undefined}
+        onClick={
+          available
+            ? async () => {
+                try {
+                  await retryLayoutRestore(op, () => addonSession.get().selectedId ?? "");
+                } catch {
+                  /* resource reports read failures; native failure retains recovery */
+                } finally {
+                  layoutRecovery.invalidate();
+                }
+              }
+            : undefined
+        }
+      />
+    </PanelSectionRow>
   );
 }
 
@@ -83,7 +150,7 @@ function CatalogueBody({
   useEffect(() => {
     const keys = shown.kind === "ready" ? shown.layouts.map((l) => l.id) : ["retry", "state"];
     const key = rememberedFocus(view);
-    if (key !== undefined && !keys.includes(key)) {
+    if (key !== undefined && key !== "layout-recovery" && !keys.includes(key)) {
       forgetFocus(view);
     }
   }, [view, shown]);

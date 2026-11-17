@@ -144,3 +144,56 @@ visual layout, controller navigation, offline, restart durability of Steam
 selections, cloud or gameplay result is claimed. Native scope resolution,
 physical controller identity, preservation and real apply/readback still
 need bounded device evidence before activation.
+
+## Recovery implementation for #269
+
+The engine now retains pre-export VDF bytes, their SHA-256, complete decoded
+mapping content and explicit presence or absence of both selection layers for
+every established shared target. `saveRecovery` synchronizes this archive and
+the operation reference before native export can run. `sealRecovery` retains
+the type-1 export bytes separately. Advancing to preserved requires both
+archives. Neither archive is deleted on success, failure or interruption.
+
+The browser preservation interface checks mappings and selection semantics
+before capture, checks exported mappings, then restores and verifies the
+original selection before approved application. A failed or timed-out export
+leaves recovery required. Explicit restoration rechecks the installation,
+account, physical controller and complete scope, reloads the retained evidence,
+and verifies mappings and selection semantics before reporting success. The
+module-level operation slot and status resource survive pane teardown. A full
+browser reload while the engine remains live can leave a nonterminal operation
+without its browser owner. That intent stays blocked; this version can reattach
+it for explicit recovery after an engine restart, but does not restart the
+engine or reconcile an abandoned live operation automatically.
+
+The pane shows retained or uncertain previous controls and an explicit restore
+retry when there is recovery evidence. Reading the catalogue or reopening the
+pane never starts restoration. Recovery RPC remains available with the source
+off, though the source's destination is hidden while off.
+
+The browser adapter contains guarded native apply, active decoded readback,
+local export and explicit selection restore calls from the recorded client
+source. Its scope resolver still refuses mutation. `GetConfigForAppAndController`
+returns the winning selection, which does not establish absence of both
+selection layers, all equivalent controllers, physical identity across
+reconnects or isolation between differently named shortcuts. Equal-name groups
+alone cannot supply those proofs. No live Apply action is exposed.
+
+The byte resolver currently supports existing account-local `usercloud` and
+`autosave` VDFs. Workshop and template URLs fail before export because their
+pre-export byte location has not been established. If the original source is
+changed or missing, restore retains the archived bytes and refuses to select
+that source. Writing archived bytes back over changed personal edits is not an
+automatic recovery action. Such cases still need a separate recovery delivery
+path and verification. A restart reattaches a complete archive if a crash interrupted the later
+operation-reference write. It never replays export or application.
+
+Tests cover the typed recovery RPC across restart and failed restoration,
+changed source bytes, fake-native preservation of personal edits and inherited
+defaults, export selection changes, explicit restore and failed restore. The
+existing operation tests cover fallback, changing target context and unknown
+native outcomes. Pane tests cover recovery disclosure and absence of Apply.
+These are deterministic tests only. #269 and #261 remain incomplete pending
+native scope and selection evidence, unsupported-source recovery delivery and
+the parent's bounded device run. Steam restart, cloud conflicts, offline use,
+gameplay and two simultaneous controllers remain unverified.

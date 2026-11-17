@@ -32,11 +32,11 @@ test("typed lifecycle retains interrupted intent and rejects retries after engin
     const op = await rpc["controllerLayouts.beginOperation"]({ previewJobId: "preview", context });
     await operations!.settled();
     await expect(rpc["controllerLayouts.advanceOperation"]({ id: op.id, from: "preserving", phase: "succeeded" })).rejects.toThrow();
-    await rpc["controllerLayouts.advanceOperation"]({ id: op.id, from: "preserving", phase: "preserved", recoveryId: "durable-export" });
+    await expect(rpc["controllerLayouts.advanceOperation"]({ id: op.id, from: "preserving", phase: "preserved", recoveryId: "durable-export" })).rejects.toThrow();
     const restarted = make();
-    expect(await restarted["controllerLayouts.operationStatus"]({})).toMatchObject({ id: op.id, phase: "recovery-required", recoveryId: "durable-export", context });
+    expect(await restarted["controllerLayouts.operationStatus"]({})).toMatchObject({ id: op.id, phase: "recovery-required", context });
     await expect(restarted["controllerLayouts.beginOperation"]({ previewJobId: "preview", context })).rejects.toThrow();
-    expect((await restarted["controllerLayouts.operationStatus"]({}))?.recoveryId).toBe("durable-export");
+    expect((await restarted["controllerLayouts.operationStatus"]({}))?.recoveryId).toBeUndefined();
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
@@ -46,5 +46,36 @@ test("a syntactically valid but malformed recovery record cannot release the gat
     await Bun.write(join(dir, "operation.json"), JSON.stringify({ id: "broken", phase: "failed", context: "lost", approved: {} }));
     const rpc = controllerLayoutsHandlers({ controllerLayoutOperations: new ControllerLayoutOperations(dir, {} as never) } as never);
     await expect(rpc["controllerLayouts.operationStatus"]({})).rejects.toThrow("Couldn't read controller recovery state");
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test("recovery RPC retains personal bytes and absence semantics across restart and failed restore", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "layout-recovery-"));
+  try {
+    const config = join(dir, "home/.local/share/Steam/steamapps/common/Steam Controller Configs/123/config/personal");
+    await Bun.write(join(config, "edited.vdf"), '"controller_mappings" { "personal" "A to B" }');
+    const make = () => new ControllerLayoutOperations(dir, { status: () => ({ state: "ready", preview: approved }), authorize: async () => approved }, join(dir, "home"));
+    let operations = make();
+    const rpc = () => controllerLayoutsHandlers({ controllerLayoutOperations: operations, store: { settings: { controllerLayoutsEnabled: true } } } as never);
+    const op = await rpc()["controllerLayouts.beginOperation"]({ previewJobId: "preview", context });
+    await operations.settled();
+    const sourceURL = `autosave://${join(config, "edited.vdf")}`;
+    const snapshot = { sourceURL, mapping: '{"type":4,"sets":[{"personal":"A to B"}],"modes":[]}', selections: [42,43].flatMap(target => [{ target, selectionType: 0, present: false }, { target, selectionType: 1, present: true, url: sourceURL }]) };
+    const saved = await rpc()["controllerLayouts.saveRecovery"]({ id: op.id, snapshot });
+    await expect(rpc()["controllerLayouts.advanceOperation"]({ id: op.id, from: "preserving", phase: "preserved", recoveryId: saved.recoveryId })).rejects.toThrow();
+    await Bun.write(join(config, "export.vdf"), '"controller_mappings" { "personal" "native export" }');
+    await rpc()["controllerLayouts.sealRecovery"]({ id: op.id, sourceURL: "usercloud://personal/export" });
+    await rpc()["controllerLayouts.advanceOperation"]({ id: op.id, from: "preserving", phase: "preserved", recoveryId: saved.recoveryId });
+    operations = make();
+    const interrupted = await rpc()["controllerLayouts.operationStatus"]({});
+    expect(interrupted).toMatchObject({ phase: "recovery-required", recoveryId: saved.recoveryId });
+    expect(await rpc()["controllerLayouts.readRecovery"]({ id: op.id })).toEqual(snapshot);
+    const restoring = await rpc()["controllerLayouts.resumeRestore"]({ id: op.id });
+    expect(restoring.phase).toBe("restoring");
+    await rpc()["controllerLayouts.advanceOperation"]({ id: op.id, from: "restoring", phase: "recovery-required" });
+    expect(await rpc()["controllerLayouts.readRecovery"]({ id: op.id })).toEqual(snapshot);
+    await Bun.write(join(config, "edited.vdf"), "new personal edits");
+    await expect(rpc()["controllerLayouts.resumeRestore"]({ id: op.id })).rejects.toThrow();
+    expect((await rpc()["controllerLayouts.operationStatus"]({}))?.recoveryId).toBe(saved.recoveryId);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });

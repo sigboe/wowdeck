@@ -104,15 +104,15 @@ export const previewChoice = {
     listeners.forEach((listener) => listener());
   },
 };
-const native = nativeControllerLayouts();
+export const layoutNative = nativeControllerLayouts();
 export const layoutTargetContext = createKeyedResource({
   clock: systemClock,
   pollMs: 1000,
   errorText: () => "Couldn't establish the Steam account. Choose a library entry for preview.",
-  read: (key) => native.context(Number(key)),
+  read: (key) => layoutNative.context(Number(key)),
 });
 export const layoutPreviewSession = createLayoutPreviewSession({
   rpc: engine.rpc,
-  native,
+  native: layoutNative,
   clock: systemClock,
 });

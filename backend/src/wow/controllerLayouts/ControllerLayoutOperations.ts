@@ -3,6 +3,7 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import type { ControllerLayoutContext, ControllerLayoutOperation, ControllerLayoutPhase, MethodMap } from "../../api/contracts";
+import { ControllerLayoutRecovery } from "./ControllerLayoutRecovery";
 import type { ControllerLayoutPreviews } from "./ControllerLayoutPreviews";
 const terminal = new Set<ControllerLayoutPhase>(["succeeded", "restored", "failed"]);
 const transitions: Record<ControllerLayoutPhase, ControllerLayoutPhase[]> = {
@@ -17,7 +18,45 @@ const transitions: Record<ControllerLayoutPhase, ControllerLayoutPhase[]> = {
 export class ControllerLayoutOperations {
   private busy = false;
   private previewJobId?: string;
-  constructor(private dir: string, private previews: Pick<ControllerLayoutPreviews, "authorize" | "status">) {}
+  private recovery: ControllerLayoutRecovery;
+  constructor(private dir: string, private previews: Pick<ControllerLayoutPreviews, "authorize" | "status">, homeDir = "") {
+    this.recovery = new ControllerLayoutRecovery(join(dir, "recovery"), homeDir);
+  }
+  async saveRecovery(params: MethodMap["controllerLayouts.saveRecovery"]["params"]) {
+    if (this.busy) throw Error("Couldn't preserve controls while another operation is running.");
+    this.busy = true;
+    try {
+      const op = this.live;
+      if (!op || op.id !== params.id || op.phase !== "preserving" || op.recoveryId) throw Error("Couldn't replace preserved controls.");
+      const saved = await this.recovery.save(op, params.snapshot);
+      await this.save({ ...op, recoveryId: saved.recoveryId });
+      return saved;
+    } finally { this.busy = false; }
+  }
+  async sealRecovery(params: MethodMap["controllerLayouts.sealRecovery"]["params"]) {
+    if (this.busy) throw Error("Couldn't preserve the export while another operation is running.");
+    this.busy = true;
+    try {
+      const op = this.live;
+      if (!op || op.id !== params.id || op.phase !== "preserving") throw Error("Couldn't attach this native export.");
+      return await this.recovery.seal(op, params.sourceURL);
+    } finally { this.busy = false; }
+  }
+  async readRecovery(id: string) {
+    const op = await this.current();
+    if (!op || op.id !== id) throw Error("Couldn't find preserved controls.");
+    return this.recovery.read(op);
+  }
+  async resumeRestore(id: string) {
+    if (this.busy) throw Error("Couldn't restore while another operation is running.");
+    this.busy = true;
+    try {
+      const op = await this.current();
+      if (!op || op.id !== id || !["succeeded", "recovery-required"].includes(op.phase)) throw Error("Couldn't resume this restoration.");
+      await this.recovery.read(op);
+      return await this.save({ ...op, phase: "restoring" });
+    } finally { this.busy = false; }
+  }
   async status(): Promise<ControllerLayoutOperation | null> {
     try {
       const value = JSON.parse(await readFile(join(this.dir, "operation.json"), "utf8")) as ControllerLayoutOperation;
@@ -28,6 +67,16 @@ export class ControllerLayoutOperations {
         value.approved.accountId !== value.context.accountId ||
         !/^[a-f0-9]{64}$/.test(value.approved.mappings?.[String(value.context.controllerType)] ?? "") ||
         (value.recoveryId !== undefined && (typeof value.recoveryId !== "string" || !value.recoveryId || value.recoveryId.length > 256))) throw Error();
+      if (!value.recoveryId && value.phase === "preserving") {
+        // An archive may have reached disk before its operation reference did.
+        // Reattach it without native replay or requiring the source to survive.
+        try {
+          await this.recovery.read({ ...value, recoveryId: value.id }, false);
+          value.recoveryId = value.id;
+        } catch (error) {
+          if ((error as { code?: string }).code !== "ENOENT") throw error;
+        }
+      }
       return terminal.has(value.phase) ? value : { ...value, phase: "recovery-required" };
     } catch (error) {
       if ((error as { code?: string }).code === "ENOENT") return null;
@@ -80,6 +129,12 @@ export class ControllerLayoutOperations {
       if (!op || op.id !== params.id || op.phase !== params.from || !transitions[op.phase].includes(params.phase)) throw Error("Couldn't advance this controller operation. Read its recovery status.");
       if (params.recoveryId && params.phase !== "preserved") throw Error("Couldn't replace recovery evidence.");
       if (params.phase === "preserved" && (!params.recoveryId || params.recoveryId.length > 256)) throw Error("Couldn't establish preserved controls.");
+      if (params.phase === "preserved") {
+        if (params.recoveryId !== op.recoveryId) throw Error("Couldn't find durable preservation evidence.");
+        await this.recovery.read(op);
+        await this.recovery.verifyExport(op);
+      }
+      if (params.phase === "failed" && op.recoveryId) throw Error("Couldn't discard preserved recovery state.");
       if (params.phase === "applying") {
         const approved = await this.previews.authorize(this.previewJobId!, true);
         if (JSON.stringify(approved) !== JSON.stringify(op.approved)) throw Error("Couldn't validate this approved revision.");

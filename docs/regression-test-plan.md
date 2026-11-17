@@ -1362,3 +1362,20 @@ disclosure/correction. T1 through T3 are the local verification targets.
 Visual layout and physical controller behavior remain unverified. Real
 application stays blocked until #269 connects preservation, explicit recovery
 and bounded device verification. Do not use the native F3 preview screen.
+
+### Controller layout recovery (#269)
+
+| Scenario | Expected result | Evidence |
+| --- | --- | --- |
+| Restart after pre-export preservation | Recovery intent and personal bytes remain; another apply is refused | `backend/tests/controller-layout-operation.test.ts`, deterministic RPC |
+| Original personal VDF changes before restore | Restore refuses to overwrite edits; recovery reference remains | Same RPC suite |
+| Local export changes selection | Pre-export evidence already exists; original mappings and explicit or inherited semantics are verified before continuing | `src/controllerLayoutPreservation.test.ts`, fake native adapter |
+| Explicit restore fails | Recovery stays required and the snapshot remains available | Same fake-native suite |
+| Pane reopens with interrupted work | Uncertainty and same-account/controller/scope requirement are disclosed; no Apply action | `src/controllerLayoutsDestination.test.tsx` |
+| Scope, physical identity or override absence cannot be proven | Native mutation remains unavailable | Production adapter guard; device verification pending |
+| Workshop/template source, missing original or changed original | Capture or restore fails closed; existing archives remain | Resolver restriction; recovery delivery still incomplete |
+
+No new device run was authorized for this implementation. The parent must
+perform the bounded disposable-target run after resolving its Steam-state
+permission scope. Restart, cloud, offline, gameplay and two-controller results
+remain pending.

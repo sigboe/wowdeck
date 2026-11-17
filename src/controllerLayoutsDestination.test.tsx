@@ -41,7 +41,9 @@ let answer: ControllerLayoutCatalogue | EngineFailure = {
   state: "ready",
   layouts: [LAYOUT_A, LAYOUT_B],
 };
+let operationAnswer: import("../backend/src/api/contracts").ControllerLayoutOperation | null = null;
 const fake = createFakeEngine({
+  "controllerLayouts.operationStatus": () => operationAnswer,
   "settings.get": () => ({
     settings: { ...defaultSettings(), controllerLayoutsEnabled: sourceOn },
   }),
@@ -334,4 +336,37 @@ test("preference uses the active installation and current account, leaving ambig
       else Reflect.deleteProperty(globalThis, key);
     }
   }
+});
+
+test("interrupted recovery discloses uncertainty without offering Apply", async () => {
+  operationAnswer = {
+    id: "interrupted",
+    phase: "recovery-required",
+    recoveryId: "saved",
+    context: {} as never,
+    approved: {} as never,
+  };
+  const { layoutRecovery } = await import("./controllerLayoutRecoverySession");
+  await act(async () => {
+    await layoutRecovery.refresh("current");
+  });
+  await show();
+  expect(doc.body.textContent).toContain("Previous controls need recovery");
+  expect(doc.body.textContent).toContain("same account, controller and shared entries");
+  expect(doc.body.textContent).not.toContain("Apply layout");
+  const recovery = [...doc.querySelectorAll("b")].find(
+    (node) => node.textContent === "Previous controls need recovery",
+  )!;
+  await act(async () => {
+    recovery.parentElement!.dispatchEvent(
+      new doc.defaultView!.MouseEvent("click", { bubbles: true }),
+    );
+  });
+  await act(async () => {});
+  expect(doc.body.textContent).toContain("Couldn't restore previous controls");
+  expect(operationAnswer.recoveryId).toBe("saved");
+  operationAnswer = null;
+  await act(async () => {
+    await layoutRecovery.refresh("current");
+  });
 });

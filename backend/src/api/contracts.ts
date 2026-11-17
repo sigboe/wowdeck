@@ -883,6 +883,22 @@ export interface MethodMap {
     params: { id: string; from: ControllerLayoutPhase; phase: ControllerLayoutPhase; recoveryId?: string };
     result: ControllerLayoutOperation;
   };
+  "controllerLayouts.saveRecovery": {
+    params: { id: string; snapshot: ControllerLayoutRecoverySnapshot };
+    result: { recoveryId: string };
+  };
+  "controllerLayouts.sealRecovery": {
+    params: { id: string; sourceURL: string };
+    result: { recoveryId: string };
+  };
+  "controllerLayouts.readRecovery": {
+    params: { id: string };
+    result: ControllerLayoutRecoverySnapshot;
+  };
+  "controllerLayouts.resumeRestore": {
+    params: { id: string };
+    result: ControllerLayoutOperation;
+  };
   "controllerLayouts.preparePreview": {
     params: { layoutId: string; revision: number; accountId: number };
     result: { jobId: string };
@@ -1813,11 +1829,22 @@ export interface ControllerLayoutContext {
   selection: string;
   scope: {
     state: "established" | "unknown";
+    /** Proven native override layer for application, including equivalent-controller scope. */
+    selectionType?: 0 | 1;
     /** Identity includes native selection semantics and all equivalent controllers. */
     identity: string;
     targets: { appId: number; name: string }[];
   };
 }
+/** Full decoded mappings and an explicit record of override presence for every target.
+ * sourceURL is read by the engine before export; no browser filesystem paths cross RPC.
+ */
+export interface ControllerLayoutRecoverySnapshot {
+  mapping: string;
+  sourceURL: string;
+  selections: { target: number; selectionType: number; present: boolean; url?: string }[];
+}
+
 export type ControllerLayoutPhase = "validating" | "preserving" | "preserved" | "applying" | "verifying" |
   "succeeded" | "restoring" | "restored" | "failed" | "recovery-required";
 export interface ControllerLayoutOperation {

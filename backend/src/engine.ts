@@ -355,7 +355,7 @@ export function assembleEngine(config: EngineConfig): Engine & { start(): Promis
     about,
     controllerLayouts,
     controllerLayoutPreviews,
-    controllerLayoutOperations: new ControllerLayoutOperations(join(dataDir, "controller-layouts"), controllerLayoutPreviews),
+    controllerLayoutOperations: new ControllerLayoutOperations(join(dataDir, "controller-layouts"), controllerLayoutPreviews, homeDir),
   };
   server.handle(handlerTable(deps));
 

@@ -22,6 +22,22 @@ export function controllerLayoutsHandlers({
   store,
 }: ControllerLayoutsDeps) {
   return {
+    "controllerLayouts.saveRecovery": async (params: import("../contracts").MethodMap["controllerLayouts.saveRecovery"]["params"]) => {
+      if (!controllerLayoutOperations) throw Error("Couldn't preserve controls.");
+      return controllerLayoutOperations.saveRecovery(params);
+    },
+    "controllerLayouts.sealRecovery": async (params: import("../contracts").MethodMap["controllerLayouts.sealRecovery"]["params"]) => {
+      if (!controllerLayoutOperations) throw Error("Couldn't preserve the native export.");
+      return controllerLayoutOperations.sealRecovery(params);
+    },
+    "controllerLayouts.readRecovery": async ({ id }: { id: string }) => {
+      if (!controllerLayoutOperations) throw Error("Couldn't read preserved controls.");
+      return controllerLayoutOperations.readRecovery(id);
+    },
+    "controllerLayouts.resumeRestore": async ({ id }: { id: string }) => {
+      if (!controllerLayoutOperations) throw Error("Couldn't restore controls.");
+      return controllerLayoutOperations.resumeRestore(id);
+    },
     "controllerLayouts.beginOperation": async (params: import("../contracts").MethodMap["controllerLayouts.beginOperation"]["params"]) => {
       if (!controllerLayoutsSourceEnabled(store.settings) || !controllerLayoutOperations) throw Error("Couldn't apply layouts while the source is off.");
       return controllerLayoutOperations.begin(params);
