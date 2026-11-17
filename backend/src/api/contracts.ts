@@ -878,8 +878,9 @@ export interface MethodMap {
      * error for an expected outcome: `state` tells a failed request
      * ("unavailable"), content that is not a catalogue ("malformed") and a
      * manifest newer than this client reads ("unsupported") apart from a
-     * catalogue with no layouts ("ready" with an empty list). Read-only: it
-     * applies nothing.
+     * catalogue with no layouts ("ready" with an empty list). While the
+     * Controller layouts source is off it answers "disabled" without a
+     * request. Read-only: it applies nothing.
      */
     params: Record<string, never>;
     result: ControllerLayoutCatalogue;
@@ -1611,10 +1612,11 @@ export interface PluginSettings {
   /**
    * The Controller layouts source (Options › Sources; GLOSSARY: Controller
    * layouts destination). Off stops the destination and every catalogue
-   * request; controls already applied stay as they are. On once for new
-   * installs and for the first upgrade that carries this key: a stored value
-   * (an opt-out included) is kept by every later upgrade. Read it through
-   * controllerLayoutsSourceEnabled (wow/controllerLayouts/source.ts).
+   * request; controls already applied stay as they are. The engine enforces
+   * it through controllerLayoutsSourceEnabled (wow/controllerLayouts/source.ts):
+   * controllerLayouts.catalogue answers "disabled" while it is off. On once
+   * for new installs and for the first upgrade that carries this key: a
+   * stored value (an opt-out included) is kept by every later upgrade.
    */
   controllerLayoutsEnabled: boolean;
   /** User-chosen folder for WTF backups (e.g. on an SD card); null = the plugin's own data folder. */
@@ -1763,7 +1765,9 @@ export type ControllerLayoutCatalogue =
   /** The answer is not a catalogue: not JSON, the wrong shape, or no usable entry. */
   | { state: "malformed" }
   /** The manifest's schema is newer than this client understands. */
-  | { state: "unsupported"; schemaVersion: number };
+  | { state: "unsupported"; schemaVersion: number }
+  /** The Controller layouts source is off (controllerLayoutsEnabled): nothing was fetched. */
+  | { state: "disabled" };
 
 /**
  * Whether a layout is offered for new application (GLOSSARY: Layout
