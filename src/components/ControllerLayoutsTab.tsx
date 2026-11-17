@@ -5,7 +5,14 @@ import { layoutRow, useControllerLayoutCatalogue } from "../controllerLayouts";
 import { useControllerLayoutsSourceOn } from "../controllerLayoutsSource";
 import { focusTarget } from "./FocusSlot";
 import { FactLine } from "./FactLine";
-import { STEAM, STEAM_FONT, STEAM_LINE, STEAM_LINE_GAP, descriptionStyle } from "../steamTheme";
+import {
+  STEAM,
+  STEAM_FONT,
+  STEAM_LINE,
+  STEAM_LINE_GAP,
+  STEAM_ROW_GAP,
+  descriptionStyle,
+} from "../steamTheme";
 import type { ControllerLayout } from "../../backend/src/api/contracts";
 
 /**
@@ -17,7 +24,8 @@ import type { ControllerLayout } from "../../backend/src/api/contracts";
  * way Steam's controller-layout browser reads one: the title at 16/20 px,
  * then author and controller, then the description. The rows are Steam's
  * own QAM `Field`s (G3, S3), whose padding and 2 px radius stand in for the
- * native browser's 8 px card padding at the pane's width.
+ * native browser's 8 px card padding at the pane's width, 6 px apart as the
+ * native rows are.
  *
  * Nothing is shown or read while the source is off (see
  * `controllerLayoutsEnabled` in the contract).
@@ -143,9 +151,12 @@ function Layouts({ layouts, view }: { layouts: ControllerLayout[]; view: string 
     <>
       {/* What the player can do here, above the list it explains (S22). */}
       <Note text="Layouts the WoWDeck maintainers reviewed for WoW. WoWDeck can't apply these layouts yet." />
-      {layouts.map((layout) => (
-        <LayoutRow key={layout.id} layout={layout} view={view} />
-      ))}
+      {/* Steam's 6 px between rows (S10): the Fields alone touched (0 px, DEVICE 2026-11-17). */}
+      <div style={{ display: "flex", flexDirection: "column", gap: STEAM_ROW_GAP }}>
+        {layouts.map((layout) => (
+          <LayoutRow key={layout.id} layout={layout} view={view} />
+        ))}
+      </div>
     </>
   );
 }

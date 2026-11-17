@@ -55,6 +55,9 @@ export const STEAM_LINE = {
 /** The gap between stacked lines of one row's description (Steam's 2 px). */
 export const STEAM_LINE_GAP = "2px";
 
+/** Steam's minimum space between two focusable rows (S10). */
+export const STEAM_ROW_GAP = "6px";
+
 /** Description-style text: Steam's 12/16 px muted line. */
 export const descriptionStyle = {
   color: STEAM.textMuted,

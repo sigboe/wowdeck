@@ -661,6 +661,87 @@ updated for the widened-QAM rework.
 
 ## 8. Result record
 
+### Controller layouts (#266), November 17, 2026
+
+DEVICE 2026-11-17, Steam Deck (target defaulted to `deck`; the brief named
+none). Build: PR #270 build 1.2.2-pr.270.3 at 5f92f66, with an engine change.
+It was installed before this run and not redeployed. Installed
+`dist/index.js` sha256 `bead7c44…8358382` matches the local build. Installed
+`bin/wowdeck-x86_64` is `ce0d5145…edf15bf`; it differs from the unpatched
+local binary because deployment runs patchelf. Method: virtual pad and CDP
+key presses (UI), CDP probes, the plugin log, and the request log of a
+fixture server.
+
+Fixtures: CL-266-3, CL-266-4 and CL-266-6 ran through a test wrapper. The
+wrapper replaced `bin/wowdeck-x86_64` with a shell script that set
+`WOWDECK_CONTROLLER_LAYOUTS_URL=http://127.0.0.1:18766/catalogue.json` and
+ran the real binary. The fixtures were served from the workstation through
+an SSH reverse tunnel, so no server ran on the Deck. Between states the
+served file was swapped and the frontend reloaded in memory. A server
+started on the Deck over SSH died when its session closed; the tunnel
+replaced it. Afterwards the real engine was moved back (hash `ce0d5145…`
+again), the plugin reloaded, the fixture files were deleted, and port 18766
+was closed on the Deck. Controller layouts and TradeSkillMaster were left
+on, autoUpdate stayed off as found, and the panel was left on Get Addons.
+
+- E-5b passed (UI). With the panel on Options and the QAM closed, the
+  plugin was reloaded through `loader/reload_plugin`. WoWDeck opened on My
+  Addons with no "An error occurred" text. Options › About listed Support
+  WoWDeck, Third-party notices and Diagnostics.
+- O-10c partial (UI). Sources ends with Controller layouts after GitHub,
+  with the description "Steam controller layouts picked for WoW". It was on
+  in `state.json` after the upgrade from 1.2.x. Turned off, it stayed off
+  after a plugin reload (`controllerLayoutsEnabled: false`), then it was
+  turned back on. Not tested: a fresh install, and the off setting
+  surviving an update to a newer build.
+- CL-266-1 passed (UI). With both sources on, the destinations read Search,
+  Latest, Popular, Manual Install, Controller layouts (gamepad icon),
+  TradeSkillMaster. With TradeSkillMaster off, its destination was gone, and
+  turning it back on kept the account signed in. With Controller layouts off,
+  its destination was gone and the list collapsed. Entering the list focused
+  Search, and Right opened the Search pane. With Controller layouts off, a
+  plugin reload and a Get Addons visit made no request: the plugin log had
+  no `controller-layouts` line, and the server's request count stayed at
+  20.
+- CL-266-2 passed (UI). Live catalogue: the note read "Layouts the WoWDeck
+  maintainers reviewed for WoW. WoWDeck can't apply these layouts yet.",
+  then one row: "Kinzo WoW Forever", "by Kinzo · Steam Controller" (the dot
+  is a `::before` separator), and "My current LayOut". Right put focus on
+  the row; A changed nothing. With `two-entries.json`: "Fixture layout A"
+  came before "Kinzo WoW Forever", one focus stop each, and focus started on
+  the first. The title is 16 px on a 20 px line; the facts and description
+  are 12 px on 16 px. The footer was not read.
+- CL-266-3 passed (UI). Closed port: Retry with "Couldn't load controller
+  layouts. Try again later." Non-JSON: Retry with "Couldn't read the
+  controller layouts list." `empty.json`: a focusable "No controller layouts
+  yet" row. `future-schema.json`: "Update WoWDeck" with "This list needs a
+  newer WoWDeck." In `withdrawn-and-unsupported.json`, the withdrawn and
+  newer-format rows render every line in rgb(103, 112, 123) and read
+  "Withdrawn by the WoWDeck maintainers" and "Needs a newer WoWDeck". The
+  readable row renders at rgb(220, 222, 223) and rgb(184, 188, 191). A on
+  any of these rows changed nothing. The audit was clean in every state.
+- CL-266-4 passed (UI). A on Retry with the port still closed showed
+  "Loading…" and then Retry again. With the server up, A brought in the
+  layouts, and focus moved to "Fixture layout A".
+- CL-266-5 passed (UI). From the second row, Left, then Up and Down through
+  the destinations, then Right into Controller layouts returned focus to
+  "Kinzo WoW Forever". B from the pane, and from the destination list,
+  collapsed the QAM onto the nav bar, with focus on GET ADDONS.
+- CL-266-6 partial (UI). Long fixture: title, author and description at 120,
+  120 and 2000 characters, with a 168-character unbroken word. Every row
+  stayed inside the pane (row 357–846 px, pane 348–854 px with 8 px
+  padding). The title wrapped to two lines and the unbroken word broke
+  (`overflow-wrap: anywhere`). The facts wrapped only between facts:
+  "Steam Deck" went to its own line. The pane scrolled (scrollTop 188 on
+  the second row), and the focused row stayed inside the view. Audit
+  OVERFLOW was clean, but INSET flagged the long row (right inset −318).
+  The author fact has `white-space: nowrap` and ends in "…" rather than
+  wrapping, which the row's expectation ("long text wraps") does not
+  cover. Against the native browser (8 px padding, 6 px gap, 2 px
+  radius): the radius is 2 px; the padding is 10 px 16 px, not 8 px; the gap
+  between rows is 0 px, not 6 px. The footer and the native browser itself
+  were not measured on this run.
+
 ### Release 1.1.0, November 4, 2026
 
 DEVICE. The candidate was the v1.0.2-beta.29 release zip (3a241e6), which
@@ -1207,9 +1288,9 @@ on the Deck remains required.
 
 ### Controller layouts destination (#266)
 
-Device runs are pending. A normal build reads the WoW catalogue in
+Device results: §8 "Controller layouts (#266), November 17, 2026". A normal build reads the WoW catalogue in
 [sigboe/steam-input-layouts](https://github.com/sigboe/steam-input-layouts),
-which has no layouts yet, so it shows the empty state (CL-266-3). To see layouts,
+which lists one layout, Kinzo WoW Forever, since November 17, 2026. To see layouts,
 start the engine with `WOWDECK_CONTROLLER_LAYOUTS_URL` pointing at a local
 server that serves one of the fixtures in
 `backend/tests/fixtures/controller-layouts/` (the way PU-25 pointed
@@ -1223,5 +1304,5 @@ not production entries.
 | CL-266-3 | P1 | S | Serve, in turn: nothing (closed port), `empty.json`, a non-JSON file, `future-schema.json`, `withdrawn-and-unsupported.json` | Closed port: a Retry row with "Couldn't load controller layouts. Try again later." Non-JSON: Retry with "Couldn't read the controller layouts list." Empty: a focusable "No controller layouts yet" row. Future schema: an "Update WoWDeck" row with "This list needs a newer WoWDeck." under it. Withdrawn and unsupported entries are greyed with "Withdrawn by the WoWDeck maintainers" or "Needs a newer WoWDeck"; nothing offers them. A failure never reads as an empty list |
 | CL-266-4 | P1 | S | With the closed port, focus Retry; start the server, press A | The row reads "Loading…", then the layouts appear and focus moves to the first row instead of falling to nothing |
 | CL-266-5 | P1 | S | Focus the second layout, Left to the destination list, Down and Up through the destinations, then Right into Controller layouts again; B out, then come back | Re-entry returns to the second layout. B collapses the QAM onto the nav bar as in GA-5 |
-| CL-266-6 | P1 | S | Pane sizing: serve a copy of `two-entries.json` whose first title, author and description are at their maximum length (120, 120 and 2000 characters), with one unbroken word longer than the pane | Every row stays inside the pane (S32, audit OVERFLOW clean); long text wraps. The facts line wraps only between facts. The pane scrolls with the scroll buffer and the focused row stays clear of the bars. Compare the rows against the native controller-layout browser (§8.4d: 8 px padding, 6 px gap, 2 px radius) and record the measured padding and gap |
+| CL-266-6 | P1 | S | Pane sizing: serve a copy of `two-entries.json` whose first title, author and description are at their maximum length (120, 120 and 2000 characters), with one unbroken word longer than the pane | Every row stays inside the pane (S32, audit OVERFLOW clean). The title and description wrap. The facts line wraps only between facts, and a single fact wider than the line ends in "…" (`FactLine`), which the audit may flag as a negative right INSET. Rows are 6 px apart (S10) with Steam's own `Field` padding (10 px 16 px, S3) and its 2 px radius, the pane's adaptation of the native browser's 8 px padding, 6 px gap and 2 px radius (§8.4d). The pane scrolls with the scroll buffer and the focused row stays clear of the bars |
 
