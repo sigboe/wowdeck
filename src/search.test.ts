@@ -68,10 +68,10 @@ describe("searchHelperText", () => {
 
   test("no available providers -> explicit empty-state message, not a broken sentence", () => {
     expect(searchHelperText([curseUnconfigured], "Retail")).toBe(
-      "No source that searches by name is turned on. Turn one on in Options › Addon sources",
+      "No source that searches by name is turned on. Turn one on in Options › Sources",
     );
     expect(searchHelperText([], "Retail")).toBe(
-      "No source that searches by name is turned on. Turn one on in Options › Addon sources",
+      "No source that searches by name is turned on. Turn one on in Options › Sources",
     );
   });
 
@@ -95,7 +95,7 @@ describe("searchHelperText", () => {
 
   test("when every available provider has catalogSearch=false, falls back to the empty-state message", () => {
     expect(searchHelperText([github, wowInterface], "Retail")).toBe(
-      "No source that searches by name is turned on. Turn one on in Options › Addon sources",
+      "No source that searches by name is turned on. Turn one on in Options › Sources",
     );
   });
 });

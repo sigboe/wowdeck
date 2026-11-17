@@ -275,7 +275,7 @@ export function zeroCapabilityScreen(
       tone: "error",
       title: copy.missingTitle,
       body: copy.missingBody,
-      status: "Options › Addon sources lists the sources this plugin has.",
+      status: "Options › Sources lists the sources this plugin has.",
       action: "Open addon sources",
       marked,
     };
@@ -306,7 +306,7 @@ export function zeroCapabilityScreen(
     tone: needsSetup.length > 0 ? "warning" : "muted",
     title: copy.gapTitle,
     body: `${copy.need} ${formatList(turnable)} can ${copy.serve}. ${turnOn}${setup}.`,
-    status: "You can turn sources on or off anytime in Options › Addon sources.",
+    status: "You can turn sources on or off anytime in Options › Sources.",
     action: "Open addon sources",
     marked,
   };

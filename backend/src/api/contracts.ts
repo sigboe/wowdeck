@@ -1492,6 +1492,15 @@ export interface PluginSettings {
   pluginUpdateLastRunVersion: string | null;
   /** Last successfully verified updater package; engine-written only. */
   pluginUpdateStagedVersion: string | null;
+  /**
+   * The Controller layouts source (Options › Sources; GLOSSARY: Controller
+   * layouts destination). Off stops the destination and every catalogue
+   * request; controls already applied stay as they are. On once for new
+   * installs and for the first upgrade that carries this key: a stored value
+   * (an opt-out included) is kept by every later upgrade. Read it through
+   * controllerLayoutsSourceEnabled (wow/controllerLayouts/source.ts).
+   */
+  controllerLayoutsEnabled: boolean;
   /** User-chosen folder for WTF backups (e.g. on an SD card); null = the plugin's own data folder. */
   wtfBackupDir: string | null;
   /** How many automatic pre-restore safety backups to keep per game version (1-10). */

@@ -29,7 +29,7 @@ interface Props {
 /**
  * Options: one component per section (./settings/). Sections own their state;
  * what two sections share is loaded here: the providers (the sources store,
- * shared with Get Addons) and the CurseForge auth status (Addon sources'
+ * shared with Get Addons) and the CurseForge auth status (Sources'
  * CurseForge row and its key modal read and change both) and the diagnostics (Notifications
  * reads the companion status from them). The section order is the focus
  * order (FocusRow ids, guide S21).
