@@ -741,6 +741,19 @@ on, autoUpdate stayed off as found, and the panel was left on Get Addons.
   radius): the radius is 2 px; the padding is 10 px 16 px, not 8 px; the gap
   between rows is 0 px, not 6 px. The footer and the native browser itself
   were not measured on this run.
+- CL-266-6 rerun, row gap only: passed (UI). Frontend of e252fac
+  (`dist/index.js` sha256 `23cd50e7…886441b0`, matching the local build);
+  the engine was left at `ce0d5145…edf15bf`. Measured box to box with
+  `tools/deck-ui eval`. Live catalogue: the note block ends at 40 px and
+  the Kinzo row starts at 40 px (0 px; the note is not a focus stop).
+  Nothing follows the Kinzo row. With `two-entries.json` served through the
+  same wrapper and tunnel as above: "Fixture layout A" spans 40–118 px and
+  "Kinzo WoW Forever" 124–184 px, a 6 px gap; the list's computed `gap` is
+  6px and each row keeps 10px 16px padding. Focus landed on the first row
+  in both states, Down and Up moved between the two rows, and the audit
+  reported 0 issues. Afterwards the engine was restored (`ce0d5145…`,
+  backend 1.2.2-pr.270.3), the fixture server and port 18766 were closed,
+  and the panel was left on My Addons.
 
 ### Release 1.1.0, November 4, 2026
 
