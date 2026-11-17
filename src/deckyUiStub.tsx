@@ -99,6 +99,7 @@ export const deckyUiStub = {
     </div>
   ),
   Navigation: {},
+  QuickAccessTab: { Decky: 999 },
   GamepadButton: {},
   ConfirmModal: () => null,
   Menu: () => null,

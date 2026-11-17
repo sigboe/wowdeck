@@ -17,7 +17,9 @@ import { addonSession } from "../session";
 import { layoutTargets, possibleSharedTargets } from "../controllerLayoutTargets";
 import { useResource } from "../useResource";
 import { listSteamShortcuts } from "../steamLibrary";
-import { forgetFocus, rememberedFocus, revealRemembered } from "../focusMemory";
+import { forgetFocus, rememberedFocus, requestFocus, revealRemembered } from "../focusMemory";
+import { openPanel } from "../openPanel";
+import { holdBrowseSessionForModal } from "../browseSessionState";
 import { layoutRow, useControllerLayoutCatalogue } from "../controllerLayouts";
 import { useControllerLayoutsSourceOn } from "../controllerLayoutsSource";
 import { focusTarget } from "./FocusSlot";
@@ -316,8 +318,10 @@ function PreviewPane({
   // One operation at a time: an earlier Apply keeps its previous controls until restored.
   const blocked = !!pending && pending.phase !== "failed" && pending.phase !== "restored";
   const context = scope.data?.scope.state === "established" ? scope.data : undefined;
-  const apply = () =>
-    context &&
+  const apply = () => {
+    if (!context) return;
+    // The modal hides the QAM; that is not a close. Come back to this row.
+    const release = holdBrowseSessionForModal();
     showModal(
       <ConfirmModal
         strTitle="Apply this layout?"
@@ -332,7 +336,17 @@ function PreviewPane({
           layoutOperationContext.invalidate();
         }}
       />,
+      window,
+      {
+        bHideMainWindowForPopouts: false,
+        fnOnClose: () => {
+          requestFocus(view, `preview:${choice.layout.id}:Apply layout`);
+          openPanel("browse");
+          release();
+        },
+      },
     );
+  };
   const preferred = layoutTargets(games, active, account.data?.accountId).preferred;
   useEffect(() => {
     if (!choice.key && !choice.correcting && preferred)
