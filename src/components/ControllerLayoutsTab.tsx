@@ -1,11 +1,17 @@
-import { Field, PanelSectionRow, Spinner } from "@decky/ui";
+import { ConfirmModal, Field, PanelSectionRow, Spinner, showModal } from "@decky/ui";
 import { useEffect, useRef, useSyncExternalStore } from "react";
 import {
   layoutPreviewSession,
+  layoutOperationContext,
   layoutTargetContext,
   previewChoice,
 } from "../controllerLayoutPreviewSession";
-import { layoutRecovery, retryLayoutRestore } from "../controllerLayoutRecoverySession";
+import {
+  layoutApplyStatus,
+  layoutRecovery,
+  retryLayoutRestore,
+  startLayoutApply,
+} from "../controllerLayoutRecoverySession";
 import { Warning, WarningLine } from "./Warning";
 import { addonSession } from "../session";
 import { layoutTargets, possibleSharedTargets } from "../controllerLayoutTargets";
@@ -298,6 +304,31 @@ function PreviewPane({
   const games = listSteamShortcuts();
   const account = useResource(layoutTargetContext, games.length ? String(games[0].appId) : null);
   const active = session.installations.find((i) => i.id === session.selectedId);
+  const scope = useResource(
+    layoutOperationContext,
+    choice.target !== undefined && session.selectedId
+      ? `${choice.target}|${session.selectedId}`
+      : null,
+  );
+  const applyStatus = useSyncExternalStore(layoutApplyStatus.subscribe, layoutApplyStatus.get);
+  const context = scope.data?.scope.state === "established" ? scope.data : undefined;
+  const apply = () =>
+    context &&
+    showModal(
+      <ConfirmModal
+        strTitle="Apply this layout?"
+        strDescription={`Changes the controls of ${context.scope.targets.map((g) => g.name).join(", ")} for every Steam Deck controller. WoWDeck saves your current controls first, so you can restore them later.`}
+        strOKButtonText="Apply"
+        onOK={async () => {
+          const jobId = choice.key ? await layoutPreviewSession.job(choice.key) : undefined;
+          if (jobId)
+            await startLayoutApply(jobId, context, () => addonSession.get().selectedId ?? "").catch(
+              () => {},
+            );
+          layoutOperationContext.invalidate();
+        }}
+      />,
+    );
   const preferred = layoutTargets(games, active, account.data?.accountId).preferred;
   useEffect(() => {
     if (!choice.key && !choice.correcting && preferred)
@@ -336,7 +367,9 @@ function PreviewPane({
       </PanelSectionRow>
       {row(
         choice.layout.title,
-        "Preview only. WoWDeck can't apply these layouts yet. Your controls stay in place.",
+        context
+          ? "Preview the mappings, then apply. Your previous controls are saved first."
+          : "Preview only. Your controls stay in place.",
       )}
       {choice.target !== undefined && (
         <>
@@ -347,15 +380,23 @@ function PreviewPane({
           {row("Change library entry", "Choose a different entry without renaming it", () =>
             previewChoice.select(choice.layout, undefined, true),
           )}
-          {row(
-            "Possibly shared controls",
-            possibleSharedTargets(games, choice.target)
-              .map((g) => g.name)
-              .join(", "),
-          )}
-          {row(
-            "Applying unavailable",
-            "Couldn't establish the full affected scope or preserve your previous controls. Entries with other names may also share controls. Preview remains available.",
+          {context ? (
+            row("Shared controls", context.scope.targets.map((g) => g.name).join(", "))
+          ) : (
+            <>
+              {row(
+                "Possibly shared controls",
+                possibleSharedTargets(games, choice.target)
+                  .map((g) => g.name)
+                  .join(", "),
+              )}
+              {row(
+                "Applying unavailable",
+                scope.loading
+                  ? "Checking which entries share these controls…"
+                  : "WoWDeck applies layouts only over your own saved controls on the built-in controller, without a controller-specific override. Preview remains available.",
+              )}
+            </>
           )}
         </>
       )}
@@ -385,10 +426,26 @@ function PreviewPane({
         row("Couldn't preview the layout", result.data.message)
       ) : result.data?.state === "ready" ? (
         <>
-          {row(
-            "Preview verified",
-            "These mappings match the reviewed revision. Applying and restoration aren't available yet.",
-          )}
+          {row("Preview verified", "These mappings match the reviewed revision.")}
+          {context &&
+            (applyStatus === "applying"
+              ? row("Applying layout…")
+              : row(
+                  "Apply layout",
+                  {
+                    idle: undefined,
+                    applying: undefined,
+                    succeeded:
+                      "Layout applied. Restore your previous controls from the top of this tab.",
+                    restored: "Couldn't apply the layout. Your previous controls are back.",
+                    failed: "Couldn't apply the layout. Your controls didn't change.",
+                    blocked:
+                      "Couldn't apply the layout. Steam's controls changed; preview it again.",
+                    "recovery-required":
+                      "Couldn't apply the layout. Restore your previous controls from the top of this tab.",
+                  }[applyStatus],
+                  apply,
+                ))}
           {result.data.model.sets.map((set, index) =>
             row(`Action set ${index + 1}`, mappingText(set)),
           )}

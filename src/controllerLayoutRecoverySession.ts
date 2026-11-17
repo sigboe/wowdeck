@@ -9,7 +9,23 @@ import { applyLayout } from "./controllerLayoutOperation";
 import { layoutPreservation } from "./controllerLayoutPreservation";
 import type { ControllerLayoutContext } from "../backend/src/api/contracts";
 import { restoreLayout } from "./controllerLayoutRestore";
-let running: Promise<void> | undefined;
+let running: Promise<unknown> | undefined;
+type ApplyStatus =
+  "idle" | "applying" | "succeeded" | "restored" | "failed" | "blocked" | "recovery-required";
+let applyState: ApplyStatus = "idle";
+const applyListeners = new Set<() => void>();
+const setApply = (next: ApplyStatus) => {
+  applyState = next;
+  applyListeners.forEach((listener) => listener());
+};
+/** Module scope: the outcome survives the confirmation modal unmounting the QAM. */
+export const layoutApplyStatus = {
+  get: () => applyState,
+  subscribe(listener: () => void) {
+    applyListeners.add(listener);
+    return () => applyListeners.delete(listener);
+  },
+};
 let lastFailedId: string | undefined;
 export const layoutRecovery = createKeyedResource<{
   operation: ControllerLayoutOperation | null;
@@ -50,6 +66,7 @@ export function startLayoutApply(
   currentInstallation: () => string,
 ) {
   if (running) return running;
+  setApply("applying");
   running = applyLayout({
     rpc: engine.rpc,
     native: layoutNative,
@@ -58,9 +75,11 @@ export function startLayoutApply(
     context,
     currentInstallation,
   })
-    .then(async () => {
-      await layoutRecovery.refresh("current");
-    })
+    .then(
+      (outcome) => setApply(outcome.state),
+      () => setApply("failed"),
+    )
+    .then(() => layoutRecovery.refresh("current"))
     .finally(() => {
       running = undefined;
     });
@@ -71,6 +90,7 @@ export function resetLayoutRecovery() {
   // Running work and its callback cleanup remain owned until it settles.
   if (!running) {
     lastFailedId = undefined;
+    applyState = "idle";
     layoutRecovery.retainOnly([]);
   }
 }

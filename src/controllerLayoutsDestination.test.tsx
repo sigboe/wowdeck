@@ -263,7 +263,7 @@ test("chosen target discloses equal-name entries and unknown wider scope, with c
     await show();
     restoreFocus("qam.browse.controllerLayouts");
     expect(doc.activeElement?.textContent).toContain("Change library entry");
-    expect(text).toContain("Entries with other names may also share controls");
+    expect(text).toContain("Possibly shared controls");
     expect(text).toContain("Applying unavailable");
     expect(text).not.toContain("Apply layout");
     const change = [...doc.querySelectorAll("b")].find(
@@ -304,7 +304,9 @@ test("preference uses the active installation and current account, leaving ambig
         FreeControllerConfig: () => {},
       },
     },
-    controllerConfiguratorStore: { EditingConfigurationControllerIndex: 15 },
+    controllerConfiguratorStore: {
+      m_controllerList: [{ nControllerIndex: 15, eControllerType: 4 }],
+    },
   });
   try {
     await layoutTargetContext.refresh("42");

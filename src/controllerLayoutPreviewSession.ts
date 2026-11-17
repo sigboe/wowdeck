@@ -70,6 +70,8 @@ export function createLayoutPreviewSession(deps: {
         target,
         attempt: ++attempt,
       }),
+    /** The engine job behind a ready preview; Apply re-authorizes it. */
+    job: (key: string) => jobs.get(key),
     reset: () => {
       resource.retainOnly([]);
       jobs.clear();
@@ -110,6 +112,16 @@ export const layoutTargetContext = createKeyedResource({
   pollMs: 1000,
   errorText: () => "Couldn't establish the Steam account. Choose a library entry for preview.",
   read: (key) => layoutNative.context(Number(key)),
+});
+/** Key: `${target}|${installationId}`. Scope is reread on every Apply boundary too. */
+export const layoutOperationContext = createKeyedResource({
+  clock: systemClock,
+  pollMs: 1000,
+  errorText: () => "Couldn't establish which library entries share these controls.",
+  read: (key) => {
+    const [target, installationId] = key.split("|");
+    return layoutNative.operationContext(Number(target), installationId!);
+  },
 });
 export const layoutPreviewSession = createLayoutPreviewSession({
   rpc: engine.rpc,
