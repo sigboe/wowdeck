@@ -250,3 +250,14 @@ describe("widening subscription", () => {
     expect(seen).toEqual([]);
   });
 });
+
+test("a one-shot QAM-shown listener runs once and can be cancelled", async () => {
+  const { onNextQamShown, qamShown } = await import("./browseSessionState");
+  let runs = 0;
+  onNextQamShown(() => runs++);
+  const cancel = onNextQamShown(() => (runs += 10));
+  cancel();
+  qamShown();
+  qamShown();
+  expect(runs).toBe(1);
+});

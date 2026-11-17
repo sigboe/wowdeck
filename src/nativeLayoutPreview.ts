@@ -9,7 +9,7 @@ import {
 } from "./controllerLayoutPreviewSession";
 import { layoutApplyStatus, startLayoutApply } from "./controllerLayoutRecoverySession";
 import { addonSession } from "./session";
-import { browseFocusView, holdBrowseSessionForModal } from "./browseSessionState";
+import { browseFocusView, holdBrowseSessionForModal, onNextQamShown } from "./browseSessionState";
 import { requestFocus } from "./focusMemory";
 import { openPanel } from "./openPanel";
 
@@ -131,10 +131,14 @@ function returnAfterPreview(history: MemoryHistory | undefined, layoutId: string
       previewChoice.select(null);
       openPanel("browse");
       release();
-      // DEVICE 2026-11-17: focus set while the QAM was hidden was taken by
-      // the tab header when it opened. Ask again once the panel has shown.
-      for (const ms of [400, 900])
-        setTimeout(() => requestFocus(browseFocusView("controllerLayouts"), layoutId), ms);
+      // DEVICE 2026-11-17: focus requested while the QAM was hidden, or on a
+      // timer, lost to the tab header Steam focuses as the QAM shows (~1.1 s
+      // after B). Ask once it has shown, then again after Steam's own focus.
+      const focusRow = () => requestFocus(browseFocusView("controllerLayouts"), layoutId);
+      const cancel = onNextQamShown(() => {
+        for (const ms of [0, 250, 600]) setTimeout(focusRow, ms);
+      });
+      setTimeout(cancel, 5000);
     }, 300);
   };
   const stop = history.listen((location) => {

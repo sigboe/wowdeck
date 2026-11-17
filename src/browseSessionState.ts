@@ -214,9 +214,20 @@ export function qamHidden(): void {
   }
 }
 
+const shownOnce = new Set<() => void>();
+/** Run `listener` the next time the QAM window shows; returns a cancel. */
+export function onNextQamShown(listener: () => void): () => void {
+  shownOnce.add(listener);
+  return () => shownOnce.delete(listener);
+}
+
 /** The QAM window is showing again: any popup over it has closed. */
 export function qamShown(): void {
   popupOpen = false;
+  for (const listener of [...shownOnce]) {
+    shownOnce.delete(listener);
+    listener();
+  }
   // Steam may hide the content before it unmounts. The widening adapter can
   // collapse its visible layout then even though the session remains wide.
   // A return is therefore an enforcement boundary, including when Steam
