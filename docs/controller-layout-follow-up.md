@@ -110,11 +110,9 @@ Workshop sources need more evidence before they can be supported.
 
 1. **Reviewed mappings.** Publishing `previewMappings` (see "Publication
    artifact contract") remains the stronger check and is still optional.
-2. **Recovery exports reach Steam Cloud.** Each Apply leaves a personal
-   export, "WoWDeck recovery <operation>", in the account's controller
-   configs. Steam syncs it, and on the Deck it came back after the local
-   folder was deleted. WoWDeck should remove it with
-   `DeletePersonalControllerConfiguration` once a restore no longer needs it.
+2. **Where X lands.** After X on Steam's preview, Steam goes back two pages.
+   That lands on whatever configurator page was open before, not on WoWDeck.
+   On one run the route came back as `/routes/routes/app/…`.
 3. **Focus after Restore.** The restore row disappears and focus lands
    nowhere.
 3. **Abandoned native calls.** No native acknowledgement proves that a dead
