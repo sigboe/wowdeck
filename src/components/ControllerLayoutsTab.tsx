@@ -113,6 +113,7 @@ function RecoveryPane({ view }: { view: string }) {
             ? async () => {
                 try {
                   await retryLayoutRestore(op, () => addonSession.get().selectedId ?? "");
+                  layoutApplyStatus.clear();
                 } catch {
                   /* resource reports read failures; native failure retains recovery */
                 } finally {
@@ -311,6 +312,9 @@ function PreviewPane({
       : null,
   );
   const applyStatus = useSyncExternalStore(layoutApplyStatus.subscribe, layoutApplyStatus.get);
+  const pending = useResource(layoutRecovery, "current").data?.operation;
+  // One operation at a time: an earlier Apply keeps its previous controls until restored.
+  const blocked = !!pending && pending.phase !== "failed" && pending.phase !== "restored";
   const context = scope.data?.scope.state === "established" ? scope.data : undefined;
   const apply = () =>
     context &&
@@ -430,22 +434,27 @@ function PreviewPane({
           {context &&
             (applyStatus === "applying"
               ? row("Applying layout…")
-              : row(
-                  "Apply layout",
-                  {
-                    idle: undefined,
-                    applying: undefined,
-                    succeeded:
-                      "Layout applied. Restore your previous controls from the top of this tab.",
-                    restored: "Couldn't apply the layout. Your previous controls are back.",
-                    failed: "Couldn't apply the layout. Your controls didn't change.",
-                    blocked:
-                      "Couldn't apply the layout. Steam's controls changed; preview it again.",
-                    "recovery-required":
-                      "Couldn't apply the layout. Restore your previous controls from the top of this tab.",
-                  }[applyStatus],
-                  apply,
-                ))}
+              : blocked && applyStatus === "idle"
+                ? row(
+                    "Apply layout",
+                    "Restore your previous controls first, at the top of this tab.",
+                  )
+                : row(
+                    "Apply layout",
+                    {
+                      idle: undefined,
+                      applying: undefined,
+                      succeeded:
+                        "Layout applied. Restore your previous controls from the top of this tab.",
+                      restored: "Couldn't apply the layout. Your previous controls are back.",
+                      failed: "Couldn't apply the layout. Your controls didn't change.",
+                      blocked:
+                        "Couldn't apply the layout. Steam's controls changed; preview it again.",
+                      "recovery-required":
+                        "Couldn't apply the layout. Restore your previous controls from the top of this tab.",
+                    }[applyStatus],
+                    blocked ? undefined : apply,
+                  ))}
           {result.data.model.sets.map((set, index) =>
             row(`Action set ${index + 1}`, mappingText(set)),
           )}

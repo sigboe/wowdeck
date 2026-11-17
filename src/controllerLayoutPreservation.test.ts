@@ -120,3 +120,70 @@ for (const inherited of [false, true]) {
     expect(selection).toBe("unknown export outcome");
   });
 }
+
+for (const consistent of [true, false]) {
+  test(`an export Steam normalized ${consistent ? "is sealed" : "that reads back inconsistently is refused"} and the previous selection returns`, async () => {
+    const context = {
+      installationId: "retail",
+      accountId: 123,
+      target: 42,
+      controllerIndex: 15,
+      controllerType: 4,
+      controllerIdentity: "physical",
+      selection: "previous",
+      scope: {
+        state: "established" as const,
+        identity: "all",
+        targets: [{ appId: 42, name: "WoW" }],
+      },
+    };
+    const op = {
+      id: "op",
+      phase: "preserving",
+      approved: {} as never,
+      context,
+    } as ControllerLayoutOperation;
+    const snapshot: ControllerLayoutRecoverySnapshot = {
+      sourceURL: "autosave:///config/wow/controller_neptune.vdf",
+      mapping: mappingContent(model),
+      selections: [
+        {
+          target: 42,
+          selectionType: 0,
+          present: true,
+          url: "autosave:///config/wow/controller_neptune.vdf",
+        },
+        { target: 42, selectionType: 1, present: false },
+      ],
+    };
+    // DEVICE 2026-11-17: export drops activators without bindings.
+    const normalized = { ...model, modes: [] };
+    let selection = "previous";
+    const calls: string[] = [];
+    const native = {
+      operationContext: async () => ({ ...context, selection }),
+      readback: async () => (selection === "export" ? normalized : model),
+      preview: async () => ({
+        model: consistent ? normalized : { ...normalized, sets: [] },
+        release() {},
+      }),
+      preservationState: async () => structuredClone(snapshot),
+      exportLocal: async () => {
+        selection = "export";
+        return "usercloud://wow/export_0";
+      },
+      restoreSelections: async () => {
+        selection = "previous";
+      },
+    } as unknown as LayoutRecoveryAdapter;
+    const rpc = (async (method: string) => {
+      calls.push(method);
+      return { recoveryId: "op" };
+    }) as unknown as Rpc;
+    const capture = layoutPreservation(rpc, native).capture(op);
+    if (consistent) expect(await capture).toEqual({ recoveryId: "op" });
+    else await expect(capture).rejects.toThrow("exported bytes");
+    expect(selection).toBe("previous");
+    expect(calls.includes("controllerLayouts.sealRecovery")).toBe(consistent);
+  });
+}

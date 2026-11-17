@@ -112,3 +112,14 @@ test("durable browser ownership prevents a second restore until native work is r
     expect((await rpc["controllerLayouts.operationStatus"]({}))?.nativeOwner).toBeUndefined();
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
+
+test("an operation for a revision without published mappings stays readable after restart", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "layout-op-"));
+  try {
+    const unreviewed: ControllerLayoutPreview = { ...approved, mappings: {} };
+    const make = () => controllerLayoutsHandlers({ controllerLayoutOperations: new ControllerLayoutOperations(dir, { status: () => ({ state: "ready", preview: unreviewed }), authorize: async () => unreviewed }), store: { settings: { controllerLayoutsEnabled: true } } } as never);
+    const op = await make()["controllerLayouts.beginOperation"]({ previewJobId: "preview", context, nativeOwner });
+    // DEVICE 2026-11-17: the engine used to reject its own record here.
+    expect(await make()["controllerLayouts.operationStatus"]({})).toMatchObject({ id: op.id, context });
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});

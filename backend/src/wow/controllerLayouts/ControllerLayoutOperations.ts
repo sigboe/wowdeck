@@ -80,6 +80,8 @@ export class ControllerLayoutOperations {
     } finally { this.busy = false; }
   }
   async status(): Promise<ControllerLayoutOperation | null> {
+    // Unreviewed revisions carry no fingerprints ({}); the browser then checks
+    // the decode against Steam's defaults (#261).
     try {
       const value = JSON.parse(await readFile(join(this.dir, "operation.json"), "utf8")) as ControllerLayoutOperation;
       if (!value.id || !transitions[value.phase] || !value.context || !value.approved) throw Error();
@@ -88,7 +90,7 @@ export class ControllerLayoutOperations {
       if (!/^[a-f0-9]{64}$/.test(value.approved.sha256) ||
         value.approved.url !== `usercloud://wowdeck-approved/${value.approved.sha256}` ||
         value.approved.accountId !== value.context.accountId ||
-        !/^[a-f0-9]{64}$/.test(value.approved.mappings?.[String(value.context.controllerType)] ?? "") ||
+        !validMappings(value.approved.mappings, value.context.controllerType) ||
         (value.recoveryId !== undefined && (typeof value.recoveryId !== "string" || !value.recoveryId || value.recoveryId.length > 256))) throw Error();
       if (!value.recoveryId && value.phase === "preserving") {
         // An archive may have reached disk before its operation reference did.
@@ -183,4 +185,11 @@ function validateContext(c: ControllerLayoutContext) {
 
 function validateOwner(owner: string) {
   if (typeof owner !== "string" || !/^[a-f0-9-]{36}$/.test(owner)) throw Error("Couldn't claim native controller work.");
+}
+
+function validMappings(mappings: unknown, controllerType: number) {
+  if (!mappings || typeof mappings !== "object" || Array.isArray(mappings)) return false;
+  const entries = Object.entries(mappings as Record<string, unknown>);
+  return entries.every(([, v]) => typeof v === "string" && /^[a-f0-9]{64}$/.test(v)) &&
+    (entries.length === 0 || entries.some(([k]) => k === String(controllerType)));
 }

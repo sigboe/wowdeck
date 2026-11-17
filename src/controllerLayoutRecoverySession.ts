@@ -21,6 +21,8 @@ const setApply = (next: ApplyStatus) => {
 /** Module scope: the outcome survives the confirmation modal unmounting the QAM. */
 export const layoutApplyStatus = {
   get: () => applyState,
+  /** After a restore the last Apply outcome no longer describes the controls. */
+  clear: () => setApply("idle"),
   subscribe(listener: () => void) {
     applyListeners.add(listener);
     return () => applyListeners.delete(listener);

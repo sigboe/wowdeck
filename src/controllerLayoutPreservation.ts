@@ -43,20 +43,25 @@ export function layoutPreservation(rpc: Rpc, native: LayoutRecoveryAdapter): Lay
       // selection. A timed-out export is unknown, never permission to retry it.
       const saved = await rpc("controllerLayouts.saveRecovery", { id: op.id, snapshot });
       const exported = await native.exportLocal(op);
-      const exportedModel = await native.readback(
-        await native.operationContext(op.context.target, op.context.installationId),
-      );
-      if (mappingContent(exportedModel) !== snapshot.mapping)
-        throw Error("Couldn't verify the native export mappings.");
-      const preview = await native.preview(op.context, exported);
       try {
-        if (mappingContent(preview.model) !== snapshot.mapping)
-          throw Error("Couldn't verify the exported bytes' mappings.");
+        // DEVICE 2026-11-17: Steam's export drops activators without bindings,
+        // so it need not equal the snapshot. The archived source bytes are the
+        // recovery; the export only has to read back as it previews.
+        const exportedModel = await native.readback(
+          await native.operationContext(op.context.target, op.context.installationId),
+        );
+        const preview = await native.preview(op.context, exported);
+        try {
+          if (mappingContent(preview.model) !== mappingContent(exportedModel))
+            throw Error("Couldn't verify the exported bytes' mappings.");
+        } finally {
+          preview.release();
+        }
+        await rpc("controllerLayouts.sealRecovery", { id: op.id, sourceURL: exported });
       } finally {
-        preview.release();
+        // Export selected its copy; put the previous selection back either way.
+        await native.restoreSelections(op, snapshot);
       }
-      await rpc("controllerLayouts.sealRecovery", { id: op.id, sourceURL: exported });
-      await native.restoreSelections(op, snapshot);
       await verify(op, snapshot);
       return saved;
     },
