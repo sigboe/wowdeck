@@ -2,7 +2,11 @@ import { toaster } from "@decky/api";
 import type { ControllerLayout, ControllerLayoutPreviewJob } from "../backend/src/api/contracts";
 import { engine } from "./engineLink";
 import { backendErrorMessage } from "./errors";
-import { layoutNative, layoutPreviewSession } from "./controllerLayoutPreviewSession";
+import {
+  layoutNative,
+  layoutPreviewSession,
+  previewChoice,
+} from "./controllerLayoutPreviewSession";
 import { layoutApplyStatus, startLayoutApply } from "./controllerLayoutRecoverySession";
 import { addonSession } from "./session";
 import { browseFocusView, holdBrowseSessionForModal } from "./browseSessionState";
@@ -123,9 +127,14 @@ function returnAfterPreview(history: MemoryHistory | undefined, layoutId: string
       } catch {
         /* Steam stays where it navigated */
       }
-      requestFocus(browseFocusView("controllerLayouts"), layoutId);
+      // Back on the list, where "Restore previous controls" sits above the rows.
+      previewChoice.select(null);
       openPanel("browse");
       release();
+      // DEVICE 2026-11-17: focus set while the QAM was hidden was taken by
+      // the tab header when it opened. Ask again once the panel has shown.
+      for (const ms of [400, 900])
+        setTimeout(() => requestFocus(browseFocusView("controllerLayouts"), layoutId), ms);
     }, 300);
   };
   const stop = history.listen((location) => {
