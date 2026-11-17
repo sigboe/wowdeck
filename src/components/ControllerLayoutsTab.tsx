@@ -505,7 +505,7 @@ function PreviewPane({
       <PanelSectionRow>
         <Field
           focusable
-          {...focusTarget(view, choice.layout.id)}
+          {...focusTarget(view, `preview:${choice.layout.id}:back`)}
           label="Back to layouts"
           onClick={back}
         />

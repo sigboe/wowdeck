@@ -167,6 +167,8 @@ test("Retry asks again and shows what comes back", async () => {
 });
 
 test("A opens a preview-only pane with scope disclosure and no apply action", async () => {
+  const { resetFocusMemory } = await import("./focusMemory");
+  resetFocusMemory();
   await show();
   const row =
     doc.querySelector(".wowdeck-layout-row") ??
@@ -183,8 +185,16 @@ test("A opens a preview-only pane with scope disclosure and no apply action", as
   await act(async () =>
     [...doc.querySelectorAll("b")]
       .find((node) => node.textContent === "Back to layouts")
+      ?.parentElement?.focus(),
+  );
+  await act(async () =>
+    [...doc.querySelectorAll("b")]
+      .find((node) => node.textContent === "Back to layouts")
       ?.parentElement?.dispatchEvent(new doc.defaultView!.MouseEvent("click", { bubbles: true })),
   );
+  expect(doc.activeElement).not.toBe(doc.body);
+  expect(doc.activeElement?.textContent).toContain("Fixture layout A");
+  expect(doc.activeElement?.textContent).not.toContain("Back to layouts");
 });
 
 import { createManualClock } from "./testSupport/manualClock";

@@ -83,6 +83,7 @@ export const deckyUiStub = {
   }) => (
     <div
       ref={ref}
+      className="Focusable"
       tabIndex={-1}
       onFocus={onGamepadFocus}
       data-disabled={disabled ? "true" : undefined}

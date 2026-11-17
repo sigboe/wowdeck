@@ -17,7 +17,7 @@ What's new in each version of WoWDeck Addon Manager. The format follows
 
 ### Fixed
 
-- Controller layout previews keep your place when reopened and no longer show internal library numbers.
+- Controller layout previews keep your place when reopened, return focus after Back and Restore, and hide internal library numbers.
 
 - Sources no longer says a revoked TradeSkillMaster account stays signed in.
 
