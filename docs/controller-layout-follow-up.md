@@ -110,10 +110,7 @@ Workshop sources need more evidence before they can be supported.
 
 1. **Reviewed mappings.** Publishing `previewMappings` (see "Publication
    artifact contract") remains the stronger check and is still optional.
-2. **Where X lands.** After X on Steam's preview, Steam goes back two pages.
-   That lands on whatever configurator page was open before, not on WoWDeck.
-   On one run the route came back as `/routes/routes/app/…`.
-3. **Focus after Restore.** The restore row disappears and focus lands
+2. **Focus after Restore.** The restore row disappears and focus lands
    nowhere.
 3. **Abandoned native calls.** No native acknowledgement proves that a dead
    browser's call has settled, so its claim stays held and recovery stays
