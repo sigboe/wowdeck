@@ -1,9 +1,10 @@
 # Controller layout follow-up for #261
 
-The review fixes do not complete #261. The production adapter still refuses Apply
-because the affected scope and both override layers have not been established.
-There is no supported end-to-end player Apply path yet. Do not close #267, #268
-or #269 on the strength of deterministic tests.
+The production adapter now establishes a bounded scope and the preview pane
+offers Apply inside it. Players still can't reach Apply: a published revision
+has no `previewMappings`, so no preview verifies, and Apply needs a verified
+preview. #267, #268 and #269 stay open until a revision publishes reviewed
+mappings and the full Apply round trip runs on the Deck.
 
 ## Changes covered by local tests
 
@@ -65,53 +66,56 @@ VDF as an immutable artifact as well; downloading a mutable Workshop item works
 only while its bytes still match the approved hash. No publication was changed
 in this implementation run.
 
-## Exact evidence still needed
+## Device evidence, 17 November 2026
 
-The installed Steam source recorded on 17 November shows
-`GetControllers()` returning its controller inventory. Records include controller
-index, type, serial and chip identity. `SetActiveConfigForApp` chooses a selection
-layer based on controller-type counts. `GetConfigForAppAndController` returns the
-winning selection. None of these observations proves absence of the other layer.
-Equal-name grouping also cannot prove isolation from differently named shortcuts.
+The owner approved writes to disposable shortcuts and WoWDeck-named
+controller configs only. The test removed every target afterwards. World of
+Warcraft's selection stayed `autosave` throughout. Observed in Steam's shared
+JavaScript context and in the account's `configset_*.vdf` files:
 
-The parent can collect the following read-only evidence without changing Steam
-selections or opening a native preview:
+- Steam keys a non-Steam shortcut's controls by its lowercased display name.
+  "WoWDeck Probe A" and "wowdeck probe a" shared every change. "WoWDeck Probe
+  B" never changed. Steam writes the selection to the configset at once.
+- Selection type 0 is stored in `configset_controller_neptune.vdf` and covers
+  every Deck controller. Type 1 is stored in the configset named after the
+  controller's serial number.
+- A present type-1 selection always wins. Setting type 0 removes the type-1
+  entry. Clearing type 0 leaves type 1 alone. So a winning type-0 selection
+  proves that type 1 is absent.
+- `ExportCurrentControllerConfiguration` never settles unless an editing
+  session is open. Inside one, it writes a personal copy and selects it on
+  type 0.
+- Re-selecting an `autosave:///…` URL restores `"autosave" "1"`, the state
+  World of Warcraft has. Selecting `usercloud://wowdeck-recovery/<op>/<sha256>`
+  works, and switching back restores the original.
+- Preview decodes template, personal and default URLs. Readback through an
+  editing session returns the same bytes as preview of the selected URL.
 
-- Evaluate `tools/controller-layouts/read-native-scope.js` in the existing Steam
-  CEF page. It returns the complete browser shortcut list and winning selections
-  for each connected controller, with hashed physical identity. Missing inventory
-  fields are a probe failure, not evidence of zero connected controllers. The
-  probe contains account/source metadata; keep its output local.
-- Run `bun tools/controller-layouts/read-account.ts STEAM_ROOT ACCOUNT_ID` on
-  the device. It returns the complete binary-shortcut identities and bounded VDF
-  file inventory with hashes. It prints no general Steam setting values or file
-  content. Compare this list with the browser list before using either for scope.
+The adapter therefore establishes scope only when all of these hold:
 
-These probes identify the files and current native state. They cannot by
-themselves prove the missing semantics. The precise unanswered questions are:
+- exactly one connected controller, the built-in Deck controller, with a
+  serial number;
+- an ASCII name;
+- a winning type-0 selection whose source is a personal file or an autosave;
+- the same winner for every case variant of the name.
 
-1. Which persisted key maps each shortcut to its shared controller-config group,
-   including differently named entries? Does Steam normalize or alias that key?
-   Read the relevant selection branch of the inventoried account config, with
-   general account/authentication branches excluded. Establish how it maps to
-   every shortcut, rather than assuming lowercased display names are sufficient.
-2. Which persisted records or native read API independently expose presence and
-   absence of both selection layers for the built-in Deck controller? Establish
-   their priority and how autosaves/progenitors affect the winning URL. A single
-   winning selection cannot answer this question.
-3. What native acknowledgement or barrier proves an abandoned mutation has
-   settled before another browser can claim recovery? No such barrier was found
-   in the recorded installed source. Claims therefore remain held after a crash.
+Everything else stays "unknown", and the pane explains why Apply isn't
+offered. Non-ASCII names, physical-controller overrides, and templates or
+Workshop sources need more evidence before they can be supported.
 
-If the read-only records answer the first two questions, implement one bounded
-scope with exactly one built-in Deck controller, a stable physical identity,
-complete shortcut membership and supported local personal source bytes. Refuse
-other controllers, unknown layers and unresolved members. Then connect the
-existing Apply operation with affected-entry disclosure and an explicit player
-choice. The bounded device run must verify pre-export preservation, approved
-preview, apply/readback, rollback, changed-source archived delivery and override
-semantics. This run made no device calls. Restart, offline/cloud durability and
-physical gameplay remain outside its evidence.
+## Still open
+
+1. **Reviewed mappings.** A revision needs `previewMappings` from an
+   independently reviewed expected mapping tree (see "Publication artifact
+   contract"). Until then, preview reports a mismatch and Apply never appears.
+2. **End-to-end Apply on the Deck.** Each native step above ran by hand on
+   disposable shortcuts. The full pane flow has not run on the device,
+   because no revision verifies. That flow confirms, captures, exports,
+   applies, reads back and restores.
+3. **Abandoned native calls.** No native acknowledgement proves that a dead
+   browser's call has settled, so its claim stays held and recovery stays
+   unavailable until an operator steps in.
+4. Restart, Steam Cloud sync of the export, and physical play are untested.
 
 ## Verification on 17 November 2026
 
