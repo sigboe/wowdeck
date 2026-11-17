@@ -17,6 +17,8 @@ export interface LayoutRecoveryAdapter extends LayoutOperationAdapter {
     operation: ControllerLayoutOperation,
     snapshot: ControllerLayoutRecoverySnapshot,
   ): Promise<void>;
+  /** Remove the native export once the engine holds its bytes; Steam Cloud syncs it otherwise. */
+  discardExport?(operation: ControllerLayoutOperation, url: string): Promise<void>;
 }
 export function layoutPreservation(rpc: Rpc, native: LayoutRecoveryAdapter): LayoutPreservation {
   const verify = async (
@@ -63,6 +65,13 @@ export function layoutPreservation(rpc: Rpc, native: LayoutRecoveryAdapter): Lay
         await native.restoreSelections(op, snapshot);
       }
       await verify(op, snapshot);
+      // DEVICE 2026-11-17: the export synced back after local deletion. Restore
+      // uses the archived source bytes, so the export is no longer needed.
+      try {
+        await native.discardExport?.(op, exported);
+      } catch {
+        /* a leftover personal layout is untidy, not unsafe */
+      }
       return saved;
     },
     async restore(op) {

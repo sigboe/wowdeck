@@ -305,3 +305,28 @@ test("the default preview decodes Steam's default selection for the lowercased n
   expect(urls).toEqual(["default://world of warcraft"]);
   expect(app.freed).toEqual([91]);
 });
+
+test("only this operation's own export is deleted", async () => {
+  const app = scoped({}, [[42, "World of Warcraft"]]);
+  const deleted: string[] = [];
+  Object.assign(app.input, {
+    DeletePersonalControllerConfiguration: (url: string) => deleted.push(url),
+  });
+  const context = await app.adapter.operationContext(42, "retail");
+  const op = {
+    id: "41a76010-e568-4fb9-9a31-5283f583ffc6",
+    phase: "preserving",
+    context,
+    approved,
+  } as never;
+  const own =
+    "usercloud://world of warcraft/wowdeck recovery 41a76010-e568-4fb9-9a31-5283f583ffc6_0";
+  await app.adapter.discardExport!(op, own);
+  for (const other of [
+    "usercloud://world of warcraft/my layout_0",
+    "usercloud://world of warcraft/wowdeck recovery 00000000-0000-4000-8000-000000000000_0",
+    "autosave:///x/wowdeck recovery 41a76010-e568-4fb9-9a31-5283f583ffc6_0",
+  ])
+    await expect(app.adapter.discardExport!(op, other)).rejects.toThrow();
+  expect(deleted).toEqual([own]);
+});

@@ -31,6 +31,7 @@ interface NativeInput {
   ): Promise<Uint8Array>;
   FreeControllerConfig(handle: number): void;
   StopEditingControllerConfiguration?(controller: number): void;
+  DeletePersonalControllerConfiguration?(url: string): unknown;
   StartEditingControllerConfigurationForAppIDAndControllerIndex?(
     target: number,
     controller: number,
@@ -215,6 +216,16 @@ export function nativeControllerLayouts(): LayoutRecoveryAdapter {
       )) as Selection & { URL?: string };
       if (!selection.URL?.startsWith("usercloud://")) throw Error("Native export result unknown");
       return selection.URL;
+    },
+    async discardExport(operation, url) {
+      const { input } = capabilities();
+      // Only the export this operation made: "<entry>/wowdeck recovery <id>_<n>".
+      const name = `wowdeck recovery ${operation.id}`.toLowerCase();
+      const match = /^usercloud:\/\/[^/]+\/(.+)_[0-9]+$/.exec(url);
+      if (!match || match[1]!.toLowerCase() !== name) throw Error("Not WoWDeck's export");
+      if (typeof input.DeletePersonalControllerConfiguration !== "function")
+        throw Error("Native delete unavailable");
+      await mutate(() => Promise.resolve(input.DeletePersonalControllerConfiguration!(url)));
     },
     async restoreSelections(operation, snapshot) {
       await assertContext(operation.context);

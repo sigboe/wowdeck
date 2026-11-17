@@ -180,9 +180,14 @@ for (const consistent of [true, false]) {
       calls.push(method);
       return { recoveryId: "op" };
     }) as unknown as Rpc;
+    const discarded: string[] = [];
+    native.discardExport = async (_op, url) => {
+      discarded.push(url);
+    };
     const capture = layoutPreservation(rpc, native).capture(op);
     if (consistent) expect(await capture).toEqual({ recoveryId: "op" });
     else await expect(capture).rejects.toThrow("exported bytes");
+    expect(discarded).toEqual(consistent ? ["usercloud://wow/export_0"] : []);
     expect(selection).toBe("previous");
     expect(calls.includes("controllerLayouts.sealRecovery")).toBe(consistent);
   });
