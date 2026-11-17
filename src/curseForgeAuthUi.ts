@@ -8,7 +8,7 @@
 import type { CurseForgeAuthStatus, ProviderInfo } from "./types";
 
 /**
- * What the CurseForge row in Addon sources offers:
+ * What the CurseForge row in Sources offers:
  * - `keyRow`: a `>` row that opens the key modal (no usable key);
  * - `ownKeyToggle`: the source toggle, its Options button (≡) "API key"
  *   opening the same modal (the player's own key is the one in use);

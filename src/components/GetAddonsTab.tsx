@@ -109,7 +109,7 @@ export function GetAddonsTab({
   /** Put focus on the plugin-tab nav bar (B out of the widened session). */
   onExitToNav: () => void;
   /**
-   * Open Options' Addon sources section, marking these provider ids (the
+   * Open Options' Sources section, marking these provider ids (the
    * zero-capability screen's button). Nothing is enabled: the jump only
    * navigates and blink-highlights.
    */

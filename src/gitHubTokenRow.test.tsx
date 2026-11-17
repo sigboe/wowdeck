@@ -10,7 +10,7 @@ import { createFakeEngine } from "./testSupport/fakeEngine";
 import { defaultSettings } from "../backend/src/wow/storage/settings";
 
 /**
- * Options › Addon sources › GitHub (#205): the last row of the section opens
+ * Options › Sources › GitHub (#205): the last row of the section opens
  * the token modal; the token is checked before it is stored. The fake engine
  * behind `rpc` answers settings and providers.testApiKey.
  */
@@ -216,10 +216,11 @@ const typeToken = async (value: string) => {
   });
 };
 
-describe("the GitHub row in Addon sources", () => {
-  test("is the last row, after the editable providers, and never a toggle", async () => {
+describe("the GitHub row in Sources", () => {
+  test("is the last addon source, after the editable providers, and never a toggle", async () => {
     await startWith(null);
-    expect(rows()).toEqual(["WowUp Hub", "WoWInterface", "GitHub"]);
+    // Controller layouts follows: a source, but not an addon source (ADR 0015).
+    expect(rows()).toEqual(["WowUp Hub", "WoWInterface", "GitHub", "Controller layouts"]);
     expect(gitHubRow().getAttribute("data-toggle")).toBeNull();
   });
 

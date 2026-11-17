@@ -189,7 +189,7 @@ describe("zeroCapabilityScreen", () => {
       tone: "muted",
       title: "No addon source is on for Latest",
       body: "Latest needs an addon source. CurseForge and WowUp Hub can list the newest addons. Turn one on.",
-      status: "You can turn sources on or off anytime in Options › Addon sources.",
+      status: "You can turn sources on or off anytime in Options › Sources.",
       action: "Open addon sources",
       marked: ["Curse", "WowUpHub"],
     });

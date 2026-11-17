@@ -6,6 +6,10 @@ What's new in each version of WoWDeck Addon Manager. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- Options' Addon sources section is now called Sources. Its new Controller layouts switch is for curated layouts, which aren't available yet.
+
 ### Fixed
 
 - Sources no longer says a revoked TradeSkillMaster account stays signed in.

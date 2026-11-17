@@ -52,7 +52,7 @@ function builtInNote(auth: CurseForgeAuthStatus): string {
 }
 
 /**
- * The CurseForge key modal, opened from CurseForge's row in Addon sources:
+ * The CurseForge key modal, opened from CurseForge's row in Sources:
  * the `>` row while no key is usable, the toggle's Options button (≡) "API
  * key" while the player's own key is in use (curseForgeAuthUi.ts). Status
  * first, then the key and its actions. A saved key turns CurseForge on.

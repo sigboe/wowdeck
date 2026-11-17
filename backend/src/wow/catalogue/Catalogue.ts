@@ -139,7 +139,7 @@ export class Catalogue {
     if (!provider?.getDiscoverPage) {
       throw new ProviderError(
         providerId,
-        `${providerDisplayName(providerId)} isn't available. Turn it on in Options › Addon sources`,
+        `${providerDisplayName(providerId)} isn't available. Turn it on in Options › Sources`,
         "provider_unavailable",
       );
     }

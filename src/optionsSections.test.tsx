@@ -49,7 +49,7 @@ test("Options has exactly eight sections in the player's navigation order", asyn
       "WoW installations",
       "Addon list",
       "Settings backup",
-      "Addon sources",
+      "Sources",
       "Updates",
       "Steam library",
       "Notifications",

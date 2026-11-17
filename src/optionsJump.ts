@@ -1,5 +1,5 @@
 /**
- * The Options jump (ADR 0002): navigation to Options' Addon sources section
+ * The Options jump (ADR 0002): navigation to Options' Sources section
  * carrying a marked provider-id set — the mechanism the zero-capability
  * screen's button relies on (ZeroCapabilityScreen). The marked rows
  * blink-highlight; first focus lands on the first marked row that can take
