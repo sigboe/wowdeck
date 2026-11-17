@@ -1,0 +1,30 @@
+{
+  "$comment": "TEST FIXTURE, not a production catalogue. Entry 1 is synthetic. Entry 2 is the Kinzo candidate (not yet approved; gameplay review pending, #260).",
+  "schemaVersion": 1,
+  "layouts": [
+    {
+      "id": "fixture-synthetic-a",
+      "title": "Fixture layout A",
+      "author": "WoWDeck fixtures",
+      "description": "Synthetic entry for tests. Maps A to A.",
+      "controllerType": "controller_neptune",
+      "publishedFileId": "1000000000000000001",
+      "revisions": [
+        { "number": 1, "sha256": "1111111111111111111111111111111111111111111111111111111111111111", "contentFormat": 1, "withdrawn": true },
+        { "number": 2, "sha256": "2222222222222222222222222222222222222222222222222222222222222222", "contentFormat": 1 }
+      ],
+      "metrics": { "votesUp": 12 },
+      "provenance": { "nominatedBy": "maintainers", "reviewedBy": "sigboe" }
+    },
+    {
+      "id": "kinzo-wow-forever",
+      "title": "Kinzo WoW Forever",
+      "author": "Kinzo",
+      "controllerType": "controller_triton",
+      "publishedFileId": "3810861852",
+      "revisions": [
+        { "number": 61, "sha256": "97cd0c87e6a2cd607519f9d3b2ad9ca0bb61255126e0647b01b7a67b81ed41d5", "contentFormat": 1 }
+      ]
+    }
+  ]
+}

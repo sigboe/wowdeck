@@ -8,6 +8,7 @@ import type { MethodName } from "../contracts";
 import type { HandlerTable } from "../../bridge/jsonl";
 import type { HandlerDeps } from "./deps";
 import { aboutHandlers } from "./about";
+import { controllerLayoutsHandlers } from "./controllerLayouts";
 import { addonsHandlers } from "./addons";
 import { installationsHandlers } from "./installations";
 import { notificationsHandlers } from "./notifications";
@@ -26,6 +27,7 @@ export function handlerTable(deps: HandlerDeps): HandlerTable {
     ...wtfHandlers(deps),
     ...notificationsHandlers(deps),
     ...aboutHandlers(deps),
+    ...controllerLayoutsHandlers(deps),
   };
 }
 

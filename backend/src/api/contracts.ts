@@ -807,6 +807,21 @@ export interface MethodMap {
     params: Record<string, never>;
     result: AboutInfo;
   };
+  "controllerLayouts.catalogue": {
+    /**
+     * The Controller layouts destination's catalogue (GLOSSARY: Controller
+     * layout, Layout revision, Withdrawn revision): the reviewed manifest
+     * fetched from the public catalogue repository (ADR-0015), one bounded
+     * network call per call (size and time capped), no cache. Never an RPC
+     * error for an expected outcome: `state` tells a failed request
+     * ("unavailable"), content that is not a catalogue ("malformed") and a
+     * manifest newer than this client reads ("unsupported") apart from a
+     * catalogue with no layouts ("ready" with an empty list). Read-only: it
+     * applies nothing.
+     */
+    params: Record<string, never>;
+    result: ControllerLayoutCatalogue;
+  };
   "system.getUpdateChannel": {
     /** Which WoWDeck builds the update check offers (GLOSSARY: Update channel). Stable until the owner picks another. */
     params: Record<string, never>;
@@ -1625,6 +1640,71 @@ export interface FundingLink {
    * parameters, the address's checksum verified.
    */
   url: string;
+}
+
+/**
+ * The Controller layouts catalogue as the engine read it
+ * (controllerLayouts.catalogue). Every string in it comes from the
+ * catalogue repository, which is untrusted data: shown as plain text only.
+ */
+export type ControllerLayoutCatalogue =
+  /** Layouts in the maintainers' order; an empty list is a catalogue with none. */
+  | { state: "ready"; layouts: ControllerLayout[] }
+  /** The request failed (offline, timeout, HTTP error, too large). Never "empty". */
+  | { state: "unavailable" }
+  /** The answer is not a catalogue: not JSON, the wrong shape, or no usable entry. */
+  | { state: "malformed" }
+  /** The manifest's schema is newer than this client understands. */
+  | { state: "unsupported"; schemaVersion: number };
+
+/**
+ * Whether a layout is offered for new application (GLOSSARY: Layout
+ * revision, Withdrawn revision):
+ * - `available`: `revision` is the newest approved, non-withdrawn revision
+ *   this client can read;
+ * - `withdrawn`: maintainers withdrew every revision;
+ * - `unsupported`: no revision that isn't withdrawn has content this
+ *   client can safely understand.
+ */
+export type ControllerLayoutOffer = "available" | "withdrawn" | "unsupported";
+
+/** One reviewed layout revision (GLOSSARY: Layout revision). */
+export interface ControllerLayoutRevision {
+  /** The revision's number, unique within its layout and increasing. */
+  number: number;
+  /** SHA-256 of the approved VDF content (64 lowercase hex). */
+  sha256: string;
+  /** The content format's version; this client reads CONTROLLER_LAYOUT_CONTENT_FORMAT and lower. */
+  contentFormat: number;
+  /** Maintainers no longer offer it for new application. */
+  withdrawn: boolean;
+}
+
+/** One curated controller layout (GLOSSARY: Controller layout). */
+export interface ControllerLayout {
+  /** The stable layout identity: lowercase letters, digits and inner hyphens. Never changes across revisions. */
+  id: string;
+  title: string;
+  /** The original author as Steam credits them. */
+  author: string;
+  /** The original description; absent when the catalogue gives none. */
+  description?: string;
+  /** The original Steam controller-type declaration, e.g. "controller_triton". */
+  controllerType: string;
+  /** The original Steam published-file ID, as decimal digits (a uint64). */
+  publishedFileId: string;
+  offer: ControllerLayoutOffer;
+  /** The revision offered for new application; null unless `offer` is "available". */
+  revision: ControllerLayoutRevision | null;
+  /** Every reviewed revision, oldest first, so a client can warn players of a withdrawal. */
+  revisions: ControllerLayoutRevision[];
+  /**
+   * Metric values the catalogue publishes, by name (finite and
+   * non-negative). A metric the catalogue doesn't give is absent, never 0.
+   */
+  metrics?: Record<string, number>;
+  /** Provenance notes by name (who nominated or reviewed it), as plain text. */
+  provenance?: Record<string, string>;
 }
 
 // ---------------------------------------------------------------------------

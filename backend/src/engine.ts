@@ -40,6 +40,7 @@ import { WtfBackupService } from "./wow/wtf/WtfBackupService";
 import { WtfJobRunner, type WtfJobTarget } from "./wow/wtf/WtfJobRunner";
 import { flavorKeyFor, wtfPathFor } from "./wow/wtf/WtfPaths";
 import { About } from "./about/About";
+import { ControllerLayoutCatalogueSource } from "./wow/controllerLayouts/ControllerLayoutCatalogue";
 import type { HandlerDeps } from "./api/handlers/deps";
 import { handlerTable } from "./api/handlers";
 
@@ -64,6 +65,8 @@ export interface EngineUrls {
   curseForge?: string;
   /** The raw base FUNDING.yml and SUPPORTERS.md are fetched from (About's default when unset). */
   about?: string;
+  /** The Controller layouts catalogue manifest (CONTROLLER_LAYOUT_CATALOGUE_URL when unset). */
+  controllerLayouts?: string;
 }
 
 export interface EngineConfig {
@@ -108,6 +111,7 @@ export function configFromEnv(env: Record<string, string | undefined>, backendVe
       tukui: env.WOWDECK_TUKUI_URL,
       curseForge: env.WOWDECK_CF_URL,
       about: env.WOWDECK_ABOUT_URL,
+      controllerLayouts: env.WOWDECK_CONTROLLER_LAYOUTS_URL,
     },
     bundledCurseForgeKey: env.WOWDECK_BUNDLED_CURSEFORGE_API_KEY?.trim() || undefined,
     pluginDir: env.WOWDECK_PLUGIN_DIR ?? null,
@@ -234,6 +238,8 @@ export function assembleEngine(config: EngineConfig): Engine & { start(): Promis
     rawBaseUrl: urls.about,
     tokenProvider: githubToken,
   });
+  // Fetched only when the Controller layouts destination asks (ADR-0015).
+  const controllerLayouts = new ControllerLayoutCatalogueSource(network, urls.controllerLayouts);
   const prBuilds = new PrBuildList(network, urls.prBuilds);
   // The PR channel's source (GLOSSARY: PR channel). A PR's own state comes from
   // the repo's API, unauthenticated: the repo is public, and no token ever
@@ -329,6 +335,7 @@ export function assembleEngine(config: EngineConfig): Engine & { start(): Promis
     wtfJobTarget,
     recentErrors,
     about,
+    controllerLayouts,
   };
   server.handle(handlerTable(deps));
 

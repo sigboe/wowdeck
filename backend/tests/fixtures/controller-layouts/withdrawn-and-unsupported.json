@@ -1,0 +1,37 @@
+{
+  "$comment": "TEST FIXTURE: one layout whose only revision is withdrawn, one whose only revision uses a content format newer than this client reads, one that falls back to an older readable revision.",
+  "schemaVersion": 1,
+  "layouts": [
+    {
+      "id": "fixture-withdrawn",
+      "title": "Fixture withdrawn",
+      "author": "WoWDeck fixtures",
+      "controllerType": "controller_neptune",
+      "publishedFileId": "1000000000000000002",
+      "revisions": [
+        { "number": 1, "sha256": "3333333333333333333333333333333333333333333333333333333333333333", "contentFormat": 1, "withdrawn": true }
+      ]
+    },
+    {
+      "id": "fixture-future-format",
+      "title": "Fixture future format",
+      "author": "WoWDeck fixtures",
+      "controllerType": "controller_neptune",
+      "publishedFileId": "1000000000000000003",
+      "revisions": [
+        { "number": 1, "sha256": "4444444444444444444444444444444444444444444444444444444444444444", "contentFormat": 99 }
+      ]
+    },
+    {
+      "id": "fixture-older-readable",
+      "title": "Fixture older readable",
+      "author": "WoWDeck fixtures",
+      "controllerType": "controller_neptune",
+      "publishedFileId": "1000000000000000004",
+      "revisions": [
+        { "number": 1, "sha256": "5555555555555555555555555555555555555555555555555555555555555555", "contentFormat": 1 },
+        { "number": 2, "sha256": "6666666666666666666666666666666666666666666666666666666666666666", "contentFormat": 99 }
+      ]
+    }
+  ]
+}

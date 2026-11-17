@@ -21,6 +21,7 @@ import type { WtfBackupService } from "../../wow/wtf/WtfBackupService";
 import type { WtfJobRunner, WtfJobTarget } from "../../wow/wtf/WtfJobRunner";
 import type { RecentErrorsBuffer } from "../../diagnostics/RecentErrors";
 import type { About } from "../../about/About";
+import type { ControllerLayoutCatalogueSource } from "../../wow/controllerLayouts/ControllerLayoutCatalogue";
 
 export interface HandlerDeps {
   tsmData: import("../../wow/tsm/TradeSkillMasterData").TradeSkillMasterData;
@@ -52,4 +53,6 @@ export interface HandlerDeps {
   recentErrors: RecentErrorsBuffer;
   /** Options › About (about.get). */
   about: About;
+  /** The Controller layouts catalogue (controllerLayouts.catalogue). */
+  controllerLayouts: ControllerLayoutCatalogueSource;
 }
