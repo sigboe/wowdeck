@@ -679,8 +679,18 @@ entry were removed afterwards, and World of Warcraft kept `"autosave" "1"`.
   pane showed "Applying unavailable" and no Apply row.
 - Fixed in 992f32a and rerun on the Deck: after OK or Cancel on the
   confirmation, the preview pane stays open with focus on the Apply row.
-- Open: after Restore, focus lands nowhere because the restored row
-  disappears.
+- Follow-up, 17 November 2026 (DEVICE, UI through CDP keys and React
+  handlers): A–E passed on the frontend based on f3610f6 plus the Back focus
+  fix. X focused Choose a library entry; choosing the probe focused Selected
+  library entry; Back, native Apply and Restore focused Kinzo after 1.5 s.
+  Apply showed "Applied to WoWDeck Probe…" and returned Steam to its earlier
+  page; Restore showed "Previous controls restored." and selected the original
+  autosave URL. With two controllers, the row's A handler refused preview
+  with the disconnect-others message. The first keyboard attempt was
+  inconclusive. Cleanup removed the probe and all WoWDeck config entries and
+  folders; World of Warcraft stayed autosave. See
+  [the follow-up report](controller-layout-follow-up.md#ui-follow-up-17-november-2026)
+  for the installed frontend hash and remaining limitations.
 
 ### Controller layouts (#266), November 17, 2026
 

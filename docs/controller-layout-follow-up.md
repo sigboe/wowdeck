@@ -110,12 +110,10 @@ Workshop sources need more evidence before they can be supported.
 
 1. **Reviewed mappings.** Publishing `previewMappings` (see "Publication
    artifact contract") remains the stronger check and is still optional.
-2. **Focus after Restore.** The restore row disappears and focus lands
-   nowhere.
-3. **Abandoned native calls.** No native acknowledgement proves that a dead
+2. **Abandoned native calls.** No native acknowledgement proves that a dead
    browser's call has settled, so its claim stays held and recovery stays
    unavailable until an operator steps in.
-4. Restart, Steam Cloud sync of the export, and physical play are untested.
+3. Restart, Steam Cloud sync of the export, and physical play are untested.
 
 ## Verification on 17 November 2026
 
@@ -129,3 +127,30 @@ The publication helper reproduced the recorded fixture's independent fingerprint
 and rejected an invalid reviewed hash. The native read-only probe passed a syntax
 check. Neither probe ran on a device. UI evidence reaches T1, T2 and T3 only;
 T4 visual layout, T5 input and T6 hardware verification remain pending.
+
+## UI follow-up, 17 November 2026
+
+DEVICE, UI through CDP keys and React handlers on the owner's Steam Deck.
+The frontend-only build based on f3610f6 passed the library-pane and native
+preview round trips after Back received a separate focus key. At 1.5 seconds,
+X focused "Choose a library entry", choosing the probe focused "Selected
+library entry", and Back focused Kinzo. Apply in the probe's native preview
+returned to Steam's earlier page and the Kinzo row, with Restore available.
+Restore focused Kinzo and selected the probe's original autosave URL. With
+two controllers connected, preview refused with the disconnect-others message
+and focus stayed on Kinzo. The first keyboard attempt at that refusal was
+inconclusive; invoking the row's A handler with two controllers passed.
+
+The installed frontend SHA-256 was
+`0ef5638259666ae7a686203d1c05c42e56e7f6ba9cd9e6fcf7d53bd808c25cc1`,
+matching the local build. Cleanup removed the probe shortcut, both selection
+types and the probe, recovery and approved config folders. No configset
+contained "wowdeck"; World of Warcraft kept `"autosave" "1"`. Steam returned
+to its original layout chooser, the QAM closed, and the test tunnel closed.
+The final frontend stayed installed. Physical play remains untested.
+
+The full `make lint typecheck test build` gate passed after the fix: 1,378
+frontend/tool tests and 1,757 backend tests passed, with 5 backend skips.
+The Python suites passed. The run used `nix develop` with
+`npm_config_verify_deps_before_run=false`; pnpm still warned about the
+symlinked dependency directory, and every gate command exited successfully.
