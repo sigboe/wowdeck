@@ -1188,3 +1188,23 @@ the view externally. Each exit closes the keyboard. A rejected key keeps
 entry open for correction. Deterministic tests cover terminal sign-in
 states, key save, explicit close and unmount. Human keyboard verification
 on the Deck remains required.
+
+### Controller layouts destination (#266)
+
+Device runs are pending. The public catalogue repository doesn't exist yet,
+so a normal build shows the unavailable state (CL-266-3). To see layouts,
+start the engine with `WOWDECK_CONTROLLER_LAYOUTS_URL` pointing at a local
+server that serves one of the fixtures in
+`backend/tests/fixtures/controller-layouts/` (the way PU-25 pointed
+`WOWDECK_RELEASES_URL` at a local port). The fixture layouts are synthetic,
+not production entries.
+
+| ID | Pri | S | Steps | Expected |
+|---|---|---|---|---|
+| CL-266-1 | P1 | S | Controller layouts on, TradeSkillMaster on: open Get Addons. Then turn TradeSkillMaster off, then Controller layouts off, and reopen Get Addons each time | Controller layouts sits after Manual Install and immediately above TradeSkillMaster, with a gamepad icon. Each destination disappears when its source is off. With Controller layouts off the engine log shows no catalogue request, and a selected Controller layouts destination falls back to Search |
+| CL-266-2 | P1 | S | Serve `two-entries.json`; focus Controller layouts, then Right into the pane | The QAM widens as for the other destinations. No browse bar. A note reads "Layouts the WoWDeck maintainers reviewed for WoW. WoWDeck can't apply these layouts yet." Two rows follow in the fixture's order, each one focus stop: the title at 16 px with a 20 px line, then "by <author> · <controller>", then the description. Focus lands on the first row. A does nothing and the footer names no A, X or Menu action. No button is shown |
+| CL-266-3 | P1 | S | Serve, in turn: nothing (closed port), `empty.json`, a non-JSON file, `future-schema.json`, `withdrawn-and-unsupported.json` | Closed port: a Retry row with "Couldn't load controller layouts. Try again later." Non-JSON: Retry with "Couldn't read the controller layouts list." Empty: a focusable "No controller layouts yet" row. Future schema: an "Update WoWDeck" row with "This list needs a newer WoWDeck." under it. Withdrawn and unsupported entries are greyed with "Withdrawn by the WoWDeck maintainers" or "Needs a newer WoWDeck"; nothing offers them. A failure never reads as an empty list |
+| CL-266-4 | P1 | S | With the closed port, focus Retry; start the server, press A | The row reads "Loading…", then the layouts appear and focus moves to the first row instead of falling to nothing |
+| CL-266-5 | P1 | S | Focus the second layout, Left to the destination list, Down and Up through the destinations, then Right into Controller layouts again; B out, then come back | Re-entry returns to the second layout. B collapses the QAM onto the nav bar as in GA-5 |
+| CL-266-6 | P1 | S | Pane sizing: serve a copy of `two-entries.json` whose first title, author and description are at their maximum length (120, 120 and 2000 characters), with one unbroken word longer than the pane | Every row stays inside the pane (S32, audit OVERFLOW clean); long text wraps. The facts line wraps only between facts. The pane scrolls with the scroll buffer and the focused row stays clear of the bars. Compare the rows against the native controller-layout browser (§8.4d: 8 px padding, 6 px gap, 2 px radius) and record the measured padding and gap |
+
