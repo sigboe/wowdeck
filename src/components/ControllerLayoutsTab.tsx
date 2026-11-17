@@ -26,7 +26,12 @@ import { addonSession } from "../session";
 import { layoutTargets, possibleSharedTargets } from "../controllerLayoutTargets";
 import { useResource } from "../useResource";
 import { listSteamShortcuts } from "../steamLibrary";
-import { forgetFocus, rememberedFocus, revealRemembered } from "../focusMemory";
+import {
+  forgetFocus,
+  registerFocusElement,
+  rememberedFocus,
+  revealRemembered,
+} from "../focusMemory";
 import { layoutRow, useControllerLayoutCatalogue } from "../controllerLayouts";
 import { useControllerLayoutsSourceOn } from "../controllerLayoutsSource";
 import { focusTarget } from "./FocusSlot";
@@ -318,7 +323,9 @@ function LayoutRow({
   if (!cls) return <FallbackRow layout={layout} view={view} onPreview={preview} />;
   const focus = focusTarget(view, layout.id);
   return (
-    <div ref={focus.ref}>
+    // The slot is the wrapper around Steam's Focusable (DEVICE 2026-11-17:
+    // registered as a plain element it never matched, so restores failed).
+    <div ref={(el) => registerFocusElement(view, layout.id, el, true)}>
       <Focusable
         className={cls.ConfigurationButton}
         style={row.inactive ? { opacity: 0.5 } : undefined}
