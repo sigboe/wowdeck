@@ -162,9 +162,10 @@ account, physical controller and complete scope, reloads the retained evidence,
 and verifies mappings and selection semantics before reporting success. The
 module-level operation slot and status resource survive pane teardown. A full
 browser reload while the engine remains live can leave a nonterminal operation
-without its browser owner. That intent stays blocked; this version can reattach
-it for explicit recovery after an engine restart, but does not restart the
-engine or reconcile an abandoned live operation automatically.
+without its browser owner. The durable claim stays blocked across an engine
+restart. Another browser cannot restore until the original owner releases after
+all native promises settle. Reconciliation after the owner dies still needs a
+proven native barrier; no timeout grants permission to replay.
 
 The pane shows retained or uncertain previous controls and an explicit restore
 retry when there is recovery evidence. Reading the catalogue or reopening the
@@ -182,11 +183,14 @@ alone cannot supply those proofs. No live Apply action is exposed.
 The byte resolver currently supports existing account-local `usercloud` and
 `autosave` VDFs. Workshop and template URLs fail before export because their
 pre-export byte location has not been established. If the original source is
-changed or missing, restore retains the archived bytes and refuses to select
-that source. Writing archived bytes back over changed personal edits is not an
-automatic recovery action. Such cases still need a separate recovery delivery
-path and verification. A restart reattaches a complete archive if a crash interrupted the later
-operation-reference write. It never replays export or application.
+changed or missing, explicit restoration stages retained bytes in a separate
+recovery namespace and substitutes present selection URLs. It preserves absent
+overrides and never overwrites personal edits. An inherited source still refuses
+restoration if delivery would require adding a previously absent override. A
+restart reattaches a complete archive if a crash interrupted its later reference
+write. It never replays export or application. The
+[follow-up evidence plan](controller-layout-follow-up.md) describes the remaining
+scope, publication and abandoned-call questions.
 
 Tests cover the typed recovery RPC across restart and failed restoration,
 changed source bytes, fake-native preservation of personal edits and inherited

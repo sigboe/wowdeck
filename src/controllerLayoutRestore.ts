@@ -11,6 +11,8 @@ export async function restoreLayout(deps: {
   currentInstallation(): string;
 }) {
   let op = deps.operation;
+  const nativeOwner = crypto.randomUUID();
+  let claimed = false;
   const unchanged = async () => {
     const actual = await deps.native.operationContext(op.context.target, op.context.installationId);
     if (
@@ -25,7 +27,8 @@ export async function restoreLayout(deps: {
   try {
     await unchanged();
     unsubscribe = deps.native.subscribe(() => {});
-    op = await deps.rpc("controllerLayouts.resumeRestore", { id: op.id });
+    op = await deps.rpc("controllerLayouts.resumeRestore", { id: op.id, nativeOwner });
+    claimed = true;
     await unchanged();
     await layoutPreservation(deps.rpc, deps.native).restore(op);
     await deps.rpc("controllerLayouts.advanceOperation", {
@@ -36,7 +39,7 @@ export async function restoreLayout(deps: {
     return "restored" as const;
   } catch (error) {
     backendErrorMessage(error);
-    if (op.phase === "restoring") {
+    if (claimed && op.phase === "restoring") {
       try {
         await deps.rpc("controllerLayouts.advanceOperation", {
           id: op.id,
@@ -49,6 +52,14 @@ export async function restoreLayout(deps: {
     }
     return "recovery-required" as const;
   } finally {
+    if (claimed) {
+      try {
+        await deps.native.settled();
+        await deps.rpc("controllerLayouts.releaseOperation", { id: op.id, nativeOwner });
+      } catch {
+        /* Retain uncertain ownership. */
+      }
+    }
     unsubscribe?.();
   }
 }

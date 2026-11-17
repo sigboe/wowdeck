@@ -47,14 +47,36 @@ export class ControllerLayoutOperations {
     if (!op || op.id !== id) throw Error("Couldn't find preserved controls.");
     return this.recovery.read(op);
   }
-  async resumeRestore(id: string) {
+  async prepareRecovery(id: string) {
+    if (this.busy) throw Error("Couldn't deliver controls while another operation is running.");
+    this.busy = true;
+    try {
+      const op = await this.current();
+      if (!op || op.id !== id || op.phase !== "restoring") throw Error("Couldn't deliver controls outside explicit restoration.");
+      return await this.recovery.prepare(op);
+    } finally { this.busy = false; }
+  }
+  async resumeRestore(id: string, nativeOwner: string) {
     if (this.busy) throw Error("Couldn't restore while another operation is running.");
     this.busy = true;
     try {
       const op = await this.current();
       if (!op || op.id !== id || !["succeeded", "recovery-required"].includes(op.phase)) throw Error("Couldn't resume this restoration.");
-      await this.recovery.read(op);
-      return await this.save({ ...op, phase: "restoring" });
+      if (op.nativeOwner) throw Error("Couldn't restore while native work is still owned by a browser.");
+      validateOwner(nativeOwner);
+      await this.recovery.read(op, false);
+      return await this.save({ ...op, phase: "restoring", nativeOwner });
+    } finally { this.busy = false; }
+  }
+  async release(id: string, nativeOwner: string) {
+    if (this.busy) throw Error("Couldn't release while another operation is running.");
+    this.busy = true;
+    try {
+      await this.validation;
+      const op = await this.current();
+      if (!op || op.id !== id || op.nativeOwner !== nativeOwner) throw Error("Couldn't release another browser's native work.");
+      return await this.save({ ...op, nativeOwner: undefined,
+        phase: terminal.has(op.phase) ? op.phase : "recovery-required" });
     } finally { this.busy = false; }
   }
   async status(): Promise<ControllerLayoutOperation | null> {
@@ -62,6 +84,7 @@ export class ControllerLayoutOperations {
       const value = JSON.parse(await readFile(join(this.dir, "operation.json"), "utf8")) as ControllerLayoutOperation;
       if (!value.id || !transitions[value.phase] || !value.context || !value.approved) throw Error();
       validateContext(value.context);
+      if (value.nativeOwner !== undefined) validateOwner(value.nativeOwner);
       if (!/^[a-f0-9]{64}$/.test(value.approved.sha256) ||
         value.approved.url !== `usercloud://wowdeck-approved/${value.approved.sha256}` ||
         value.approved.accountId !== value.context.accountId ||
@@ -105,14 +128,15 @@ export class ControllerLayoutOperations {
     this.busy = true;
     try {
       validateContext(params.context);
+      validateOwner(params.nativeOwner);
       const previous = await this.status();
-      if (previous && !terminal.has(previous.phase)) throw Error("Couldn't change controls while recovery is required.");
+      if (previous && (previous.nativeOwner || !terminal.has(previous.phase))) throw Error("Couldn't change controls while recovery is required.");
       const preview = this.previews.status(params.previewJobId);
       if (preview.state !== "ready") throw Error("Couldn't find the approved preview.");
       const approved = preview.preview;
       if (approved.accountId !== params.context.accountId || !approved.mappings[String(params.context.controllerType)]) throw Error("Couldn't validate these controller mappings.");
       this.previewJobId = params.previewJobId;
-      const operation = await this.save({ id: randomUUID(), phase: "validating", context: structuredClone(params.context), approved });
+      const operation = await this.save({ id: randomUUID(), phase: "validating", nativeOwner: params.nativeOwner, context: structuredClone(params.context), approved });
       this.validation = this.previews.authorize(params.previewJobId).then(async fresh => {
         if (JSON.stringify(fresh) !== JSON.stringify(approved)) throw Error();
         await this.save({ ...operation, phase: "preserving" });
@@ -155,4 +179,8 @@ function validateContext(c: ControllerLayoutContext) {
     c.scope.targets.some(t => !Number.isSafeInteger(t.appId) || t.appId <= 0 || typeof t.name !== "string" || !t.name) ||
     new Set(c.scope.targets.map(t => t.appId)).size !== c.scope.targets.length)
     throw Error("Couldn't establish the affected controls. Nothing was changed.");
+}
+
+function validateOwner(owner: string) {
+  if (typeof owner !== "string" || !/^[a-f0-9-]{36}$/.test(owner)) throw Error("Couldn't claim native controller work.");
 }

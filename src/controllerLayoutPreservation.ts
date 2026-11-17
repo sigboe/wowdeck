@@ -22,10 +22,12 @@ export function layoutPreservation(rpc: Rpc, native: LayoutRecoveryAdapter): Lay
   const verify = async (
     op: ControllerLayoutOperation,
     snapshot: ControllerLayoutRecoverySnapshot,
+    restored = false,
   ) => {
     const context = await native.operationContext(op.context.target, op.context.installationId);
     if (
-      JSON.stringify(context) !== JSON.stringify(op.context) ||
+      JSON.stringify({ ...context, ...(restored ? { selection: "" } : {}) }) !==
+        JSON.stringify({ ...op.context, ...(restored ? { selection: "" } : {}) }) ||
       mappingContent(await native.readback(context)) !== snapshot.mapping
     )
       throw Error("Couldn't verify previous controls and selection semantics.");
@@ -59,7 +61,7 @@ export function layoutPreservation(rpc: Rpc, native: LayoutRecoveryAdapter): Lay
       return saved;
     },
     async restore(op) {
-      const snapshot = await rpc("controllerLayouts.readRecovery", { id: op.id });
+      const snapshot = await rpc("controllerLayouts.prepareRecovery", { id: op.id });
       const context = await native.operationContext(op.context.target, op.context.installationId);
       if (
         JSON.stringify({ ...context, selection: "" }) !==
@@ -67,7 +69,7 @@ export function layoutPreservation(rpc: Rpc, native: LayoutRecoveryAdapter): Lay
       )
         throw Error("Couldn't restore controls onto a changed target or controller.");
       await native.restoreSelections(op, snapshot);
-      await verify(op, snapshot);
+      await verify(op, snapshot, true);
     },
   };
 }

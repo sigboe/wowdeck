@@ -39,21 +39,25 @@ for (const inherited of [false, true]) {
         ...(!inherited ? { url: "usercloud://personal/previous" } : {}),
       })),
     };
+    let actualSnapshot = structuredClone(snapshot);
+    let deliverySnapshot: ControllerLayoutRecoverySnapshot | undefined;
     const native: LayoutRecoveryAdapter = {
       context: async () => ({ ...op.context, selection }),
       operationContext: async () => ({ ...op.context, selection }),
       preview: async () => ({ model, release() {} }),
       apply: async () => {},
       readback: async () => model,
+      settled: async () => {},
       subscribe: () => () => {},
-      preservationState: async () => structuredClone(snapshot),
+      preservationState: async () => structuredClone(actualSnapshot),
       exportLocal: async () => {
         expect(saved).toEqual(snapshot); // durable evidence exists before selection changes
         selection = "local export";
         return "usercloud://personal/export";
       },
-      restoreSelections: async () => {
-        selection = "previous semantics";
+      restoreSelections: async (_op, delivered) => {
+        actualSnapshot = structuredClone(delivered);
+        selection = deliverySnapshot ? "archived URL" : "previous semantics";
       },
     };
     const rpc = (async (
@@ -71,7 +75,7 @@ for (const inherited of [false, true]) {
         exportSealed = true;
         return { recoveryId: op.id };
       }
-      if (method === "controllerLayouts.readRecovery") return saved;
+      if (method === "controllerLayouts.prepareRecovery") return deliverySnapshot ?? saved;
       if (method === "controllerLayouts.resumeRestore") return { ...op, phase: "restoring" };
       if (method === "controllerLayouts.advanceOperation") op.phase = params.phase!;
       return op;
@@ -80,12 +84,21 @@ for (const inherited of [false, true]) {
     expect(await preservation.capture(op)).toEqual({ recoveryId: "operation" });
     expect(exportSealed).toBe(true);
     expect(selection).toBe("previous semantics");
+    if (!inherited) {
+      const sourceURL = "usercloud://wowdeck-recovery/retained/original";
+      deliverySnapshot = {
+        ...snapshot,
+        sourceURL,
+        selections: snapshot.selections.map((e) => (e.present ? { ...e, url: sourceURL } : e)),
+      };
+    }
     selection = "approved";
     op.phase = "succeeded";
     expect(
       await restoreLayout({ rpc, native, operation: op, currentInstallation: () => "retail" }),
     ).toBe("restored");
-    expect(selection).toBe("previous semantics");
+    expect(selection).toBe(inherited ? "previous semantics" : "archived URL");
+    expect(actualSnapshot).toEqual(deliverySnapshot ?? snapshot);
     native.restoreSelections = async () => {
       throw Error("native disappeared");
     };
@@ -95,6 +108,9 @@ for (const inherited of [false, true]) {
     ).toBe("recovery-required");
     expect(saved).toEqual(snapshot);
     op.phase = "preserving";
+    actualSnapshot = structuredClone(snapshot);
+    deliverySnapshot = undefined;
+    selection = "previous semantics";
     native.exportLocal = async () => {
       selection = "unknown export outcome";
       throw Error("interrupted export");

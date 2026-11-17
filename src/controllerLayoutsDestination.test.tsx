@@ -249,7 +249,20 @@ test("chosen target discloses equal-name entries and unknown wider scope, with c
   try {
     await act(async () => previewChoice.select(LAYOUT_A, 42));
     const text = await show();
-    expect(text).toContain("WoW (42), WoW (43)");
+    expect(text).toContain("WoW, WoW");
+    expect(text).not.toContain("(42)");
+    expect(text).not.toContain("(43)");
+    const { rememberedFocus, restoreFocus } = await import("./focusMemory");
+    const selectedRow = [...doc.querySelectorAll("b")].find(
+      (n) => n.textContent === "Change library entry",
+    )!.parentElement!;
+    await act(async () => selectedRow.focus());
+    const identity = rememberedFocus("qam.browse.controllerLayouts");
+    expect(identity).toBe(`preview:${LAYOUT_A.id}:Change library entry`);
+    await act(async () => root.render(null));
+    await show();
+    restoreFocus("qam.browse.controllerLayouts");
+    expect(doc.activeElement?.textContent).toContain("Change library entry");
     expect(text).toContain("Entries with other names may also share controls");
     expect(text).toContain("Applying unavailable");
     expect(text).not.toContain("Apply layout");

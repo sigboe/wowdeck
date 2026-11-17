@@ -1,3 +1,4 @@
+import { accountConfigRoot } from "./accountConfigRoot";
 /** Engine-owned approved-content jobs. Native Steam access remains browser-side. */
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, realpath, rename, rm, writeFile } from "node:fs/promises";
@@ -153,27 +154,7 @@ export class ControllerLayoutPreviews {
       !text.includes(`"${layout.controllerType}"`)
     )
       throw new PreviewError("Couldn't read the approved layout content.");
-    const roots = new Set<string>();
-    for (const base of [".local/share/Steam", ".steam/steam"]) {
-      try {
-        roots.add(
-          await realpath(
-            join(
-              this.deps.homeDir,
-              base,
-              "steamapps/common/Steam Controller Configs",
-              String(accountId),
-              "config",
-            ),
-          ),
-        );
-      } catch {
-        /* Not this Steam installation. */
-      }
-    }
-    if (roots.size !== 1)
-      throw new PreviewError("Couldn't establish this account's controller layout folder.");
-    const root = [...roots][0]!;
+    const root = await accountConfigRoot(this.deps.homeDir, accountId);
     const dir = join(root, "wowdeck-approved");
     await mkdir(dir, { recursive: true, mode: 0o700 });
     if ((await realpath(dir)) !== dir) throw new PreviewError("Couldn't safely stage this layout.");

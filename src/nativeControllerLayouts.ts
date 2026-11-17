@@ -67,6 +67,7 @@ interface Decoder {
 export function nativeControllerLayouts(): LayoutRecoveryAdapter {
   let occupied = false;
   let mutationPending = false;
+  let pendingNative: Promise<unknown> = Promise.resolve();
   const mutate = async <T>(start: () => Promise<T>): Promise<T> => {
     if (mutationPending || occupied) throw Error("Native work is still pending");
     mutationPending = true;
@@ -75,6 +76,7 @@ export function nativeControllerLayouts(): LayoutRecoveryAdapter {
       .finally(() => {
         mutationPending = false;
       });
+    pendingNative = pending.catch(() => {});
     // Keep the slot after a timeout until native work really settles.
     return bounded(pending);
   };
@@ -111,6 +113,9 @@ export function nativeControllerLayouts(): LayoutRecoveryAdapter {
       throw Error("Couldn't establish the full affected controls.");
   };
   const adapter: LayoutRecoveryAdapter = {
+    async settled() {
+      await pendingNative;
+    },
     async preservationState(
       _operation: ControllerLayoutOperation,
     ): Promise<ControllerLayoutRecoverySnapshot> {
@@ -272,10 +277,7 @@ export function nativeControllerLayouts(): LayoutRecoveryAdapter {
   async function load(context: LayoutContext, url: string, active = false) {
     if (occupied || mutationPending) throw Error("Native work is already running");
     const { input, controller } = capabilities();
-    if (
-      controller !== context.controllerIndex ||
-      !/^usercloud:\/\/wowdeck-approved\/[a-f0-9]{64}$/.test(url)
-    )
+    if (controller !== context.controllerIndex || (!active && !safePreviewURL(url)))
       throw Error("Native context changed");
     if (typeof DeckyUi.findModuleExport !== "function") throw Error("Native decoder unavailable");
     const decoder = DeckyUi.findModuleExport((value: unknown) => {
@@ -310,13 +312,14 @@ export function nativeControllerLayouts(): LayoutRecoveryAdapter {
           : input.PreviewConfigForAppAndController(context.target, controller, url),
       )
       .then((bytes) => decoder.deserializeBinary(bytes).toObject());
+    pendingNative = pending.catch(() => {});
     let model: NativeLayoutModel & { binding_handle: number; error_msg?: string };
     try {
       model = await bounded(pending);
     } catch (error) {
       // Native work cannot be cancelled. Keep ownership until it settles and
       // free a late result rather than leaking it after a UI timeout.
-      void pending
+      pendingNative = pending
         .then((late) => {
           if (late.binding_handle > 0) free(late.binding_handle);
         })
@@ -376,4 +379,11 @@ async function bounded<T>(pending: Promise<T>): Promise<T> {
   } finally {
     clearTimeout(timer);
   }
+}
+
+/** Preview accepts engine-delivered snapshots and native personal exports only.
+ * Active readback has no URL; it uses a separate native entry point. */
+function safePreviewURL(url: string) {
+  const match = /^usercloud:\/\/([a-zA-Z0-9 _/-]+)$/.exec(url);
+  return !!match && match[1]!.split("/").every((part) => part && part !== "." && part !== "..");
 }

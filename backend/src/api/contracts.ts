@@ -872,7 +872,12 @@ export interface MethodMap {
     result: AboutInfo;
   };
   "controllerLayouts.beginOperation": {
-    params: { previewJobId: string; context: ControllerLayoutContext };
+    params: { previewJobId: string; context: ControllerLayoutContext; nativeOwner: string };
+    result: ControllerLayoutOperation;
+  };
+  /** Owner releases only after all native promises settle, including late results. */
+  "controllerLayouts.releaseOperation": {
+    params: { id: string; nativeOwner: string };
     result: ControllerLayoutOperation;
   };
   "controllerLayouts.operationStatus": {
@@ -895,8 +900,13 @@ export interface MethodMap {
     params: { id: string };
     result: ControllerLayoutRecoverySnapshot;
   };
-  "controllerLayouts.resumeRestore": {
+  /** Explicitly stage archived bytes without replacing the original personal file. */
+  "controllerLayouts.prepareRecovery": {
     params: { id: string };
+    result: ControllerLayoutRecoverySnapshot;
+  };
+  "controllerLayouts.resumeRestore": {
+    params: { id: string; nativeOwner: string };
     result: ControllerLayoutOperation;
   };
   "controllerLayouts.preparePreview": {
@@ -1854,6 +1864,8 @@ export interface ControllerLayoutOperation {
   approved: ControllerLayoutPreview;
   /** Opaque reference to durable recovery bytes and semantics, never just a URL. */
   recoveryId?: string;
+  /** Durable claim. No timeout grants another browser permission to replay. */
+  nativeOwner?: string;
 }
 
 /** An approved snapshot staged by the engine for read-only native preview. */

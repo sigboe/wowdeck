@@ -78,7 +78,8 @@ function RecoveryPane({ view }: { view: string }) {
       </PanelSectionRow>
     );
   if (!op || op.phase === "failed" || op.phase === "restored") return null;
-  const available = !!op.recoveryId && ["succeeded", "recovery-required"].includes(op.phase);
+  const available =
+    !op.nativeOwner && !!op.recoveryId && ["succeeded", "recovery-required"].includes(op.phase);
   return (
     <PanelSectionRow>
       <Field
@@ -310,6 +311,7 @@ function PreviewPane({
     <PanelSectionRow key={key}>
       <Field
         focusable
+        {...focusTarget(view, `preview:${choice.layout.id}:${key}`)}
         label={label}
         description={description}
         onClick={onClick}
@@ -348,7 +350,7 @@ function PreviewPane({
           {row(
             "Possibly shared controls",
             possibleSharedTargets(games, choice.target)
-              .map((g) => `${g.name} (${g.appId})`)
+              .map((g) => g.name)
               .join(", "),
           )}
           {row(
@@ -371,7 +373,7 @@ function PreviewPane({
           {games.map((game) =>
             row(
               game.name,
-              `Library entry ${game.appId}`,
+              `Library entry ${games.indexOf(game) + 1}`,
               () => previewChoice.select(choice.layout, game.appId),
               String(game.appId),
             ),

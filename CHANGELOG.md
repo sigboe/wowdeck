@@ -17,6 +17,8 @@ What's new in each version of WoWDeck Addon Manager. The format follows
 
 ### Fixed
 
+- Controller layout previews keep your place when reopened and no longer show internal library numbers.
+
 - Sources no longer says a revoked TradeSkillMaster account stays signed in.
 
 - The on-screen keyboard closes when TradeSkillMaster sign-in finishes or is cancelled, and when CurseForge key entry closes.

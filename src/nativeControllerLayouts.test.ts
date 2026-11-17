@@ -104,3 +104,36 @@ test("appID zero callbacks invalidate only and are disposed by their owner", () 
   expect(invalidations).toBe(1);
   expect(disposed).toBe(1);
 });
+
+test("production adapter reads active mappings without a preview URL", async () => {
+  const app = steam();
+  let reads = 0;
+  Object.assign(app.input, {
+    StartEditingControllerConfigurationForAppIDAndControllerIndex: async () => {
+      reads++;
+      return new Uint8Array();
+    },
+  });
+  const context = await app.adapter.operationContext(42, "retail");
+  expect(await app.adapter.readback(context)).toEqual(model);
+  expect(reads).toBe(1);
+  expect(app.freed).toEqual([91]);
+});
+
+test("production adapter previews a safe personal export but rejects traversal and foreign schemes", async () => {
+  const app = steam();
+  const context = await app.adapter.context(42);
+  const loaded = await app.adapter.preview(context, "usercloud://personal/WoWDeck recovery export");
+  expect(loaded.model).toEqual(model);
+  loaded.release();
+  for (const url of [
+    "usercloud://personal/../other",
+    "usercloud:///absolute",
+    "file:///tmp/layout",
+    "usercloud://personal/a?key=secret",
+    "usercloud://personal//other",
+  ]) {
+    await expect(app.adapter.preview(context, url)).rejects.toThrow();
+  }
+  expect(app.freed).toEqual([91]);
+});

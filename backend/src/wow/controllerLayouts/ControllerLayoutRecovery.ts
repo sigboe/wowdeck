@@ -1,6 +1,7 @@
+import { accountConfigRoot } from "./accountConfigRoot";
 /** Recovery bytes are engine-owned. Native URLs are data, never arbitrary paths. */
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, open, readFile, realpath, rename, stat, writeFile } from "node:fs/promises";
+import { link, mkdir, open, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { isAbsolute, join, sep } from "node:path";
 import type { ControllerLayoutOperation, ControllerLayoutRecoverySnapshot } from "../../api/contracts";
 const hash = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
@@ -16,12 +17,7 @@ export class ControllerLayoutRecovery {
     if ((!match && (!autosave || !isAbsolute(autosave) || !autosave.endsWith(".vdf"))) ||
       (match && match[1]!.split("/").some(part => !part || part === "." || part === "..")))
       throw Error("Couldn't preserve the previous layout's bytes. This source isn't supported.");
-    const roots = new Set<string>();
-    for (const base of [".local/share/Steam", ".steam/steam"]) {
-      try { roots.add(await realpath(join(this.homeDir, base, "steamapps/common/Steam Controller Configs", String(account), "config"))); } catch { /* absent installation */ }
-    }
-    if (roots.size !== 1) throw Error("Couldn't establish the previous layout's folder.");
-    const root = [...roots][0]!;
+    const root = await accountConfigRoot(this.homeDir, account);
     const path = await realpath(autosave ?? join(root, `${match![1]}.vdf`));
     if (!path.startsWith(root + sep) || !(await stat(path)).isFile() || (await stat(path)).size > 2 * 1024 * 1024)
       throw Error("Couldn't safely read previous controls.");
@@ -59,6 +55,46 @@ export class ControllerLayoutRecovery {
   async verifyExport(op: ControllerLayoutOperation) {
     const record = JSON.parse(await readFile(join(this.dir, `${op.id}.export.json`), "utf8"));
     if (!record.bytes || hash(Buffer.from(record.bytes, "base64")) !== record.sha256) throw Error("Couldn't verify the preserved native export.");
+  }
+  async prepare(op: ControllerLayoutOperation) {
+    const snapshot = await this.read(op, false);
+    try {
+      await this.read(op);
+      return snapshot;
+    } catch {
+      // A missing or changed source is recovered under a new URL. Never replace
+      // personal edits. Absence of an override must remain absence, so inherited
+      // mappings with a missing source cannot be substituted by an explicit one.
+      if (op.context.scope.targets.some(t => !snapshot.selections.some(e => e.target === t.appId && e.present)))
+        throw Error("Couldn't recover inherited controls whose source changed. Preserved bytes are retained.");
+    }
+    const record = JSON.parse(await readFile(join(this.dir, `${op.id}.json`), "utf8"));
+    const bytes = Buffer.from(record.bytes, "base64");
+    const root = await accountConfigRoot(this.homeDir, op.context.accountId);
+    const namespace = join(root, "wowdeck-recovery");
+    await mkdir(namespace, { recursive: true, mode: 0o700 });
+    if (await realpath(namespace) !== namespace) throw Error("Couldn't safely deliver preserved controls.");
+    const dir = join(namespace, op.id);
+    await mkdir(dir, { mode: 0o700, recursive: true });
+    if (await realpath(dir) !== dir) throw Error("Couldn't safely deliver preserved controls.");
+    const path = join(dir, `${record.sha256}.vdf`);
+    const temporary = join(dir, `${randomUUID()}.tmp`);
+    try {
+      await writeFile(temporary, bytes, { flag: "wx", mode: 0o600 });
+      const staged = await open(temporary, "r");
+      try { await staged.sync(); } finally { await staged.close(); }
+      // Atomic publication without replacing an existing personal/conflicting file.
+      try { await link(temporary, path); }
+      catch (error) { if ((error as { code?: string }).code !== "EEXIST") throw error; }
+    } finally { await rm(temporary, { force: true }); }
+    if (await realpath(path) !== path || hash(await readFile(path)) !== record.sha256)
+      throw Error("Couldn't verify delivered recovery bytes.");
+    const file = await open(path, "r");
+    try { await file.sync(); } finally { await file.close(); }
+    const directory = await open(dir, "r");
+    try { await directory.sync(); } finally { await directory.close(); }
+    const sourceURL = `usercloud://wowdeck-recovery/${op.id}/${record.sha256}`;
+    return { ...snapshot, sourceURL, selections: snapshot.selections.map(e => e.present ? { ...e, url: sourceURL } : e) };
   }
   async read(op: ControllerLayoutOperation, checkSource = true) {
     if (!/^[a-f0-9-]{36}$/.test(op.id) || op.recoveryId !== op.id) throw Error("Couldn't find preserved controls.");

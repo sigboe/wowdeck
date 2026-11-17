@@ -99,6 +99,7 @@ function fixture(
       if (change === "missing") throw Error("native disappeared");
     },
     readback: async () => (change === "fallback" || change === "restore" ? fallback : model),
+    settled: async () => {},
     subscribe: (listener) => {
       invalidate = listener;
       return () => {

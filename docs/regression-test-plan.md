@@ -1379,3 +1379,21 @@ No new device run was authorized for this implementation. The parent must
 perform the bounded disposable-target run after resolving its Steam-state
 permission scope. Restart, cloud, offline, gameplay and two-controller results
 remain pending.
+
+
+### Controller layout review regressions, #261
+
+- Through the production native adapter, active readback must reach Steam without
+  a URL. A personal usercloud export must preview; traversal, empty path segments,
+  query strings and foreign schemes must fail before native work starts.
+- Explicit recovery after the original personal source changes or disappears must
+  stage archived bytes under a separate recovery URL. New edits stay untouched.
+  Confirm decoded mappings and both override layers before reporting restoration.
+- A second browser must not claim restoration while the original owns native work,
+  including after an engine restart. Late native results must settle before release.
+- In the preview pane, focus Change library entry, close and reopen the pane, and
+  confirm that row retains focus. Duplicate names must not reveal native app numbers.
+
+The deterministic checks cover these boundaries with recorded/fake external
+interfaces. Hardware verification and a supported live Apply scope remain pending;
+see [the follow-up evidence plan](controller-layout-follow-up.md).

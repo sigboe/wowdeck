@@ -34,13 +34,21 @@ export function controllerLayoutsHandlers({
       if (!controllerLayoutOperations) throw Error("Couldn't read preserved controls.");
       return controllerLayoutOperations.readRecovery(id);
     },
-    "controllerLayouts.resumeRestore": async ({ id }: { id: string }) => {
+    "controllerLayouts.prepareRecovery": async ({ id }: { id: string }) => {
+      if (!controllerLayoutOperations) throw Error("Couldn't deliver preserved controls.");
+      return controllerLayoutOperations.prepareRecovery(id);
+    },
+    "controllerLayouts.resumeRestore": async ({ id, nativeOwner }: { id: string; nativeOwner: string }) => {
       if (!controllerLayoutOperations) throw Error("Couldn't restore controls.");
-      return controllerLayoutOperations.resumeRestore(id);
+      return controllerLayoutOperations.resumeRestore(id, nativeOwner);
     },
     "controllerLayouts.beginOperation": async (params: import("../contracts").MethodMap["controllerLayouts.beginOperation"]["params"]) => {
       if (!controllerLayoutsSourceEnabled(store.settings) || !controllerLayoutOperations) throw Error("Couldn't apply layouts while the source is off.");
       return controllerLayoutOperations.begin(params);
+    },
+    "controllerLayouts.releaseOperation": async ({ id, nativeOwner }: { id: string; nativeOwner: string }) => {
+      if (!controllerLayoutOperations) throw Error("Couldn't release native controller work.");
+      return controllerLayoutOperations.release(id, nativeOwner);
     },
     "controllerLayouts.operationStatus": async (_params: Record<string, never>) => controllerLayoutOperations?.current() ?? null,
     "controllerLayouts.advanceOperation": async (params: import("../contracts").MethodMap["controllerLayouts.advanceOperation"]["params"]) => {

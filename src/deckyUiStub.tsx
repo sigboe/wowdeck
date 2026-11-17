@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { ReactNode, Ref } from "react";
 
 /**
  * Stand-ins for the Steam controls @decky/ui finds at runtime, for the
@@ -57,6 +57,8 @@ export const deckyUiStub = {
     <button disabled={disabled}>{children}</button>
   ),
   Field: ({
+    ref,
+    onGamepadFocus,
     label,
     description,
     disabled,
@@ -67,6 +69,8 @@ export const deckyUiStub = {
     onCancelActionDescription,
     onClick,
   }: Kids & {
+    ref?: Ref<HTMLDivElement>;
+    onGamepadFocus?: () => void;
     label?: ReactNode;
     description?: ReactNode;
     disabled?: boolean;
@@ -77,7 +81,13 @@ export const deckyUiStub = {
     onCancelActionDescription?: string;
     onClick?: () => void;
   }) => (
-    <div data-disabled={disabled ? "true" : undefined} onClick={onClick}>
+    <div
+      ref={ref}
+      tabIndex={-1}
+      onFocus={onGamepadFocus}
+      data-disabled={disabled ? "true" : undefined}
+      onClick={onClick}
+    >
       <b>{label}</b>
       <i>{description}</i>
       {children}

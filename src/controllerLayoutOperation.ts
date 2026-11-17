@@ -11,6 +11,8 @@ export interface LayoutOperationAdapter extends NativeLayoutAdapter {
   operationContext(target: number, installationId: string): Promise<ControllerLayoutContext>;
   apply(context: ControllerLayoutContext, url: string): Promise<void>;
   readback(context: ControllerLayoutContext): Promise<NativeLayoutModel>;
+  /** Wait for late native results before relinquishing durable ownership. */
+  settled(): Promise<void>;
   /** Notification appID 0 invalidates; no notification establishes success. */
   subscribe(invalidate: () => void): () => void;
 }
@@ -41,9 +43,11 @@ export async function applyLayout(deps: {
     typeof deps.preservation?.restore !== "function" ||
     typeof deps.native?.apply !== "function" ||
     typeof deps.native?.readback !== "function" ||
-    typeof deps.native?.subscribe !== "function"
+    typeof deps.native?.subscribe !== "function" ||
+    typeof deps.native?.settled !== "function"
   )
     return { state: "blocked" };
+  const nativeOwner = crypto.randomUUID();
   let captureStarted = false;
   let mutationAttempted = false;
   let operation: ControllerLayoutOperation | undefined;
@@ -75,6 +79,7 @@ export async function applyLayout(deps: {
       invalidated = true;
     });
     operation = await deps.rpc("controllerLayouts.beginOperation", {
+      nativeOwner,
       previewJobId: deps.previewJobId,
       context: deps.context,
     });
@@ -167,6 +172,14 @@ export async function applyLayout(deps: {
       return { state: "recovery-required" };
     }
   } finally {
+    if (operation) {
+      try {
+        await deps.native.settled();
+        await deps.rpc("controllerLayouts.releaseOperation", { id: operation.id, nativeOwner });
+      } catch {
+        /* Claim remains durable; another browser cannot replay native work. */
+      }
+    }
     try {
       unsubscribe?.();
     } catch {

@@ -163,7 +163,7 @@ test("changed staged bytes are refused through operation RPC before preservation
   await app.settle(job.jobId);
   const path = join(app.home, ".local/share/Steam/steamapps/common/Steam Controller Configs/123/config/wowdeck-approved/594bf63d6a335accef2e6a577d5873240aa43c257c4cbec5732e52dea3ed5448.vdf");
   await Bun.write(path, "corrupt or personally changed bytes");
-  const operation = await app.rpc["controllerLayouts.beginOperation"]({ previewJobId: job.jobId, context: {
+  const operation = await app.rpc["controllerLayouts.beginOperation"]({ nativeOwner: "11111111-1111-4111-8111-111111111111", previewJobId: job.jobId, context: {
     installationId: "retail", target: 42, accountId: 123, controllerIndex: 15, controllerType: 4,
     controllerIdentity: "controller-a", selection: "inherited", scope: { state: "established", identity: "all controllers", targets: [{ appId: 42, name: "WoW" }] },
   } });
