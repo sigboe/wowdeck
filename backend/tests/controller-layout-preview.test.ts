@@ -172,3 +172,17 @@ test("changed staged bytes are refused through operation RPC before preservation
   await app.settleOperation();
   expect(await app.rpc["controllerLayouts.operationStatus"]({})).toMatchObject({ phase: "failed" });
 });
+
+test("cached reports only staged revisions whose bytes match their name", async () => {
+  const home = await mkdtemp(join(tmpdir(), "cached-261-"));
+  homes.push(home);
+  const dir = join(home, ".local/share/Steam/steamapps/common/Steam Controller Configs/123/config/wowdeck-approved");
+  await mkdir(dir, { recursive: true });
+  const bytes = new TextEncoder().encode('"controller_mappings" {}');
+  const good = new Bun.CryptoHasher("sha256").update(bytes).digest("hex");
+  await Bun.write(join(dir, `${good}.vdf`), bytes);
+  await Bun.write(join(dir, `${"b".repeat(64)}.vdf`), "tampered");
+  const previews = new ControllerLayoutPreviews({ catalogue: {} as never, net: {} as never, homeDir: home });
+  expect(await previews.cached(123, [good, "b".repeat(64), "c".repeat(64), "../x"])).toEqual([good]);
+  expect(await previews.cached(456, [good])).toEqual([]);
+});

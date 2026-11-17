@@ -1,8 +1,9 @@
 import { TsmIcon } from "../icons/TsmIcon";
+import { ControllerGlyph, STEAM_CONTROLLER_TYPE } from "../steamControllerUi";
 import { TSM_ADDON_ACTION, TSM_REFRESH, TsmAddon } from "./TsmAddon";
 import { tsmSession, tsmOptionsSources, tsmDestinationVisible } from "../tsmSession";
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
-import { FaClock, FaFileArchive, FaFire, FaGamepad, FaSearch } from "react-icons/fa";
+import { FaClock, FaFileArchive, FaFire, FaSearch } from "react-icons/fa";
 import { ControllerLayoutsTab } from "./ControllerLayoutsTab";
 import { useControllerLayoutsSourceOn } from "../controllerLayoutsSource";
 import {
@@ -80,7 +81,10 @@ const DESTINATIONS: Record<GetAddonsTab, { label: string; icon: ReactNode }> = {
   // Rebranded, not new: the internal id stays "url" so focus memory and the
   // widened-session state survive the rename (spec: install-from-file).
   url: { label: "Manual Install", icon: <FaFileArchive /> },
-  controllerLayouts: { label: "Controller layouts", icon: <FaGamepad /> },
+  controllerLayouts: {
+    label: "Controller Layouts",
+    icon: <ControllerGlyph type={STEAM_CONTROLLER_TYPE} />,
+  },
 };
 
 /** Before the first load: a stable empty list, so the sources' derivations don't re-run. */

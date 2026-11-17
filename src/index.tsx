@@ -12,6 +12,7 @@ import {
   PanelSectionRow,
 } from "@decky/ui";
 import { definePlugin } from "@decky/api";
+import { interceptNativeApply } from "./nativeLayoutPreview";
 import { FaBoxOpen, FaDiceD6, FaSearch, FaCog } from "react-icons/fa";
 import { deckyEngineLink } from "./services/backend";
 import { connectEngine, engine } from "./engineLink";
@@ -339,6 +340,8 @@ export default definePlugin(() => {
   // (session.ts, wtfSession.ts, selfUpdate.ts, steamUpdates.ts,
   // engineChanges.ts), so they arrive while no panel is mounted.
   const disconnectEngine = connectEngine(deckyEngineLink());
+  // X on Steam's layout preview runs WoWDeck's Apply for WoWDeck's layouts.
+  const stopNativeApply = interceptNativeApply();
 
   // Widened mode has a native half the QAM window cannot reach: Steam moves
   // the QAM view itself while its placeholder carries Steam's `Expanded`
@@ -422,6 +425,7 @@ export default definePlugin(() => {
     content: <Content />,
     icon: <FaBoxOpen />,
     onDismount() {
+      stopNativeApply();
       stopTsmSignIn();
       unpatchGamePage();
       steamLaunch.stopWatching();

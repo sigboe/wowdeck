@@ -913,6 +913,11 @@ export interface MethodMap {
     params: { layoutId: string; revision: number; accountId: number };
     result: { jobId: string };
   };
+  /** Which approved revisions this account already has staged with matching bytes. */
+  "controllerLayouts.cached": {
+    params: { accountId: number; sha256s: string[] };
+    result: { cached: string[] };
+  };
   "controllerLayouts.previewStatus": {
     params: { jobId: string };
     result: ControllerLayoutPreviewJob;

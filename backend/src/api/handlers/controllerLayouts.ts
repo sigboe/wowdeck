@@ -65,6 +65,9 @@ export function controllerLayoutsHandlers({
         throw Error("Couldn't preview layouts while the source is off.");
       return controllerLayoutPreviews.start(params);
     },
+    "controllerLayouts.cached": async ({ accountId, sha256s }: { accountId: number; sha256s: string[] }) => ({
+      cached: Array.isArray(sha256s) ? ((await controllerLayoutPreviews?.cached(accountId, sha256s)) ?? []) : [],
+    }),
     "controllerLayouts.previewStatus": async ({ jobId }: { jobId: string }) =>
       controllerLayoutPreviews?.status(jobId) ?? {
         state: "error" as const,

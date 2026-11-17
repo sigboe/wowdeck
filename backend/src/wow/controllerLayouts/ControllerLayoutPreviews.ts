@@ -63,6 +63,27 @@ export class ControllerLayoutPreviews {
     await this.jobs.get(jobId)?.done;
   }
 
+  /** Staged revisions whose bytes still hash to their name. Missing folders mean none. */
+  async cached(accountId: number, sha256s: string[]): Promise<string[]> {
+    if (!Number.isSafeInteger(accountId) || accountId < 1 || accountId > 0xffffffff) return [];
+    let dir: string;
+    try {
+      dir = join(await accountConfigRoot(this.deps.homeDir, accountId), "wowdeck-approved");
+    } catch {
+      return [];
+    }
+    const cached: string[] = [];
+    for (const sha of sha256s.slice(0, 64)) {
+      if (!/^[a-f0-9]{64}$/.test(sha)) continue;
+      try {
+        if (digest(await Bun.file(join(dir, `${sha}.vdf`)).bytes()) === sha) cached.push(sha);
+      } catch {
+        /* not staged */
+      }
+    }
+    return cached;
+  }
+
   /** Fresh catalogue authority and hash-checked disk bytes, never browser-supplied approval. */
   async authorize(jobId: string, stagedOnly = false) {
     const request = this.requests.get(jobId);

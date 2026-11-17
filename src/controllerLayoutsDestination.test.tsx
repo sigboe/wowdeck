@@ -98,17 +98,17 @@ async function show(): Promise<string> {
 const catalogueRequests = () =>
   fake.calls.filter((c) => c.method === "controllerLayouts.catalogue").length;
 
-test("the reviewed layouts appear in the maintainers' order, browse only", async () => {
+test("the reviewed layouts appear in the maintainers' order and preview in Steam", async () => {
   const text = await show();
 
-  expect(text).toContain("WoWDeck can't apply these layouts yet");
+  expect(text).toContain("to preview one in Steam");
   expect(text.indexOf("Fixture layout A")).toBeLessThan(text.indexOf("Fixture layout B"));
   expect(text).toContain("by WoWDeck fixtures");
   expect(text).toContain("Steam Deck");
   expect(text).toContain("A synthetic layout for tests.");
   expect(text).toContain("by Another fixture");
   expect(text).toContain("Steam Controller");
-  expect(text).not.toMatch(/apply$|Apply layout|Preview/);
+  expect(text).not.toMatch(/Apply layout/);
   expect(doc.querySelectorAll("button").length).toBe(0);
 });
 

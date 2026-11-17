@@ -1,5 +1,15 @@
-import { ConfirmModal, Field, PanelSectionRow, Spinner, showModal } from "@decky/ui";
-import { useEffect, useRef, useSyncExternalStore } from "react";
+import { Field, Focusable, PanelSectionRow, Spinner } from "@decky/ui";
+import { toaster } from "@decky/api";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { engine } from "../engineLink";
+import { openNativePreview } from "../nativeLayoutPreview";
+import {
+  ControllerGlyph,
+  InfoIcon,
+  controllerTypeNumber,
+  layoutRowClasses,
+  useWorkshopStats,
+} from "../steamControllerUi";
 import {
   layoutPreviewSession,
   layoutOperationContext,
@@ -10,16 +20,13 @@ import {
   layoutApplyStatus,
   layoutRecovery,
   retryLayoutRestore,
-  startLayoutApply,
 } from "../controllerLayoutRecoverySession";
 import { Warning, WarningLine } from "./Warning";
 import { addonSession } from "../session";
 import { layoutTargets, possibleSharedTargets } from "../controllerLayoutTargets";
 import { useResource } from "../useResource";
 import { listSteamShortcuts } from "../steamLibrary";
-import { forgetFocus, rememberedFocus, requestFocus, revealRemembered } from "../focusMemory";
-import { openPanel } from "../openPanel";
-import { holdBrowseSessionForModal } from "../browseSessionState";
+import { forgetFocus, rememberedFocus, revealRemembered } from "../focusMemory";
 import { layoutRow, useControllerLayoutCatalogue } from "../controllerLayouts";
 import { useControllerLayoutsSourceOn } from "../controllerLayoutsSource";
 import { focusTarget } from "./FocusSlot";
@@ -237,23 +244,150 @@ function Note({ text }: { text: string }) {
 }
 
 function Layouts({ layouts, view }: { layouts: ControllerLayout[]; view: string }) {
+  const session = useSyncExternalStore(addonSession.subscribe, addonSession.get);
+  const games = listSteamShortcuts();
+  const account = useResource(layoutTargetContext, games.length ? String(games[0].appId) : null);
+  const active = session.installations.find((i) => i.id === session.selectedId);
+  const preferred = layoutTargets(games, active, account.data?.accountId).preferred;
+  const accountId = account.data?.accountId;
+  const [cached, setCached] = useState<string[]>([]);
+  const shas = layouts.map((l) => l.revision?.sha256).filter((s): s is string => !!s);
+  useEffect(() => {
+    if (!accountId) return;
+    let live = true;
+    engine
+      .rpc("controllerLayouts.cached", { accountId, sha256s: shas })
+      .then((r) => live && setCached(r.cached))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [accountId, shas.join()]);
   return (
     <>
       {/* What the player can do here, above the list it explains (S22). */}
-      <Note text="Layouts the WoWDeck maintainers reviewed for WoW. WoWDeck can't apply these layouts yet." />
+      <Note
+        text={
+          preferred
+            ? `Layouts the WoWDeck maintainers reviewed for WoW. A previews one in Steam for ${preferred.name}; X there applies it.`
+            : "Layouts the WoWDeck maintainers reviewed for WoW. Choose a library entry to preview one in Steam."
+        }
+      />
       {/* Steam's 6 px between rows (S10): the Fields alone touched (0 px, DEVICE 2026-11-17). */}
       <div style={{ display: "flex", flexDirection: "column", gap: STEAM_ROW_GAP }}>
         {layouts.map((layout) => (
-          <LayoutRow key={layout.id} layout={layout} view={view} />
+          <LayoutRow
+            key={layout.id}
+            layout={layout}
+            view={view}
+            target={preferred?.appId}
+            cached={!!layout.revision && cached.includes(layout.revision.sha256)}
+          />
         ))}
       </div>
     </>
   );
 }
 
-function LayoutRow({ layout, view }: { layout: ControllerLayout; view: string }) {
+function LayoutRow({
+  layout,
+  view,
+  target,
+  cached,
+}: {
+  layout: ControllerLayout;
+  view: string;
+  target?: number;
+  cached: boolean;
+}) {
   const row = layoutRow(layout);
-  // A layout that isn't offered reads like a row Steam has switched off (S23).
+  const cls = layoutRowClasses();
+  const stats = useWorkshopStats(layout.publishedFileId);
+  const [opening, setOpening] = useState(false);
+  const preview = async () => {
+    if (target === undefined) {
+      previewChoice.select(layout);
+      return;
+    }
+    setOpening(true);
+    const error = await openNativePreview(layout, target);
+    setOpening(false);
+    if (error) toaster.toast({ title: layout.title, body: error });
+  };
+  const choose = () => previewChoice.select(layout, undefined, true);
+  if (!cls) return <FallbackRow layout={layout} view={view} onPreview={preview} />;
+  const focus = focusTarget(view, layout.id);
+  return (
+    <div ref={focus.ref}>
+      <Focusable
+        className={cls.ConfigurationButton}
+        style={row.inactive ? { opacity: 0.5 } : undefined}
+        noFocusRing
+        preferredFocus={focus.preferredFocus}
+        onGamepadFocus={focus.onGamepadFocus}
+        onActivate={row.inactive || opening ? undefined : preview}
+        onOKButton={row.inactive || opening ? undefined : preview}
+        onOKActionDescription={row.inactive ? undefined : opening ? "Preparing…" : "Preview"}
+        onSecondaryButton={row.inactive ? undefined : choose}
+        onSecondaryActionDescription={row.inactive ? undefined : "Library entry"}
+      >
+        <div className={cls.IconContainer}>
+          <ControllerGlyph type={controllerTypeNumber(layout.controllerType)} />
+        </div>
+        <div className={cls.TextRows}>
+          <div className={cls.TextRow}>
+            <div className={cls.Author}>{layout.author}</div>
+            <div className={cls.Stretch} />
+            {row.note ? (
+              <div className={cls.InfoSection}>
+                <span>{row.note}</span>
+              </div>
+            ) : (
+              <>
+                <div className={cls.InfoSection}>
+                  <InfoIcon name={cached ? "downloaded" : "notDownloaded"} />
+                  <span>{opening ? "Preparing…" : cached ? "Downloaded" : "Not downloaded"}</span>
+                </div>
+                {stats?.likes !== undefined && (
+                  <div className={cls.InfoSection} aria-label={`${stats.likes} likes`}>
+                    <InfoIcon name="likes" />
+                    <span>{stats.likes}</span>
+                  </div>
+                )}
+                {stats?.hours !== undefined && (
+                  <div className={cls.InfoSection}>
+                    <InfoIcon name="hours" />
+                    <span>
+                      {stats.hours === 1 ? "1 hour played" : `${stats.hours} hours played`}
+                    </span>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+          <div className={cls.ConfigTitleRow}>
+            <div className={`${cls.TextRow} ${cls.Title}`}>{layout.title}</div>
+          </div>
+          {layout.description && (
+            <div className={`${cls.TextRow} ${cls.Description}`}>{layout.description}</div>
+          )}
+        </div>
+      </Focusable>
+    </div>
+  );
+}
+
+/** Steam without the community row classes: the plain row, still previewing natively. */
+function FallbackRow({
+  layout,
+  view,
+  onPreview,
+}: {
+  layout: ControllerLayout;
+  view: string;
+  onPreview: () => void;
+}) {
+  const row = layoutRow(layout);
   const muted = row.inactive ? { color: STEAM.textDisabled } : undefined;
   return (
     <PanelSectionRow>
@@ -261,7 +395,7 @@ function LayoutRow({ layout, view }: { layout: ControllerLayout; view: string })
         focusable
         {...focusTarget(view, layout.id)}
         className="wowdeck-layout-row"
-        onClick={row.inactive ? undefined : () => previewChoice.select(layout)}
+        onClick={row.inactive ? undefined : onPreview}
         onOKActionDescription={row.inactive ? undefined : "Preview"}
         label={
           <span
@@ -313,40 +447,7 @@ function PreviewPane({
       ? `${choice.target}|${session.selectedId}`
       : null,
   );
-  const applyStatus = useSyncExternalStore(layoutApplyStatus.subscribe, layoutApplyStatus.get);
-  const pending = useResource(layoutRecovery, "current").data?.operation;
-  // One operation at a time: an earlier Apply keeps its previous controls until restored.
-  const blocked = !!pending && pending.phase !== "failed" && pending.phase !== "restored";
   const context = scope.data?.scope.state === "established" ? scope.data : undefined;
-  const apply = () => {
-    if (!context) return;
-    // The modal hides the QAM; that is not a close. Come back to this row.
-    const release = holdBrowseSessionForModal();
-    showModal(
-      <ConfirmModal
-        strTitle="Apply this layout?"
-        strDescription={`Changes the controls of ${context.scope.targets.map((g) => g.name).join(", ")} for every Steam Deck controller. WoWDeck saves your current controls first, so you can restore them later.`}
-        strOKButtonText="Apply"
-        onOK={async () => {
-          const jobId = choice.key ? await layoutPreviewSession.job(choice.key) : undefined;
-          if (jobId)
-            await startLayoutApply(jobId, context, () => addonSession.get().selectedId ?? "").catch(
-              () => {},
-            );
-          layoutOperationContext.invalidate();
-        }}
-      />,
-      window,
-      {
-        bHideMainWindowForPopouts: false,
-        fnOnClose: () => {
-          requestFocus(view, `preview:${choice.layout.id}:Apply layout`);
-          openPanel("browse");
-          release();
-        },
-      },
-    );
-  };
   const preferred = layoutTargets(games, active, account.data?.accountId).preferred;
   useEffect(() => {
     if (!choice.key && !choice.correcting && preferred)
@@ -444,36 +545,13 @@ function PreviewPane({
         row("Couldn't preview the layout", result.data.message)
       ) : result.data?.state === "ready" ? (
         <>
-          {row("Preview verified", "These mappings match the reviewed revision.")}
-          {context &&
-            (applyStatus === "applying"
-              ? row("Applying layout…")
-              : blocked && applyStatus === "idle"
-                ? row(
-                    "Apply layout",
-                    "Restore your previous controls first, at the top of this tab.",
-                  )
-                : row(
-                    "Apply layout",
-                    {
-                      idle: undefined,
-                      applying: undefined,
-                      succeeded:
-                        "Layout applied. Restore your previous controls from the top of this tab.",
-                      restored: "Couldn't apply the layout. Your previous controls are back.",
-                      failed: "Couldn't apply the layout. Your controls didn't change.",
-                      blocked:
-                        "Couldn't apply the layout. Steam's controls changed; preview it again.",
-                      "recovery-required":
-                        "Couldn't apply the layout. Restore your previous controls from the top of this tab.",
-                    }[applyStatus],
-                    blocked ? undefined : apply,
-                  ))}
-          {result.data.model.sets.map((set, index) =>
-            row(`Action set ${index + 1}`, mappingText(set)),
-          )}
-          {result.data.model.modes.map((mode, index) =>
-            row(`Mapping ${index + 1}`, mappingText(mode)),
+          {row(
+            "Preview in Steam",
+            "Shows how this layout maps to your controller. X there applies it.",
+            async () => {
+              const error = await openNativePreview(choice.layout, choice.target!);
+              if (error) toaster.toast({ title: choice.layout.title, body: error });
+            },
           )}
         </>
       ) : (
@@ -481,14 +559,4 @@ function PreviewPane({
       )}
     </>
   );
-}
-
-/** Display the complete decoded mapping tree as named values, never executable markup. */
-function mappingText(value: unknown): string {
-  if (Array.isArray(value)) return value.map(mappingText).join("; ");
-  if (value !== null && typeof value === "object")
-    return Object.entries(value)
-      .map(([key, child]) => `${key.replace(/_/g, " ")}: ${mappingText(child)}`)
-      .join("; ");
-  return String(value ?? "");
 }
