@@ -22,14 +22,13 @@ import type { NetworkClient } from "../net/network";
 import { SingleFlight } from "../utils/SingleFlight";
 
 /**
- * Where the published catalogue is served from. PENDING: the public
- * catalogue repository (ADR-0015) does not exist yet, so this URL answers
- * nothing today and the destination reads "unavailable". When the
- * repository is published, this constant is the one place to change.
- * WOWDECK_CONTROLLER_LAYOUTS_URL overrides it (EngineUrls).
+ * Where the published catalogue is served from: the WoW catalogue in the
+ * public sigboe/steam-input-layouts repository (ADR-0015), which validates
+ * every change with parseCatalogue. Released clients keep this address, so
+ * it never moves. WOWDECK_CONTROLLER_LAYOUTS_URL overrides it (EngineUrls).
  */
 export const CONTROLLER_LAYOUT_CATALOGUE_URL =
-  "https://raw.githubusercontent.com/sigboe/wowdeck-controller-layouts/main/catalogue.json";
+  "https://raw.githubusercontent.com/sigboe/steam-input-layouts/main/wow/catalogue.json";
 
 /** The newest manifest schema this client reads; a newer one is "unsupported". */
 export const CONTROLLER_LAYOUT_SCHEMA_VERSION = 1;

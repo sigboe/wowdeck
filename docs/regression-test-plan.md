@@ -1207,8 +1207,9 @@ on the Deck remains required.
 
 ### Controller layouts destination (#266)
 
-Device runs are pending. The public catalogue repository doesn't exist yet,
-so a normal build shows the unavailable state (CL-266-3). To see layouts,
+Device runs are pending. A normal build reads the WoW catalogue in
+[sigboe/steam-input-layouts](https://github.com/sigboe/steam-input-layouts),
+which has no layouts yet, so it shows the empty state (CL-266-3). To see layouts,
 start the engine with `WOWDECK_CONTROLLER_LAYOUTS_URL` pointing at a local
 server that serves one of the fixtures in
 `backend/tests/fixtures/controller-layouts/` (the way PU-25 pointed
