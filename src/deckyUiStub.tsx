@@ -98,7 +98,7 @@ export const deckyUiStub = {
       </footer>
     </div>
   ),
-  Navigation: {},
+  Navigation: { OpenQuickAccessMenu: () => {} },
   QuickAccessTab: { Decky: 999 },
   GamepadButton: {},
   ConfirmModal: () => null,

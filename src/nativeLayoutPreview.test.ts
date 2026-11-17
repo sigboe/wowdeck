@@ -51,3 +51,31 @@ test("a locked Steam object never breaks plugin load", () => {
     else Reflect.deleteProperty(globalThis, "SteamClient");
   }
 });
+
+test("leaving Steam's preview by X pushes the player's page back and reopens WoWDeck", async () => {
+  const { returnAfterPreviewForTest } = await import("./nativeLayoutPreview");
+  let path = "/library/home";
+  const pushed: string[] = [];
+  let listener: (l: { pathname?: string }) => void = () => {};
+  const history = {
+    get location() {
+      return { pathname: path };
+    },
+    push: (p: string) => {
+      pushed.push(p);
+      path = p;
+    },
+    listen: (l: typeof listener) => {
+      listener = l;
+      return () => {};
+    },
+  };
+  returnAfterPreviewForTest(history, "layout-a");
+  path = "/app/42/controllerconfigurator/sharedlayout";
+  listener({ pathname: path });
+  // X: Steam's NavigateHistory(-2) lands one page earlier.
+  path = "/library";
+  listener({ pathname: path });
+  await new Promise((r) => setTimeout(r, 350));
+  expect(pushed).toEqual(["/library/home"]);
+});

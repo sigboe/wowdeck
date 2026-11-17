@@ -5,6 +5,9 @@ import { backendErrorMessage } from "./errors";
 import { layoutNative, layoutPreviewSession } from "./controllerLayoutPreviewSession";
 import { layoutApplyStatus, startLayoutApply } from "./controllerLayoutRecoverySession";
 import { addonSession } from "./session";
+import { browseFocusView, holdBrowseSessionForModal } from "./browseSessionState";
+import { requestFocus } from "./focusMemory";
+import { openPanel } from "./openPanel";
 
 /**
  * Steam's own layout preview, opened the way its community list opens it
@@ -26,9 +29,14 @@ interface ConfiguratorStore {
     ...rest: unknown[]
   ): unknown;
 }
+interface MemoryHistory {
+  location?: { pathname?: string };
+  push(path: string): void;
+  listen(listener: (location: { pathname?: string }) => void): () => void;
+}
 interface SteamUi {
   NavigateToLayoutPreview(appid: number, window: unknown): void;
-  WindowStore?: { GamepadUIMainWindowInstance?: unknown };
+  WindowStore?: { GamepadUIMainWindowInstance?: { m_history?: MemoryHistory } };
 }
 const globals = () =>
   globalThis as unknown as {
@@ -75,14 +83,63 @@ export async function openNativePreview(
       return "Couldn't prepare the layout preview.";
     const context = await layoutNative.context(target);
     intent = { url: status.preview.url, target, jobId, title: layout.title };
+    const main = ui.WindowStore?.GamepadUIMainWindowInstance;
+    returnAfterPreview(main?.m_history, layout.id);
     store.PreviewConfiguration(target, context.controllerIndex, status.preview.url);
-    ui.NavigateToLayoutPreview(target, ui.WindowStore?.GamepadUIMainWindowInstance);
+    ui.NavigateToLayoutPreview(target, main);
     return null;
   } catch (error) {
     return backendErrorMessage(error);
   } finally {
     layoutPreviewSession.resource.retainOnly([]);
   }
+}
+
+const PREVIEW_ROUTE = /\/controllerconfigurator\/sharedlayout$/;
+
+/**
+ * Leaving Steam's preview, by B or X, comes back to WoWDeck on this layout's
+ * row. X runs Steam's NavigateHistory(-2), one page past where the player was
+ * (DEVICE 2026-11-17), so that page is pushed back first. The browse session
+ * is held while the preview hides the QAM, as for WoWDeck's own dialogs.
+ */
+function returnAfterPreview(history: MemoryHistory | undefined, layoutId: string) {
+  const release = holdBrowseSessionForModal();
+  const before = history?.location?.pathname;
+  if (!history || typeof history.listen !== "function" || !before) {
+    release();
+    return;
+  }
+  let seen = false;
+  let done = false;
+  const finish = () => {
+    if (done) return;
+    done = true;
+    stop();
+    clearTimeout(timer);
+    setTimeout(() => {
+      try {
+        if (history.location?.pathname !== before) history.push(before);
+      } catch {
+        /* Steam stays where it navigated */
+      }
+      requestFocus(browseFocusView("controllerLayouts"), layoutId);
+      openPanel("browse");
+      release();
+    }, 300);
+  };
+  const stop = history.listen((location) => {
+    if (PREVIEW_ROUTE.test(location.pathname ?? "")) seen = true;
+    else if (seen) finish();
+  });
+  // A preview that never opened must not hold the session.
+  const timer = setTimeout(() => {
+    if (!seen && !done) {
+      done = true;
+      stop();
+      release();
+    }
+  }, 5000);
 }
 
 const APPLY_TEXT: Record<string, string> = {
@@ -180,3 +237,6 @@ interface NativeInput {
     ...rest: unknown[]
   ): Promise<unknown>;
 }
+
+/** Test seam for the return path; the preview itself needs Steam. */
+export const returnAfterPreviewForTest = returnAfterPreview;
