@@ -1353,15 +1353,18 @@ not production entries.
 
 ### Controller layout playtime attribution (#263)
 
-Status: pending. Native snapshot application does not establish playtime
-credit. The archived-candidate import and local export both selected ID 14;
-the inspected SteamRT64 upload loop excludes IDs at or below 15. See the
+Native attribution is pending. WoWDeck omits playtime from catalogue
+rows because the Steam field's units and meaning are unverified. Native
+snapshot application does not establish playtime credit. The archived-candidate
+import and local export both selected ID 14. The inspected SteamRT64 upload
+loop excludes IDs at or below 15. See the
 [device investigation](hardware/2026-11-17-controller-layouts/README.md#playtime-investigation-for-263-17-november-2026).
 
 | ID | Priority | Tier | Steps | Expected |
 | --- | --- | --- | --- | --- |
-| CL-263-1 | P1 | H | During genuine WoW play with a known published layout, passively observe native activity records and the selected identity. Repeat for the identical approved snapshot, a personal edit and a reverted edit. Record bounded baseline and follow-up observations with controls for other players and delayed aggregation | Establish which published identity receives activity in each case. An inconclusive observation remains unknown. Matching mappings, a retained source ID and a successful upload alone do not prove original-item credit. Approved content must remain frozen. Do not write duration counters or alter ancestry to make this pass |
+| CL-263-1 | P1 | H | Launch WoW from a non-Steam shortcut whose name differs from the published layout's source shortcut. During genuine play with a known published layout, passively observe native activity records and the selected identity. Repeat for the identical approved snapshot, a personal edit and a reverted edit. Record bounded baseline and follow-up observations with controls for other players and delayed aggregation | Establish which published identity receives activity in each case. An inconclusive observation remains unknown. Matching mappings, a retained source ID and a successful upload alone do not prove original-item credit. Approved content must remain frozen. Do not write duration counters or alter ancestry to make this pass |
 | CL-263-2 | P1 | H | After ordinary attribution is established, repeat across suspend, offline use and an interrupted session, observing retries without injecting reports | Establish supported accounting boundaries and any loss or duplication. Report untested behavior as pending; never convert unknown metrics to zero |
+| CL-263-3 | P2 | S | Open Controller layouts with a published item whose Steam Workshop likes are available | The row shows the Workshop likes. WoWDeck shows no hours-played label, including when the Steam field returns zero |
 
 ### Controller layout preview (#267)
 

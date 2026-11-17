@@ -96,8 +96,6 @@ const ICONS = {
     '<path fill-rule="evenodd" clip-rule="evenodd" d="M29 23V27H7V23H2V32H34V23H29Z" fill="currentColor"></path><svg x="0" y="0" width="32" height="25"><path class="DownloadArrow" d="M20 14.1716L24.5858 9.58578L27.4142 12.4142L18 21.8284L8.58582 12.4142L11.4142 9.58578L16 14.1715V2H20V14.1716Z" fill="currentColor"></path></svg>',
   likes:
     '<path d="M13.1279 16.06L20.1616 2.48999L22.5621 3.74599C23.4622 4.21691 24.1493 5.01262 24.4842 5.97166C24.819 6.93069 24.7765 7.9812 24.3651 8.90999L21.1988 16.06H33.875L30.865 32.05H13L13.1279 16.06ZM9 16.05H3V32.05H9V16.05Z" fill="currentColor"></path>',
-  hours:
-    '<path fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" d="M18 33C26.2843 33 33 26.2843 33 18C33 9.71573 26.2843 3 18 3C9.71573 3 3 9.71573 3 18C3 26.2843 9.71573 33 18 33ZM20.2092 10.9908H14.8092V19.3092L21 25.5L24.8184 21.6816L20.2092 17.0724V10.9908Z"></path>',
 } as const;
 /** Steam's info-line icons, copied from its community-layout row. */
 export function InfoIcon({ name }: { name: keyof typeof ICONS }) {
@@ -113,9 +111,7 @@ export function InfoIcon({ name }: { name: keyof typeof ICONS }) {
 
 interface WorkshopStore {
   LoadPublishedFiles(ids: string[]): Promise<void>;
-  GetPublishedFile(
-    id: string,
-  ): { file?: { vote_data?: { votes_up?: number }; lifetime_playtime?: string } } | undefined;
+  GetPublishedFile(id: string): { file?: { vote_data?: { votes_up?: number } } } | undefined;
 }
 let workshop: WorkshopStore | null | undefined;
 function workshopStore(): WorkshopStore | null {
@@ -141,14 +137,9 @@ function workshopStore(): WorkshopStore | null {
   return workshop;
 }
 
-export interface WorkshopStats {
-  likes?: number;
-  /** INFERRED: lifetime_playtime is seconds; Steam showed "0" for a new item. */
-  hours?: number;
-}
-/** Likes and collective playtime from Steam's own workshop store, signed in as the player. */
-export function useWorkshopStats(publishedFileId: string | undefined): WorkshopStats | null {
-  const [stats, setStats] = useState<WorkshopStats | null>(null);
+/** Workshop likes for the source item. Steam's playtime field has unverified units. */
+export function useWorkshopLikes(publishedFileId: string | undefined): number | undefined {
+  const [likes, setLikes] = useState<number>();
   useEffect(() => {
     const store = workshopStore();
     if (!store || !publishedFileId || !/^[0-9]+$/.test(publishedFileId)) return;
@@ -156,11 +147,7 @@ export function useWorkshopStats(publishedFileId: string | undefined): WorkshopS
     const read = () => {
       const file = store.GetPublishedFile(publishedFileId)?.file;
       if (!file) return false;
-      const seconds = Number(file.lifetime_playtime);
-      setStats({
-        likes: file.vote_data?.votes_up,
-        hours: Number.isFinite(seconds) ? Math.round(seconds / 3600) : undefined,
-      });
+      setLikes(file.vote_data?.votes_up);
       return true;
     };
     if (!read())
@@ -172,5 +159,5 @@ export function useWorkshopStats(publishedFileId: string | undefined): WorkshopS
       live = false;
     };
   }, [publishedFileId]);
-  return stats;
+  return likes;
 }

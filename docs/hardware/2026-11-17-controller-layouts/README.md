@@ -202,6 +202,21 @@ is a different library from the loaded `steamrt64/steamclient.so`; conclusions
 above use the loaded library's addresses and hash. No internal usage getter,
 manual report, counter mutation or ancestry modification was invoked.
 
+### Activity record follow-up
+
+Static analysis of the same archived SteamRT64 library traced the ID back
+one step from the report. The activity routine calls an ID lookup at
+`0x126a27c`. If it returns an ID from 1 through 15, the branch at
+`0x126a2a5` skips a later lookup and keeps that ID. When this path creates
+a usage record, it passes the ID at `0x126a12d`. The record writer stores
+it at `0x12192b0`. The reporter reads that field as the grouping key at
+`0x1261e78` before applying its range check.
+
+If the native activity lookup returns the local selection's observed ID 14,
+this path carries 14 to the report filter. A live observation still needs
+to establish which ID the activity lookup returns for each selection and
+whether the service credits an eligible report.
+
 The next experiment needs genuine WoW play with a known published layout and
 passive observation of the native accounting boundary. A successful upload
 alone would still need a controlled follow-up of server totals. Source

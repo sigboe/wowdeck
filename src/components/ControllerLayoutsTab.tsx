@@ -8,7 +8,7 @@ import {
   InfoIcon,
   controllerTypeNumber,
   layoutRowClasses,
-  useWorkshopStats,
+  useWorkshopLikes,
 } from "../steamControllerUi";
 import {
   layoutPreviewSession,
@@ -320,7 +320,7 @@ function LayoutRow({
 }) {
   const row = layoutRow(layout);
   const cls = layoutRowClasses();
-  const stats = useWorkshopStats(layout.publishedFileId);
+  const likes = useWorkshopLikes(layout.publishedFileId);
   const [opening, setOpening] = useState(false);
   const preview = async () => {
     if (target === undefined) {
@@ -371,18 +371,10 @@ function LayoutRow({
                   <InfoIcon name={cached ? "downloaded" : "notDownloaded"} />
                   <span>{opening ? "Preparing…" : cached ? "Downloaded" : "Not downloaded"}</span>
                 </div>
-                {stats?.likes !== undefined && (
-                  <div className={cls.InfoSection} aria-label={`${stats.likes} likes`}>
+                {likes !== undefined && (
+                  <div className={cls.InfoSection} aria-label={`${likes} likes`}>
                     <InfoIcon name="likes" />
-                    <span>{stats.likes}</span>
-                  </div>
-                )}
-                {stats?.hours !== undefined && (
-                  <div className={cls.InfoSection}>
-                    <InfoIcon name="hours" />
-                    <span>
-                      {stats.hours === 1 ? "1 hour played" : `${stats.hours} hours played`}
-                    </span>
+                    <span>{likes}</span>
                   </div>
                 )}
               </>
