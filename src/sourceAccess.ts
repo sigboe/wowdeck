@@ -66,6 +66,7 @@ export type BrowseBarItem = "source" | "category";
 export const BROWSE_BAR_ITEMS: Record<GetAddonsTab, readonly BrowseBarItem[]> = {
   search: [],
   url: [],
+  controllerLayouts: [],
   tsm: [],
   latest: ["source"],
   popular: ["source", "category"],

@@ -9,10 +9,11 @@ What's new in each version of WoWDeck Addon Manager. The format follows
 ### Added
 
 - Pick the WoW client Steam's Play button starts from its menu, even with Battle.net closed. Options can turn it off.
+- Get Addons has a Controller layouts entry for browsing reviewed controller layouts. None are published yet, and WoWDeck can't apply them yet.
 
 ### Changed
 
-- Options' Addon sources section is now called Sources. Its new Controller layouts switch is for curated layouts, which aren't available yet.
+- Options' Addon sources section is now called Sources, with a Controller layouts switch that shows or hides that entry.
 
 ### Fixed
 
