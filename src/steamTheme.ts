@@ -46,9 +46,18 @@ export const STEAM_FONT = {
   small: "12px",
 } as const;
 
+/** Line heights for STEAM_FONT's sizes: labels 16/20, descriptions 12/16. */
+export const STEAM_LINE = {
+  body: "20px",
+  small: "16px",
+} as const;
+
+/** The gap between stacked lines of one row's description (Steam's 2 px). */
+export const STEAM_LINE_GAP = "2px";
+
 /** Description-style text: Steam's 12/16 px muted line. */
 export const descriptionStyle = {
   color: STEAM.textMuted,
   fontSize: STEAM_FONT.small,
-  lineHeight: "16px",
+  lineHeight: STEAM_LINE.small,
 } as const;

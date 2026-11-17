@@ -1,7 +1,6 @@
 import type { ControllerLayout, ControllerLayoutCatalogue } from "../backend/src/api/contracts";
 import { systemClock, type Clock } from "./clock";
 import { engine } from "./engineLink";
-import { backendErrorMessage } from "./errors";
 import { createKeyedResource, type ResourceSnapshot } from "./keyedResource";
 import type { Rpc } from "./services/envelope";
 import { useResource } from "./useResource";
@@ -9,58 +8,62 @@ import { useResource } from "./useResource";
 /**
  * The Controller layouts catalogue (GLOSSARY: Controller layout) as a
  * keyed resource with one key: read when a view first asks and on Retry,
- * never polled. Whether a view asks at all is the source toggle's to decide
- * (#265); nothing here reads on import.
+ * never polled. A view asks only while the source is on (see
+ * `controllerLayoutsEnabled` in the contract for what Off stops); nothing
+ * here reads on import.
  */
 const KEY = "catalogue";
 
 export function createControllerLayoutsModule(deps: { rpc: Rpc; clock: Clock }) {
   const catalogue = createKeyedResource<ControllerLayoutCatalogue>({
     read: () => deps.rpc("controllerLayouts.catalogue", {}),
-    errorText: (e) => {
-      backendErrorMessage(e);
-      return "Couldn't load controller layouts";
-    },
+    errorText: () => "Couldn't load controller layouts.",
     clock: deps.clock,
   });
   return { KEY, catalogue };
 }
 
 /**
- * What the destination shows, one state each: a failed request, content
- * that isn't a catalogue and a catalogue newer than this client never read
- * as an empty one.
+ * What the destination shows, with each state's copy decided here: a failed
+ * request, content that isn't a catalogue and a catalogue newer than this
+ * client never read as an empty one.
  */
 export type CatalogueView =
   | { kind: "loading" }
   | { kind: "ready"; layouts: ControllerLayout[] }
-  | { kind: "empty" }
-  | { kind: "unavailable" }
-  | { kind: "malformed" }
-  | { kind: "unsupported" }
-  /** The engine call itself failed. */
-  | { kind: "error"; message: string };
+  /** Nothing to list: a focusable row naming why. */
+  | { kind: "notice"; label: string; text?: string }
+  /** Reading failed: a Retry row with what went wrong. */
+  | { kind: "retry"; message: string }
+  /** The source is off: the pane shows nothing. */
+  | { kind: "off" };
 
 export function catalogueView(
   snapshot: ResourceSnapshot<ControllerLayoutCatalogue>,
 ): CatalogueView {
   const { data, error } = snapshot;
   if (data === null)
-    return error === null ? { kind: "loading" } : { kind: "error", message: error };
+    return error === null ? { kind: "loading" } : { kind: "retry", message: error };
   switch (data.state) {
     case "ready":
-      return data.layouts.length > 0 ? { kind: "ready", layouts: data.layouts } : { kind: "empty" };
+      return data.layouts.length > 0
+        ? { kind: "ready", layouts: data.layouts }
+        : { kind: "notice", label: "No controller layouts yet" };
     case "unavailable":
+      return { kind: "retry", message: "Couldn't load controller layouts. Try again later." };
     case "malformed":
+      return { kind: "retry", message: "Couldn't read the controller layouts list." };
     case "unsupported":
-      return { kind: data.state };
+      return { kind: "notice", label: "Update WoWDeck", text: "This list needs a newer WoWDeck." };
+    case "disabled":
+      return { kind: "off" };
   }
 }
 
 /**
  * Steam's controller-type declarations this client can name for a player.
- * A type missing here is left off the row rather than shown as Steam's
- * internal word (copy rule C05).
+ * A type missing here is shown as the catalogue gives it (spec #260: show
+ * the original controller type) rather than hidden.
  */
 const CONTROLLER_TYPES: Record<string, string> = {
   controller_neptune: "Steam Deck",
@@ -72,6 +75,13 @@ const CONTROLLER_TYPES: Record<string, string> = {
   controller_xbox360: "Xbox 360 controller",
   controller_switch_pro: "Switch Pro Controller",
 };
+
+/** A controller type's name; an own key only, since the type is catalogue data. */
+function controllerName(type: string): string {
+  return Object.prototype.hasOwnProperty.call(CONTROLLER_TYPES, type)
+    ? CONTROLLER_TYPES[type]!
+    : type;
+}
 
 /** What one layout row shows. */
 export interface LayoutRow {
@@ -86,10 +96,9 @@ export interface LayoutRow {
 }
 
 export function layoutRow(layout: ControllerLayout): LayoutRow {
-  const controller = CONTROLLER_TYPES[layout.controllerType];
   return {
     title: layout.title,
-    facts: [`by ${layout.author}`, ...(controller ? [controller] : [])],
+    facts: [`by ${layout.author}`, controllerName(layout.controllerType)],
     description: layout.description,
     note:
       layout.offer === "withdrawn"
@@ -108,12 +117,12 @@ export const controllerLayoutsModule = createControllerLayoutsModule({
 
 /**
  * The catalogue's view for a component; `refresh` is Retry and `loading`
- * says one is running. Nothing is read while the Controller layouts source
- * is off (`sourceOn`, from useControllerLayoutsSourceOn): the resource is
- * then viewed with no key.
+ * says one is running. While the source is off (`sourceOn`, from
+ * useControllerLayoutsSourceOn) the resource is viewed with no key.
  */
 export function useControllerLayoutCatalogue(sourceOn: boolean): {
-  view: CatalogueView;
+  /** What the pane shows. */
+  shown: CatalogueView;
   loading: boolean;
   refresh: () => Promise<void>;
 } {
@@ -121,5 +130,5 @@ export function useControllerLayoutCatalogue(sourceOn: boolean): {
     controllerLayoutsModule.catalogue,
     sourceOn ? KEY : null,
   );
-  return { view: catalogueView(snapshot), loading: snapshot.loading, refresh };
+  return { shown: catalogueView(snapshot), loading: snapshot.loading, refresh };
 }

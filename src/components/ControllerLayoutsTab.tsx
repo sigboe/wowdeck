@@ -5,7 +5,7 @@ import { layoutRow, useControllerLayoutCatalogue } from "../controllerLayouts";
 import { useControllerLayoutsSourceOn } from "../controllerLayoutsSource";
 import { focusTarget } from "./FocusSlot";
 import { FactLine } from "./FactLine";
-import { STEAM, STEAM_FONT, descriptionStyle } from "../steamTheme";
+import { STEAM, STEAM_FONT, STEAM_LINE, STEAM_LINE_GAP, descriptionStyle } from "../steamTheme";
 import type { ControllerLayout } from "../../backend/src/api/contracts";
 
 /**
@@ -19,7 +19,8 @@ import type { ControllerLayout } from "../../backend/src/api/contracts";
  * own QAM `Field`s (G3, S3), whose padding and 2 px radius stand in for the
  * native browser's 8 px card padding at the pane's width.
  *
- * Nothing is shown or read while the source is off (Options › Sources).
+ * Nothing is shown or read while the source is off (see
+ * `controllerLayoutsEnabled` in the contract).
  */
 export function ControllerLayoutsTab({ view }: { view: string }) {
   const sourceOn = useControllerLayoutsSourceOn();
@@ -31,7 +32,7 @@ export function ControllerLayoutsTab({ view }: { view: string }) {
 }
 
 function CatalogueBody({
-  catalogue: { view: state, loading, refresh },
+  catalogue: { shown, loading, refresh },
   view,
 }: {
   catalogue: ReturnType<typeof useControllerLayoutCatalogue>;
@@ -54,45 +55,39 @@ function CatalogueBody({
     // After Steam has registered the new rows (guide G7).
     const timer = setTimeout(() => first?.focus(), 0);
     return () => clearTimeout(timer);
-  }, [loading, state.kind]);
+  }, [loading, shown.kind]);
   // A remembered row this state doesn't show (a layout before a failed
   // reload, Retry once the layouts are in) is forgotten, so entering the
   // pane lands on its first stop instead of waiting for a row that won't come.
   useEffect(() => {
-    const shown = state.kind === "ready" ? state.layouts.map((l) => l.id) : ["retry", "state"];
+    const keys = shown.kind === "ready" ? shown.layouts.map((l) => l.id) : ["retry", "state"];
     const key = rememberedFocus(view);
-    if (key !== undefined && !shown.includes(key)) {
+    if (key !== undefined && !keys.includes(key)) {
       forgetFocus(view);
     }
-  }, [view, state]);
+  }, [view, shown]);
   // The pane's scroll container survives destination swaps: show the
   // remembered layout (without focusing it) once the rows are in, as the
   // addon lists do.
   useEffect(() => {
-    if (state.kind === "ready") {
+    if (shown.kind === "ready") {
       revealRemembered(view);
     }
-  }, [view, state.kind]);
+  }, [view, shown.kind]);
   return <div ref={bodyRef}>{body()}</div>;
 
   function body() {
-    switch (state.kind) {
+    switch (shown.kind) {
       case "loading":
         return <Spinner style={{ width: "1.5em", margin: "12px auto", display: "block" }} />;
-      case "error":
-        return retry(state.message);
-      case "unavailable":
-        return retry("Couldn't load controller layouts. Try again later.");
-      case "malformed":
-        return retry("Couldn't read the controller layouts list.");
-      case "unsupported":
-        return (
-          <StateRow view={view} label="Update WoWDeck" text="This list needs a newer WoWDeck." />
-        );
-      case "empty":
-        return <StateRow view={view} label="No controller layouts yet" />;
+      case "retry":
+        return retry(shown.message);
+      case "notice":
+        return <StateRow view={view} label={shown.label} text={shown.text} />;
       case "ready":
-        return <Layouts layouts={state.layouts} view={view} />;
+        return <Layouts layouts={shown.layouts} view={view} />;
+      case "off":
+        return null;
     }
   }
 
@@ -170,7 +165,7 @@ function LayoutRow({ layout, view }: { layout: ControllerLayout; view: string })
             style={{
               color: row.inactive ? STEAM.textDisabled : STEAM.text,
               fontSize: STEAM_FONT.body,
-              lineHeight: "20px",
+              lineHeight: STEAM_LINE.body,
               overflowWrap: "anywhere",
             }}
           >
@@ -180,9 +175,13 @@ function LayoutRow({ layout, view }: { layout: ControllerLayout; view: string })
         description={
           <span style={{ ...descriptionStyle, ...muted, display: "block" }}>
             <FactLine facts={row.facts} />
-            {row.note && <span style={{ display: "block", marginTop: "2px" }}>{row.note}</span>}
+            {row.note && (
+              <span style={{ display: "block", marginTop: STEAM_LINE_GAP }}>{row.note}</span>
+            )}
             {row.description && (
-              <span style={{ display: "block", marginTop: "2px", overflowWrap: "anywhere" }}>
+              <span
+                style={{ display: "block", marginTop: STEAM_LINE_GAP, overflowWrap: "anywhere" }}
+              >
                 {row.description}
               </span>
             )}
