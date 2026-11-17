@@ -2,7 +2,7 @@
 /**
  * Options' WoW installations section through its real seam: the addon
  * session. No engine is connected in this file — an engine call from the
- * section would throw "The engine isn't connected yet", so these tests
+ * section would reject with "The engine isn't connected yet", so these tests
  * passing is the proof the section writes through the session alone.
  */
 import { expect, mock, test } from "bun:test";

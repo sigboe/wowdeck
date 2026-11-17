@@ -57,20 +57,18 @@ let link: EngineLink | null = null;
 let unsubscribe: (() => void) | null = null;
 const router = createEventRouter();
 
-function connected(): EngineLink {
-  if (!link) {
-    throw new Error("The engine isn't connected yet");
-  }
-  return link;
-}
+const notConnected = () => Promise.reject(new Error("The engine isn't connected yet"));
 
 /**
  * The connected engine. `rpc` and `bridge` forward to the link connected
- * when the call is made; `events.on` registers with the one router.
+ * when the call is made; `events.on` registers with the one router. With no
+ * link they reject, never throw: a plugin reload disconnects in onDismount and
+ * Steam may render the old panel once more, and a synchronous throw from a
+ * mount effect would escape its `.catch()` onto Decky's error screen.
  */
 export const engine: { rpc: Rpc; bridge: Bridge; events: Pick<EventRouter, "on"> } = {
-  rpc: ((method, ...params) => connected().rpc(method, ...params)) as Rpc,
-  bridge: ((method, ...args) => connected().bridge(method, ...args)) as Bridge,
+  rpc: ((method, ...params) => (link ? link.rpc(method, ...params) : notConnected())) as Rpc,
+  bridge: ((method, ...args) => (link ? link.bridge(method, ...args) : notConnected())) as Bridge,
   events: { on: router.on },
 };
 
