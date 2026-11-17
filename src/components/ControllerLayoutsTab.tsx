@@ -1,5 +1,8 @@
 import { Field, PanelSectionRow, Spinner } from "@decky/ui";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useSyncExternalStore } from "react";
+import { layoutPreviewSession, previewChoice } from "../controllerLayoutPreviewSession";
+import { useResource } from "../useResource";
+import { listSteamShortcuts } from "../steamLibrary";
 import { forgetFocus, rememberedFocus, revealRemembered } from "../focusMemory";
 import { layoutRow, useControllerLayoutCatalogue } from "../controllerLayouts";
 import { useControllerLayoutsSourceOn } from "../controllerLayoutsSource";
@@ -18,8 +21,7 @@ import type { ControllerLayout } from "../../backend/src/api/contracts";
 /**
  * The Controller layouts destination's pane (GLOSSARY: Controller layouts
  * destination): the reviewed catalogue in the maintainers' order, with no
- * search, sorting or browse bar. Browse only until applying a layout exists
- * (#261), so a row has no action: A does nothing and the footer names none.
+ * search, sorting or browse bar. A opens the read-only preview pane.
  * Each layout is one focus stop (S14) that keeps its place (S21), read the
  * way Steam's controller-layout browser reads one: the title at 16/20 px,
  * then author and controller, then the description. The rows are Steam's
@@ -33,10 +35,15 @@ import type { ControllerLayout } from "../../backend/src/api/contracts";
 export function ControllerLayoutsTab({ view }: { view: string }) {
   const sourceOn = useControllerLayoutsSourceOn();
   const catalogue = useControllerLayoutCatalogue(sourceOn);
+  const chosen = useSyncExternalStore(previewChoice.subscribe, previewChoice.get);
   if (!sourceOn) {
     return null;
   }
-  return <CatalogueBody catalogue={catalogue} view={view} />;
+  return chosen ? (
+    <PreviewPane choice={chosen} view={view} />
+  ) : (
+    <CatalogueBody catalogue={catalogue} view={view} />
+  );
 }
 
 function CatalogueBody({
@@ -171,6 +178,8 @@ function LayoutRow({ layout, view }: { layout: ControllerLayout; view: string })
         focusable
         {...focusTarget(view, layout.id)}
         className="wowdeck-layout-row"
+        onClick={row.inactive ? undefined : () => previewChoice.select(layout)}
+        onOKActionDescription={row.inactive ? undefined : "Preview"}
         label={
           <span
             style={{
@@ -201,4 +210,98 @@ function LayoutRow({ layout, view }: { layout: ControllerLayout; view: string })
       />
     </PanelSectionRow>
   );
+}
+
+function PreviewPane({
+  choice,
+  view,
+}: {
+  choice: NonNullable<ReturnType<typeof previewChoice.get>>;
+  view: string;
+}) {
+  const result = useResource(layoutPreviewSession.resource, choice.key);
+  useEffect(() => {
+    revealRemembered(view);
+  }, [view, choice.key]);
+  const back = () => previewChoice.select(null);
+  const games = listSteamShortcuts();
+  const row = (label: string, description?: string, onClick?: () => void) => (
+    <PanelSectionRow key={label}>
+      <Field
+        focusable
+        label={label}
+        description={description}
+        onClick={onClick}
+        onCancelButton={() => {
+          back();
+          return true;
+        }}
+        onCancelActionDescription="Back"
+        onOKActionDescription={onClick ? "Choose" : undefined}
+      />
+    </PanelSectionRow>
+  );
+  return (
+    <>
+      <PanelSectionRow>
+        <Field
+          focusable
+          {...focusTarget(view, choice.layout.id)}
+          label="Back to layouts"
+          onClick={back}
+        />
+      </PanelSectionRow>
+      {row(
+        choice.layout.title,
+        "Preview only. WoWDeck can't apply these layouts yet. Your controls stay in place.",
+      )}
+      {!choice.key ? (
+        <>
+          {row(
+            "Choose a library entry",
+            "Entries with the same name may share controls. This preview changes none of them.",
+          )}
+          {games.length === 0 &&
+            row(
+              "No library entries available",
+              "Open Steam's controller settings for your controller, then try again.",
+            )}
+          {games.map((game) =>
+            row(game.name, `Library entry ${game.appId}`, () =>
+              previewChoice.select(choice.layout, game.appId),
+            ),
+          )}
+        </>
+      ) : result.error ? (
+        row("Couldn't preview the layout", result.error)
+      ) : result.data?.state === "error" ? (
+        row("Couldn't preview the layout", result.data.message)
+      ) : result.data?.state === "ready" ? (
+        <>
+          {row(
+            "Preview verified",
+            "These mappings match the reviewed revision. Applying and restoration aren't available yet.",
+          )}
+          {result.data.model.sets.map((set, index) =>
+            row(`Action set ${index + 1}`, mappingText(set)),
+          )}
+          {result.data.model.modes.map((mode, index) =>
+            row(`Mapping ${index + 1}`, mappingText(mode)),
+          )}
+        </>
+      ) : (
+        row("Preparing preview…")
+      )}
+    </>
+  );
+}
+
+/** Display the complete decoded mapping tree as named values, never executable markup. */
+function mappingText(value: unknown): string {
+  if (Array.isArray(value)) return value.map(mappingText).join("; ");
+  if (value !== null && typeof value === "object")
+    return Object.entries(value)
+      .map(([key, child]) => `${key.replace(/_/g, " ")}: ${mappingText(child)}`)
+      .join("; ");
+  return String(value ?? "");
 }

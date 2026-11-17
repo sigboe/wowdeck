@@ -869,6 +869,14 @@ export interface MethodMap {
     params: Record<string, never>;
     result: AboutInfo;
   };
+  "controllerLayouts.preparePreview": {
+    params: { layoutId: string; revision: number; accountId: number };
+    result: { jobId: string };
+  };
+  "controllerLayouts.previewStatus": {
+    params: { jobId: string };
+    result: ControllerLayoutPreviewJob;
+  };
   "controllerLayouts.catalogue": {
     /**
      * The Controller layouts destination's catalogue (GLOSSARY: Controller
@@ -1780,8 +1788,25 @@ export type ControllerLayoutCatalogue =
  */
 export type ControllerLayoutOffer = "available" | "withdrawn" | "unsupported";
 
+/** An approved snapshot staged by the engine for read-only native preview. */
+export interface ControllerLayoutPreview {
+  url: string;
+  sha256: string;
+  title: string;
+  accountId: number;
+  /** Reviewed SHA-256 of canonical {type, sets, modes}, keyed by native controller type. */
+  mappings: Record<string, string>;
+}
+
+export type ControllerLayoutPreviewJob =
+  | { state: "preparing" }
+  | { state: "ready"; preview: ControllerLayoutPreview }
+  | { state: "error"; message: string };
+
 /** One reviewed layout revision (GLOSSARY: Layout revision). */
 export interface ControllerLayoutRevision {
+  /** Reviewed native decode fingerprints. Absent means preview cannot be verified yet. */
+  previewMappings?: Record<string, string>;
   /** The revision's number, unique within its layout and increasing. */
   number: number;
   /** SHA-256 of the approved VDF content (64 lowercase hex). */

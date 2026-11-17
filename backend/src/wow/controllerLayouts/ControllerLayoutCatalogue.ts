@@ -182,13 +182,20 @@ function revisionsOf(raw: unknown): ControllerLayoutRevision[] | null {
   const history: ControllerLayoutRevision[] = [];
   for (const entry of raw) {
     if (!isRecord(entry)) return null;
-    const { number, sha256, contentFormat, withdrawn } = entry;
+    const { number, sha256, contentFormat, withdrawn, previewMappings } = entry;
+    if (previewMappings !== undefined && (
+      !isRecord(previewMappings) || Object.keys(previewMappings).length > 64 ||
+      Object.entries(previewMappings).some(([key, value]) =>
+        !/^\d{1,3}$/.test(key) || typeof value !== "string" || !SHA256_HEX.test(value))
+    )) return null;
     if (typeof number !== "number" || !Number.isSafeInteger(number) || number < 1) return null;
     if (history.length > 0 && number <= history[history.length - 1]!.number) return null;
     if (typeof sha256 !== "string" || !SHA256_HEX.test(sha256)) return null;
     if (typeof contentFormat !== "number" || !Number.isSafeInteger(contentFormat) || contentFormat < 1) return null;
     if (withdrawn !== undefined && typeof withdrawn !== "boolean") return null;
-    history.push({ number, sha256, contentFormat, withdrawn: withdrawn === true });
+    history.push({ number, sha256, contentFormat, withdrawn: withdrawn === true,
+      ...(previewMappings !== undefined && { previewMappings: previewMappings as Record<string, string> }),
+    });
   }
   return history;
 }

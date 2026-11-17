@@ -56,4 +56,5 @@ export interface HandlerDeps {
   about: About;
   /** The Controller layouts catalogue (controllerLayouts.catalogue). */
   controllerLayouts: ControllerLayoutCatalogueSource;
+  controllerLayoutPreviews: import("../../wow/controllerLayouts/ControllerLayoutPreviews").ControllerLayoutPreviews;
 }

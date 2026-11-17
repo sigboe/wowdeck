@@ -44,6 +44,7 @@ import { WtfBackupService } from "./wow/wtf/WtfBackupService";
 import { WtfJobRunner, type WtfJobTarget } from "./wow/wtf/WtfJobRunner";
 import { flavorKeyFor, wtfPathFor } from "./wow/wtf/WtfPaths";
 import { About } from "./about/About";
+import { ControllerLayoutPreviews } from "./wow/controllerLayouts/ControllerLayoutPreviews";
 import { ControllerLayoutCatalogueSource } from "./wow/controllerLayouts/ControllerLayoutCatalogue";
 import type { HandlerDeps } from "./api/handlers/deps";
 import { handlerTable } from "./api/handlers";
@@ -351,6 +352,7 @@ export function assembleEngine(config: EngineConfig): Engine & { start(): Promis
     recentErrors,
     about,
     controllerLayouts,
+    controllerLayoutPreviews: new ControllerLayoutPreviews({ catalogue: controllerLayouts, net: network, homeDir }),
   };
   server.handle(handlerTable(deps));
 

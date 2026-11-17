@@ -163,3 +163,71 @@ test("Retry asks again and shows what comes back", async () => {
   expect(catalogueRequests()).toBe(2);
   expect(doc.getElementById("root")!.textContent).toContain("Fixture layout A");
 });
+
+test("A opens a preview-only pane with scope disclosure and no apply action", async () => {
+  await show();
+  const row =
+    doc.querySelector(".wowdeck-layout-row") ??
+    [...doc.querySelectorAll("b")].find((node) => node.textContent === "Fixture layout A")
+      ?.parentElement;
+  expect(row).toBeDefined();
+  await act(async () =>
+    row?.dispatchEvent(new doc.defaultView!.MouseEvent("click", { bubbles: true })),
+  );
+  const text = doc.getElementById("root")!.textContent ?? "";
+  expect(text).toContain("Preview only");
+  expect(text).toContain("Entries with the same name may share controls");
+  expect(text).not.toContain("Apply layout");
+  await act(async () =>
+    [...doc.querySelectorAll("b")]
+      .find((node) => node.textContent === "Back to layouts")
+      ?.parentElement?.dispatchEvent(new doc.defaultView!.MouseEvent("click", { bubbles: true })),
+  );
+});
+
+import { createManualClock } from "./testSupport/manualClock";
+
+test("preview reconnects to its typed preparation job across pane teardown", async () => {
+  const { createLayoutPreviewSession } = await import("./controllerLayoutPreviewSession");
+  let ready = false;
+  const model = { controller_type: 4, sets: [{ name: "Default" }], modes: [{ button: 3 }] };
+  const native = {
+    context: async () => ({
+      target: 42,
+      accountId: 123,
+      controllerIndex: 15,
+      controllerType: 4,
+      selection: "inherited",
+    }),
+    preview: async () => ({ model, release: () => {} }),
+  };
+  const engine = createFakeEngine({
+    "controllerLayouts.preparePreview": () => ({ jobId: "recorded-job" }),
+    "controllerLayouts.previewStatus": () =>
+      ready
+        ? {
+            state: "ready",
+            preview: {
+              accountId: 123,
+              url: "usercloud://wowdeck-approved/" + "a".repeat(64),
+              title: "Approved",
+              sha256: "a".repeat(64),
+              mappings: { "4": "7580191d0c2d91371f278d5743f7bc406c0fffd80c13ed51f662ca95fd0c4ffb" },
+            },
+          }
+        : { state: "preparing" },
+  });
+  const clock = createManualClock();
+  const session = createLayoutPreviewSession({ rpc: engine.rpc, native, clock });
+  const key = session.key(LAYOUT_A, 42);
+  await session.resource.refresh(key);
+  expect(session.resource.get(key).data).toEqual({ state: "preparing" });
+  ready = true;
+  await session.resource.refresh(key);
+  expect(session.resource.get(key).data).toEqual({ state: "ready", model });
+  expect(
+    engine.calls.filter((call) => call.method === "controllerLayouts.preparePreview"),
+  ).toHaveLength(1);
+  session.reset();
+  expect(clock.activeTimers()).toBe(0);
+});

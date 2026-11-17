@@ -1313,9 +1313,23 @@ not production entries.
 | ID | Pri | S | Steps | Expected |
 |---|---|---|---|---|
 | CL-266-1 | P1 | S | Controller layouts on, TradeSkillMaster on: open Get Addons. Then turn TradeSkillMaster off, then Controller layouts off, and reopen Get Addons each time | Controller layouts sits after Manual Install and immediately above TradeSkillMaster, with a gamepad icon. Each destination disappears when its source is off. With Controller layouts off the engine log shows no catalogue request, and a selected Controller layouts destination falls back to Search |
-| CL-266-2 | P1 | S | Serve `two-entries.json`; focus Controller layouts, then Right into the pane | The QAM widens as for the other destinations. No browse bar. A note reads "Layouts the WoWDeck maintainers reviewed for WoW. WoWDeck can't apply these layouts yet." Two rows follow in the fixture's order, each one focus stop: the title at 16 px with a 20 px line, then "by <author> · <controller>", then the description. Focus lands on the first row. A does nothing and the footer names no A, X or Menu action. No button is shown |
+| CL-266-2 | P1 | S | Serve `two-entries.json`; focus Controller layouts, then Right into the pane | The QAM widens as for the other destinations. No browse bar. A note reads "Layouts the WoWDeck maintainers reviewed for WoW. WoWDeck can't apply these layouts yet." Two rows follow in the fixture's order, each one focus stop: the title at 16 px with a 20 px line, then "by <author> · <controller>", then the description. Focus lands on the first row. A opens the read-only preview pane for an available revision. Withdrawn and unsupported rows have no action |
 | CL-266-3 | P1 | S | Serve, in turn: nothing (closed port), `empty.json`, a non-JSON file, `future-schema.json`, `withdrawn-and-unsupported.json` | Closed port: a Retry row with "Couldn't load controller layouts. Try again later." Non-JSON: Retry with "Couldn't read the controller layouts list." Empty: a focusable "No controller layouts yet" row. Future schema: an "Update WoWDeck" row with "This list needs a newer WoWDeck." under it. Withdrawn and unsupported entries are greyed with "Withdrawn by the WoWDeck maintainers" or "Needs a newer WoWDeck"; nothing offers them. A failure never reads as an empty list |
 | CL-266-4 | P1 | S | With the closed port, focus Retry; start the server, press A | The row reads "Loading…", then the layouts appear and focus moves to the first row instead of falling to nothing |
 | CL-266-5 | P1 | S | Focus the second layout, Left to the destination list, Down and Up through the destinations, then Right into Controller layouts again; B out, then come back | Re-entry returns to the second layout. B collapses the QAM onto the nav bar as in GA-5 |
 | CL-266-6 | P1 | S | Pane sizing: serve a copy of `two-entries.json` whose first title, author and description are at their maximum length (120, 120 and 2000 characters), with one unbroken word longer than the pane | Every row stays inside the pane (S32, audit OVERFLOW clean). The title and description wrap. The facts line wraps only between facts, and a single fact wider than the line ends in "…" (`FactLine`), which the audit may flag as a negative right INSET. Rows are 6 px apart (S10) with Steam's own `Field` padding (10 px 16 px, S3) and its 2 px radius, the pane's adaptation of the native browser's 8 px padding, 6 px gap and 2 px radius (§8.4d). The pane scrolls with the scroll buffer and the focused row stays clear of the bars |
 
+
+### Controller layout preview (#267)
+
+T1 through T3 are local checks. No device run is recorded for this change.
+See [preview requirements and limitations](controller-layout-preview.md).
+Do not use the existing publication to claim a successful preview while its
+reviewed native fingerprints are absent.
+
+| ID | Pri | S | Steps | Expected |
+|---|---|---|---|---|
+| CL-267-1 | P1 | S | Press A on an available layout | A preview-only pane offers library entries, explains shared names and offers no Apply. Back returns to the layout row |
+| CL-267-2 | P1 | S | Select a target with native support missing, or a revision without reviewed mappings | A visible failure explains why preview is unavailable. Browsing still works and controls stay unchanged |
+| CL-267-3 | P1 | F | Run the deterministic preview suites | Approved bytes stage under a separate account namespace. Changed bytes, wrong sources, fallback, decoded mismatch and account/controller/selection changes fail safely. Native handles are released |
+| CL-267-4 | P1 | H | After explicit bounded device approval, prepare a revision with independently reviewed native fingerprints and preview a disposable target | Exact staged bytes load through usercloud. The pane shows expected mappings. Selection and active controls remain unchanged. No native screen with F3 Apply opens. Repeat after pane teardown and capability removal |
