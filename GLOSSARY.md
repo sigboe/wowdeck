@@ -149,7 +149,7 @@ ids — it is never a destination.
 _Avoid_: menu, picker, dropdown row, tab
 
 **Options jump**:
-Navigation from Get Addons to Options' Addon sources section carrying a set of
+Navigation from Get Addons to Options' Sources section carrying a set of
 marked provider ids. Their rows blink briefly, then focus lands on the first
 marked row that can take focus; the jump never enables or disables anything.
 _Avoid_: deep link, shortcut, quick toggle

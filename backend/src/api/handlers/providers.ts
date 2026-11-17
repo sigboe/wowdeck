@@ -1,4 +1,4 @@
-/** RPC handlers: Addon sources and the CurseForge key. */
+/** RPC handlers: addon sources and the CurseForge key. */
 
 import type { HandlerTable } from "../../bridge/jsonl";
 import type { InstallationService } from "../../wow/installation/InstallationService";

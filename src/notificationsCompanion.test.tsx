@@ -161,7 +161,7 @@ describe("Updates inside WoW (#208)", () => {
   test("with WowUp Hub off, A explains how to turn it on and offers only Close", async () => {
     const row = await render(false, false);
     await act(async () => row.click());
-    expect(shown().strDescription).toBe("Turn on WowUp Hub in Addon sources to install it.");
+    expect(shown().strDescription).toBe("Turn on WowUp Hub in Sources to install it.");
     expect(shown().strOKButtonText).toBe("Close");
     expect(shown().bAlertDialog).toBe(true);
     expect(sourcesStore.get().providers![0].enabled).toBe(false);

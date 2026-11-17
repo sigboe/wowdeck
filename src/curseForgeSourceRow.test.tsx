@@ -9,7 +9,7 @@ import { connectEngine } from "./engineLink";
 import { createFakeEngine } from "./testSupport/fakeEngine";
 
 /**
- * CurseForge's row in Options › Addon sources (#206): a `>` row that opens
+ * CurseForge's row in Options › Sources (#206): a `>` row that opens
  * the key modal while no key is usable, a toggle with the Options button
  * (≡) "API key" while the player's own key is in use, a plain toggle while
  * built-in access works. Closing the modal puts focus back on the row, also

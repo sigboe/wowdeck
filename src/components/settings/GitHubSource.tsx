@@ -35,7 +35,7 @@ const useTokenSaved = () =>
   !!useSyncExternalStore(settingsStore.subscribe, settingsStore.get).settings.githubAccessToken;
 
 /**
- * GitHub's row in Addon sources, after the sources that can be switched off:
+ * GitHub's row in Sources, after the sources that can be switched off:
  * GitHub cannot be (the engine refuses), so it is a `>` row, never a toggle.
  * It works without a token; a token only raises GitHub's rate limit.
  */
