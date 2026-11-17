@@ -56,7 +56,7 @@ function steam(disappear = false, syncError = false) {
     appStore: { allApps: [{ appid: 42, display_name: "World of Warcraft", app_type: 1073741824 }] },
     controllerConfiguratorStore: { EditingConfigurationControllerIndex: 15 },
   });
-  return { freed, adapter: nativeControllerLayouts() };
+  return { freed, input, adapter: nativeControllerLayouts() };
 }
 test("guarded adapter uses logged-in account for inherited controls and releases its own handle", async () => {
   const app = steam();
@@ -76,4 +76,31 @@ test("a synchronous native exception does not leave the adapter permanently busy
   expect((await previewLayout(app.adapter, approved, 42)).state).toBe("error");
   expect((await previewLayout(app.adapter, approved, 42)).state).toBe("ready");
   expect(app.freed).toEqual([91]);
+});
+
+test("appID zero callbacks invalidate only and are disposed by their owner", () => {
+  const app = steam();
+  let callback: (...args: unknown[]) => void = () => {};
+  let invalidations = 0;
+  let disposed = 0;
+  Object.assign(app.input, {
+    RegisterForConfigSelectionChanges: (listener: typeof callback) => {
+      callback = listener;
+      return {
+        unregister: () => {
+          disposed++;
+        },
+      };
+    },
+  });
+  const unsubscribe = app.adapter.subscribe(() => {
+    invalidations++;
+  });
+  callback(0, 15);
+  expect(invalidations).toBe(1);
+  unsubscribe();
+  unsubscribe();
+  callback(0, 15);
+  expect(invalidations).toBe(1);
+  expect(disposed).toBe(1);
 });

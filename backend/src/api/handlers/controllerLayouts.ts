@@ -8,6 +8,7 @@ import type { StateStore } from "../../wow/storage/StateStore";
 
 /** What the Controller layouts handlers use. */
 export interface ControllerLayoutsDeps {
+  controllerLayoutOperations?: import("../../wow/controllerLayouts/ControllerLayoutOperations").ControllerLayoutOperations;
   controllerLayoutPreviews?: import("../../wow/controllerLayouts/ControllerLayoutPreviews").ControllerLayoutPreviews;
   controllerLayouts: Pick<ControllerLayoutCatalogueSource, "read">;
   /** Read live: the source toggle is checked on every call. */
@@ -16,10 +17,21 @@ export interface ControllerLayoutsDeps {
 
 export function controllerLayoutsHandlers({
   controllerLayouts,
+  controllerLayoutOperations,
   controllerLayoutPreviews,
   store,
 }: ControllerLayoutsDeps) {
   return {
+    "controllerLayouts.beginOperation": async (params: import("../contracts").MethodMap["controllerLayouts.beginOperation"]["params"]) => {
+      if (!controllerLayoutsSourceEnabled(store.settings) || !controllerLayoutOperations) throw Error("Couldn't apply layouts while the source is off.");
+      return controllerLayoutOperations.begin(params);
+    },
+    "controllerLayouts.operationStatus": async (_params: Record<string, never>) => controllerLayoutOperations?.current() ?? null,
+    "controllerLayouts.advanceOperation": async (params: import("../contracts").MethodMap["controllerLayouts.advanceOperation"]["params"]) => {
+      if (!controllerLayoutOperations) throw Error("Couldn't find this controller operation.");
+      if (params.phase === "applying" && !controllerLayoutsSourceEnabled(store.settings)) throw Error("Couldn't apply layouts while the source is off.");
+      return controllerLayoutOperations.advance(params);
+    },
     "controllerLayouts.preparePreview": async (params: {
       layoutId: string;
       revision: number;

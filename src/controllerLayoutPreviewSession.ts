@@ -77,7 +77,12 @@ export function createLayoutPreviewSession(deps: {
     },
   };
 }
-let choice: { layout: ControllerLayout; key: string | null } | null = null;
+let choice: {
+  layout: ControllerLayout;
+  key: string | null;
+  target?: number;
+  correcting?: boolean;
+} | null = null;
 const listeners = new Set<() => void>();
 export const previewChoice = {
   get: () => choice,
@@ -87,15 +92,27 @@ export const previewChoice = {
       listeners.delete(listener);
     };
   },
-  select: (layout: ControllerLayout | null, target?: number) => {
+  select: (layout: ControllerLayout | null, target?: number, correcting = false) => {
     choice = layout
-      ? { layout, key: target ? layoutPreviewSession.key(layout, target) : null }
+      ? {
+          layout,
+          key: target ? layoutPreviewSession.key(layout, target) : null,
+          target,
+          correcting,
+        }
       : null;
     listeners.forEach((listener) => listener());
   },
 };
+const native = nativeControllerLayouts();
+export const layoutTargetContext = createKeyedResource({
+  clock: systemClock,
+  pollMs: 1000,
+  errorText: () => "Couldn't establish the Steam account. Choose a library entry for preview.",
+  read: (key) => native.context(Number(key)),
+});
 export const layoutPreviewSession = createLayoutPreviewSession({
   rpc: engine.rpc,
-  native: nativeControllerLayouts(),
+  native,
   clock: systemClock,
 });

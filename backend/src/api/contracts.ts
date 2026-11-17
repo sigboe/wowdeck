@@ -78,6 +78,8 @@ export interface FoundInstallation {
 
 /** A Steam library shortcut linked to a discovered installation. */
 export interface SteamGameLink {
+  /** Steam userdata account that supplied this path-based link. Legacy links have no evidence. */
+  accountId?: number;
   appId: number;
   name: string;
 }
@@ -868,6 +870,18 @@ export interface MethodMap {
      */
     params: Record<string, never>;
     result: AboutInfo;
+  };
+  "controllerLayouts.beginOperation": {
+    params: { previewJobId: string; context: ControllerLayoutContext };
+    result: ControllerLayoutOperation;
+  };
+  "controllerLayouts.operationStatus": {
+    params: Record<string, never>;
+    result: ControllerLayoutOperation | null;
+  };
+  "controllerLayouts.advanceOperation": {
+    params: { id: string; from: ControllerLayoutPhase; phase: ControllerLayoutPhase; recoveryId?: string };
+    result: ControllerLayoutOperation;
   };
   "controllerLayouts.preparePreview": {
     params: { layoutId: string; revision: number; accountId: number };
@@ -1788,8 +1802,37 @@ export type ControllerLayoutCatalogue =
  */
 export type ControllerLayoutOffer = "available" | "withdrawn" | "unsupported";
 
+/** Evidence supplied by the native scope resolver, never inferred from names alone. */
+export interface ControllerLayoutContext {
+  installationId: string;
+  target: number;
+  accountId: number;
+  controllerIndex: number;
+  controllerType: number;
+  controllerIdentity: string;
+  selection: string;
+  scope: {
+    state: "established" | "unknown";
+    /** Identity includes native selection semantics and all equivalent controllers. */
+    identity: string;
+    targets: { appId: number; name: string }[];
+  };
+}
+export type ControllerLayoutPhase = "validating" | "preserving" | "preserved" | "applying" | "verifying" |
+  "succeeded" | "restoring" | "restored" | "failed" | "recovery-required";
+export interface ControllerLayoutOperation {
+  id: string;
+  phase: ControllerLayoutPhase;
+  context: ControllerLayoutContext;
+  approved: ControllerLayoutPreview;
+  /** Opaque reference to durable recovery bytes and semantics, never just a URL. */
+  recoveryId?: string;
+}
+
 /** An approved snapshot staged by the engine for read-only native preview. */
 export interface ControllerLayoutPreview {
+  /** Original Steam identity survives local delivery and durable operations. */
+  provenance?: { layoutId: string; revision: number; publishedFileId: string };
   url: string;
   sha256: string;
   title: string;

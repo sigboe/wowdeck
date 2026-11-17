@@ -1,6 +1,12 @@
 import { Field, PanelSectionRow, Spinner } from "@decky/ui";
 import { useEffect, useRef, useSyncExternalStore } from "react";
-import { layoutPreviewSession, previewChoice } from "../controllerLayoutPreviewSession";
+import {
+  layoutPreviewSession,
+  layoutTargetContext,
+  previewChoice,
+} from "../controllerLayoutPreviewSession";
+import { addonSession } from "../session";
+import { layoutTargets, possibleSharedTargets } from "../controllerLayoutTargets";
 import { useResource } from "../useResource";
 import { listSteamShortcuts } from "../steamLibrary";
 import { forgetFocus, rememberedFocus, revealRemembered } from "../focusMemory";
@@ -220,13 +226,21 @@ function PreviewPane({
   view: string;
 }) {
   const result = useResource(layoutPreviewSession.resource, choice.key);
+  const session = useSyncExternalStore(addonSession.subscribe, addonSession.get);
+  const games = listSteamShortcuts();
+  const account = useResource(layoutTargetContext, games.length ? String(games[0].appId) : null);
+  const active = session.installations.find((i) => i.id === session.selectedId);
+  const preferred = layoutTargets(games, active, account.data?.accountId).preferred;
+  useEffect(() => {
+    if (!choice.key && !choice.correcting && preferred)
+      previewChoice.select(choice.layout, preferred.appId);
+  }, [choice, preferred?.appId]);
   useEffect(() => {
     revealRemembered(view);
   }, [view, choice.key]);
   const back = () => previewChoice.select(null);
-  const games = listSteamShortcuts();
-  const row = (label: string, description?: string, onClick?: () => void) => (
-    <PanelSectionRow key={label}>
+  const row = (label: string, description?: string, onClick?: () => void, key = label) => (
+    <PanelSectionRow key={key}>
       <Field
         focusable
         label={label}
@@ -255,6 +269,27 @@ function PreviewPane({
         choice.layout.title,
         "Preview only. WoWDeck can't apply these layouts yet. Your controls stay in place.",
       )}
+      {choice.target !== undefined && (
+        <>
+          {row(
+            "Selected library entry",
+            games.find((g) => g.appId === choice.target)?.name ?? "Entry no longer available",
+          )}
+          {row("Change library entry", "Choose a different entry without renaming it", () =>
+            previewChoice.select(choice.layout, undefined, true),
+          )}
+          {row(
+            "Possibly shared controls",
+            possibleSharedTargets(games, choice.target)
+              .map((g) => `${g.name} (${g.appId})`)
+              .join(", "),
+          )}
+          {row(
+            "Applying unavailable",
+            "Couldn't establish the full affected scope or preserve your previous controls. Entries with other names may also share controls. Preview remains available.",
+          )}
+        </>
+      )}
       {!choice.key ? (
         <>
           {row(
@@ -267,8 +302,11 @@ function PreviewPane({
               "Open Steam's controller settings for your controller, then try again.",
             )}
           {games.map((game) =>
-            row(game.name, `Library entry ${game.appId}`, () =>
-              previewChoice.select(choice.layout, game.appId),
+            row(
+              game.name,
+              `Library entry ${game.appId}`,
+              () => previewChoice.select(choice.layout, game.appId),
+              String(game.appId),
             ),
           )}
         </>

@@ -1,3 +1,4 @@
+import type { ControllerLayoutContext } from "../backend/src/api/contracts";
 import * as DeckyUi from "@decky/ui";
 import { listSteamShortcuts } from "./steamLibrary";
 import type {
@@ -12,6 +13,9 @@ interface Selection {
   unControllerIndex: number;
 }
 interface NativeInput {
+  RegisterForConfigSelectionChanges?(callback: (...args: unknown[]) => void): {
+    unregister(): void;
+  };
   GetConfigForAppAndController(target: number, controller: number): Promise<Selection>;
   PreviewConfigForAppAndController(
     target: number,
@@ -35,7 +39,10 @@ interface Decoder {
  * Protobuf discovery is INFERRED from that snapshot; missing/changed shapes
  * refuse the action. Every operation probes again; browsing needs none of it.
  */
-export function nativeControllerLayouts(): NativeLayoutAdapter {
+export function nativeControllerLayouts(): NativeLayoutAdapter & {
+  operationContext(target: number, installationId: string): Promise<ControllerLayoutContext>;
+  subscribe(invalidate: () => void): () => void;
+} {
   let occupied = false;
   const capabilities = () => {
     const globals = globalThis as unknown as {
@@ -59,7 +66,45 @@ export function nativeControllerLayouts(): NativeLayoutAdapter {
       throw Error("Native preview unavailable");
     return { input, user: user!, controller: controller! };
   };
-  return {
+  const adapter: NativeLayoutAdapter & {
+    operationContext(target: number, installationId: string): Promise<ControllerLayoutContext>;
+    subscribe(invalidate: () => void): () => void;
+  } = {
+    subscribe(invalidate) {
+      const { input } = capabilities();
+      if (typeof input.RegisterForConfigSelectionChanges !== "function")
+        throw Error("Native notifications unavailable");
+      // All notifications, including appID 0, invalidate captured state only.
+      let active = true;
+      const handle = input.RegisterForConfigSelectionChanges(() => {
+        if (active) invalidate();
+      });
+      if (typeof handle?.unregister !== "function") {
+        active = false;
+        throw Error("Native notification lifetime unavailable");
+      }
+      return () => {
+        if (active) {
+          active = false;
+          handle.unregister();
+        }
+      };
+    },
+    async operationContext(target, installationId) {
+      const context = await adapter.context(target);
+      const targets = listSteamShortcuts();
+      const selected = targets.find((t) => t.appId === target);
+      return {
+        ...context,
+        installationId,
+        controllerIdentity: "",
+        scope: {
+          state: "unknown",
+          identity: "",
+          targets: targets.filter((t) => t.name === selected?.name),
+        },
+      };
+    },
     async context(target) {
       const { input, user, controller } = capabilities();
       const steamId = await bounded(Promise.resolve(user.GetSteamID!()));
@@ -168,6 +213,7 @@ export function nativeControllerLayouts(): NativeLayoutAdapter {
       }
     },
   };
+  return adapter;
 }
 
 async function bounded<T>(pending: Promise<T>): Promise<T> {

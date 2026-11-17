@@ -231,3 +231,107 @@ test("preview reconnects to its typed preparation job across pane teardown", asy
   session.reset();
   expect(clock.activeTimers()).toBe(0);
 });
+
+test("chosen target discloses equal-name entries and unknown wider scope, with correction but no Apply", async () => {
+  const { previewChoice } = await import("./controllerLayoutPreviewSession");
+  const previous = Object.getOwnPropertyDescriptor(globalThis, "appStore");
+  Object.assign(globalThis, {
+    appStore: {
+      allApps: [
+        { appid: 42, display_name: "WoW", app_type: 1073741824 },
+        { appid: 43, display_name: "WoW", app_type: 1073741824 },
+        { appid: 44, display_name: "Other", app_type: 1073741824 },
+      ],
+    },
+  });
+  try {
+    await act(async () => previewChoice.select(LAYOUT_A, 42));
+    const text = await show();
+    expect(text).toContain("WoW (42), WoW (43)");
+    expect(text).toContain("Entries with other names may also share controls");
+    expect(text).toContain("Applying unavailable");
+    expect(text).not.toContain("Apply layout");
+    const change = [...doc.querySelectorAll("b")].find(
+      (n) => n.textContent === "Change library entry",
+    )!;
+    await act(async () =>
+      change.parentElement!.dispatchEvent(
+        new doc.defaultView!.MouseEvent("click", { bubbles: true }),
+      ),
+    );
+    expect(doc.getElementById("root")!.textContent).toContain("Choose a library entry");
+    expect(doc.getElementById("root")!.textContent).toContain("Other");
+  } finally {
+    await act(async () => previewChoice.select(null));
+    if (previous) Object.defineProperty(globalThis, "appStore", previous);
+    else Reflect.deleteProperty(globalThis, "appStore");
+  }
+});
+
+test("preference uses the active installation and current account, leaving ambiguous or legacy links for correction", async () => {
+  const { previewChoice, layoutTargetContext } = await import("./controllerLayoutPreviewSession");
+  const { addonSession } = await import("./session");
+  const keys = ["appStore", "SteamClient", "controllerConfiguratorStore"];
+  const saved = keys.map((key) => [key, Object.getOwnPropertyDescriptor(globalThis, key)] as const);
+  Object.assign(globalThis, {
+    appStore: {
+      allApps: [42, 43].map((appid) => ({ appid, display_name: "WoW", app_type: 1073741824 })),
+    },
+    SteamClient: {
+      User: { GetSteamID: () => "76561197960265851" },
+      Input: {
+        GetConfigForAppAndController: async () => ({
+          accountID: 0,
+          nControllerType: 4,
+          unControllerIndex: 15,
+        }),
+        PreviewConfigForAppAndController: async () => new Uint8Array(),
+        FreeControllerConfig: () => {},
+      },
+    },
+    controllerConfiguratorStore: { EditingConfigurationControllerIndex: 15 },
+  });
+  try {
+    await layoutTargetContext.refresh("42");
+    for (const scenario of ["legacy", "another account", "ambiguous", "unique"] as const) {
+      const accountId =
+        scenario === "legacy" ? undefined : scenario === "another account" ? 456 : 123;
+      const steamGames = [
+        { appId: 42, name: "WoW", accountId },
+        ...(scenario === "ambiguous" ? [{ appId: 43, name: "WoW", accountId }] : []),
+      ];
+      fake.answers["installations.list"] = {
+        installations: [
+          {
+            id: "active",
+            selected: true,
+            steamGames,
+          } as import("../backend/src/api/contracts").Installation,
+          {
+            id: "other",
+            selected: false,
+            steamGames: [{ appId: 43, name: "WoW", accountId: 123 }],
+          } as import("../backend/src/api/contracts").Installation,
+        ],
+      };
+      await act(async () => {
+        await addonSession.reloadInstallations();
+        previewChoice.select(LAYOUT_A);
+      });
+      const text = await show();
+      expect(text.includes("Selected library entry")).toBe(scenario === "unique");
+      expect(text.includes("Choose a library entry")).toBe(scenario !== "unique");
+    }
+  } finally {
+    await act(async () => {
+      previewChoice.select(null);
+      fake.answers["installations.list"] = { installations: [] };
+      await addonSession.reloadInstallations();
+    });
+    layoutTargetContext.forget("42");
+    for (const [key, descriptor] of saved) {
+      if (descriptor) Object.defineProperty(globalThis, key, descriptor);
+      else Reflect.deleteProperty(globalThis, key);
+    }
+  }
+});

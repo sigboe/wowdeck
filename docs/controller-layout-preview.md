@@ -76,3 +76,71 @@ Static checks, tests and build reach T1 through T3 only. No visual, keyboard,
 physical controller, gameplay, restart, cloud or hardware verification is
 claimed. Apply and recovery belong to #268 and #269 and must stay unavailable
 until preservation and rollback are connected.
+
+## Target choice and guarded application
+
+The pane prefers a unique detected shortcut for the active installation
+only when its account and exact library name match the current Steam
+account and library. Detection now retains the account that supplied each
+shortcut. Legacy links without account evidence and the global manual
+Options link do not establish this preference. Multiple matching shortcuts
+leave the choice to the player. Change library entry reopens the picker
+without renaming anything.
+
+The pane lists equal-name entries as possibly sharing controls and warns
+that other names may share them too. A complete native scope needs separate
+evidence for every affected target and equivalent controller. The current
+native adapter cannot establish that scope or a physical controller's
+identity, so it reports unknown scope. It cannot apply a layout. Browsing
+and raw preview remain available when their own capabilities are present.
+
+`applyLayout` is the operation interface for connecting recovery in #269.
+It requires a native adapter and a preservation implementation with both
+capture and verified restore. Without that connection it returns blocked
+before any native work. No player Apply action invokes it yet. Tests use
+fake native outcomes through this interface, including silent fallback,
+changed scope, changed account and reconnected controller identity.
+
+The engine owns the durable operation under its data directory's
+`controller-layouts/operation.json`. `beginOperation` returns a validating
+operation while approval is rechecked. `operationStatus` allows the browser
+to reattach. The approved byte hash and reviewed decoded fingerprints stay
+separate. The operation retains original published-item provenance even
+though the delivered URL addresses a local copy.
+
+Before capture, the browser verifies decoded preview mappings and rereads
+its installation, account, controller, selection and complete scope.
+Before application it repeats context checks and the engine checks staged
+bytes again. Success requires independently reviewed decoded mappings from
+active native readback and unchanged account, controller and affected scope.
+All selection callbacks, including app ID 0, invalidate state only. A
+callback never establishes success. The adapter owns callback disposal.
+
+## Preservation handoff to #269
+
+Capture receives an already persisted intent because exporting previous
+controls can itself change Steam selection. It must persist complete previous
+bytes, decoded mappings and explicit or inherited selection semantics under
+that operation's identity. It returns an opaque recovery reference only
+after persistence succeeds. It must leave selection semantics matching the
+captured context before approved application can proceed.
+
+Restore receives the retained operation and recovery reference. It must
+verify previous decoded mappings and selection semantics before resolving.
+A changed account, physical controller or affected scope prevents automatic
+restore onto that new context. Capture failures, restore failures and
+interrupted work retain recovery-required intent. A restarted engine never
+replays native work. #269 must add explicit recovery actions for these
+records; this ticket supplies read-only status and blocks another mutation.
+
+The engine serializes operation transitions and synchronizes the intent file
+and its directory before acknowledging each phase. Browser operation and
+callback lifetimes are independent of pane teardown. The shipped pane has
+no application operation to resume yet. #269 must connect its module-lifetime
+operation resource and recovery UI before exposing Apply.
+
+These are deterministic interface tests and static checks only. No device,
+visual layout, controller navigation, offline, restart durability of Steam
+selections, cloud or gameplay result is claimed. Native scope resolution,
+physical controller identity, preservation and real apply/readback still
+need bounded device evidence before activation.

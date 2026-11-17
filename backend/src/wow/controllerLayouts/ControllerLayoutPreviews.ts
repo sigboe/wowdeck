@@ -11,6 +11,8 @@ const digest = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest(
 
 export class ControllerLayoutPreviews {
   private jobs = new Map<string, { value: ControllerLayoutPreviewJob; done: Promise<void> }>();
+  private paths = new Map<string, string>();
+  private requests = new Map<string, { layoutId: string; revision: number; accountId: number }>();
   constructor(
     private deps: {
       catalogue: Pick<ControllerLayoutCatalogueSource, "read">;
@@ -24,12 +26,14 @@ export class ControllerLayoutPreviews {
       throw Error("Couldn't prepare another preview. Wait for the current one.");
     // Keep status bounded; a newer operation supersedes completed staging jobs.
     this.jobs.clear();
+    this.requests.clear();
     const jobId = randomUUID();
     const job = {
       value: { state: "preparing" } as ControllerLayoutPreviewJob,
       done: Promise.resolve(),
     };
     this.jobs.set(jobId, job);
+    this.requests.set(jobId, params);
     job.done = this.prepare(params)
       .then((preview) => {
         job.value = { state: "ready", preview };
@@ -56,6 +60,25 @@ export class ControllerLayoutPreviews {
   /** Wait for this preparation without polling, also useful to embedding callers. */
   async settled(jobId: string): Promise<void> {
     await this.jobs.get(jobId)?.done;
+  }
+
+  /** Fresh catalogue authority and hash-checked disk bytes, never browser-supplied approval. */
+  async authorize(jobId: string, stagedOnly = false) {
+    const request = this.requests.get(jobId);
+    const status = this.status(jobId);
+    if (!request || status.state !== "ready") throw Error("Couldn't validate this layout preview.");
+    const catalogue = stagedOnly ? undefined : await this.deps.catalogue.read();
+    const layout = catalogue?.state === "ready" ? catalogue.layouts.find(l => l.id === request.layoutId) : undefined;
+    const revision = layout?.revision;
+    if (!stagedOnly && (!revision || revision.withdrawn || revision.number !== request.revision ||
+      layout?.publishedFileId !== status.preview.provenance?.publishedFileId ||
+      revision.sha256 !== status.preview.sha256 || revision.contentFormat !== 1 ||
+      JSON.stringify(revision.previewMappings) !== JSON.stringify(status.preview.mappings)))
+      throw Error("Couldn't validate this revision. Refresh the layouts list.");
+    const path = this.paths.get(status.preview.sha256);
+    if (!path || digest(await Bun.file(path).bytes()) !== status.preview.sha256)
+      throw Error("Couldn't validate the approved layout bytes.");
+    return status.preview;
   }
 
   private async prepare({
@@ -164,7 +187,9 @@ export class ControllerLayoutPreviews {
     } finally {
       await rm(temporary, { force: true });
     }
+    this.paths.set(approved.sha256, path);
     return {
+      provenance: { layoutId, revision, publishedFileId: layout.publishedFileId },
       url: `usercloud://wowdeck-approved/${approved.sha256}`,
       sha256: approved.sha256,
       title: layout.title,

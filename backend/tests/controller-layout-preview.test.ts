@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { ControllerLayoutOperations } from "../src/wow/controllerLayouts/ControllerLayoutOperations";
 import { ControllerLayoutPreviews } from "../src/wow/controllerLayouts/ControllerLayoutPreviews";
 
 test("an unreviewed native decode fails safely before downloading content", async () => {
@@ -92,12 +93,14 @@ async function engine(content?: Uint8Array, metadata?: string) {
       }),
     } as never,
   });
+  const operations = new ControllerLayoutOperations(join(home, "operations"), previews);
   const rpc = controllerLayoutsHandlers({
     controllerLayouts: catalogue,
+    controllerLayoutOperations: operations,
     controllerLayoutPreviews: previews,
     store: { settings: { controllerLayoutsEnabled: true } } as never,
   });
-  return { home, rpc, settle: (jobId: string) => previews.settled(jobId) };
+  return { home, rpc, settleOperation: () => operations.settled(), settle: (jobId: string) => previews.settled(jobId) };
 }
 
 test("typed preview jobs stage exact approved bytes in the account's separate namespace", async () => {
@@ -151,4 +154,20 @@ test("untrusted content sources are refused", async () => {
   });
   await app.settle(job.jobId);
   expect((await app.rpc["controllerLayouts.previewStatus"](job)).state).toBe("error");
+});
+
+
+test("changed staged bytes are refused through operation RPC before preservation", async () => {
+  const app = await engine();
+  const job = await app.rpc["controllerLayouts.preparePreview"]({ layoutId: "approved", revision: 1, accountId: 123 });
+  await app.settle(job.jobId);
+  const path = join(app.home, ".local/share/Steam/steamapps/common/Steam Controller Configs/123/config/wowdeck-approved/594bf63d6a335accef2e6a577d5873240aa43c257c4cbec5732e52dea3ed5448.vdf");
+  await Bun.write(path, "corrupt or personally changed bytes");
+  const operation = await app.rpc["controllerLayouts.beginOperation"]({ previewJobId: job.jobId, context: {
+    installationId: "retail", target: 42, accountId: 123, controllerIndex: 15, controllerType: 4,
+    controllerIdentity: "controller-a", selection: "inherited", scope: { state: "established", identity: "all controllers", targets: [{ appId: 42, name: "WoW" }] },
+  } });
+  expect(operation.phase).toBe("validating");
+  await app.settleOperation();
+  expect(await app.rpc["controllerLayouts.operationStatus"]({})).toMatchObject({ phase: "failed" });
 });

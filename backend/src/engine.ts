@@ -44,6 +44,7 @@ import { WtfBackupService } from "./wow/wtf/WtfBackupService";
 import { WtfJobRunner, type WtfJobTarget } from "./wow/wtf/WtfJobRunner";
 import { flavorKeyFor, wtfPathFor } from "./wow/wtf/WtfPaths";
 import { About } from "./about/About";
+import { ControllerLayoutOperations } from "./wow/controllerLayouts/ControllerLayoutOperations";
 import { ControllerLayoutPreviews } from "./wow/controllerLayouts/ControllerLayoutPreviews";
 import { ControllerLayoutCatalogueSource } from "./wow/controllerLayouts/ControllerLayoutCatalogue";
 import type { HandlerDeps } from "./api/handlers/deps";
@@ -247,6 +248,7 @@ export function assembleEngine(config: EngineConfig): Engine & { start(): Promis
   });
   // Fetched only when the Controller layouts destination asks (ADR-0015).
   const controllerLayouts = new ControllerLayoutCatalogueSource(network, urls.controllerLayouts);
+  const controllerLayoutPreviews = new ControllerLayoutPreviews({ catalogue: controllerLayouts, net: network, homeDir });
   const prBuilds = new PrBuildList(network, urls.prBuilds);
   // The PR channel's source (GLOSSARY: PR channel). A PR's own state comes from
   // the repo's API, unauthenticated: the repo is public, and no token ever
@@ -352,7 +354,8 @@ export function assembleEngine(config: EngineConfig): Engine & { start(): Promis
     recentErrors,
     about,
     controllerLayouts,
-    controllerLayoutPreviews: new ControllerLayoutPreviews({ catalogue: controllerLayouts, net: network, homeDir }),
+    controllerLayoutPreviews,
+    controllerLayoutOperations: new ControllerLayoutOperations(join(dataDir, "controller-layouts"), controllerLayoutPreviews),
   };
   server.handle(handlerTable(deps));
 

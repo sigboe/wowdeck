@@ -1333,3 +1333,32 @@ reviewed native fingerprints are absent.
 | CL-267-2 | P1 | S | Select a target with native support missing, or a revision without reviewed mappings | A visible failure explains why preview is unavailable. Browsing still works and controls stay unchanged |
 | CL-267-3 | P1 | F | Run the deterministic preview suites | Approved bytes stage under a separate account namespace. Changed bytes, wrong sources, fallback, decoded mismatch and account/controller/selection changes fail safely. Native handles are released |
 | CL-267-4 | P1 | H | After explicit bounded device approval, prepare a revision with independently reviewed native fingerprints and preview a disposable target | Exact staged bytes load through usercloud. The pane shows expected mappings. Selection and active controls remain unchanged. No native screen with F3 Apply opens. Repeat after pane teardown and capability removal |
+
+## Controller layout targets and application boundary (#268)
+
+- With one detected shortcut for the active installation and current Steam
+  account, opening a layout prefers that entry. Change library entry still
+  offers every library entry. With several candidates, another account or
+  links without account provenance, the player chooses explicitly.
+- Choose either of two identically named entries. Both names and IDs appear
+  in the possible shared-controls disclosure. The warning also says that
+  differently named entries may share controls. No shortcut is renamed.
+- Native capabilities or complete scope evidence missing leaves Apply
+  unavailable. Catalogue browsing still works. Raw preview remains usable
+  when its own capabilities are available.
+- Through the operation interface with fake native outcomes, verify success
+  only after reviewed decoded readback. Silent fallback and disappearing
+  native support restore preserved controls. Account, physical controller
+  and scope changes refuse mutation and retain recovery evidence. Failed
+  capture or restore reports recovery required. Notifications invalidate
+  state and never establish success.
+- Through typed engine operations, corrupt staged bytes refuse progression.
+  Interrupted intent survives a new engine instance, retains its recovery
+  reference and blocks another operation. Missing or malformed recovery
+  state must not silently reset the gate.
+
+Automated tests cover the engine operations, fake native outcomes and pane
+disclosure/correction. T1 through T3 are the local verification targets.
+Visual layout and physical controller behavior remain unverified. Real
+application stays blocked until #269 connects preservation, explicit recovery
+and bounded device verification. Do not use the native F3 preview screen.
