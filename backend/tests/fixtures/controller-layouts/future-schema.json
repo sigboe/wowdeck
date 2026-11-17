@@ -1,0 +1,5 @@
+{
+  "$comment": "TEST FIXTURE: a manifest schema newer than this client understands.",
+  "schemaVersion": 2,
+  "layouts": []
+}
