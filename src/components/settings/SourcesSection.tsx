@@ -16,6 +16,7 @@ import { sourceOffDescription } from "../../sourceAccess";
 import { clearSourceJump, sourceJump, sourceRowKey, subscribeSourceJump } from "../../optionsJump";
 import { sourcesStore } from "../../sourcesStore";
 import { GitHubSourceRow } from "./GitHubSource";
+import { ControllerLayoutsSourceRow } from "./ControllerLayoutsSourceRow";
 
 import { startTsmSignIn } from "../../tsmSignIn";
 import { openPanel } from "../../openPanel";
@@ -41,8 +42,9 @@ interface Props {
 }
 
 /**
- * Each addon source on or off, then GitHub's token row (GitHub is always
- * on). CurseForge's row also sets up its key
+ * Options › Sources: each addon source on or off, then GitHub's token row
+ * (GitHub is always on), then the Controller layouts source, which is no
+ * addon source (ADR 0015). CurseForge's row also sets up its key
  * (curseForgeAuthUi.ts): a `>` row while no key is usable, else a toggle,
  * whose Options button (≡) "API key" opens the same modal while the
  * player's own key is in use.
@@ -60,7 +62,7 @@ export function SourcesSection({
   useEffect(() => clearSourceJump, []);
 
   return (
-    <PanelSection title="Addon sources">
+    <PanelSection title="Sources">
       {providers === null ? (
         <SettingsRow id="loadProviders">
           <ButtonItem layout="below" onClick={() => void reloadProviders()}>
@@ -201,6 +203,7 @@ export function SourcesSection({
           })
       )}
       <GitHubSourceRow />
+      <ControllerLayoutsSourceRow />
     </PanelSection>
   );
 }

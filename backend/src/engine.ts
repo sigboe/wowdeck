@@ -143,7 +143,7 @@ export function assembleEngine(config: EngineConfig): Engine & { start(): Promis
   const server = new JsonlServer(config.out);
   const store = createStateStore(dataDir);
   /**
-   * The optional GitHub token (Options › Addon sources › GitHub), read live: a token saved
+   * The optional GitHub token (Options › Sources › GitHub), read live: a token saved
    * later in the session is picked up by the next request. The GitHub addon
    * source, the WoWDeck update check, its staging and About all share it.
    */
