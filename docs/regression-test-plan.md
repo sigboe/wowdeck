@@ -661,6 +661,25 @@ updated for the widened-QAM rework.
 
 ## 8. Result record
 
+### Controller layout Apply (#261), November 17, 2026
+
+Build c67f548 with the engine, on the Deck, driven by keys only. The live
+layout `kinzo-wow-forever` revision 61 has no published mappings. The test
+target was a disposable "WoWDeck Probe" shortcut whose controls were a raw
+template copy selected as an autosave. The shortcut and every WoWDeck config
+entry were removed afterwards, and World of Warcraft kept `"autosave" "1"`.
+
+- CL-261-1 passed (UI, native and engine readback). The pane listed only
+  WoWDeck Probe under "Shared controls" and in the confirmation. After Apply,
+  Steam selected `usercloud://wowdeck-approved/…` on layer 0, the engine
+  reported `succeeded`, and the Apply row offered no action. Restore put the
+  original autosave URL back (`restored`), and a second Apply right after it
+  succeeded and restored the same way.
+- CL-261-1 negative passed (UI). With a layer-1 override on the probe the
+  pane showed "Applying unavailable" and no Apply row.
+- Open: confirming Apply returns the QAM to the destination list instead of
+  the layout.
+
 ### Controller layouts (#266), November 17, 2026
 
 DEVICE 2026-11-17, Steam Deck (target defaulted to `deck`; the brief named
