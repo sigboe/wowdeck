@@ -677,8 +677,10 @@ entry were removed afterwards, and World of Warcraft kept `"autosave" "1"`.
   succeeded and restored the same way.
 - CL-261-1 negative passed (UI). With a layer-1 override on the probe the
   pane showed "Applying unavailable" and no Apply row.
-- Open: confirming Apply returns the QAM to the destination list instead of
-  the layout.
+- Fixed in 992f32a and rerun on the Deck: after OK or Cancel on the
+  confirmation, the preview pane stays open with focus on the Apply row.
+- Open: after Restore, focus lands nowhere because the restored row
+  disappears.
 
 ### Controller layouts (#266), November 17, 2026
 

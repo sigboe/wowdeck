@@ -110,9 +110,8 @@ Workshop sources need more evidence before they can be supported.
 
 1. **Reviewed mappings.** Publishing `previewMappings` (see "Publication
    artifact contract") remains the stronger check and is still optional.
-2. **The pane closes after Apply.** Confirming Apply returns the QAM to the
-   Get Addons destination list. The result shows only after reopening
-   Controller layouts.
+2. **Focus after Restore.** The restore row disappears and focus lands
+   nowhere.
 3. **Abandoned native calls.** No native acknowledgement proves that a dead
    browser's call has settled, so its claim stays held and recovery stays
    unavailable until an operator steps in.
