@@ -169,3 +169,41 @@ protocol 1, and the panel reported no alerts or errors.
 
 The owner also found no refresh button on WoWDeck's Controller layouts
 destination once its catalogue had loaded. #272 tracks adding one.
+
+## Playtime investigation for #263, 17 November 2026
+
+The owner requested SSH investigation of native playtime attribution. This
+pass inspected the installed client, running process maps, existing
+controller logs and runtime method names. It did not launch a game, change
+controller selections, edit bindings or send duration reports.
+
+The plugin checkout was `docs/controller-layout-design` at `8a3b202`, with
+no engine changes. Test setup deployed only its frontend and reloaded the
+existing engine, which reported `1.2.1`, protocol 1. The previous installed
+frontend was restored from the test backup and the plugin reloaded at the
+end. Both restored-file and backup SHA-256 values were
+`0ef5638259666ae7a686203d1c05c42e56e7f6ba9cd9e6fcf7d53bd808c25cc1`.
+No fixture installation was needed. The run closed its own tunnel on ports
+18081 and 9223 and left the existing SSH tunnel untouched.
+
+| Result | Claim and method | Evidence |
+| --- | --- | --- |
+| passed | The running Steam process loads the inspected SteamRT64 library. DEVICE, SSH process maps and SHA-256. | Process 2124 loaded `steamrt64/steamclient.so`, SHA-256 `dab8df0daa27ffa6594ef5d6bc8cf707f37990220628f1f249fb30f4d88ade91`. The stable manifest version was `1792618285`. |
+| passed | A native implementation constructs controller playtime reports. DEVICE, SSH binary copy and local disassembly. | The loaded library references `PublishedFile.SetPlaytimeForControllerConfigs#1` at virtual address `0x1262549`. The installed `steamui/sp.js` defines an app ID and repeated published-file IDs with floating-point active seconds. These observations establish client machinery, not backend acceptance. |
+| passed | The inspected upload loop excludes IDs 0 through 15 and nonpositive durations. DEVICE, disassembly. | At `0x12621db`, an unsigned comparison excludes IDs at or below 15. The next comparison requires positive activity. At `0x1262654` and `0x1262658`, the code stores the remaining ID and duration into a report entry. The previously tested local export returned ID 14, so that ID would fail this filter. This does not establish whether another upstream record retains the original ID. |
+| partial | The native client has controller activity accounting and has started playtime tracking for a non-Steam app. DEVICE, binary references and existing controller log. | The loaded library references `CSteamController::UpdateControllerActivityWindows` and `CUser::UpdateSteamControllerPlaytimeStats`. `controller.txt` line 18971 records `Successfuly started tracking playtime` for app `-1465590757` on 16 November at 22:22:36. The log does not identify the resulting credited published layout or prove this event used the controller-specific upload path. |
+| passed | No game was running at the runtime observation. DEVICE, CEF read of app-store running flags. | The running-app list was empty. No gameplay, credit propagation or edit eligibility experiment ran. |
+| pending | An ordinary WoW session credits the source published layout while preserving an approved revision. | Requires passive observation of a genuine session and its selected identity. Repeat with a personal edit and the approved local-copy delivery path. Establish upstream identity selection before concluding that the ID filter excludes all possible source attribution. |
+| pending | Offline, suspend, retry and server aggregation behavior preserve correct totals. | No corresponding sessions or server-credit controls ran. |
+
+Raw source extracts, binary hashes and disassembly are retained locally in
+`.scratch/controller-playtime-263/`. The inspected `linux64/steamclient.so`
+is a different library from the loaded `steamrt64/steamclient.so`; conclusions
+above use the loaded library's addresses and hash. No internal usage getter,
+manual report, counter mutation or ancestry modification was invoked.
+
+The next experiment needs genuine WoW play with a known published layout and
+passive observation of the native accounting boundary. A successful upload
+alone would still need a controlled follow-up of server totals. Source
+identity, approved revision identity and the observed credited identity must
+remain separate in the evidence.

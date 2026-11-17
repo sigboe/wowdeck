@@ -1351,6 +1351,17 @@ not production entries.
 | CL-266-6 | P1 | S | Pane sizing: serve a copy of `two-entries.json` whose first title, author and description are at their maximum length (120, 120 and 2000 characters), with one unbroken word longer than the pane | Every row stays inside the pane (S32, audit OVERFLOW clean). The title and description wrap. The facts line wraps only between facts, and a single fact wider than the line ends in "…" (`FactLine`), which the audit may flag as a negative right INSET. Rows are 6 px apart (S10) with Steam's own `Field` padding (10 px 16 px, S3) and its 2 px radius, the pane's adaptation of the native browser's 8 px padding, 6 px gap and 2 px radius (§8.4d). The pane scrolls with the scroll buffer and the focused row stays clear of the bars |
 | CL-261-1 | P1 | D | Use a live revision, with or without `previewMappings`. On a disposable shortcut whose controls are an autosave (no physical-controller override), open the layout, choose the shortcut, then Apply and confirm. Afterwards restore from the top of the tab | The pane lists every entry whose name matches case-insensitively under "Shared controls". The confirmation names them. After Apply the preview mappings are active and the top of the tab offers "Restore previous controls". Restore puts the original autosave back. A shortcut with a physical-controller override, a template or Workshop source, or a non-ASCII name shows "Applying unavailable" instead |
 
+### Controller layout playtime attribution (#263)
+
+Status: pending. Native snapshot application does not establish playtime
+credit. The archived-candidate import and local export both selected ID 14;
+the inspected SteamRT64 upload loop excludes IDs at or below 15. See the
+[device investigation](hardware/2026-11-17-controller-layouts/README.md#playtime-investigation-for-263-17-november-2026).
+
+| ID | Priority | Tier | Steps | Expected |
+| --- | --- | --- | --- | --- |
+| CL-263-1 | P1 | H | During genuine WoW play with a known published layout, passively observe native activity records and the selected identity. Repeat for the identical approved snapshot, a personal edit and a reverted edit. Record bounded baseline and follow-up observations with controls for other players and delayed aggregation | Establish which published identity receives activity in each case. An inconclusive observation remains unknown. Matching mappings, a retained source ID and a successful upload alone do not prove original-item credit. Approved content must remain frozen. Do not write duration counters or alter ancestry to make this pass |
+| CL-263-2 | P1 | H | After ordinary attribution is established, repeat across suspend, offline use and an interrupted session, observing retries without injecting reports | Establish supported accounting boundaries and any loss or duplication. Report untested behavior as pending; never convert unknown metrics to zero |
 
 ### Controller layout preview (#267)
 
