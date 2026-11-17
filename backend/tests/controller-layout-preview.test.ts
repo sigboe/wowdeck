@@ -2,7 +2,8 @@ import { expect, test } from "bun:test";
 import { ControllerLayoutOperations } from "../src/wow/controllerLayouts/ControllerLayoutOperations";
 import { ControllerLayoutPreviews } from "../src/wow/controllerLayouts/ControllerLayoutPreviews";
 
-test("an unreviewed native decode fails safely before downloading content", async () => {
+test("a revision without published mappings still prepares a native preview", async () => {
+  let downloads = 0;
   const previews = new ControllerLayoutPreviews({
     catalogue: {
       read: async () => ({
@@ -17,17 +18,17 @@ test("an unreviewed native decode fails safely before downloading content", asyn
     } as never,
     net: {
       send: async () => {
-        throw Error("must not download");
+        downloads++;
+        throw Error("offline");
       },
     } as never,
     homeDir: "/unused",
   });
   const { jobId } = previews.start({ layoutId: "approved", revision: 1, accountId: 123 });
   await previews.settled(jobId);
-  expect(previews.status(jobId)).toEqual({
-    state: "error",
-    message: "Couldn't preview this revision. Its native mappings haven't been reviewed yet.",
-  });
+  // The browser checks the decode against Steam's defaults instead (#261).
+  expect(downloads).toBe(1);
+  expect(previews.status(jobId).state).toBe("error");
 });
 
 import { afterEach } from "bun:test";

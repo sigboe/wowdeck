@@ -123,7 +123,8 @@ export async function applyLayout(deps: {
       model.controller_type !== deps.context.controllerType ||
       !Array.isArray(model.sets) ||
       !Array.isArray(model.modes) ||
-      hash !== operation.approved.mappings[String(deps.context.controllerType)]
+      hash !==
+        (operation.approved.mappings[String(deps.context.controllerType)] ?? preview.fingerprint)
     )
       throw Error("Native fallback");
     // A callback, including appID 0, only asks us to reread. It is never an acknowledgement.

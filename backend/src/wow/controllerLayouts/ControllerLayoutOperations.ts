@@ -134,7 +134,7 @@ export class ControllerLayoutOperations {
       const preview = this.previews.status(params.previewJobId);
       if (preview.state !== "ready") throw Error("Couldn't find the approved preview.");
       const approved = preview.preview;
-      if (approved.accountId !== params.context.accountId || !approved.mappings[String(params.context.controllerType)]) throw Error("Couldn't validate these controller mappings.");
+      if (approved.accountId !== params.context.accountId || (Object.keys(approved.mappings).length > 0 && !approved.mappings[String(params.context.controllerType)])) throw Error("Couldn't validate these controller mappings.");
       this.previewJobId = params.previewJobId;
       const operation = await this.save({ id: randomUUID(), phase: "validating", nativeOwner: params.nativeOwner, context: structuredClone(params.context), approved });
       this.validation = this.previews.authorize(params.previewJobId).then(async fresh => {

@@ -226,7 +226,7 @@ test("preview reconnects to its typed preparation job across pane teardown", asy
   expect(session.resource.get(key).data).toEqual({ state: "preparing" });
   ready = true;
   await session.resource.refresh(key);
-  expect(session.resource.get(key).data).toEqual({ state: "ready", model });
+  expect(session.resource.get(key).data).toMatchObject({ state: "ready", model });
   expect(
     engine.calls.filter((call) => call.method === "controllerLayouts.preparePreview"),
   ).toHaveLength(1);

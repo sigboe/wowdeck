@@ -14,6 +14,8 @@ export interface NativeLayoutAdapter {
     context: LayoutContext,
     url: string,
   ): Promise<{ model: NativeLayoutModel; release(): void }>;
+  /** Steam's own default layout for the target, the shape a silent fallback takes. */
+  previewDefault?(context: LayoutContext): Promise<{ model: NativeLayoutModel; release(): void }>;
 }
 export interface NativeLayoutModel {
   controller_type: number;
@@ -21,7 +23,16 @@ export interface NativeLayoutModel {
   modes: unknown[];
 }
 export type LayoutPreviewOutcome =
-  { state: "ready"; model: NativeLayoutModel } | { state: "error"; message: string };
+  | { state: "ready"; model: NativeLayoutModel; fingerprint: string }
+  | { state: "error"; message: string };
+
+async function fingerprintOf(model: NativeLayoutModel) {
+  const bytes = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(mappingContent(model)),
+  );
+  return Array.from(new Uint8Array(bytes), (b) => b.toString(16).padStart(2, "0")).join("");
+}
 
 /** Canonical native mapping content, excluding handles, URLs and mutable metadata. */
 export function mappingContent(model: NativeLayoutModel): string {
@@ -50,27 +61,29 @@ export async function previewLayout(
   let outcome: LayoutPreviewOutcome;
   try {
     const before = await adapter.context(target);
-    if (
-      before.accountId !== approved.accountId ||
-      !approved.mappings[String(before.controllerType)]
-    )
-      throw Error();
+    const published = approved.mappings[String(before.controllerType)];
+    if (before.accountId !== approved.accountId) throw Error();
+    if (!published && Object.keys(approved.mappings).length > 0) throw Error();
     const preview = await adapter.preview(before, approved.url);
     release = preview.release;
-    if (!Array.isArray(preview.model.sets) || !Array.isArray(preview.model.modes)) throw Error();
-    const bytes = await crypto.subtle.digest(
-      "SHA-256",
-      new TextEncoder().encode(mappingContent(preview.model)),
-    );
-    const hash = Array.from(new Uint8Array(bytes), (b) => b.toString(16).padStart(2, "0")).join("");
-    if (
-      hash !== approved.mappings[String(before.controllerType)] ||
-      preview.model.controller_type !== before.controllerType
-    )
+    const model = preview.model;
+    if (!Array.isArray(model.sets) || !Array.isArray(model.modes)) throw Error();
+    const hash = await fingerprintOf(model);
+    if (model.controller_type !== before.controllerType || (published && hash !== published))
       throw Error();
+    if (!published) {
+      // No reviewed fingerprint: refuse a decode that equals Steam's defaults,
+      // which is what an unreadable layout silently turns into.
+      if (typeof adapter.previewDefault !== "function") throw Error();
+      release = undefined;
+      preview.release();
+      const fallback = await adapter.previewDefault(before);
+      release = fallback.release;
+      if (mappingContent(fallback.model) === mappingContent(model)) throw Error();
+    }
     const after = await adapter.context(target);
     if (JSON.stringify(before) !== JSON.stringify(after)) throw Error();
-    outcome = { state: "ready", model: preview.model };
+    outcome = { state: "ready", model, fingerprint: hash };
   } catch {
     outcome = {
       state: "error",

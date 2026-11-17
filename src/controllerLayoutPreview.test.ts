@@ -69,7 +69,11 @@ const approved = {
 };
 test("reviewed native mappings preview without replacing inherited selection", async () => {
   const app = fixture();
-  expect(await previewLayout(app.native, approved, 42)).toEqual({ state: "ready", model });
+  expect(await previewLayout(app.native, approved, 42)).toEqual({
+    state: "ready",
+    model,
+    fingerprint: expectedHash,
+  });
   expect(app.released()).toBe(true);
 });
 for (const change of ["selection", "account", "controller", "missing", "mappings"] as const) {
@@ -79,3 +83,40 @@ for (const change of ["selection", "account", "controller", "missing", "mappings
     expect(app.released()).toBe(true);
   });
 }
+
+const unreviewed = { ...approved, mappings: {} };
+function withDefaults(defaults: typeof model) {
+  const app = fixture();
+  const freed: string[] = [];
+  app.native.preview = async () => ({ model, release: () => freed.push("layout") });
+  app.native.previewDefault = async () => ({
+    model: defaults,
+    release: () => freed.push("default"),
+  });
+  return { app, freed };
+}
+test("without a published fingerprint, a decode that differs from Steam's defaults is ready", async () => {
+  const { app, freed } = withDefaults(fallbackModel);
+  expect(await previewLayout(app.native, unreviewed, 42)).toEqual({
+    state: "ready",
+    model,
+    fingerprint: expectedHash,
+  });
+  expect(freed).toEqual(["layout", "default"]);
+});
+test("without a published fingerprint, a decode equal to Steam's defaults is refused", async () => {
+  const { app, freed } = withDefaults(model);
+  expect((await previewLayout(app.native, unreviewed, 42)).state).toBe("error");
+  expect(freed).toEqual(["layout", "default"]);
+});
+test("without a published fingerprint or a defaults preview, nothing is ready", async () => {
+  const app = fixture();
+  expect((await previewLayout(app.native, unreviewed, 42)).state).toBe("error");
+  expect(app.released()).toBe(true);
+});
+test("fingerprints for other controllers only refuse this controller", async () => {
+  const { app } = withDefaults(fallbackModel);
+  expect(
+    (await previewLayout(app.native, { ...approved, mappings: { "3": expectedHash } }, 42)).state,
+  ).toBe("error");
+});

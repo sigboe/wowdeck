@@ -62,7 +62,7 @@ function steam(disappear = false, syncError = false) {
 }
 test("guarded adapter uses logged-in account for inherited controls and releases its own handle", async () => {
   const app = steam();
-  expect(await previewLayout(app.adapter, approved, 42)).toEqual({
+  expect(await previewLayout(app.adapter, approved, 42)).toMatchObject({
     state: "ready",
     model,
   });
@@ -287,5 +287,21 @@ test("export runs inside an editing session and closes it", async () => {
     await app.adapter.exportLocal({ id: "op", phase: "preserving", context, approved } as never),
   ).toBe("usercloud://world of warcraft/wowdeck recovery op_0");
   expect(calls).toEqual(["edit", "export", "stop"]);
+  expect(app.freed).toEqual([91]);
+});
+
+test("the default preview decodes Steam's default selection for the lowercased name", async () => {
+  const app = steam();
+  const urls: string[] = [];
+  Object.assign(app.input, {
+    PreviewConfigForAppAndController: (_t: number, _c: number, url: string) => {
+      urls.push(url);
+      return Promise.resolve(new Uint8Array());
+    },
+  });
+  const context = await app.adapter.context(42);
+  const loaded = await app.adapter.previewDefault!(context);
+  loaded.release();
+  expect(urls).toEqual(["default://world of warcraft"]);
   expect(app.freed).toEqual([91]);
 });

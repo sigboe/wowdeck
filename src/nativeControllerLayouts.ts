@@ -367,11 +367,21 @@ export function nativeControllerLayouts(): LayoutRecoveryAdapter {
     preview(context, url) {
       return load(context, url);
     },
+    previewDefault(context) {
+      // LIVE 2026-11-17: Steam names a shortcut's default selection
+      // default://<lowercased name>; preview decodes it without selecting it.
+      const name = listSteamShortcuts().find((t) => t.appId === context.target)?.name;
+      if (!name || !/^[\x20-\x7e]+$/.test(name)) throw Error("Native target unavailable");
+      return load(context, `default://${name.toLowerCase()}`);
+    },
   };
   async function load(context: LayoutContext, url: string, active = false) {
     if (occupied || mutationPending) throw Error("Native work is already running");
     const { input, controller } = capabilities();
-    if (controller !== context.controllerIndex || (!active && !safePreviewURL(url)))
+    if (
+      controller !== context.controllerIndex ||
+      (!active && !safePreviewURL(url) && !/^default:\/\/[\x20-\x7e]+$/.test(url))
+    )
       throw Error("Native context changed");
     const decoder = findDecoder();
     if (

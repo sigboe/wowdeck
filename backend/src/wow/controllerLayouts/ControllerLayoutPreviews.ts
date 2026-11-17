@@ -74,7 +74,7 @@ export class ControllerLayoutPreviews {
     if (!stagedOnly && (!revision || revision.withdrawn || revision.number !== request.revision ||
       layout?.publishedFileId !== status.preview.provenance?.publishedFileId ||
       revision.sha256 !== status.preview.sha256 || revision.contentFormat !== 1 ||
-      JSON.stringify(revision.previewMappings) !== JSON.stringify(status.preview.mappings)))
+      JSON.stringify(revision.previewMappings ?? {}) !== JSON.stringify(status.preview.mappings)))
       throw Error("Couldn't validate this revision. Refresh the layouts list.");
     const path = this.paths.get(status.preview.sha256);
     if (!path || digest(await Bun.file(path).bytes()) !== status.preview.sha256)
@@ -105,10 +105,6 @@ export class ControllerLayoutPreviews {
       approved.contentFormat !== 1
     )
       throw new PreviewError("Couldn't preview this revision. Refresh the layouts list.");
-    if (!approved.previewMappings || Object.keys(approved.previewMappings).length === 0)
-      throw new PreviewError(
-        "Couldn't preview this revision. Its native mappings haven't been reviewed yet.",
-      );
     const metadata = await this.deps.net.send(
       "POST",
       "https://api.steampowered.com/ISteamRemoteStorage/GetPublishedFileDetails/v1/",
@@ -175,7 +171,9 @@ export class ControllerLayoutPreviews {
       sha256: approved.sha256,
       title: layout.title,
       accountId,
-      mappings: approved.previewMappings,
+      // Optional: without a published fingerprint the browser checks the decode
+      // against Steam's defaults and Apply checks readback against that preview.
+      mappings: approved.previewMappings ?? {},
     };
   }
 }

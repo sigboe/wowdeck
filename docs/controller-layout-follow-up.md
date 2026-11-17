@@ -1,10 +1,13 @@
 # Controller layout follow-up for #261
 
-The production adapter now establishes a bounded scope and the preview pane
-offers Apply inside it. Players still can't reach Apply: a published revision
-has no `previewMappings`, so no preview verifies, and Apply needs a verified
-preview. #267, #268 and #269 stay open until a revision publishes reviewed
-mappings and the full Apply round trip runs on the Deck.
+The production adapter now establishes a bounded scope, and the preview pane
+offers Apply inside it. A revision that publishes `previewMappings` must match
+them. A revision without them previews through Steam's native decoder too:
+the browser also decodes the target's `default://<lowercased name>` layout,
+and refuses the preview when the two match, because an unreadable layout
+decodes silently as the defaults. Apply then requires the readback to equal
+the fingerprint of that preview. This check doesn't catch a layout that
+decodes wrongly into something other than the defaults.
 
 ## Changes covered by local tests
 
@@ -105,13 +108,9 @@ Workshop sources need more evidence before they can be supported.
 
 ## Still open
 
-1. **Reviewed mappings.** A revision needs `previewMappings` from an
-   independently reviewed expected mapping tree (see "Publication artifact
-   contract"). Until then, preview reports a mismatch and Apply never appears.
-2. **End-to-end Apply on the Deck.** Each native step above ran by hand on
-   disposable shortcuts. The full pane flow has not run on the device,
-   because no revision verifies. That flow confirms, captures, exports,
-   applies, reads back and restores.
+1. **Reviewed mappings.** Publishing `previewMappings` (see "Publication
+   artifact contract") remains the stronger check and is still optional.
+2. **End-to-end Apply on the Deck.** See CL-261-1 in the regression test plan.
 3. **Abandoned native calls.** No native acknowledgement proves that a dead
    browser's call has settled, so its claim stays held and recovery stays
    unavailable until an operator steps in.
