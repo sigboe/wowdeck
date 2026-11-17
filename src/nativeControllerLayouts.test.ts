@@ -330,3 +330,16 @@ test("only this operation's own export is deleted", async () => {
     await expect(app.adapter.discardExport!(op, other)).rejects.toThrow();
   expect(deleted).toEqual([own]);
 });
+
+test("a second connected controller is named as the reason preview is refused", async () => {
+  const app = steam();
+  Object.assign(globalThis, {
+    controllerConfiguratorStore: {
+      m_controllerList: [
+        { nControllerIndex: 15, eControllerType: 4 },
+        { nControllerIndex: 16, eControllerType: 31 },
+      ],
+    },
+  });
+  await expect(app.adapter.context(42)).rejects.toThrow("more than one controller connected");
+});

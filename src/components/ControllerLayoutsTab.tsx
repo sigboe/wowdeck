@@ -29,6 +29,7 @@ import { listSteamShortcuts } from "../steamLibrary";
 import {
   forgetFocus,
   registerFocusElement,
+  requestFocus,
   rememberedFocus,
   revealRemembered,
 } from "../focusMemory";
@@ -125,14 +126,26 @@ function RecoveryPane({ view }: { view: string }) {
         onClick={
           available
             ? async () => {
+                let restored = false;
                 try {
                   await retryLayoutRestore(op, () => addonSession.get().selectedId ?? "");
-                  layoutApplyStatus.clear();
+                  const after = await engine.rpc("controllerLayouts.operationStatus", {});
+                  restored = after?.id === op.id && after.phase === "restored";
+                  if (restored) layoutApplyStatus.clear();
                 } catch {
                   /* resource reports read failures; native failure retains recovery */
                 } finally {
                   layoutRecovery.invalidate();
                 }
+                toaster.toast({
+                  title: "Controller Layouts",
+                  body: restored
+                    ? "Previous controls restored."
+                    : "Couldn't restore previous controls. They stay saved; try again later.",
+                });
+                // The restore row disappears; land on the layout that was applied.
+                const layoutId = op.approved.provenance?.layoutId;
+                if (layoutId) requestFocus(view, layoutId);
               }
             : undefined
         }
@@ -319,7 +332,10 @@ function LayoutRow({
     setOpening(false);
     if (error) toaster.toast({ title: layout.title, body: error });
   };
-  const choose = () => previewChoice.select(layout, undefined, true);
+  const choose = () => {
+    previewChoice.select(layout, undefined, true);
+    requestFocus(view, `preview:${layout.id}:Choose a library entry`);
+  };
   if (!cls) return <FallbackRow layout={layout} view={view} onPreview={preview} />;
   const focus = focusTarget(view, layout.id);
   return (
@@ -463,7 +479,10 @@ function PreviewPane({
   useEffect(() => {
     revealRemembered(view);
   }, [view, choice.key]);
-  const back = () => previewChoice.select(null);
+  const back = () => {
+    previewChoice.select(null);
+    requestFocus(view, choice.layout.id);
+  };
   const row = (label: string, description?: string, onClick?: () => void, key = label) => (
     <PanelSectionRow key={key}>
       <Field
@@ -503,9 +522,10 @@ function PreviewPane({
             "Selected library entry",
             games.find((g) => g.appId === choice.target)?.name ?? "Entry no longer available",
           )}
-          {row("Change library entry", "Choose a different entry without renaming it", () =>
-            previewChoice.select(choice.layout, undefined, true),
-          )}
+          {row("Change library entry", "Choose a different entry without renaming it", () => {
+            previewChoice.select(choice.layout, undefined, true);
+            requestFocus(view, `preview:${choice.layout.id}:Choose a library entry`);
+          })}
           {context ? (
             row("Shared controls", context.scope.targets.map((g) => g.name).join(", "))
           ) : (
@@ -541,7 +561,10 @@ function PreviewPane({
             row(
               game.name,
               `Library entry ${games.indexOf(game) + 1}`,
-              () => previewChoice.select(choice.layout, game.appId),
+              () => {
+                previewChoice.select(choice.layout, game.appId);
+                requestFocus(view, `preview:${choice.layout.id}:Selected library entry`);
+              },
               String(game.appId),
             ),
           )}

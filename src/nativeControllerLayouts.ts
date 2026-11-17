@@ -110,6 +110,10 @@ export function nativeControllerLayouts(): LayoutRecoveryAdapter {
         ? { GetSteamID: () => steamID.ConvertTo64BitString!() }
         : globals.SteamClient?.User;
     const inventory = globals.controllerConfiguratorStore?.m_controllerList;
+    if (Array.isArray(inventory) && inventory.length > 1)
+      throw Error(
+        "Couldn't preview with more than one controller connected. Disconnect the others, then try again.",
+      );
     // Bounded to the one built-in Deck controller evidenced on the device.
     // An editor index may be stale or absent; it never establishes connectivity.
     const connected = Array.isArray(inventory) && inventory.length === 1 ? inventory[0] : undefined;
