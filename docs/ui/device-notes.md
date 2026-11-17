@@ -201,3 +201,24 @@ Steam's plain Play button and its own menu, which keep working.
 | Steam's check component, source names `SVGIcon_DialogCheck` and `highlightColor` (`SteamMenuCheck`, `src/steamIcons.tsx`) | Marks the selected menu row with Steam's blue gradient check | LIVE (2026-11-18, exported, used by the "Play from" menu) | A plain check (`FaCheck`) |
 | Steam's arrow component, prop `direction`, down path `M17.98 26.54` (`SteamChevronDown`, `src/steamIcons.tsx`) | Draws our chevron as Steam's filled triangle | LIVE (2026-11-18, exported, the same SVG as Steam's own chevron) | A thin chevron (`FaChevronDown`) |
 | `SteamClient.Apps.SetStreamingClientForApp(appId, clientId)` (`setSteamStreamingClient`, `src/steamLaunchActions.ts`) | Points Steam's Play back at this Deck when a WoW row is picked | Steam's own rows calling it is LIVE. WoWDeck's call is INFERRED | Play keeps Steam's selected client. WoWDeck logs a warning if the call throws |
+
+## 8.4d Native controller layouts (2026-11-17)
+
+DEVICE, SSH and Steam CEF on the attached display, with native interface
+calls and keyboard navigation. No plugin build was deployed. The native
+browser row measured about 564 CSS px wide, with 8 px padding, 6 px bottom
+margin and 2 px corner radius. Titles used 16 px text with 20 px line height.
+These are full-width native-browser observations, not measurements of a new
+WoWDeck pane or of handheld mode.
+
+Steam's shared-layout preview applied a staged local snapshot through its
+F3 Apply Layout action. A missing file silently produced default mappings,
+so neither a resolved preview call nor a selected URL proves that the
+expected bindings loaded. Selection notifications reported app ID 0 and
+needed target readback. The native ShowControllerConfigurator call opened a
+separate window that kept changing the shared editing context until closed.
+
+The [full experiment report](../hardware/2026-11-17-controller-layouts/README.md)
+records mapping comparisons, recovery, shared names, published-item identity,
+cleanup and untested behavior. Actual WoW gameplay, physical controller
+output, restart durability and playtime contribution remain untested.
