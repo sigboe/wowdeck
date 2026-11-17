@@ -13,6 +13,7 @@ import { controllerLayoutsHandlers } from "../src/api/handlers/controllerLayouts
 import { JsonlServer } from "../src/bridge/jsonl";
 import { NetworkError, ResponseTooLargeError, type RequestOptions } from "../src/wow/net/network";
 import { ControllerLayoutCatalogueSource } from "../src/wow/controllerLayouts/ControllerLayoutCatalogue";
+import { defaultSettings } from "../src/wow/storage/settings";
 
 const URL_ = "https://catalogue.example/catalogue.json";
 const FIXTURES = join(import.meta.dir, "fixtures", "controller-layouts");
@@ -30,13 +31,13 @@ function makeSource(answer: string | Error) {
   return { source: new ControllerLayoutCatalogueSource(net, URL_), asked };
 }
 
-async function call(answer: string | Error) {
+async function call(answer: string | Error, controllerLayoutsEnabled = true) {
   const { source, asked } = makeSource(answer);
   let response: { result?: unknown; error?: unknown } = {};
   const rpc = new JsonlServer((line) => {
     response = JSON.parse(line);
   });
-  rpc.handle(controllerLayoutsHandlers({ controllerLayouts: source }));
+  rpc.handle(controllerLayoutsHandlers({ controllerLayouts: source, store: { settings: { ...defaultSettings(), controllerLayoutsEnabled } } }));
   await rpc.handleLine(JSON.stringify({ id: 1, method: "controllerLayouts.catalogue", params: {} }));
   return { response, asked };
 }
@@ -104,6 +105,14 @@ describe("controllerLayouts.catalogue", () => {
         },
       ],
     });
+  });
+
+  test("while the source is off it answers disabled and fetches nothing", async () => {
+    const { response, asked } = await call(fixture("two-entries.json"), false);
+
+    expect(response.error).toBeUndefined();
+    expect(response.result).toEqual({ state: "disabled" });
+    expect(asked).toEqual([]);
   });
 
   test("a failed request is unavailable, never an empty catalogue", async () => {
