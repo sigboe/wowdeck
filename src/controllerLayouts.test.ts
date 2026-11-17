@@ -3,6 +3,7 @@ import type { ControllerLayout, ControllerLayoutCatalogue } from "../backend/src
 import {
   catalogueView,
   createControllerLayoutsModule,
+  layoutRow,
   type CatalogueView,
 } from "./controllerLayouts";
 import { createFakeEngine, engineFailure } from "./testSupport/fakeEngine";
@@ -52,4 +53,33 @@ test("an engine failure is an error, never an empty catalogue", async () => {
   const { view } = await viewAfter(engineFailure("not_ready", "Engine not ready"));
 
   expect(view).toEqual({ kind: "error", message: "Couldn't load controller layouts" });
+});
+
+test("an available layout's row shows its title, author, controller and description", () => {
+  expect(
+    layoutRow({ ...LAYOUT, controllerType: "controller_triton", description: "Healer layout." }),
+  ).toEqual({
+    title: "Fixture layout A",
+    facts: ["by WoWDeck fixtures", "Steam Controller"],
+    description: "Healer layout.",
+    note: null,
+    inactive: false,
+  });
+});
+
+test("a controller type this client can't name is left out, never shown raw", () => {
+  expect(layoutRow({ ...LAYOUT, controllerType: "controller_future_thing" }).facts).toEqual([
+    "by WoWDeck fixtures",
+  ]);
+  expect(layoutRow(LAYOUT).facts).toEqual(["by WoWDeck fixtures", "Steam Deck"]);
+});
+
+test.each<[ControllerLayout["offer"], string]>([
+  ["withdrawn", "Withdrawn by the WoWDeck maintainers"],
+  ["unsupported", "Needs a newer WoWDeck"],
+])("a %s layout is explained and shown inactive", (offer, note) => {
+  const row = layoutRow({ ...LAYOUT, offer, revision: null });
+
+  expect(row.note).toBe(note);
+  expect(row.inactive).toBe(true);
 });

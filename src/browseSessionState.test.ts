@@ -12,6 +12,7 @@ import {
   popBrowseToList,
   popBrowseToNav,
   resetBrowseSessionState,
+  shownDestinations,
   subscribeWidening,
   widening,
 } from "./browseSessionState";
@@ -79,7 +80,41 @@ describe("resetBrowseSessionState", () => {
 
 describe("browse session state machine", () => {
   test("the destinations are the Get Addons entries in list order", () => {
-    expect(BROWSE_TABS).toEqual(["search", "latest", "popular", "url", "tsm"]);
+    expect(BROWSE_TABS).toEqual(["search", "latest", "popular", "url", "controllerLayouts", "tsm"]);
+  });
+
+  test("Controller layouts sits immediately above TradeSkillMaster while its source is on", () => {
+    expect(shownDestinations({ controllerLayouts: true, tsm: true })).toEqual([
+      "search",
+      "latest",
+      "popular",
+      "url",
+      "controllerLayouts",
+      "tsm",
+    ]);
+    expect(shownDestinations({ controllerLayouts: true, tsm: false })).toEqual([
+      "search",
+      "latest",
+      "popular",
+      "url",
+      "controllerLayouts",
+    ]);
+  });
+
+  test("a source that is off hides its destination", () => {
+    expect(shownDestinations({ controllerLayouts: false, tsm: true })).toEqual([
+      "search",
+      "latest",
+      "popular",
+      "url",
+      "tsm",
+    ]);
+    expect(shownDestinations({ controllerLayouts: false, tsm: false })).toEqual([
+      "search",
+      "latest",
+      "popular",
+      "url",
+    ]);
   });
 
   test("entering Get Addons lands the focus zone on the nav bar", () => {

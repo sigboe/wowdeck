@@ -32,7 +32,7 @@ test("RPC signed-out transitions notify once, clear on sign-in, and jump to the 
   expect(notifications).toBe(2);
   expect(tsmDestinationVisible([{ id: "TradeSkillMaster", enabled: true }])).toBe(true);
   expect(tsmDestinationVisible([{ id: "TradeSkillMaster", enabled: false }])).toBe(false);
-  expect(BROWSE_TABS.slice(-2)).toEqual(["url", "tsm"]);
+  expect(BROWSE_TABS.slice(-2)).toEqual(["controllerLayouts", "tsm"]);
   expect(BROWSE_BAR_ITEMS.tsm).toEqual([]);
   startSourceJump(tsmOptionsSources(), [
     {
