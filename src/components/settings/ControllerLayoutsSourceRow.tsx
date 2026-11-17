@@ -6,9 +6,8 @@ import { SettingsRow } from "./common";
 
 /**
  * The Controller layouts source in Options › Sources: a plain switch, apart
- * from the addon sources (no provider, no addon installs). Off stops the
- * destination and its catalogue requests; it changes no controls already
- * applied.
+ * from the addon sources (no provider, no addon installs). What Off stops:
+ * `controllerLayoutsEnabled` in the contract.
  */
 export function ControllerLayoutsSourceRow() {
   const { settings } = useSyncExternalStore(settingsStore.subscribe, settingsStore.get);

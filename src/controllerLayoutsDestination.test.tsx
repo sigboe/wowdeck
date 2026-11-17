@@ -128,6 +128,13 @@ test("nothing is asked for while the source is off", async () => {
   expect(catalogueRequests()).toBe(0);
 });
 
+test("an engine that has the source off shows nothing, not a failure", async () => {
+  // The toggle went off in the engine before this client's settings caught up.
+  answer = { state: "disabled" };
+
+  expect(await show()).toBe("");
+});
+
 test.each<[string, ControllerLayoutCatalogue | EngineFailure, string, boolean]>([
   ["empty", { state: "ready", layouts: [] }, "No controller layouts yet", false],
   ["unavailable", { state: "unavailable" }, "Couldn't load controller layouts", true],

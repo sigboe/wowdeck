@@ -39,10 +39,27 @@ test("a loaded catalogue shows its layouts in the maintainers' order", async () 
 });
 
 test.each<[string, ControllerLayoutCatalogue, CatalogueView]>([
-  ["empty", { state: "ready", layouts: [] }, { kind: "empty" }],
-  ["unavailable", { state: "unavailable" }, { kind: "unavailable" }],
-  ["malformed", { state: "malformed" }, { kind: "malformed" }],
-  ["unsupported", { state: "unsupported", schemaVersion: 2 }, { kind: "unsupported" }],
+  [
+    "empty",
+    { state: "ready", layouts: [] },
+    { kind: "notice", label: "No controller layouts yet" },
+  ],
+  [
+    "unavailable",
+    { state: "unavailable" },
+    { kind: "retry", message: "Couldn't load controller layouts. Try again later." },
+  ],
+  [
+    "malformed",
+    { state: "malformed" },
+    { kind: "retry", message: "Couldn't read the controller layouts list." },
+  ],
+  [
+    "unsupported",
+    { state: "unsupported", schemaVersion: 2 },
+    { kind: "notice", label: "Update WoWDeck", text: "This list needs a newer WoWDeck." },
+  ],
+  ["disabled", { state: "disabled" }, { kind: "off" }],
 ])("the engine's %s catalogue is its own state", async (_name, answer, expected) => {
   const { view } = await viewAfter(answer);
 
@@ -52,7 +69,7 @@ test.each<[string, ControllerLayoutCatalogue, CatalogueView]>([
 test("an engine failure is an error, never an empty catalogue", async () => {
   const { view } = await viewAfter(engineFailure("not_ready", "Engine not ready"));
 
-  expect(view).toEqual({ kind: "error", message: "Couldn't load controller layouts" });
+  expect(view).toEqual({ kind: "retry", message: "Couldn't load controller layouts." });
 });
 
 test("an available layout's row shows its title, author, controller and description", () => {
@@ -67,9 +84,14 @@ test("an available layout's row shows its title, author, controller and descript
   });
 });
 
-test("a controller type this client can't name is left out, never shown raw", () => {
+test("a controller type this client can't name shows as the catalogue gives it", () => {
   expect(layoutRow({ ...LAYOUT, controllerType: "controller_future_thing" }).facts).toEqual([
     "by WoWDeck fixtures",
+    "controller_future_thing",
+  ]);
+  expect(layoutRow({ ...LAYOUT, controllerType: "constructor" }).facts).toEqual([
+    "by WoWDeck fixtures",
+    "constructor",
   ]);
   expect(layoutRow(LAYOUT).facts).toEqual(["by WoWDeck fixtures", "Steam Deck"]);
 });
