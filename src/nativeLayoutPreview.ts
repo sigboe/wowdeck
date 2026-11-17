@@ -10,7 +10,8 @@ import { addonSession } from "./session";
  * Steam's own layout preview, opened the way its community list opens it
  * (DEVICE 2026-11-17, Steam UI module 62581): PreviewConfiguration on the
  * configurator store, then NavigateToLayoutPreview. X on that page calls the
- * store's SetActiveConfigForApp; for a WoWDeck-approved URL we run WoWDeck's
+ * store's SetActiveConfigForApp, which ends in SteamClient.Input.SetSelectedConfigForApp;
+ * for a WoWDeck-approved URL we run WoWDeck's
  * Apply instead (previous controls saved, layer 0, readback checked).
  */
 
@@ -127,30 +128,55 @@ async function applyFromSteam(appid: number, url: string) {
 
 /**
  * Route X on Steam's preview page through WoWDeck's Apply for WoWDeck-approved
- * URLs; every other call reaches Steam unchanged. Returns the uninstaller.
+ * URLs; every other call reaches Steam unchanged. Returns the uninstaller and
+ * never throws: a Steam without this hook just keeps Steam's own Apply.
+ *
+ * DEVICE 2026-11-17: the store's SetActiveConfigForApp is a locked MobX
+ * action (writable and configurable false). It ends in
+ * SteamClient.Input.SetSelectedConfigForApp, which is writable, so the hook
+ * sits there. WoWDeck's own Apply passes through while it runs.
  */
 export function interceptNativeApply(): () => void {
-  const store = globals().controllerConfiguratorStore;
-  const original = store?.SetActiveConfigForApp;
-  if (!store || typeof original !== "function") return () => {};
-  const hadOwn = Object.prototype.hasOwnProperty.call(store, "SetActiveConfigForApp");
-  const patched = function (
-    this: unknown,
+  try {
+    const input = (globalThis as unknown as { SteamClient?: { Input?: NativeInput } }).SteamClient
+      ?.Input;
+    const original = input?.SetSelectedConfigForApp;
+    if (!input || typeof original !== "function") return () => {};
+    const patched: NativeInput["SetSelectedConfigForApp"] = function (
+      this: unknown,
+      appid,
+      index,
+      url,
+      ...rest
+    ) {
+      if (
+        typeof url === "string" &&
+        url.startsWith(APPROVED) &&
+        layoutApplyStatus.get() !== "applying"
+      ) {
+        void applyFromSteam(appid, url);
+        return Promise.resolve(undefined);
+      }
+      return original.call(this, appid, index, url, ...rest);
+    };
+    input.SetSelectedConfigForApp = patched;
+    return () => {
+      try {
+        if (input.SetSelectedConfigForApp === patched) input.SetSelectedConfigForApp = original;
+      } catch {
+        /* Steam replaced the object; nothing of ours remains on it */
+      }
+    };
+  } catch {
+    return () => {};
+  }
+}
+
+interface NativeInput {
+  SetSelectedConfigForApp(
     appid: number,
-    index: number,
+    controllerIndex: number,
     url: string,
     ...rest: unknown[]
-  ) {
-    if (typeof url === "string" && url.startsWith(APPROVED)) {
-      void applyFromSteam(appid, url);
-      return undefined;
-    }
-    return original.call(this, appid, index, url, ...rest);
-  };
-  store.SetActiveConfigForApp = patched;
-  return () => {
-    if (store.SetActiveConfigForApp !== patched) return;
-    if (hadOwn) store.SetActiveConfigForApp = original;
-    else delete (store as Partial<ConfiguratorStore>).SetActiveConfigForApp;
-  };
+  ): Promise<unknown>;
 }

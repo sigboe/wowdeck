@@ -9,29 +9,45 @@ const { interceptNativeApply } = await import("./nativeLayoutPreview");
 
 test("X on Steam's preview reaches Steam unchanged except for WoWDeck-approved layouts", async () => {
   const calls: string[] = [];
-  class Store {
-    SetActiveConfigForApp(_appid: number, _index: number, url: string) {
+  const input = {
+    SetSelectedConfigForApp: async (_appid: number, _index: number, url: string) => {
       calls.push(url);
       return "steam";
-    }
-  }
-  const store = new Store();
-  Object.assign(globalThis, { controllerConfiguratorStore: store });
+    },
+  };
+  const saved = Object.getOwnPropertyDescriptor(globalThis, "SteamClient");
+  Object.assign(globalThis, { SteamClient: { Input: input } });
   try {
+    const original = input.SetSelectedConfigForApp;
     const stop = interceptNativeApply();
-    expect(store.SetActiveConfigForApp(42, 15, "workshop://1")).toBe("steam");
+    expect(await input.SetSelectedConfigForApp(42, 15, "workshop://1")).toBe("steam");
     expect(
-      store.SetActiveConfigForApp(42, 15, "usercloud://wowdeck-approved/" + "a".repeat(64)),
+      await input.SetSelectedConfigForApp(42, 15, "usercloud://wowdeck-approved/" + "a".repeat(64)),
     ).toBeUndefined();
     expect(calls).toEqual(["workshop://1"]);
     // No WoWDeck preview was opened, so nothing is applied.
-    await Promise.resolve();
     expect(toasts).toEqual(["Couldn't apply this layout. Preview it again from WoWDeck."]);
     stop();
-    expect(Object.prototype.hasOwnProperty.call(store, "SetActiveConfigForApp")).toBe(false);
-    store.SetActiveConfigForApp(42, 15, "usercloud://wowdeck-approved/x");
-    expect(calls).toEqual(["workshop://1", "usercloud://wowdeck-approved/x"]);
+    expect(input.SetSelectedConfigForApp).toBe(original);
   } finally {
-    Reflect.deleteProperty(globalThis, "controllerConfiguratorStore");
+    if (saved) Object.defineProperty(globalThis, "SteamClient", saved);
+    else Reflect.deleteProperty(globalThis, "SteamClient");
+  }
+});
+
+test("a locked Steam object never breaks plugin load", () => {
+  const saved = Object.getOwnPropertyDescriptor(globalThis, "SteamClient");
+  const input = {};
+  Object.defineProperty(input, "SetSelectedConfigForApp", {
+    value: async () => {},
+    writable: false,
+    configurable: false,
+  });
+  Object.assign(globalThis, { SteamClient: { Input: input } });
+  try {
+    expect(() => interceptNativeApply()()).not.toThrow();
+  } finally {
+    if (saved) Object.defineProperty(globalThis, "SteamClient", saved);
+    else Reflect.deleteProperty(globalThis, "SteamClient");
   }
 });
