@@ -57,16 +57,69 @@ export function catalogueView(
   }
 }
 
+/**
+ * Steam's controller-type declarations this client can name for a player.
+ * A type missing here is left off the row rather than shown as Steam's
+ * internal word (copy rule C05).
+ */
+const CONTROLLER_TYPES: Record<string, string> = {
+  controller_neptune: "Steam Deck",
+  controller_triton: "Steam Controller",
+  controller_steamcontroller_gordon: "Steam Controller (2015)",
+  controller_ps4: "DualShock 4",
+  controller_ps5: "DualSense",
+  controller_xboxone: "Xbox controller",
+  controller_xbox360: "Xbox 360 controller",
+  controller_switch_pro: "Switch Pro Controller",
+};
+
+/** What one layout row shows. */
+export interface LayoutRow {
+  title: string;
+  /** Short facts for the line under the title: author, controller type. */
+  facts: string[];
+  description?: string;
+  /** Why the layout isn't offered (withdrawn, needs a newer client); null when it is. */
+  note: string | null;
+  /** Not offered: shown the way Steam shows a row that is switched off (S23). */
+  inactive: boolean;
+}
+
+export function layoutRow(layout: ControllerLayout): LayoutRow {
+  const controller = CONTROLLER_TYPES[layout.controllerType];
+  return {
+    title: layout.title,
+    facts: [`by ${layout.author}`, ...(controller ? [controller] : [])],
+    description: layout.description,
+    note:
+      layout.offer === "withdrawn"
+        ? "Withdrawn by the WoWDeck maintainers"
+        : layout.offer === "unsupported"
+          ? "Needs a newer WoWDeck"
+          : null,
+    inactive: layout.offer !== "available",
+  };
+}
+
 export const controllerLayoutsModule = createControllerLayoutsModule({
   rpc: engine.rpc,
   clock: systemClock,
 });
 
-/** The catalogue's view for a component; `refresh` is Retry. */
-export function useControllerLayoutCatalogue(): {
+/**
+ * The catalogue's view for a component; `refresh` is Retry and `loading`
+ * says one is running. Nothing is read while the Controller layouts source
+ * is off (`sourceOn`, from useControllerLayoutsSourceOn): the resource is
+ * then viewed with no key.
+ */
+export function useControllerLayoutCatalogue(sourceOn: boolean): {
   view: CatalogueView;
+  loading: boolean;
   refresh: () => Promise<void>;
 } {
-  const { refresh, ...snapshot } = useResource(controllerLayoutsModule.catalogue, KEY);
-  return { view: catalogueView(snapshot), refresh };
+  const { refresh, ...snapshot } = useResource(
+    controllerLayoutsModule.catalogue,
+    sourceOn ? KEY : null,
+  );
+  return { view: catalogueView(snapshot), loading: snapshot.loading, refresh };
 }
