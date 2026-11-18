@@ -231,3 +231,12 @@ app icon asset in `HeaderAppPortrait`. In `css/sp.css`, the portrait is a
 24 px square and its image fills the box. The rule leaves image sampling to
 Chromium's default. The layout target menu uses the same sampling in a
 20 px square. It preserves the aspect ratio of non-square shortcut icons.
+
+## 8.4e Active controller for layout preview (DEVICE 2026-11-18)
+
+Steam's layout browser reads `SteamUIStore.MostRecentlyActiveControllerIndex`.
+A CDP probe in SharedJSContext showed index 0 for the Steam Controller
+before virtual pad input, and index 5 for the pad after pressing Down.
+Both indices matched the configurator store's connected inventory at
+the time. WoWDeck checks that match before preview. With a single
+connected controller it can also preview if the property is absent.

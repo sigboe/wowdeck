@@ -71,6 +71,7 @@ test("reviewed native mappings preview without replacing inherited selection", a
   const app = fixture();
   expect(await previewLayout(app.native, approved, 42)).toEqual({
     state: "ready",
+    context: await app.native.context(42),
     model,
     fingerprint: expectedHash,
   });
@@ -99,6 +100,7 @@ test("without a published fingerprint, a decode that differs from Steam's defaul
   const { app, freed } = withDefaults(fallbackModel);
   expect(await previewLayout(app.native, unreviewed, 42)).toEqual({
     state: "ready",
+    context: await app.native.context(42),
     model,
     fingerprint: expectedHash,
   });

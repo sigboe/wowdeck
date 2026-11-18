@@ -89,10 +89,11 @@ export function nativeControllerLayouts(): LayoutRecoveryAdapter {
     // Keep the slot after a timeout until native work really settles.
     return bounded(pending);
   };
-  const capabilities = () => {
+  const capabilities = (forPreview = false) => {
     const globals = globalThis as unknown as {
       SteamClient?: { Input?: NativeInput; User?: { GetSteamID?: () => string | Promise<string> } };
       friendStore?: { currentUserSteamID?: { ConvertTo64BitString?: () => string } };
+      SteamUIStore?: { MostRecentlyActiveControllerIndex?: number };
       controllerConfiguratorStore?: {
         m_controllerList?: {
           nControllerIndex: number;
@@ -109,13 +110,23 @@ export function nativeControllerLayouts(): LayoutRecoveryAdapter {
       typeof steamID?.ConvertTo64BitString === "function"
         ? { GetSteamID: () => steamID.ConvertTo64BitString!() }
         : globals.SteamClient?.User;
-    const inventory = globals.controllerConfiguratorStore?.m_controllerList;
-    if (Array.isArray(inventory) && inventory.length > 1) throw Error(MULTIPLE_CONTROLLERS_REASON);
-    // Bounded to the one built-in Deck controller evidenced on the device.
-    // An editor index may be stale or absent; it never establishes connectivity.
-    const connected = Array.isArray(inventory) && inventory.length === 1 ? inventory[0] : undefined;
+    const controllers = globals.controllerConfiguratorStore?.m_controllerList;
+    const inventory = Array.isArray(controllers) ? controllers : [];
+    if (!forPreview && inventory.length > 1) throw Error(MULTIPLE_CONTROLLERS_REASON);
+    // DEVICE 2026-11-18: Steam's layout browser selects the most recently
+    // active index. Confirm it is connected. Without the property or a match,
+    // use the sole connected controller if there is one.
+    const activeIndex = forPreview
+      ? globals.SteamUIStore?.MostRecentlyActiveControllerIndex
+      : undefined;
+    const connected =
+      inventory.length === 1
+        ? inventory[0]
+        : inventory.find((entry) => entry.nControllerIndex === activeIndex);
+    if (forPreview && inventory.length && !connected)
+      throw Error("Couldn't identify the active controller. Press a button on it and try again.");
     const controller =
-      connected?.eControllerType === 4 && !connected.bRemoteDevice
+      connected && (forPreview || (connected.eControllerType === 4 && !connected.bRemoteDevice))
         ? connected.nControllerIndex
         : undefined;
     if (
@@ -133,6 +144,31 @@ export function nativeControllerLayouts(): LayoutRecoveryAdapter {
     const physical = `${connected!.strSerialNumber ?? ""}|${connected!.strChipID ?? ""}`;
     return { input, user: user!, controller: controller!, physical };
   };
+  async function readContext(
+    target: number,
+    { input, user, controller }: ReturnType<typeof capabilities>,
+  ): Promise<LayoutContext> {
+    const accountId = await accountOf(user);
+    const targets = listSteamShortcuts();
+    if (!targets.some((game) => game.appId === target)) throw Error("Native target unavailable");
+    const value = await bounded(input.GetConfigForAppAndController(target, controller));
+    if (
+      !Number.isSafeInteger(target) ||
+      target <= 0 ||
+      !Number.isSafeInteger(value.accountID) ||
+      value.accountID < 0 ||
+      value.unControllerIndex !== controller ||
+      !Number.isSafeInteger(value.nControllerType)
+    )
+      throw Error("Native target unavailable");
+    return {
+      target,
+      accountId,
+      controllerIndex: controller,
+      controllerType: value.nControllerType,
+      selection: JSON.stringify({ value, targets: targets.sort((a, b) => a.appId - b.appId) }),
+    };
+  }
   const assertContext = async (expected: ControllerLayoutContext) => {
     if (mutationPending || occupied) throw Error("Native work is still pending");
     const actual = await adapter.operationContext(expected.target, expected.installationId);
@@ -309,8 +345,11 @@ export function nativeControllerLayouts(): LayoutRecoveryAdapter {
       };
     },
     async operationContext(target, installationId) {
-      const context = await adapter.context(target);
-      const { input, physical } = capabilities();
+      const native = capabilities();
+      const context = await readContext(target, native);
+      const { input, controller, physical } = capabilities();
+      if (controller !== native.controller || physical !== native.physical)
+        throw Error("Native context changed");
       const selected = listSteamShortcuts().find((t) => t.appId === target);
       // LIVE 2026-11-17: Steam keys shortcut controls by the lowercased name, so
       // case variants share them and other names don't. Non-ASCII names stay
@@ -356,27 +395,7 @@ export function nativeControllerLayouts(): LayoutRecoveryAdapter {
       };
     },
     async context(target) {
-      const { input, user, controller } = capabilities();
-      const accountId = await accountOf(user);
-      const targets = listSteamShortcuts();
-      if (!targets.some((game) => game.appId === target)) throw Error("Native target unavailable");
-      const value = await bounded(input.GetConfigForAppAndController(target, controller));
-      if (
-        !Number.isSafeInteger(target) ||
-        target <= 0 ||
-        !Number.isSafeInteger(value.accountID) ||
-        value.accountID < 0 ||
-        value.unControllerIndex !== controller ||
-        !Number.isSafeInteger(value.nControllerType)
-      )
-        throw Error("Native target unavailable");
-      return {
-        target,
-        accountId,
-        controllerIndex: controller,
-        controllerType: value.nControllerType,
-        selection: JSON.stringify({ value, targets: targets.sort((a, b) => a.appId - b.appId) }),
-      };
+      return readContext(target, capabilities(true));
     },
     preview(context, url) {
       return load(context, url);
@@ -391,7 +410,7 @@ export function nativeControllerLayouts(): LayoutRecoveryAdapter {
   };
   async function load(context: LayoutContext, url: string, active = false) {
     if (occupied || mutationPending) throw Error("Native work is already running");
-    const { input, controller } = capabilities();
+    const { input, controller } = capabilities(!active);
     if (
       controller !== context.controllerIndex ||
       (!active && !safePreviewURL(url) && !/^default:\/\/[\x20-\x7e]+$/.test(url))
@@ -479,7 +498,7 @@ export function nativeControllerLayouts(): LayoutRecoveryAdapter {
 }
 
 export const MULTIPLE_CONTROLLERS_REASON =
-  "Couldn't preview with more than one controller connected. Disconnect the others, then try again.";
+  "WoWDeck can apply layouts only with the built-in controller connected.";
 
 /** The preview-only reason when there is no specific one (a read that failed). */
 export const PREVIEW_ONLY_REASON =

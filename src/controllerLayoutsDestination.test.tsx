@@ -633,7 +633,7 @@ test("a second controller keeps the detected links and explains that only previe
 
   expect(await targetChoices()).toEqual(["World of Warcraft", "Other game…"]);
   expect(text).toContain("Preview only");
-  expect(text).toContain("more than one controller connected");
+  expect(text).toContain("only with the built-in controller connected");
 });
 
 /** The open menu's entries as "label" or "label · note" (the Suggested marker). */

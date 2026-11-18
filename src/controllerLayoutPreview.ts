@@ -23,7 +23,7 @@ export interface NativeLayoutModel {
   modes: unknown[];
 }
 export type LayoutPreviewOutcome =
-  | { state: "ready"; model: NativeLayoutModel; fingerprint: string }
+  | { state: "ready"; context: LayoutContext; model: NativeLayoutModel; fingerprint: string }
   | { state: "error"; message: string };
 
 async function fingerprintOf(model: NativeLayoutModel) {
@@ -83,7 +83,7 @@ export async function previewLayout(
     }
     const after = await adapter.context(target);
     if (JSON.stringify(before) !== JSON.stringify(after)) throw Error();
-    outcome = { state: "ready", model, fingerprint: hash };
+    outcome = { state: "ready", context: before, model, fingerprint: hash };
   } catch {
     outcome = {
       state: "error",

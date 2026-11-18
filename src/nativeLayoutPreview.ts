@@ -46,7 +46,13 @@ const globals = () =>
   };
 
 /** The preview WoWDeck opened last; X applies only this one. */
-let intent: { url: string; target: number; jobId: string; title: string } | null = null;
+let intent: {
+  url: string;
+  target: number;
+  jobId: string;
+  title: string;
+  controllerIndex: number;
+} | null = null;
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -82,8 +88,17 @@ export async function openNativePreview(
     });
     if (status.state !== "ready" || !status.preview.url.startsWith(APPROVED))
       return "Couldn't prepare the layout preview.";
+    const verified = layoutPreviewSession.resource.get(key).data;
     const context = await layoutNative.context(target);
-    intent = { url: status.preview.url, target, jobId, title: layout.title };
+    if (verified?.state !== "ready" || JSON.stringify(verified.context) !== JSON.stringify(context))
+      return "Couldn't open the layout preview. The active controller or its controls changed.";
+    intent = {
+      url: status.preview.url,
+      target,
+      jobId,
+      title: layout.title,
+      controllerIndex: context.controllerIndex,
+    };
     const main = ui.WindowStore?.GamepadUIMainWindowInstance;
     returnAfterPreview(main?.m_history, layout.id);
     store.PreviewConfiguration(target, context.controllerIndex, status.preview.url);
@@ -174,6 +189,10 @@ async function applyFromSteam(appid: number, url: string) {
   try {
     const installationId = addonSession.get().selectedId ?? "";
     const context = await layoutNative.operationContext(appid, installationId);
+    if (context.controllerIndex !== current.controllerIndex) {
+      notify("Couldn't apply the layout. The preview used a different controller.");
+      return;
+    }
     if (context.scope.state !== "established") {
       notify(`Couldn't apply the layout. ${context.scope.reason ?? PREVIEW_ONLY_REASON}`);
       return;

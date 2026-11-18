@@ -13,7 +13,7 @@ mock.module("@decky/ui", () => ({
   findModuleExport: (match: (value: unknown) => boolean) => (match(Decoder) ? Decoder : undefined),
 }));
 const { nativeControllerLayouts } = await import("./nativeControllerLayouts");
-const saved = ["SteamClient", "appStore", "controllerConfiguratorStore"].map(
+const saved = ["SteamClient", "SteamUIStore", "appStore", "controllerConfiguratorStore"].map(
   (key) => [key, Object.getOwnPropertyDescriptor(globalThis, key)] as const,
 );
 afterEach(() => {
@@ -331,7 +331,7 @@ test("only this operation's own export is deleted", async () => {
   expect(deleted).toEqual([own]);
 });
 
-test("a second connected controller is named as the reason preview is refused", async () => {
+test("preview uses Steam’s active controller while Apply still refuses multiple controllers", async () => {
   const app = steam();
   Object.assign(globalThis, {
     controllerConfiguratorStore: {
@@ -341,5 +341,23 @@ test("a second connected controller is named as the reason preview is refused", 
       ],
     },
   });
-  await expect(app.adapter.context(42)).rejects.toThrow("more than one controller connected");
+  Object.assign(globalThis, { SteamUIStore: { MostRecentlyActiveControllerIndex: 16 } });
+  Object.assign(app.input, {
+    GetConfigForAppAndController: async (_target: number, index: number) => ({
+      accountID: 0,
+      nControllerType: 31,
+      unControllerIndex: index,
+      URL: "",
+      eSelectionType: 0,
+    }),
+  });
+  const context = await app.adapter.context(42);
+  expect(context).toMatchObject({ controllerIndex: 16, controllerType: 31 });
+  const preview = mock(app.input.PreviewConfigForAppAndController);
+  app.input.PreviewConfigForAppAndController = preview;
+  (await app.adapter.preview(context, approved.url)).release();
+  expect(preview).toHaveBeenCalledWith(42, 16, approved.url);
+  await expect(app.adapter.operationContext(42, "retail")).rejects.toThrow(
+    "only with the built-in controller connected",
+  );
 });

@@ -36,6 +36,7 @@ export interface SegmentChoice<T> {
 
 /** A choice's icon size (spec #273): a little over the 16 px body text beside it. */
 const SEGMENT_ICON_SIZE = "20px";
+const SEGMENT_ICON_INSET = "8px";
 
 /** The caption over a segment's button: Steam's row label, one size down. */
 export const SEGMENT_LABEL = {
@@ -162,7 +163,13 @@ export function SegmentMenu<T>({
           className="wowdeck-segment-trigger"
           aria-label={menuLabel}
           onClick={() => (open ? close(true) : openList())}
-          style={{ display: "flex", alignItems: "center", gap: "8px", width: "100%" }}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
+            width: "100%",
+            paddingInlineStart: withIcons ? SEGMENT_ICON_INSET : undefined,
+          }}
         >
           {withIcons && <IconSlot icon={selectedChoice?.icon} size={SEGMENT_ICON_SIZE} />}
           {renderValue(selectedChoice?.label ?? "")}
@@ -201,7 +208,7 @@ export function SegmentMenu<T>({
                         display: "flex",
                         alignItems: "center",
                         gap: "8px",
-                        paddingInlineStart: "8px",
+                        paddingInlineStart: SEGMENT_ICON_INSET,
                       }
                     : undefined
                 }
