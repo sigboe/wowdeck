@@ -28,6 +28,7 @@ What's new in each version of WoWDeck Addon Manager. The format follows
 - Switching WoW installations after an addon install keeps the correct addon list.
 - TradeSkillMaster shows followed-realm refresh failures and lets you retry.
 - Rescanning an installation that needs recovery shows the recovery steps instead of an error.
+- Renaming WoW's Steam shortcut keeps it linked and shows its new name everywhere. Deleting the shortcut removes its link.
 
 ## [1.2.1] - 2026-11-15
 

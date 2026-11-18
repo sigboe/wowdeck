@@ -420,7 +420,34 @@ test("a direct client shortcut whose start folder ends in a slash shares the lau
   const found = await detector().detect();
   expect(found.map((i) => i.location)).toEqual([forever]);
   expect(found[0]!.steamGames).toEqual([
-    { appId: 42, name: "World of Warcraft" },
-    { appId: 43, name: "Forever" },
+    { appId: 42, name: "World of Warcraft", accountId: 100 },
+    { appId: 43, name: "Forever", accountId: 100 },
   ]);
+});
+
+test("a renamed shortcut keeps its link under the new name; a deleted one drops its link", async () => {
+  const { StateStore } = await import("../src/wow/storage/StateStore");
+  const { InstallationService } = await import("../src/wow/installation/InstallationService");
+  const retail = flavor(join(home, "outside/World of Warcraft/_retail_"));
+  const launcher = join(retail, "..", "Battle.net.exe");
+  writeFileSync(launcher, "");
+  const service = new InstallationService(new StateStore(join(home, "state.json")), async () => {});
+  shortcuts("100", [
+    { appid: 42, name: "World of Warcraft", exe: join(retail, "Wow.exe"), start: "" },
+    { appid: 43, name: "Battle.net", exe: `"${launcher}"`, start: "" },
+  ]);
+  expect((await service.detect(home))[0]!.steamGames).toEqual([
+    { appId: 42, name: "World of Warcraft", accountId: 100 },
+    { appId: 43, name: "Battle.net", accountId: 100 },
+  ]);
+
+  // The player renames entry 42 in Steam and removes entry 43.
+  shortcuts("100", [{ appid: 42, name: "WoW (Proton)", exe: join(retail, "Wow.exe"), start: "" }]);
+
+  const renamed = [{ appId: 42, name: "WoW (Proton)", accountId: 100 }];
+  expect((await detector().detect())[0]!.steamGames).toEqual(renamed);
+  expect((await service.detect(home))[0]!.steamGames).toEqual(renamed);
+  // A later engine reads the stored list the same way.
+  const restarted = new InstallationService(new StateStore(join(home, "state.json")), async () => {});
+  expect(restarted.listed()[0]!.steamGames).toEqual(renamed);
 });

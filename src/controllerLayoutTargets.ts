@@ -29,6 +29,7 @@ export function layoutTargetChoices(
     (link) => accountId !== undefined && link.accountId === accountId,
   );
   const linked = linkedSteamGames(
+    games,
     [{ steamGames: detected }],
     settings.steamGame,
     settings.steamAutoLink,

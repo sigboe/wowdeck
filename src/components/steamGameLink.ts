@@ -1,6 +1,6 @@
 import { settingsStore } from "../settings";
 import { addonSession } from "../session";
-import { linkedSteamGames, type SteamGame } from "../steamLibrary";
+import { listSteamShortcuts, pickerLinks, type SteamGame } from "../steamLibrary";
 import { openSteamGamePicker } from "./SteamGamePicker";
 
 /**
@@ -34,11 +34,7 @@ export function openSteamGameLinkPicker(
   const { settings } = settingsStore.get();
   const { installations } = addonSession.get();
   openSteamGamePicker(
-    {
-      manual: settings.steamGame,
-      detected: linkedSteamGames(installations, null),
-      autoLinkOn: settings.steamAutoLink,
-    },
+    pickerLinks(listSteamShortcuts(), installations, settings),
     (game) => void linkSteamGame(game).then((saved) => then?.(game, saved)),
   );
 }
