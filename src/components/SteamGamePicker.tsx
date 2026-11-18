@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   DialogBody,
   DialogButton,
@@ -11,6 +11,7 @@ import {
   TextField,
   showModal,
 } from "@decky/ui";
+import { holdBrowseSessionForModal } from "../browseSessionState";
 import { TextRow } from "./TextRow";
 import { IconSlot } from "./IconSlot";
 import { useShortcutIcons } from "./ShortcutIcon";
@@ -50,11 +51,14 @@ function SteamGamePicker({
   links,
   onPick,
   closeModal,
+  releaseHold,
 }: {
   links: PickerLinks;
   onPick: (game: SteamGame | null) => void;
   closeModal?: () => void;
+  releaseHold: () => void;
 }) {
+  useEffect(() => releaseHold, [releaseHold]);
   const [query, setQuery] = useState("");
   const [all] = useState(readShortcuts);
   const matches = filterSteamGames(all, query);
@@ -168,10 +172,21 @@ export function openSteamGamePicker(
   links: PickerLinks,
   onPick: (game: SteamGame | null) => void,
 ): void {
-  const close = () => modalResult.Close();
-  const modalResult = showModal(
-    <SteamGamePicker links={links} onPick={onPick} closeModal={close} />,
-    window,
-    { strTitle: "World of Warcraft in Steam", bHideMainWindowForPopouts: false },
-  );
+  const releaseHold = holdBrowseSessionForModal();
+  try {
+    const close = () => modalResult.Close();
+    const modalResult = showModal(
+      <SteamGamePicker
+        links={links}
+        onPick={onPick}
+        closeModal={close}
+        releaseHold={releaseHold}
+      />,
+      window,
+      { strTitle: "World of Warcraft in Steam", bHideMainWindowForPopouts: false },
+    );
+  } catch (error) {
+    releaseHold();
+    throw error;
+  }
 }

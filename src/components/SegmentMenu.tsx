@@ -112,8 +112,8 @@ export function SegmentMenu<T>({
   };
 
   const pick = (choice: SegmentChoice<T>) => {
-    onPick(choice.data);
     close(true);
+    onPick(choice.data);
   };
 
   const onListButtonDown = (evt: GamepadEvent) => {
@@ -159,6 +159,7 @@ export function SegmentMenu<T>({
     <div>
       <div ref={triggerRef}>
         <DialogButton
+          className="wowdeck-segment-trigger"
           aria-label={menuLabel}
           onClick={() => (open ? close(true) : openList())}
           style={{ display: "flex", alignItems: "center", gap: "8px", width: "100%" }}
@@ -194,16 +195,20 @@ export function SegmentMenu<T>({
                 data-seg-index={index}
                 aria-label={choice.label}
                 className="wowdeck-segment-menu-item"
+                style={
+                  withIcons
+                    ? {
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "8px",
+                        paddingInlineStart: "8px",
+                      }
+                    : undefined
+                }
                 onGamepadFocus={() => (cursorRef.current = index)}
                 onClick={() => pick(choice)}
               >
-                {withIcons && (
-                  <IconSlot
-                    icon={choice.icon}
-                    size={SEGMENT_ICON_SIZE}
-                    style={{ marginRight: "8px" }}
-                  />
-                )}
+                {withIcons && <IconSlot icon={choice.icon} size={SEGMENT_ICON_SIZE} />}
                 <span className="wowdeck-segment-menu-label">{choice.label}</span>
                 {choice.note && <span className="wowdeck-segment-menu-note">{choice.note}</span>}
                 {choice.data === selected && (

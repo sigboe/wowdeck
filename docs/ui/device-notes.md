@@ -222,3 +222,12 @@ The [full experiment report](../hardware/2026-11-17-controller-layouts/README.md
 records mapping comparisons, recovery, shared names, published-item identity,
 cleanup and untested behavior. Actual WoW gameplay, physical controller
 output, restart durability and playtime contribution remain untested.
+
+
+## 8.4d Download icon in the Steam header (DEVICE 2026-11-18)
+
+In the Deck's installed `steamui/sp.js`, the header download control uses the
+app icon asset in `HeaderAppPortrait`. In `css/sp.css`, the portrait is a
+24 px square and its image fills the box. The rule leaves image sampling to
+Chromium's default. The layout target menu uses the same sampling in a
+20 px square. It preserves the aspect ratio of non-square shortcut icons.

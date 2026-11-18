@@ -163,6 +163,10 @@ export function wowdeckSharedStyleCss(): string {
   flex: none; color: ${STEAM.textMuted};
   font-size: ${STEAM_FONT.small}; line-height: ${STEAM_LINE.small};
 }
+.wowdeck-segment-menu-item:is(.gpfocus, :focus-visible) .wowdeck-segment-menu-note,
+.wowdeck-segment-trigger:is(.gpfocus, :focus-visible) .wowdeck-segment-menu-note {
+  color: inherit;
+}
 .wowdeck-glyph-text {
   display: inline-flex; align-items: center; justify-content: center;
   min-width: 24px; height: 18px; padding: 0 4px; border-radius: 4px 4px 2px 2px;

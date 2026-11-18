@@ -8,7 +8,11 @@ import {
 import { engine } from "./engineLink";
 import { backendErrorMessage } from "./errors";
 import { createKeyedResource } from "./keyedResource";
-import { currentSteamAccountId, nativeControllerLayouts } from "./nativeControllerLayouts";
+import {
+  currentSteamAccountId,
+  MULTIPLE_CONTROLLERS_REASON,
+  nativeControllerLayouts,
+} from "./nativeControllerLayouts";
 import type { Rpc } from "./services/envelope";
 
 export type PreviewPaneState = LayoutPreviewOutcome | { state: "preparing" };
@@ -91,7 +95,10 @@ export const steamAccount = createKeyedResource({
 export const layoutOperationContext = createKeyedResource({
   clock: systemClock,
   pollMs: 1000,
-  errorText: () => "Couldn't establish which library entries share these controls.",
+  errorText: (error) =>
+    backendErrorMessage(error) === MULTIPLE_CONTROLLERS_REASON
+      ? MULTIPLE_CONTROLLERS_REASON
+      : "Couldn't establish which library entries share these controls.",
   read: (key) => {
     const [target, installationId] = key.split("|");
     return layoutNative.operationContext(Number(target), installationId!);

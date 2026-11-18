@@ -405,7 +405,7 @@ function LayoutTargetRow({
                 selected ? (
                   <>
                     {value}
-                    {note && <span style={descriptionStyle}> · {note}</span>}
+                    {note && <span className="wowdeck-segment-menu-note"> · {note}</span>}
                   </>
                 ) : (
                   <span style={descriptionStyle}>Choose a game</span>

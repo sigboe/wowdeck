@@ -107,6 +107,8 @@ const { addonSession } = await import("./session");
 const { layoutTargetPicks } = await import("./controllerLayoutTargets");
 const { steamAccount, layoutOperationContext } = await import("./controllerLayoutPreviewSession");
 const { rememberedFocus } = await import("./focusMemory");
+const { enterBrowsePane, enterBrowseSession, leaveBrowseSession, qamHidden } =
+  await import("./browseSessionState");
 
 let root: ReturnType<typeof createRoot>;
 beforeEach(() => {
@@ -116,6 +118,7 @@ beforeEach(() => {
   previews.length = 0;
   shownModal = null;
   layoutTargetPicks.reset();
+  leaveBrowseSession();
   fake.calls.length = 0;
   controllerLayoutsModule.catalogue.forget(controllerLayoutsModule.KEY);
   root = createRoot(doc.getElementById("root")!);
@@ -630,6 +633,7 @@ test("a second controller keeps the detected links and explains that only previe
 
   expect(await targetChoices()).toEqual(["World of Warcraft", "Other game…"]);
   expect(text).toContain("Preview only");
+  expect(text).toContain("more than one controller connected");
 });
 
 /** The open menu's entries as "label" or "label · note" (the Suggested marker). */
@@ -750,7 +754,10 @@ test("Other game… links the picked game by hand, selects it and lands on the d
   await showSettled();
   await pickTarget("World of Warcraft");
 
+  enterBrowsePane();
   await pickTarget("Other game…");
+  qamHidden();
+  expect(enterBrowseSession()).toBe("pane");
   // Steam's modal unmounts the panel (guide G4); the picker is on its own.
   await act(async () => root.render(null));
   const picker = doc.body.appendChild(doc.createElement("div"));
