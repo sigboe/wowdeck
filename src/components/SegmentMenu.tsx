@@ -1,7 +1,7 @@
 import { useRef, useState, type FocusEvent, type ReactNode } from "react";
 import { DialogButton, Focusable, GamepadButton, type GamepadEvent } from "@decky/ui";
 import { FaCheck, FaChevronDown } from "react-icons/fa";
-import { STEAM, STEAM_FONT, descriptionStyle } from "../steamTheme";
+import { STEAM, STEAM_FONT } from "../steamTheme";
 import { IconSlot } from "./IconSlot";
 
 /**
@@ -205,14 +205,7 @@ export function SegmentMenu<T>({
                   />
                 )}
                 <span className="wowdeck-segment-menu-label">{choice.label}</span>
-                {choice.note && (
-                  <span
-                    className="wowdeck-segment-menu-note"
-                    style={{ ...descriptionStyle, flex: "none" }}
-                  >
-                    {choice.note}
-                  </span>
-                )}
+                {choice.note && <span className="wowdeck-segment-menu-note">{choice.note}</span>}
                 {choice.data === selected && (
                   <FaCheck style={{ flex: "none", width: "12px", color: STEAM.positive }} />
                 )}
