@@ -15,19 +15,34 @@ export interface SteamGame {
   name: string;
 }
 
-/** Automatic links require engine evidence; the Options picker remains an explicit override. */
+/**
+ * Links as Steam's library has them now (#275): a link matches its shortcut
+ * by app id and takes the name Steam shows, so a renamed shortcut stays
+ * linked. A link whose app id is no longer a shortcut in `library` is
+ * dropped. The stored link is left alone; it just counts for nothing.
+ */
+function inLibrary(library: SteamGame[], links: SteamGame[]): SteamGame[] {
+  const byId = new Map(library.map((g) => [g.appId, g]));
+  return links.flatMap((link) => byId.get(link.appId) ?? []);
+}
+
+/**
+ * The entries WoWDeck is linked to, for every consumer (game page, home
+ * badge, Options, layout target): the hand-set link, plus the engine's
+ * detected links while automatic linking is on, matched against `library`
+ * (`listSteamShortcuts`) by app id. By app id, one each.
+ */
 export function linkedSteamGames(
+  library: SteamGame[],
   installations: { steamGames?: SteamGame[] }[],
   manual: SteamGame | null,
   automatic = true,
 ): SteamGame[] {
-  const games = new Map<number, SteamGame>();
-  if (automatic) {
-    for (const installation of installations) {
-      for (const game of installation.steamGames ?? []) games.set(game.appId, game);
-    }
-  }
-  if (manual) games.set(manual.appId, manual);
+  const links = [
+    ...(automatic ? installations.flatMap((i) => i.steamGames ?? []) : []),
+    ...(manual ? [manual] : []),
+  ];
+  const games = new Map(inLibrary(library, links).map((g) => [g.appId, g]));
   return [...games.values()].sort((a, b) => a.appId - b.appId);
 }
 
@@ -39,6 +54,22 @@ export interface PickerLinks {
   detected: SteamGame[];
   /** Whether "Link detected Steam games" is on. */
   autoLinkOn: boolean;
+}
+
+/**
+ * The picker's links matched against `library` by app id: current names,
+ * and none for a deleted shortcut, so Unlink names the entry as Steam shows it.
+ */
+export function pickerLinks(
+  library: SteamGame[],
+  installations: { steamGames?: SteamGame[] }[],
+  settings: { steamGame: SteamGame | null; steamAutoLink: boolean },
+): PickerLinks {
+  return {
+    manual: linkedSteamGames(library, [], settings.steamGame)[0] ?? null,
+    detected: linkedSteamGames(library, installations, null),
+    autoLinkOn: settings.steamAutoLink,
+  };
 }
 
 /** A picker row's link marker, shown after its app id. */

@@ -352,6 +352,26 @@ test("the dropdown lists the hand-set link and this installation's detected link
   expect(await targetChoices()).toEqual(["Battle.net"]);
 });
 
+test("links match by app id: a renamed entry shows its new name, a deleted entry is gone", async () => {
+  steam([
+    [42, "WoW (Proton)"],
+    [44, "Blizzard App"],
+  ]);
+  linkSettings = { steamGame: { appId: 44, name: "Battle.net" }, steamAutoLink: true };
+  await installations([
+    "active",
+    [
+      [42, "World of Warcraft", 123],
+      [43, "WoW Classic", 123], // deleted from the library since detection
+    ],
+  ]);
+
+  await showSettled();
+
+  expect(targetButton()?.textContent).toBe("Blizzard App");
+  expect(await targetChoices()).toEqual(["Blizzard App", "WoW (Proton)"]);
+});
+
 test.each<[string, number | null, [number, string, number][], string]>([
   ["the hand-set link", 42, [[44, "Battle.net", 123]], "World of Warcraft"],
   ["the only detected entry", null, [[42, "World of Warcraft", 123]], "World of Warcraft"],
