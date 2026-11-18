@@ -1,25 +1,30 @@
 import type { Installation, PluginSettings } from "../backend/src/api/contracts";
-import { linkedSteamGames, type SteamGame } from "./steamLibrary";
+import { isLikelyWow, linkedSteamGames, type SteamGame } from "./steamLibrary";
 import { createStore } from "./store";
 
 /**
- * The entries the layout target dropdown offers (GLOSSARY: Layout target),
- * by the rule the game page and the home badge use (`linkedSteamGames`):
- * the hand-set link from Options, plus the selected installation's detected
- * links while "Link detected Steam games" is on. Detected links count only
- * for the Steam account signed in now; with the account unknown, none do.
- * Entries come from Steam's library, A–Z, under the names it shows; a link
- * whose app id is no longer a shortcut is left out.
+ * The entries the layout target dropdown offers (GLOSSARY: Layout target).
+ * First the linked entries, by the rule the game page and the home badge use
+ * (`linkedSteamGames`): the hand-set link from Options, plus the selected
+ * installation's detected links while "Link detected Steam games" is on.
+ * Detected links count only for the Steam account signed in now; with the
+ * account unknown, none do. Entries come from Steam's library, A–Z, under
+ * the names it shows; a link whose app id is no longer a shortcut is left out.
+ *
+ * With nothing linked, `suggested` entries stand in: the ones detection
+ * would link with the toggle off, else the shortcuts whose names look like
+ * WoW (`isLikelyWow`). Picking one changes no settings. "Other game…" is the
+ * dropdown's own last choice, not one of these.
  *
  * The default: the hand-set link, then the only detected entry, then the
  * first A–Z.
  */
-export function linkedLayoutTargets(
+export function layoutTargetChoices(
   games: SteamGame[],
   settings: Pick<PluginSettings, "steamGame" | "steamAutoLink">,
   active: Pick<Installation, "steamGames"> | undefined,
   accountId: number | undefined,
-): { choices: SteamGame[]; initial: SteamGame | undefined } {
+): { choices: SteamGame[]; suggested: boolean; initial: SteamGame | undefined } {
   const detected = (active?.steamGames ?? []).filter(
     (link) => accountId !== undefined && link.accountId === accountId,
   );
@@ -38,7 +43,10 @@ export function linkedLayoutTargets(
     listed(settings.steamGame?.appId) ??
     (detectedHere.length === 1 ? detectedHere[0] : undefined) ??
     choices[0];
-  return { choices, initial };
+  if (choices.length > 0) return { choices, suggested: false, initial };
+  const wouldLink = games.filter((g) => detected.some((d) => d.appId === g.appId));
+  const suggestions = wouldLink.length > 0 ? wouldLink : games.filter((g) => isLikelyWow(g.name));
+  return { choices: suggestions, suggested: true, initial: suggestions[0] };
 }
 
 /**
@@ -58,7 +66,7 @@ export const layoutTargetPicks = {
 
 /** The selected entry: the remembered pick while it is still listed, else the default. */
 export function selectedLayoutTarget(
-  targets: ReturnType<typeof linkedLayoutTargets>,
+  targets: ReturnType<typeof layoutTargetChoices>,
   installationId: string,
 ): SteamGame | undefined {
   const picked = layoutTargetPicks.get().byInstallation[installationId];
