@@ -11,8 +11,9 @@ import { createStore } from "./store";
  * Entries come from Steam's library, A–Z, under the names it shows; a link
  * whose app id is no longer a shortcut is left out.
  *
- * The default: the hand-set link, then the only detected entry, then the
- * first A–Z.
+ * The default: the hand-set link, then an entry seen launching this
+ * installation (a proven link), then the only entry detected from its
+ * Wine prefix, then the first A–Z.
  */
 export function linkedLayoutTargets(
   games: SteamGame[],
@@ -31,12 +32,17 @@ export function linkedLayoutTargets(
   );
   const choices = games.filter((g) => linked.some((l) => l.appId === g.appId));
   const listed = (appId: number | undefined) => choices.find((g) => g.appId === appId);
-  const detectedHere = settings.steamAutoLink
-    ? choices.filter((g) => detected.some((d) => d.appId === g.appId))
-    : [];
+  const detectedHere = (proven: boolean) =>
+    settings.steamAutoLink
+      ? choices.filter((g) =>
+          detected.some((d) => d.appId === g.appId && (d.provenance === "launch") === proven),
+        )
+      : [];
+  const pathDetected = detectedHere(false);
   const initial =
     listed(settings.steamGame?.appId) ??
-    (detectedHere.length === 1 ? detectedHere[0] : undefined) ??
+    detectedHere(true)[0] ??
+    (pathDetected.length === 1 ? pathDetected[0] : undefined) ??
     choices[0];
   return { choices, initial };
 }

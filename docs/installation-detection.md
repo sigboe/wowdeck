@@ -236,6 +236,35 @@ the whole launch line unreadable, and the shortcut links nothing. So do an
 unclosed quote and more than one Lutris game id. No launcher is run.
 Heroic shortcuts are not read.
 
+### Proven links
+
+A proven link (GLOSSARY) ties a shortcut to the installation the engine saw WoW
+running from after that shortcut started. When the plugin sees a non-Steam
+shortcut start, it calls `installations.recordLaunch`. It calls again
+every 15 seconds while the shortcut runs, for up to 10 minutes, because a
+shortcut often opens Battle.net and WoW starts only when the player
+presses Play. The plugin makes no calls between shortcut starts.
+
+Each call looks once through `/proc` for a WoW client:
+
+- The command line must name a WoW client executable.
+- The environment must name the started app id, in `SteamGameId` (a
+  64-bit shortcut game id carries the app id in its high 32 bits),
+  `SteamAppId` or `STEAM_COMPAT_APP_ID`.
+- A Windows path resolves through the prefix's `dosdevices`. The prefix
+  is `WINEPREFIX`, or else `STEAM_COMPAT_DATA_PATH/pfx`.
+- The client's folder must be a listed installation.
+
+The app id must also be a shortcut of the signed-in Steam account. The
+engine keeps proven links in `steam-launch-links.json` in its data
+folder, by app id, account and installation location. Each scan adds
+them to the installation's links with provenance `launch`, under the
+shortcut's current name. A proven link replaces the prefix link to the
+same shortcut, and it goes away once the shortcut is deleted. Links found
+from shortcut fields and prefixes carry provenance `prefix`. A Deck run
+still has to confirm which variables Steam sets (regression row L-14).
+The engine never logs the environment, the command line or their paths.
+
 Discovery runs at engine startup and through Find WoW. The game-page section
 and home-tile badge use all detected links, alongside the existing manual
 picker. Options can disable automatic linking. Linking never changes
@@ -247,7 +276,8 @@ temporary homes. They cover multiple users, both Steam locations, executable
 and folder paths, validity tiers, source priority, live appIds, shared and
 external prefixes, literal overrides, symlinks and broken files. Lutris
 and Bottles tests add a synthetic `pga.db`, game configs and `bottle.yml`
-files in native and Flatpak locations.
+files in native and Flatpak locations. Proven-link tests run a fake
+process reader over a synthetic Proton prefix.
 
 ## Identity
 

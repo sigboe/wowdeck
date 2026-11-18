@@ -7,6 +7,7 @@ import type {
   ControllerLayoutCatalogue,
   Installation,
   PluginSettings,
+  SteamLinkProvenance,
 } from "../backend/src/api/contracts";
 import { defaultSettings } from "../backend/src/wow/storage/settings";
 import { deckyUiStub } from "./deckyUiStub";
@@ -195,15 +196,22 @@ function steam(
   };
 }
 
-/** Installations with their detected links; the first is selected. */
-async function installations(...list: [string, [number, string, number?][]][]) {
+/** Installations with their detected links (app id, name, account, how found); the first is selected. */
+async function installations(
+  ...list: [string, [number, string, number?, SteamLinkProvenance?][]][]
+) {
   fake.answers["installations.list"] = {
     installations: list.map(
       ([id, links], index) =>
         ({
           id,
           selected: index === 0,
-          steamGames: links.map(([appId, name, accountId]) => ({ appId, name, accountId })),
+          steamGames: links.map(([appId, name, accountId, provenance]) => ({
+            appId,
+            name,
+            accountId,
+            provenance,
+          })),
         }) as Installation,
     ),
   };
@@ -372,8 +380,23 @@ test("links match by app id: a renamed entry shows its new name, a deleted entry
   expect(await targetChoices()).toEqual(["Blizzard App", "WoW (Proton)"]);
 });
 
-test.each<[string, number | null, [number, string, number][], string]>([
+test.each<[string, number | null, [number, string, number, SteamLinkProvenance?][], string]>([
   ["the hand-set link", 42, [[44, "Battle.net", 123]], "World of Warcraft"],
+  [
+    "the hand-set link over one seen launching WoW",
+    44,
+    [[42, "World of Warcraft", 123, "launch"]],
+    "Battle.net",
+  ],
+  [
+    "the entry seen launching this installation, over the only path-detected one",
+    null,
+    [
+      [42, "World of Warcraft", 123, "launch"],
+      [44, "Battle.net", 123, "prefix"],
+    ],
+    "World of Warcraft",
+  ],
   ["the only detected entry", null, [[42, "World of Warcraft", 123]], "World of Warcraft"],
   [
     "the first A–Z",
@@ -390,7 +413,7 @@ test.each<[string, number | null, [number, string, number][], string]>([
     [44, "Battle.net"],
   ]);
   linkSettings = {
-    steamGame: handSet ? { appId: handSet, name: "World of Warcraft" } : null,
+    steamGame: handSet ? { appId: handSet, name: "Hand-set" } : null,
     steamAutoLink: true,
   };
   await installations(["active", detected]);
