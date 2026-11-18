@@ -18,7 +18,7 @@ import { createStore } from "./store";
  *
  * The default: the hand-set link, then an entry seen launching this
  * installation (a proven link), then the only entry detected from its
- * Wine prefix, then the first A–Z.
+ * Wine prefix, then the first A–Z. Among suggestions, a proven link first.
  */
 export function layoutTargetChoices(
   games: SteamGame[],
@@ -52,7 +52,10 @@ export function layoutTargetChoices(
   if (choices.length > 0) return { choices, suggested: false, initial };
   const wouldLink = games.filter((g) => detected.some((d) => d.appId === g.appId));
   const suggestions = wouldLink.length > 0 ? wouldLink : games.filter((g) => isLikelyWow(g.name));
-  return { choices: suggestions, suggested: true, initial: suggestions[0] };
+  const proven = suggestions.find((g) =>
+    detected.some((d) => d.appId === g.appId && d.provenance === "launch"),
+  );
+  return { choices: suggestions, suggested: true, initial: proven ?? suggestions[0] };
 }
 
 /**

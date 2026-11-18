@@ -660,6 +660,30 @@ test("with the toggle off, detected entries are suggested and Other game… come
   expect(slot(targetButton())).toBe(`icon ${ICON_WOW}`);
 });
 
+test("with the toggle off, an entry seen launching WoW is only suggested, and the dropdown starts on it", async () => {
+  steam([
+    [42, "World of Warcraft"],
+    [44, "Battle.net"],
+  ]);
+  linkSettings = { steamGame: null, steamAutoLink: false };
+  await installations([
+    "active",
+    [
+      [42, "World of Warcraft", 123, "launch"],
+      [44, "Battle.net", 123, "prefix"],
+    ],
+  ]);
+
+  await showSettled();
+
+  expect(await targetEntries()).toEqual([
+    "Battle.net · Suggested",
+    "World of Warcraft · Suggested",
+    "Other game…",
+  ]);
+  expect(targetButton()?.textContent).toContain("World of Warcraft");
+});
+
 test("with nothing linked or detected, shortcuts named like WoW are suggested", async () => {
   steam([
     [42, "World of Warcraft"],
