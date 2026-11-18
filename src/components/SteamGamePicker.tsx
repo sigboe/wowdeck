@@ -12,7 +12,8 @@ import {
   showModal,
 } from "@decky/ui";
 import { TextRow } from "./TextRow";
-import { ShortcutIconSlot, useShortcutIcons } from "./ShortcutIcon";
+import { IconSlot } from "./IconSlot";
+import { useShortcutIcons } from "./ShortcutIcon";
 import { ScrollBuffer } from "./ScrollBuffer";
 import { wowupModalStyleCss } from "../sharedStyles";
 import { STEAM, descriptionStyle } from "../steamTheme";
@@ -138,7 +139,7 @@ function SteamGameRow({
       focusable
       label={
         <span style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-          <ShortcutIconSlot icon={icon} size={ICON_SIZE} />
+          <IconSlot icon={icon} size={ICON_SIZE} />
           <span style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
             <span data-row-name>{game.name}</span>
             <span data-row-description style={descriptionStyle}>

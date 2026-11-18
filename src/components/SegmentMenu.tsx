@@ -2,7 +2,7 @@ import { useRef, useState, type FocusEvent, type ReactNode } from "react";
 import { DialogButton, Focusable, GamepadButton, type GamepadEvent } from "@decky/ui";
 import { FaCheck, FaChevronDown } from "react-icons/fa";
 import { STEAM, STEAM_FONT, descriptionStyle } from "../steamTheme";
-import { ShortcutIconSlot } from "./ShortcutIcon";
+import { IconSlot } from "./IconSlot";
 
 /**
  * A browse bar segment's picker (ADR 0002, revised 2026-10-24): the choices
@@ -163,7 +163,7 @@ export function SegmentMenu<T>({
           onClick={() => (open ? close(true) : openList())}
           style={{ display: "flex", alignItems: "center", gap: "8px", width: "100%" }}
         >
-          {withIcons && <ShortcutIconSlot icon={selectedChoice?.icon} size={SEGMENT_ICON_SIZE} />}
+          {withIcons && <IconSlot icon={selectedChoice?.icon} size={SEGMENT_ICON_SIZE} />}
           {renderValue(selectedChoice?.label ?? "")}
           <FaChevronDown style={{ flex: "none", width: "10px", color: STEAM.textMuted }} />
         </DialogButton>
@@ -198,7 +198,7 @@ export function SegmentMenu<T>({
                 onClick={() => pick(choice)}
               >
                 {withIcons && (
-                  <ShortcutIconSlot
+                  <IconSlot
                     icon={choice.icon}
                     size={SEGMENT_ICON_SIZE}
                     style={{ marginRight: "8px" }}
