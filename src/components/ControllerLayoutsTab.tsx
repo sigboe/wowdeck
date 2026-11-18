@@ -20,8 +20,8 @@ import {
 import { Warning, WarningLine } from "./Warning";
 import { addonSession } from "../session";
 import {
+  layoutTargetChoices,
   layoutTargetPicks,
-  linkedLayoutTargets,
   possibleSharedTargets,
   selectedLayoutTarget,
 } from "../controllerLayoutTargets";
@@ -31,6 +31,7 @@ import { listSteamShortcuts, type SteamGame } from "../steamLibrary";
 import {
   forgetFocus,
   registerFocusElement,
+  rememberFocus,
   requestFocus,
   rememberedFocus,
   revealRemembered,
@@ -40,6 +41,7 @@ import { useControllerLayoutsSourceOn } from "../controllerLayoutsSource";
 import { FocusSlot, focusTarget } from "./FocusSlot";
 import { SEGMENT_LABEL, SegmentMenu } from "./SegmentMenu";
 import { PANE_DROPDOWN_VALUE } from "./dropdownValue";
+import { openSteamGameLinkPicker } from "./steamGameLink";
 import { FactLine } from "./FactLine";
 import {
   STEAM,
@@ -269,9 +271,9 @@ function Heading({ text }: { text: string }) {
 }
 
 /**
- * The layout target for the selected installation: the linked entries
- * (`linkedLayoutTargets`) and the one chosen, the player's remembered pick
- * or the default.
+ * The layout target for the selected installation: the entries offered
+ * (`layoutTargetChoices`), linked or suggested, and the one chosen, the
+ * player's remembered pick or the default.
  */
 function useLayoutTarget() {
   const session = useSyncExternalStore(addonSession.subscribe, addonSession.get);
@@ -281,18 +283,19 @@ function useLayoutTarget() {
   const accountId = useResource(steamAccount, "current").data ?? undefined;
   const installationId = session.selectedId ?? "";
   const active = session.installations.find((i) => i.id === session.selectedId);
-  const targets = linkedLayoutTargets(games, settings, active, accountId);
+  const targets = layoutTargetChoices(games, settings, active, accountId);
   return {
     games,
     installationId,
     choices: targets.choices,
+    suggested: targets.suggested,
     selected: selectedLayoutTarget(targets, installationId),
     accountId,
   };
 }
 
 function Layouts({ layouts, view }: { layouts: ControllerLayout[]; view: string }) {
-  const { games, installationId, choices, selected, accountId } = useLayoutTarget();
+  const { games, installationId, choices, suggested, selected, accountId } = useLayoutTarget();
   const [cached, setCached] = useState<string[]>([]);
   const shas = layouts.map((l) => l.revision?.sha256).filter((s): s is string => !!s);
   useEffect(() => {
@@ -311,8 +314,10 @@ function Layouts({ layouts, view }: { layouts: ControllerLayout[]; view: string 
       <LayoutTargetRow
         view={view}
         choices={choices}
+        suggested={suggested}
         selected={selected}
         onPick={(appId) => layoutTargetPicks.pick(installationId, appId)}
+        onOtherGame={() => otherGame(view, installationId)}
       />
       {selected && (
         <TargetWarning target={selected} games={games} installationId={installationId} />
@@ -334,49 +339,72 @@ function Layouts({ layouts, view }: { layouts: ControllerLayout[]; view: string 
   );
 }
 
+/** The dropdown's last choice, in every state: the Options Steam game picker. */
+const OTHER_GAME = "other";
+
+/**
+ * "Other game…": the Options Steam game picker, its pick saved as the
+ * hand-set link and selected here. The panel unmounts while the picker is
+ * open (G4), so what follows the pick goes to module scope: the layout
+ * target pick, and focus memory, which lands on the dropdown when the pane
+ * is back (S36).
+ */
+function otherGame(view: string, installationId: string) {
+  rememberFocus(view, "layout-target");
+  openSteamGameLinkPicker((game, saved) => {
+    if (game && saved) layoutTargetPicks.pick(installationId, game.appId);
+    requestFocus(view, "layout-target");
+  });
+}
+
 /**
  * The layout target dropdown: the in-pane segment menu of the browse bar
- * (G14), its caption above it as there. With nothing linked, a row says
- * where to link the game instead, so the pane still opens on a focus stop.
+ * (G14), its caption above it as there. Suggested entries carry the marker
+ * in the list and on the button; "Other game…" always ends the list, so the
+ * pane opens on a focus stop even with nothing to offer.
  */
 function LayoutTargetRow({
   view,
   choices,
+  suggested,
   selected,
   onPick,
+  onOtherGame,
 }: {
   view: string;
   choices: SteamGame[];
+  suggested: boolean;
   selected: SteamGame | undefined;
   onPick: (appId: number) => void;
+  onOtherGame: () => void;
 }) {
-  if (!selected)
-    return (
-      <PanelSectionRow>
-        <Field
-          focusable
-          {...focusTarget(view, "layout-target")}
-          label="No linked game"
-          description={
-            <span style={descriptionStyle}>
-              Choose World of Warcraft in Steam under Options › Steam library to preview layouts
-            </span>
-          }
-        />
-      </PanelSectionRow>
-    );
+  const note = suggested ? "Suggested" : undefined;
   return (
     <PanelSectionRow>
       {/* The open list is placed against this box, as in the browse bar. */}
       <div style={{ position: "relative" }}>
         <FocusSlot view={view} id="layout-target">
           <div style={SEGMENT_LABEL}>Library entry</div>
-          <SegmentMenu
+          <SegmentMenu<number | typeof OTHER_GAME>
             menuLabel="Library entry"
-            choices={choices.map((g) => ({ data: g.appId, label: g.name }))}
-            selected={selected.appId}
-            renderValue={PANE_DROPDOWN_VALUE}
-            onPick={onPick}
+            choices={[
+              ...choices.map((g) => ({ data: g.appId, label: g.name, note })),
+              { data: OTHER_GAME, label: "Other game…" },
+            ]}
+            selected={selected?.appId ?? null}
+            renderValue={(value) =>
+              PANE_DROPDOWN_VALUE(
+                selected ? (
+                  <>
+                    {value}
+                    {note && <span style={descriptionStyle}> · {note}</span>}
+                  </>
+                ) : (
+                  <span style={descriptionStyle}>Choose a game</span>
+                ),
+              )
+            }
+            onPick={(data) => (data === OTHER_GAME ? onOtherGame() : onPick(data))}
           />
         </FocusSlot>
       </div>

@@ -1,7 +1,7 @@
 import { useRef, useState, type FocusEvent, type ReactNode } from "react";
 import { DialogButton, Focusable, GamepadButton, type GamepadEvent } from "@decky/ui";
 import { FaCheck, FaChevronDown } from "react-icons/fa";
-import { STEAM, STEAM_FONT } from "../steamTheme";
+import { STEAM, STEAM_FONT, descriptionStyle } from "../steamTheme";
 
 /**
  * A browse bar segment's picker (ADR 0002, revised 2026-10-24): the choices
@@ -27,6 +27,8 @@ export interface SegmentChoice<T> {
   /** The pick's value; null is a real choice ("All categories"), not "none". */
   data: T;
   label: string;
+  /** A marker after the label in the description grey ("Suggested"); not part of the value. */
+  note?: string;
 }
 
 /** The caption over a segment's button: Steam's row label, one size down. */
@@ -183,6 +185,14 @@ export function SegmentMenu<T>({
                 onClick={() => pick(choice)}
               >
                 <span className="wowdeck-segment-menu-label">{choice.label}</span>
+                {choice.note && (
+                  <span
+                    className="wowdeck-segment-menu-note"
+                    style={{ ...descriptionStyle, flex: "none" }}
+                  >
+                    {choice.note}
+                  </span>
+                )}
                 {choice.data === selected && (
                   <FaCheck style={{ flex: "none", width: "12px", color: STEAM.positive }} />
                 )}
