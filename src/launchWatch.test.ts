@@ -2,8 +2,14 @@ import { expect, test } from "bun:test";
 import { createManualClock } from "./testSupport/manualClock";
 import { LOOK_EVERY_MS, LOOK_FOR_MS, startLaunchWatch } from "./steamDom/launchWatch";
 
-/** Steam as the watch sees it: lifetime notifications, running apps and the library's shortcuts. */
-function fakeSteam(opts: { recordedOnLook?: number; accountFails?: boolean } = {}) {
+/**
+ * Steam as the watch sees it: lifetime notifications, running apps and the
+ * library's shortcuts. 42 and 43 have WoW-like names; 44 and 45 do not, and
+ * `linked` can name 45 as a linked or detected shortcut.
+ */
+function fakeSteam(
+  opts: { recordedOnLook?: number; accountFails?: boolean; linked?: number[] } = {},
+) {
   const clock = createManualClock();
   let notify:
     ((n: { unAppID: number; nInstanceID: number; bRunning: boolean }) => void) | undefined;
@@ -24,7 +30,10 @@ function fakeSteam(opts: { recordedOnLook?: number; accountFails?: boolean } = {
     shortcuts: () => [
       { appId: 42, name: "World of Warcraft" },
       { appId: 43, name: "Battle.net" },
+      { appId: 44, name: "Unrelated game" },
+      { appId: 45, name: "My games" },
     ],
+    linked: () => opts.linked ?? [],
     accountId: () =>
       opts.accountFails ? Promise.reject(Error("no account")) : Promise.resolve(123),
     record: async (params) => {
@@ -85,6 +94,24 @@ test("a Steam game's start asks nothing", async () => {
   expect(steam.asks).toEqual([]);
 });
 
+test("a shortcut that could not be WoW asks nothing", async () => {
+  const steam = fakeSteam();
+  await steam.start(44);
+  await steam.advance(LOOK_EVERY_MS * 3);
+  expect(steam.asks).toEqual([]);
+  expect(steam.clock.activeTimers()).toBe(0);
+});
+
+test("a shortcut linked or detected already is watched whatever its name", async () => {
+  const steam = fakeSteam({ linked: [45] });
+  await steam.start(45);
+  await steam.advance(LOOK_EVERY_MS);
+  expect(steam.asks).toEqual([
+    { appId: 45, accountId: 123 },
+    { appId: 45, accountId: 123 },
+  ]);
+});
+
 test("looking stops when the shortcut quits", async () => {
   const steam = fakeSteam();
   await steam.start(43);
@@ -123,6 +150,7 @@ test("without Steam's lifetime notifications the watch does nothing and never th
     steamClient: undefined,
     runningApps: () => null,
     shortcuts: () => [],
+    linked: () => [],
     accountId: () => Promise.resolve(123),
     record: async () => ({ recorded: false }),
     recorded: () => {},

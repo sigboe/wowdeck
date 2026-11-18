@@ -373,6 +373,12 @@ export default definePlugin(() => {
     steamClient: (globalThis as { SteamClient?: unknown }).SteamClient,
     runningApps: steamRunningApps,
     shortcuts: listSteamShortcuts,
+    // Hand-set and every detected link, toggle or not: any could launch WoW.
+    linked: () => {
+      const { steamGame } = settingsStore.get().settings;
+      const detected = addonSession.get().installations.flatMap((i) => i.steamGames ?? []);
+      return [...(steamGame ? [steamGame] : []), ...detected].map((g) => g.appId);
+    },
     accountId: currentSteamAccountId,
     record: (params) => engine.rpc("installations.recordLaunch", params),
     recorded: () => void addonSession.reloadInstallations(),

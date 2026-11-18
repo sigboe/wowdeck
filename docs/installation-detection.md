@@ -239,11 +239,23 @@ Heroic shortcuts are not read.
 ### Proven links
 
 A proven link (GLOSSARY) ties a shortcut to the installation the engine saw WoW
-running from after that shortcut started. When the plugin sees a non-Steam
-shortcut start, it calls `installations.recordLaunch`. It calls again
-every 15 seconds while the shortcut runs, for up to 10 minutes, because a
-shortcut often opens Battle.net and WoW starts only when the player
-presses Play. The plugin makes no calls between shortcut starts.
+running from after that shortcut started. The plugin learns that a
+shortcut started from Steam's app lifetime notification
+(`SteamClient.GameSessions.RegisterForAppLifetimeNotifications`). It
+doesn't poll Steam's running-apps store for starts. It watches only
+shortcuts that could be WoW:
+
+- a shortcut linked by hand, or detected for any installation with
+  either provenance, even with "Link detected Steam games" off;
+- a shortcut whose name looks like WoW or Battle.net, the test the
+  Options picker uses to list likely entries first.
+
+For such a shortcut it calls `installations.recordLaunch` at once, then
+every 15 seconds for up to 10 minutes, because a shortcut often opens
+Battle.net and WoW starts only when the player presses Play. It stops when
+a call records a link, when the shortcut quits, or when the running-apps
+store no longer lists it. Other shortcuts' starts make no calls, and the
+plugin makes none between shortcut starts.
 
 Each call looks once through `/proc` for a WoW client:
 

@@ -15,7 +15,7 @@
  */
 
 import type { Clock } from "../clock";
-import type { SteamGame } from "../steamLibrary";
+import { isLikelyWow, type SteamGame } from "../steamLibrary";
 
 /** How often, and for how long after a shortcut starts, the engine looks for WoW. */
 export const LOOK_EVERY_MS = 15_000;
@@ -33,6 +33,12 @@ export interface LaunchWatchDeps {
   runningApps: () => number[] | null;
   /** Non-Steam shortcuts in the library. */
   shortcuts: () => SteamGame[];
+  /**
+   * App ids of the shortcuts linked by hand or detected for any
+   * installation, with any provenance, whatever "Link detected Steam games"
+   * says.
+   */
+  linked: () => number[];
   /** The Steam account signed in now. */
   accountId: () => Promise<number>;
   /** `installations.recordLaunch`: one look at the running processes. */
@@ -62,14 +68,24 @@ function warnOnce(what: string, err?: unknown): void {
 }
 
 /**
- * Proven links (GLOSSARY): when a non-Steam shortcut starts, ask the engine
- * to look for WoW launched through it (`installations.recordLaunch`), now
- * and every LOOK_EVERY_MS while the shortcut runs, for at most LOOK_FOR_MS
- * or until a link is recorded. Nothing runs between shortcut starts.
+ * Proven links (GLOSSARY): when a non-Steam shortcut that could be WoW
+ * starts (one already linked or detected, or one whose name looks like WoW),
+ * ask the engine to look for WoW launched through it
+ * (`installations.recordLaunch`), now and every LOOK_EVERY_MS while the
+ * shortcut runs, for at most LOOK_FOR_MS or until a link is recorded. The
+ * start comes from the lifetime notification; the running-apps store is read
+ * only between looks, to stop once the shortcut is gone. Nothing runs
+ * between shortcut starts, and other shortcuts' starts ask nothing.
  * Starts at plugin load (definePlugin), like the home badge.
  */
 export function startLaunchWatch(deps: LaunchWatchDeps): () => void {
   const looking = new Map<number, unknown>();
+
+  /** A shortcut already linked or detected, or one whose name looks like WoW. */
+  const couldBeWow = (appId: number) => {
+    const shortcut = deps.shortcuts().find((g) => g.appId === appId);
+    return shortcut !== undefined && (deps.linked().includes(appId) || isLikelyWow(shortcut.name));
+  };
 
   const stopLooking = (appId: number) => {
     if (!looking.has(appId)) return;
@@ -132,7 +148,7 @@ export function startLaunchWatch(deps: LaunchWatchDeps): () => void {
           stopLooking(appId);
           return;
         }
-        if (looking.has(appId) || !deps.shortcuts().some((g) => g.appId === appId)) return;
+        if (looking.has(appId) || !couldBeWow(appId)) return;
         startLooking(appId);
       } catch (err) {
         warnOnce("notification", err);
