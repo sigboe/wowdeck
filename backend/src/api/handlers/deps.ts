@@ -6,6 +6,7 @@
 
 import type { AddonService } from "../../wow/addons/AddonService";
 import type { Catalogue } from "../../wow/catalogue/Catalogue";
+import type { SteamLaunchLog } from "../../wow/installation/SteamLaunchLog";
 import type { InstallationService } from "../../wow/installation/InstallationService";
 import type { CompanionSyncCoordinator } from "../../wow/notifications/CompanionSync";
 import type { AddonUpdates } from "../../wow/addons/AddonUpdates";
@@ -35,6 +36,7 @@ export interface HandlerDeps {
   /** Search, Latest/Popular, details and finding sources (read-only). */
   catalogue: Catalogue;
   installationService: InstallationService;
+  steamLaunchLog: SteamLaunchLog;
   companionCoordinator: CompanionSyncCoordinator;
   /** The update check, eligibility, Update all and automatic updates. */
   addonUpdates: AddonUpdates;

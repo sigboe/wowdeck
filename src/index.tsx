@@ -44,10 +44,9 @@ import { patchGamePage } from "./steamGamePage";
 import { steamLaunch } from "./steamLaunchActions";
 import { settingsStore } from "./settings";
 import { startHomeBadge } from "./steamDom/homeBadge";
-import { startLaunchWatch, steamRunningApps } from "./steamDom/launchWatch";
+import { startLaunchWatch } from "./steamDom/launchWatch";
 import { listSteamShortcuts } from "./steamLibrary";
 import { currentSteamAccountId } from "./nativeControllerLayouts";
-import { systemClock } from "./clock";
 import { startPluginExitWatch, startQamVisibilityWatch } from "./steamDom/qamVisibility";
 import { setQamExpander, stopQamWidening } from "./steamDom/qamWidening";
 import { QamExpandHook } from "./steamDom/qamExpandHook";
@@ -369,9 +368,12 @@ export default definePlugin(() => {
   const stopHomeBadge = startHomeBadge();
   // A shortcut seen launching WoW becomes a proven link (#279): the game
   // page, the badge and the layout target dropdown use it once recorded.
+  const offLaunchRecorded = engine.events.on(
+    "installations.launchRecorded",
+    () => void addonSession.reloadInstallations(),
+  );
   const stopLaunchWatch = startLaunchWatch({
     steamClient: (globalThis as { SteamClient?: unknown }).SteamClient,
-    runningApps: steamRunningApps,
     shortcuts: listSteamShortcuts,
     // Hand-set and every detected link, toggle or not: any could launch WoW.
     linked: () => {
@@ -380,9 +382,7 @@ export default definePlugin(() => {
       return [...(steamGame ? [steamGame] : []), ...detected].map((g) => g.appId);
     },
     accountId: currentSteamAccountId,
-    record: (params) => engine.rpc("installations.recordLaunch", params),
-    recorded: () => void addonSession.reloadInstallations(),
-    clock: systemClock,
+    watch: (params) => engine.rpc("installations.watchLaunch", params),
   });
   // A QAM close must end the browse session, so reopening lands Get Addons
   // collapsed (UI-02 story 33): the module-scope machine alone would carry a
@@ -452,6 +452,7 @@ export default definePlugin(() => {
       steamLaunch.stopWatching();
       stopHomeBadge();
       stopLaunchWatch();
+      offLaunchRecorded();
       stopQamVisibilityWatch();
       stopPluginExitWatch();
       // The whole plugin is unloading (not a modal round-trip): the next

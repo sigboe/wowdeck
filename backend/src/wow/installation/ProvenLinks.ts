@@ -82,13 +82,14 @@ export async function runningLaunches(
   appId: number,
   locations: readonly string[],
   reader: ProcReader = fsProcReader,
+  pid?: string,
 ): Promise<string[]> {
   const known = await Promise.all(locations.map(async (location) => ({ location, key: await canonical(location) })));
   const found = new Set<string>();
-  for (const pid of (await reader.pids()) ?? []) {
-    const paths = clientPaths((await reader.read(pid, "cmdline")) ?? "");
+  for (const processId of pid === undefined ? (await reader.pids()) ?? [] : [pid]) {
+    const paths = clientPaths((await reader.read(processId, "cmdline")) ?? "");
     if (!paths.length) continue;
-    const env = environment((await reader.read(pid, "environ")) ?? "");
+    const env = environment((await reader.read(processId, "environ")) ?? "");
     if (!launchingAppIds(env).includes(appId)) continue;
     for (const path of paths) {
       const folder = await clientFolder(path, prefixOf(env));

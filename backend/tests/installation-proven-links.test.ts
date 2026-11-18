@@ -96,6 +96,29 @@ test("WoW seen running from a shortcut is a proven link that a new detector stil
   expect(found[0]!.steamGames).toEqual([{ appId: 42, name: "My games", accountId: 100, provenance: "launch" }]);
 });
 
+test("a Steam log PID considers only that process and still verifies its shortcut", async () => {
+  const { compat, retail } = protonInstall(999);
+  shortcuts("100", [{ appid: 42, name: "Battle.net" }]);
+  const reader = procs({
+    "1": {
+      comm: "Wow.exe",
+      cmdline: [RETAIL_EXE],
+      environ: { SteamGameId: shortcutGameId(43), STEAM_COMPAT_DATA_PATH: compat },
+    },
+    "2": {
+      comm: "Wow.exe",
+      cmdline: [RETAIL_EXE],
+      environ: { SteamGameId: shortcutGameId(42), STEAM_COMPAT_DATA_PATH: compat },
+    },
+  });
+  const scan = spyOn(reader, "pids");
+  const launch = { appId: 42, accountId: 100 };
+  const service = detector(reader);
+  expect(await service.recordLaunch(launch, [retail], "1")).toBe(false);
+  expect(await service.recordLaunch(launch, [retail], "2")).toBe(true);
+  expect(scan).not.toHaveBeenCalled();
+});
+
 test.each([
   ["SteamAppId and WINEPREFIX", (compat: string) => ({ SteamAppId: "42", WINEPREFIX: join(compat, "pfx") })],
   ["STEAM_COMPAT_APP_ID", (compat: string) => ({ SteamAppId: "0", STEAM_COMPAT_APP_ID: "42", STEAM_COMPAT_DATA_PATH: compat })],

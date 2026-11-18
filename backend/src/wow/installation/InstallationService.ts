@@ -118,11 +118,11 @@ export class InstallationService {
    * when WoW now runs from a listed installation through it, then refresh
    * the links.
    */
-  async recordLaunch(homeDir: string, launch: { appId: number; accountId?: number }): Promise<{ recorded: boolean; installations: Installation[] }> {
+  async recordLaunch(homeDir: string, launch: { appId: number; accountId?: number }, pid?: string): Promise<{ recorded: boolean; installations: Installation[] }> {
     if (!Number.isSafeInteger(launch.appId) || launch.appId <= 0) throw new ValidationError("appId must be a Steam app id");
     if (launch.accountId !== undefined && !Number.isSafeInteger(launch.accountId)) throw new ValidationError("accountId must be a number");
     const { appId, accountId } = launch;
-    const recorded = await this.#detector(homeDir).recordLaunch({ appId, accountId }, this.store.installations.map((i) => i.location));
+    const recorded = await this.#detector(homeDir).recordLaunch({ appId, accountId }, this.store.installations.map((i) => i.location), pid);
     if (recorded) await this.#relink(homeDir, false);
     return { recorded, installations: this.listed() };
   }

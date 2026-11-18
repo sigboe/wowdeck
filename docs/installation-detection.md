@@ -250,14 +250,16 @@ shortcuts that could be WoW:
 - a shortcut whose name looks like WoW or Battle.net, the test the
   Options picker uses to list likely entries first.
 
-For such a shortcut it calls `installations.recordLaunch` at once, then
-every 15 seconds for up to 10 minutes, because a shortcut often opens
-Battle.net and WoW starts only when the player presses Play. It stops when
-a call records a link, when the shortcut quits, or when the running-apps
-store no longer lists it. Other shortcuts' starts make no calls, and the
-plugin makes none between shortcut starts.
+For such a shortcut, the engine follows new process entries in Steam's
+Linux console log (`logs/console-linux.txt`) and checks for a WoW client
+already running at shortcut start. A later `Adding process` entry supplies a
+PID and a Steam game ID. The engine matches the game ID to the active
+shortcut and checks only that PID. This catches WoW starting after
+Battle.net opens. The watcher ends when it records a link or the
+shortcut quits. If Steam's log is unavailable, the initial check and
+prefix detection still work.
 
-Each call looks once through `/proc` for a WoW client:
+To prove the link, the engine checks the process in `/proc`:
 
 - The command line must name a WoW client executable.
 - The environment must name the started app id, in `SteamGameId` (a

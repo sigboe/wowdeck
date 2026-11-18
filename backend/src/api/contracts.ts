@@ -1092,14 +1092,18 @@ export interface MethodMap {
    * One look at the running processes: a WoW client whose environment names
    * this shortcut's app id, running from a listed installation, records a
    * proven link (provenance "launch") in the engine's data folder.
-   * `recorded` is false when no such process runs yet (the launcher may
-   * still be open; the caller asks again), the app id is not a shortcut of
+   * `recorded` is false when no such process runs yet, the app id is not a shortcut of
    * that account, or the game runs from no listed installation.
    * `installations` is the list after, with its links.
    */
   "installations.recordLaunch": {
     params: { appId: number; accountId?: number };
     result: { recorded: boolean; installations: Installation[] };
+  };
+  /** Follow Steam process additions while this shortcut runs. */
+  "installations.watchLaunch": {
+    params: { appId: number; accountId?: number; running: boolean };
+    result: Record<string, never>;
   };
   "installations.update": {
     params: { installationId: string } & InstallationPreferences;
@@ -2132,6 +2136,7 @@ export type UpdateAllProgress = {
 
 export interface EventMap {
   "launch.completed": LaunchCompletion;
+  "installations.launchRecorded": Record<string, never>;
   /** An automatic update ran and updated or failed something (WF-02). */
   "addons.autoUpdated": { result: AutoUpdateResult };
   "tradeskillmaster.changed": Record<string, never>;

@@ -328,14 +328,14 @@ export class InstallationDetector {
    * running processes. False, recording nothing, without a data folder,
    * when the app id is no shortcut of that account, or no such client runs.
    */
-  async recordLaunch(launch: { appId: number; accountId?: number }, locations: readonly string[]): Promise<boolean> {
+  async recordLaunch(launch: { appId: number; accountId?: number }, locations: readonly string[], pid?: string): Promise<boolean> {
     const { dataDir, procReader } = this.options;
     if (!dataDir) return false;
     const shortcut = (await this.steamLibrary()).shortcuts.find(
       (s) => s.appId === launch.appId && (launch.accountId === undefined || s.accountId === launch.accountId),
     );
     if (!shortcut) return false;
-    const running = await runningLaunches(launch.appId, locations, procReader);
+    const running = await runningLaunches(launch.appId, locations, procReader, pid);
     await addProvenLinks(dataDir, running.map((location) => ({
       appId: launch.appId,
       ...(shortcut.accountId ? { accountId: shortcut.accountId } : {}),

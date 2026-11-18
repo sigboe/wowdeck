@@ -11,7 +11,7 @@ What's new in each version of WoWDeck Addon Manager. The format follows
 - Pick the WoW client Steam's Play button starts from its menu, even with Battle.net closed. Options can turn it off.
 - Browse reviewed controller layouts with Workshop likes, preview them on your WoW entry or any other game, apply approved mappings, and restore previous controls.
 - WoW shortcuts added to Steam from Lutris or Bottles now link to their installation without setting it by hand.
-- Launch WoW once from any Steam shortcut, and WoWDeck links that shortcut to the installation it started.
+- WoWDeck links your Steam shortcut to the installation it starts, including when WoW opens later through Battle.net.
 
 ### Changed
 

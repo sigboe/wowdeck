@@ -30,6 +30,7 @@ import { TradeSkillMasterData } from "./wow/tsm/TradeSkillMasterData";
 import { TradeSkillMasterAuth, TradeSkillMasterProvider } from "./wow/tsm/TradeSkillMasterAuth";
 import { DownloadService } from "./wow/downloads/DownloadService";
 import { AddonService, type ServiceEvents } from "./wow/addons/AddonService";
+import { SteamLaunchLog } from "./wow/installation/SteamLaunchLog";
 import { InstallationService } from "./wow/installation/InstallationService";
 import { Catalogue } from "./wow/catalogue/Catalogue";
 import { getGameTypeForClientType } from "./wow/utils/gametype";
@@ -330,8 +331,14 @@ export function assembleEngine(config: EngineConfig): Engine & { start(): Promis
     config.launchWorld ?? localLaunchWorld(homeDir, () => steam.steamHomes()),
     (completion) => server.emit("launch.completed", completion),
   );
+  const steamLaunchLog = new SteamLaunchLog(homeDir, async (launch, pid) => {
+    const { recorded } = await installationService.recordLaunch(homeDir, launch, pid);
+    if (recorded) server.emit("installations.launchRecorded", {});
+    return recorded;
+  });
   const deps: HandlerDeps = {
     launch,
+    steamLaunchLog,
     tsmAuth,
     tsmData,
     backendVersion,
