@@ -39,6 +39,7 @@ import { layoutRow, useControllerLayoutCatalogue } from "../controllerLayouts";
 import { useControllerLayoutsSourceOn } from "../controllerLayoutsSource";
 import { FocusSlot, focusTarget } from "./FocusSlot";
 import { SEGMENT_LABEL, SegmentMenu } from "./SegmentMenu";
+import { useShortcutIcons } from "./ShortcutIcon";
 import { PANE_DROPDOWN_VALUE } from "./dropdownValue";
 import { FactLine } from "./FactLine";
 import {
@@ -336,8 +337,9 @@ function Layouts({ layouts, view }: { layouts: ControllerLayout[]; view: string 
 
 /**
  * The layout target dropdown: the in-pane segment menu of the browse bar
- * (G14), its caption above it as there. With nothing linked, a row says
- * where to link the game instead, so the pane still opens on a focus stop.
+ * (G14), its caption above it as there, with each entry's Steam icon. With
+ * nothing linked, a row says where to link the game instead, so the pane
+ * still opens on a focus stop.
  */
 function LayoutTargetRow({
   view,
@@ -350,6 +352,7 @@ function LayoutTargetRow({
   selected: SteamGame | undefined;
   onPick: (appId: number) => void;
 }) {
+  const icons = useShortcutIcons(choices.map((g) => g.appId));
   if (!selected)
     return (
       <PanelSectionRow>
@@ -373,9 +376,14 @@ function LayoutTargetRow({
           <div style={SEGMENT_LABEL}>Library entry</div>
           <SegmentMenu
             menuLabel="Library entry"
-            choices={choices.map((g) => ({ data: g.appId, label: g.name }))}
+            choices={choices.map((g) => ({
+              data: g.appId,
+              label: g.name,
+              icon: icons.get(g.appId),
+            }))}
             selected={selected.appId}
             renderValue={PANE_DROPDOWN_VALUE}
+            withIcons
             onPick={onPick}
           />
         </FocusSlot>

@@ -207,6 +207,35 @@ flavor, can identify the root. If that evidence points to more than one
 root or is absent, Steam's Play button stays as it is. The launch product
 and remembered client choice apply after the root is known.
 
+### Lutris and Bottles shortcuts
+
+A shortcut that starts a Lutris game or a Bottles program runs in that
+launcher's Wine prefix, not in a Steam one. The detector reads the launch
+options as literal words and follows them to the prefix:
+
+- Lutris: `lutris:rungameid/<n>`, passed to `lutris`, to `flatpak run
+  net.lutris.Lutris` or to `xdg-open`. The detector reads that game's
+  `configpath` from Lutris' `pga.db`, then `games/<configpath>.yml` under
+  Lutris' config or data folder. Its `game.prefix` is the prefix, and
+  `game.exe` with `game.args` is the program. Flatpak Lutris keeps all of
+  this under `~/.var/app/net.lutris.Lutris`.
+- Bottles: `-b`/`--bottle` with `-p`/`--program` or `-e`/`--executable`,
+  passed to `bottles-cli`, `bottles` or `flatpak run com.usebottles.bottles`.
+  Bottles' own `xdg-open bottles:run/<bottle>/<program>` form works too. The
+  bottle is the folder whose `bottle.yml` has that `Name`, or failing that,
+  the folder with that name, in the native or Flatpak bottles folder. A
+  program name resolves through the bottle's `External_Programs`.
+
+The program decides whether the shortcut is WoW, by the same rule as a
+direct shortcut. A Lutris game or Bottles program that launches another
+Blizzard product from a shared prefix links nothing. The prefix's registry
+then finds the installation, and the shortcut links to it.
+
+Any word a shell would expand, substitute, chain, redirect or glob makes
+the whole launch line unreadable, and the shortcut links nothing. So do an
+unclosed quote and more than one Lutris game id. No launcher is run.
+Heroic shortcuts are not read.
+
 Discovery runs at engine startup and through Find WoW. The game-page section
 and home-tile badge use all detected links, alongside the existing manual
 picker. Options can disable automatic linking. Linking never changes
@@ -216,7 +245,9 @@ opt-in, and existing user choices remain in effect.
 Detector tests construct synthetic binary `shortcuts.vdf` fixtures in
 temporary homes. They cover multiple users, both Steam locations, executable
 and folder paths, validity tiers, source priority, live appIds, shared and
-external prefixes, literal overrides, symlinks and broken files.
+external prefixes, literal overrides, symlinks and broken files. Lutris
+and Bottles tests add a synthetic `pga.db`, game configs and `bottle.yml`
+files in native and Flatpak locations.
 
 ## Identity
 
