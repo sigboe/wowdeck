@@ -101,7 +101,7 @@ const catalogueRequests = () =>
 test("the reviewed layouts appear in the maintainers' order and preview in Steam", async () => {
   const text = await show();
 
-  expect(text).toContain("to preview one in Steam");
+  expect(text).toContain("Reviewed layouts");
   expect(text.indexOf("Fixture layout A")).toBeLessThan(text.indexOf("Fixture layout B"));
   expect(text).toContain("by WoWDeck fixtures");
   expect(text).toContain("Steam Deck");

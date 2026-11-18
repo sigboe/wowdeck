@@ -120,6 +120,7 @@ export const deckyUiStub = {
   TextField: ({ "aria-label": ariaLabel }: { "aria-label"?: string }) =>
     ariaLabel ? <input aria-label={ariaLabel} /> : null,
   Spinner: () => <span role="progressbar" />,
+  quickAccessControlsClasses: { PanelSectionTitle: "PanelSectionTitle" },
   // Steam's ProgressBarWithInfo is itself a Field row: its label and B action.
   ProgressBarWithInfo: ({
     label,

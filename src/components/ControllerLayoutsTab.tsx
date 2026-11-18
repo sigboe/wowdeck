@@ -1,4 +1,4 @@
-import { Field, Focusable, PanelSectionRow, Spinner } from "@decky/ui";
+import { Field, Focusable, PanelSectionRow, Spinner, quickAccessControlsClasses } from "@decky/ui";
 import { toaster } from "@decky/api";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { engine } from "../engineLink";
@@ -253,12 +253,14 @@ function StateRow({ view, label, text }: { view: string; label: string; text?: s
   );
 }
 
-function Note({ text }: { text: string }) {
-  return (
-    <PanelSectionRow>
-      <div style={descriptionStyle}>{text}</div>
-    </PanelSectionRow>
-  );
+/**
+ * The list's headline, drawn with Steam's own QAM section title class, the
+ * one Decky's `PanelSection title` uses. The pane already sits inside a
+ * `PanelSection`, so a nested one would add its padding twice. The A action
+ * is named in the footer ("Preview"), so the headline needs no help text.
+ */
+function Heading({ text }: { text: string }) {
+  return <div className={quickAccessControlsClasses?.PanelSectionTitle}>{text}</div>;
 }
 
 function Layouts({ layouts, view }: { layouts: ControllerLayout[]; view: string }) {
@@ -283,14 +285,7 @@ function Layouts({ layouts, view }: { layouts: ControllerLayout[]; view: string 
   }, [accountId, shas.join()]);
   return (
     <>
-      {/* What the player can do here, above the list it explains (S22). */}
-      <Note
-        text={
-          preferred
-            ? `Layouts the WoWDeck maintainers reviewed for WoW. A previews one in Steam for ${preferred.name}; X there applies it.`
-            : "Layouts the WoWDeck maintainers reviewed for WoW. Choose a library entry to preview one in Steam."
-        }
-      />
+      <Heading text="Reviewed layouts" />
       {/* Steam's 6 px between rows (S10): the Fields alone touched (0 px, DEVICE 2026-11-17). */}
       <div style={{ display: "flex", flexDirection: "column", gap: STEAM_ROW_GAP }}>
         {layouts.map((layout) => (
