@@ -1,7 +1,7 @@
 /// <reference types="bun-types" />
 import { afterAll, afterEach, beforeEach, expect, jest, mock, test } from "bun:test";
 import { JSDOM } from "jsdom";
-import { act } from "react";
+import { act, type ReactElement } from "react";
 import type {
   ControllerLayout,
   ControllerLayoutCatalogue,
@@ -54,11 +54,25 @@ const fake = createFakeEngine({
   "settings.get": () => ({
     settings: { ...defaultSettings(), controllerLayoutsEnabled: sourceOn, ...linkSettings },
   }),
+  "settings.set": ({ settings }) => {
+    linkSettings = { ...linkSettings, ...settings };
+    return {
+      settings: { ...defaultSettings(), controllerLayoutsEnabled: sourceOn, ...linkSettings },
+    };
+  },
   "controllerLayouts.catalogue": () => answer,
 });
 connectEngine(fake);
 mock.module("@decky/api", () => ({ toaster: { toast: () => {} } }));
-mock.module("@decky/ui", () => deckyUiStub);
+// The modal Steam would show (the Options Steam game picker), for the test to render.
+let shownModal: ReactElement | null = null;
+mock.module("@decky/ui", () => ({
+  ...deckyUiStub,
+  showModal: (element: ReactElement) => {
+    shownModal = element;
+    return { Close: () => (shownModal = null) };
+  },
+}));
 // Steam's own preview needs Steam; the pane's part is which entry it opens for.
 const previews: [string, number][] = [];
 mock.module("./nativeLayoutPreview", () => ({
@@ -92,6 +106,7 @@ const { ControllerLayoutsTab } = await import("./components/ControllerLayoutsTab
 const { addonSession } = await import("./session");
 const { layoutTargetPicks } = await import("./controllerLayoutTargets");
 const { steamAccount, layoutOperationContext } = await import("./controllerLayoutPreviewSession");
+const { rememberedFocus } = await import("./focusMemory");
 
 let root: ReturnType<typeof createRoot>;
 beforeEach(() => {
@@ -99,6 +114,7 @@ beforeEach(() => {
   answer = { state: "ready", layouts: [LAYOUT_A, LAYOUT_B] };
   linkSettings = {};
   previews.length = 0;
+  shownModal = null;
   layoutTargetPicks.reset();
   fake.calls.length = 0;
   controllerLayoutsModule.catalogue.forget(controllerLayoutsModule.KEY);
@@ -270,7 +286,8 @@ test("the reviewed layouts appear in the maintainers' order and preview in Steam
   expect(text).toContain("by Another fixture");
   expect(text).toContain("Steam Controller");
   expect(text).not.toMatch(/Apply layout/);
-  expect(doc.querySelectorAll("button").length).toBe(0);
+  // No Apply or other buttons: the layout target dropdown is the only one.
+  expect([...doc.querySelectorAll("button")]).toEqual([targetButton()!]);
 });
 
 test("a withdrawn layout is explained, not offered", async () => {
@@ -351,13 +368,13 @@ test("the dropdown lists the hand-set link and this installation's detected link
 
   await showSettled();
 
-  expect(await targetChoices()).toEqual(["Battle.net", "World of Warcraft"]);
+  expect(await targetChoices()).toEqual(["Battle.net", "World of Warcraft", "Other game…"]);
 
   linkSettings = { ...linkSettings, steamAutoLink: false };
   await act(async () => root.render(null));
   await showSettled();
 
-  expect(await targetChoices()).toEqual(["Battle.net"]);
+  expect(await targetChoices()).toEqual(["Battle.net", "Other game…"]);
 });
 
 test("links match by app id: a renamed entry shows its new name, a deleted entry is gone", async () => {
@@ -377,7 +394,7 @@ test("links match by app id: a renamed entry shows its new name, a deleted entry
   await showSettled();
 
   expect(targetButton()?.textContent).toBe("Blizzard App");
-  expect(await targetChoices()).toEqual(["Blizzard App", "WoW (Proton)"]);
+  expect(await targetChoices()).toEqual(["Blizzard App", "WoW (Proton)", "Other game…"]);
 });
 
 test.each<[string, number | null, [number, string, number, SteamLinkProvenance?][], string]>([
@@ -462,7 +479,7 @@ async function menuIcons(): Promise<string[]> {
   return icons;
 }
 
-test("each entry shows its Steam icon in the menu and on the button; one without keeps a blank slot", async () => {
+test("each entry shows its Steam icon in the menu and on the button; one without, and Other game…, keep a blank slot", async () => {
   steam([
     [42, "World of Warcraft", ICON_WOW],
     [44, "Battle.net"],
@@ -474,12 +491,17 @@ test("each entry shows its Steam icon in the menu and on the button; one without
 
   expect(slot(targetButton())).toBe(`icon ${ICON_WOW}`);
   expect(targetButton()?.textContent).toBe("World of Warcraft");
-  expect(await menuIcons()).toEqual(["Battle.net: blank", `World of Warcraft: icon ${ICON_WOW}`]);
+  expect(await menuIcons()).toEqual([
+    "Battle.net: blank",
+    `World of Warcraft: icon ${ICON_WOW}`,
+    "Other game…: blank",
+  ]);
   await act(async () => targetButton()!.click());
   const slots = [targetButton()!, ...menuItems()].map((el) =>
     el.querySelector<HTMLElement>("[data-icon-slot]")!,
   );
   expect(slots.map((s) => `${s.style.width} ${s.style.height}`)).toEqual([
+    "20px 20px",
     "20px 20px",
     "20px 20px",
     "20px 20px",
@@ -606,21 +628,126 @@ test("a second controller keeps the detected links and explains that only previe
 
   const text = await showSettled();
 
-  expect(await targetChoices()).toEqual(["World of Warcraft"]);
+  expect(await targetChoices()).toEqual(["World of Warcraft", "Other game…"]);
   expect(text).toContain("Preview only");
 });
 
-test("with nothing linked, the pane says so and A previews nothing", async () => {
-  steam([[42, "World of Warcraft"]]);
+/** The open menu's entries as "label" or "label · note" (the Suggested marker). */
+async function targetEntries(): Promise<string[]> {
+  await act(async () => targetButton()!.click());
+  const entries = menuItems().map((item) => {
+    const note = item.querySelector(".wowdeck-segment-menu-note")?.textContent;
+    return `${item.getAttribute("aria-label")}${note ? ` · ${note}` : ""}`;
+  });
+  await act(async () => targetButton()!.click());
+  return entries;
+}
+
+test("with the toggle off, detected entries are suggested and Other game… comes last", async () => {
+  steam([
+    [42, "World of Warcraft"],
+    [44, "Battle.net"],
+    [47, "Unrelated game", ICON_WOW],
+  ]);
+  linkSettings = { steamGame: null, steamAutoLink: false };
+  await installations(["active", [[47, "Unrelated game", 123]]]);
+
+  await showSettled();
+
+  expect(await targetEntries()).toEqual(["Unrelated game · Suggested", "Other game…"]);
+  expect(await menuIcons()).toEqual([`Unrelated game: icon ${ICON_WOW}`, "Other game…: blank"]);
+  expect(targetButton()?.textContent).toContain("Unrelated game");
+  expect(slot(targetButton())).toBe(`icon ${ICON_WOW}`);
+});
+
+test("with nothing linked or detected, shortcuts named like WoW are suggested", async () => {
+  steam([
+    [42, "World of Warcraft"],
+    [43, "WoW Classic"],
+    [44, "Battle.net"],
+    [45, "Blizzard Arcade Collection"],
+    [46, "Wowzers"],
+    [47, "Unrelated game"],
+  ]);
   linkSettings = { steamGame: null, steamAutoLink: true };
   await installations(["active", []]);
 
-  const text = await showSettled();
+  await showSettled();
+
+  expect(await targetEntries()).toEqual([
+    "Battle.net · Suggested",
+    "Blizzard Arcade Collection · Suggested",
+    "World of Warcraft · Suggested",
+    "WoW Classic · Suggested",
+    "Other game…",
+  ]);
+  expect(targetButton()?.textContent).toBe("Battle.net · Suggested");
+});
+
+test("picking a suggested entry previews for it and changes no settings", async () => {
+  steam([
+    [42, "World of Warcraft"],
+    [44, "Battle.net"],
+  ]);
+  linkSettings = { steamGame: null, steamAutoLink: false };
+  await installations(["active", []]);
+  await showSettled();
+
+  await pickTarget("World of Warcraft");
   await pressA("Fixture layout A");
 
-  expect(text).toContain("No linked game");
-  expect(targetButton()).toBeNull();
+  expect(previews).toEqual([[LAYOUT_A.id, 42]]);
+  expect(fake.calls.filter((c) => c.method === "settings.set")).toEqual([]);
+});
+
+test("with nothing to offer, only Other game… remains and A previews nothing", async () => {
+  steam([[47, "Unrelated game"]]);
+  linkSettings = { steamGame: null, steamAutoLink: true };
+  await installations(["active", []]);
+
+  await showSettled();
+  await pressA("Fixture layout A");
+
+  expect(await targetEntries()).toEqual(["Other game…"]);
+  expect(await menuIcons()).toEqual(["Other game…: blank"]);
+  expect(targetButton()?.textContent).toBe("Choose a game");
+  expect(slot(targetButton())).toBe("blank");
   expect(previews).toEqual([]);
+});
+
+test("Other game… links the picked game by hand, selects it and lands on the dropdown", async () => {
+  steam([
+    [42, "World of Warcraft"],
+    [44, "Battle.net"],
+    [47, "Unrelated game"],
+  ]);
+  linkSettings = { steamGame: null, steamAutoLink: true };
+  await installations(["active", [[42, "World of Warcraft", 123]]]);
+  await showSettled();
+  await pickTarget("World of Warcraft");
+
+  await pickTarget("Other game…");
+  // Steam's modal unmounts the panel (guide G4); the picker is on its own.
+  await act(async () => root.render(null));
+  const picker = doc.body.appendChild(doc.createElement("div"));
+  const pickerRoot = createRoot(picker);
+  await act(async () => pickerRoot.render(shownModal!));
+  const row = [...picker.querySelectorAll("[data-row-name]")].find(
+    (name) => name.textContent === "Unrelated game",
+  )!;
+  await act(async () => (row.closest(".Focusable") as HTMLElement).click());
+  await settle();
+  await act(async () => pickerRoot.unmount());
+  picker.remove();
+
+  expect(shownModal).toBeNull();
+  expect(fake.paramsOf("settings.set")).toEqual([
+    { settings: { steamGame: { appId: 47, name: "Unrelated game" } } },
+  ]);
+  await showSettled();
+  expect(targetButton()?.textContent).toBe("Unrelated game");
+  expect(await targetChoices()).toEqual(["Unrelated game", "World of Warcraft", "Other game…"]);
+  expect(rememberedFocus("qam.browse.controllerLayouts")).toBe("layout-target");
 });
 
 import { createManualClock } from "./testSupport/manualClock";

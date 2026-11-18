@@ -1,7 +1,7 @@
 import { useRef, useState, type FocusEvent, type ReactNode } from "react";
 import { DialogButton, Focusable, GamepadButton, type GamepadEvent } from "@decky/ui";
 import { FaCheck, FaChevronDown } from "react-icons/fa";
-import { STEAM, STEAM_FONT } from "../steamTheme";
+import { STEAM, STEAM_FONT, descriptionStyle } from "../steamTheme";
 import { ShortcutIconSlot } from "./ShortcutIcon";
 
 /**
@@ -30,6 +30,8 @@ export interface SegmentChoice<T> {
   label: string;
   /** The choice's icon URL, shown only in a menu with `withIcons`; none leaves its slot blank. */
   icon?: string;
+  /** A marker after the label in the description grey ("Suggested"); not part of the value. */
+  note?: string;
 }
 
 /** A choice's icon size (spec #273): a little over the 16 px body text beside it. */
@@ -203,6 +205,14 @@ export function SegmentMenu<T>({
                   />
                 )}
                 <span className="wowdeck-segment-menu-label">{choice.label}</span>
+                {choice.note && (
+                  <span
+                    className="wowdeck-segment-menu-note"
+                    style={{ ...descriptionStyle, flex: "none" }}
+                  >
+                    {choice.note}
+                  </span>
+                )}
                 {choice.data === selected && (
                   <FaCheck style={{ flex: "none", width: "12px", color: STEAM.positive }} />
                 )}
