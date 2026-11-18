@@ -5,7 +5,7 @@
 import { Database } from "bun:sqlite";
 import { basename, isAbsolute, join } from "node:path";
 import { isDirectory, listDirectory, pathExists, readTextFile } from "../fs/safe-fs";
-import type { SteamShortcut } from "./SteamShortcuts";
+import { unquotePath, type SteamShortcut } from "./SteamShortcuts";
 
 /** The Wine prefix a launcher shortcut runs in, and the program it starts there. */
 export interface LauncherTarget {
@@ -17,7 +17,7 @@ export interface LauncherTarget {
 /** Undefined unless the shortcut starts a Lutris game or a Bottles bottle that resolves to a prefix. */
 export async function launcherShortcutTarget(shortcut: SteamShortcut, homeDir: string): Promise<LauncherTarget | undefined> {
   const words = literalWords(shortcut.launchOptions);
-  const exe = shortcut.exe.trim().replace(/^"(.*)"$/, "$1");
+  const exe = unquotePath(shortcut.exe);
   if (!words || !exe) return undefined;
   const argv = words.includes("%command%") ? words.map(w => (w === "%command%" ? exe : w)) : [exe, ...words];
   if (argv[0] === "env" || basename(argv[0]!) === "env") argv.shift();
@@ -105,7 +105,7 @@ async function lutrisTarget(args: string[], homes: LutrisHome[]): Promise<Launch
     if (!configpath) continue;
     for (const folder of home.gameConfigs) {
       const game = (await readYaml(join(folder, `${configpath}.yml`)))?.game;
-      if (!isRecord(game) || typeof game.prefix !== "string" || !isAbsolute(game.prefix)) continue;
+      if (!isPlainObject(game) || typeof game.prefix !== "string" || !isAbsolute(game.prefix)) continue;
       return { prefix: game.prefix, exe: stringOr(game.exe), args: stringOr(game.args) };
     }
   }
@@ -149,10 +149,10 @@ async function bottlesTarget(args: string[], roots: string[]): Promise<LauncherT
     if (!folder) continue;
     if (executable) return { prefix: folder.path, exe: executable, args: "" };
     const programs = folder.config?.External_Programs;
-    const entry = program && isRecord(programs)
-      ? Object.values(programs).find(p => isRecord(p) && p.name === program)
+    const entry = program && isPlainObject(programs)
+      ? Object.values(programs).find(p => isPlainObject(p) && p.name === program)
       : undefined;
-    return isRecord(entry)
+    return isPlainObject(entry)
       ? { prefix: folder.path, exe: stringOr(entry.path) || stringOr(entry.executable), args: stringOr(entry.arguments) }
       : { prefix: folder.path, exe: "", args: "" };
   }
@@ -174,13 +174,13 @@ async function bottleFolder(root: string, name: string): Promise<{ path: string;
 async function readYaml(path: string): Promise<Record<string, unknown> | undefined> {
   try {
     const parsed: unknown = Bun.YAML.parse(await readTextFile(path));
-    return isRecord(parsed) ? parsed : undefined;
+    return isPlainObject(parsed) ? parsed : undefined;
   } catch {
     return undefined;
   }
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 

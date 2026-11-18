@@ -16,9 +16,17 @@ export function shortcutExecProduct(launchOptions: string): string | undefined {
   return /--exec(?:=|\s+)(?:["'])?launch\s+([^\s"']+)/i.exec(launchOptions)?.[1];
 }
 
+/** A shortcut with the Steam account whose shortcuts.vdf lists it (absent when the folder name is no account id). */
+export type AccountShortcut = SteamShortcut & { accountId?: number };
+
+/** A shortcut path field without the surrounding whitespace and the double quotes Steam writes around it. */
+export function unquotePath(raw: string): string {
+  return raw.trim().replace(/^"(.*)"$/, "$1");
+}
+
 /** A shared Battle.net prefix must not attach a Diablo/Overwatch-specific shortcut. */
 export function isWowShortcut(shortcut: SteamShortcut): boolean {
-  const exe = shortcut.exe.trim().replace(/^"(.*)"$/, "$1").replaceAll("\\", "/");
+  const exe = unquotePath(shortcut.exe).replaceAll("\\", "/");
   const product = shortcutExecProduct(shortcut.launchOptions)
     ?? /battlenet:\/\/([^\s/"'?]+)/i.exec(shortcut.launchOptions)?.[1];
   return product ? /^wow/i.test(product) : isWowLaunchExecutable(basename(exe));
@@ -85,7 +93,7 @@ export function shortcutPrefixes(shortcut: SteamShortcut): string[] {
   if (overrides.length) return overrides;
   const prefixes = new Set<string>();
   for (const raw of [shortcut.exe, shortcut.startDir]) {
-    const path = raw.trim().replace(/^"(.*)"$/, "$1");
+    const path = unquotePath(raw);
     if (!isAbsolute(path)) continue;
     const index = path.lastIndexOf("/pfx/");
     if (index >= 0) prefixes.add(path.slice(0, index + 4));
