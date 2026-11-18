@@ -317,6 +317,13 @@ The non-Steam library entry whose controller layout the player chooses to
 change. Entries with the same name can share that controller configuration.
 _Avoid_: target installation, target flavor
 
+**Proven link**:
+A detected link between a Steam shortcut and an installation, recorded
+when WoW was seen running from that installation after the shortcut
+started it. It counts like any detected link, and outranks one found
+from the Wine prefix.
+_Avoid_: confirmed link, launch link (in player text)
+
 **Layout nomination**:
 A request to include an already-published Steam controller layout in the
 curated catalogue. Maintainers review it before it appears.

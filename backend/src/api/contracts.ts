@@ -82,7 +82,17 @@ export interface SteamGameLink {
   accountId?: number;
   appId: number;
   name: string;
+  /**
+   * How the engine found this link (GLOSSARY: Proven link): "prefix" when
+   * the shortcut's fields or its Wine prefix lead to the installation,
+   * "launch" when WoW was seen running from this shortcut. Absent on the
+   * hand-set link and on links stored before it existed (read as "prefix").
+   */
+  provenance?: SteamLinkProvenance;
 }
+
+/** How a detected Steam link was found (SteamGameLink.provenance). */
+export type SteamLinkProvenance = "prefix" | "launch";
 
 export type InstallationPreferences = Partial<Pick<Installation, "autoUpdateEnabled" | "hidden">>;
 
@@ -1075,6 +1085,21 @@ export interface MethodMap {
   "installations.detect": {
     params: Record<string, never>;
     result: { installations: Installation[] };
+  };
+  /**
+   * A non-Steam shortcut started (`appId`, from Steam's app lifetime
+   * notification; `accountId`, the Steam account signed in, when known).
+   * One look at the running processes: a WoW client whose environment names
+   * this shortcut's app id, running from a listed installation, records a
+   * proven link (provenance "launch") in the engine's data folder.
+   * `recorded` is false when no such process runs yet (the launcher may
+   * still be open; the caller asks again), the app id is not a shortcut of
+   * that account, or the game runs from no listed installation.
+   * `installations` is the list after, with its links.
+   */
+  "installations.recordLaunch": {
+    params: { appId: number; accountId?: number };
+    result: { recorded: boolean; installations: Installation[] };
   };
   "installations.update": {
     params: { installationId: string } & InstallationPreferences;

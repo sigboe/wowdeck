@@ -198,6 +198,7 @@ export function assembleEngine(config: EngineConfig): Engine & { start(): Promis
     store,
     (installationId, removeEntry): Promise<void> => service.removeInstallation(installationId, removeEntry),
     () => addonEvents.addonsChanged([]),
+    { dataDir },
   );
   const service: AddonService = new AddonService(
     store,

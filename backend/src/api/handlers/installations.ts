@@ -4,12 +4,13 @@ import type { HandlerTable } from "../../bridge/jsonl";
 import type { AddonService } from "../../wow/addons/AddonService";
 import type { InstallationService } from "../../wow/installation/InstallationService";
 import { getClientTypeForGameType } from "../../wow/utils/gametype";
+import { ValidationError } from "../../wow/errors";
 
 /** What the installation handlers use. */
 export interface InstallationsDeps {
   installationService: Pick<
     InstallationService,
-    "update" | "listed" | "detect" | "select" | "addManual" | "inspect" | "remove" | "list" | "require"
+    "update" | "listed" | "detect" | "recordLaunch" | "select" | "addManual" | "inspect" | "remove" | "list" | "require"
   >;
   service: Pick<AddonService, "recovery" | "retryRecovery" | "verifyRecovery">;
   /** The home installation detection scans. */
@@ -23,6 +24,12 @@ export function installationsHandlers({ installationService, service, homeDir }:
     "installations.list": async () => ({ installations: installationService.listed() }),
 
     "installations.detect": async () => ({ installations: await installationService.detect(homeDir) }),
+
+    "installations.recordLaunch": async (params) => {
+      if (!Number.isSafeInteger(params.appId) || params.appId <= 0) throw new ValidationError("appId must be a Steam app id");
+      if (params.accountId !== undefined && !Number.isSafeInteger(params.accountId)) throw new ValidationError("accountId must be a number");
+      return installationService.recordLaunch(homeDir, { appId: params.appId, accountId: params.accountId });
+    },
 
     "installations.select": async (params) => ({ installation: installationService.select(params.installationId) }),
 

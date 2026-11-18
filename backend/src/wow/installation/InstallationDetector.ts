@@ -12,6 +12,8 @@
  */
 
 import { prefixRegistryDiscoveries } from "./PrefixRegistry";
+import { addLaunchRecords, readLaunchRecords, runningLaunches } from "./LaunchLinks";
+import type { ProcReader } from "../wtf/GameProcessGuard";
 import { readSteamShortcuts, shortcutPrefixes, shortcutPrefixOverrides, isWowShortcut, type SteamShortcut } from "./SteamShortcuts";
 import { realpath } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join } from "node:path";
@@ -35,6 +37,10 @@ export interface DetectionOptions {
   scanRemovableMedia?: boolean;
   /** The user's removable media dir (default: /run/media/<user>). */
   removableMediaBase?: string;
+  /** The engine's data folder, holding proven links; none are read or recorded without it. */
+  dataDir?: string;
+  /** /proc, for recordLaunch (default: the real one). */
+  procReader?: ProcReader;
 }
 
 const WOW_DIR_NAMES = ["world of warcraft"];
@@ -273,7 +279,42 @@ export async function classifyFlavorDir(flavorDir: string): Promise<ValidityTier
 
 export class InstallationDetector {
   private steamGames = new Map<string, SteamGameLink[]>();
+  /** The shortcuts of every Steam account, as the last scan read them. */
+  private shortcuts: (SteamShortcut & { accountId?: number })[] = [];
   constructor(private options: DetectionOptions) {}
+
+  /**
+   * Record a proven link when a WoW client launched by this shortcut runs
+   * from one of `locations` (the installation list) now: one look at the
+   * running processes. False, recording nothing, without a data folder,
+   * when the app id is no shortcut of that account, or no such client runs.
+   */
+  async recordLaunch(launch: { appId: number; accountId?: number }, locations: readonly string[]): Promise<boolean> {
+    const { dataDir, procReader } = this.options;
+    if (!dataDir || this.options.scanSteam === false) return false;
+    const shortcut = (await this.steamShortcuts()).find(
+      (s) => s.appId === launch.appId && (launch.accountId === undefined || s.accountId === launch.accountId),
+    );
+    if (!shortcut) return false;
+    const running = await runningLaunches(launch.appId, locations, procReader);
+    await addLaunchRecords(dataDir, running.map((location) => ({
+      appId: launch.appId,
+      ...(shortcut.accountId ? { accountId: shortcut.accountId } : {}),
+      location,
+    })));
+    return running.length > 0;
+  }
+
+  /** Proven links to this location whose shortcut is still in its account's library, under its current name. */
+  private async launchLinks(location: string): Promise<SteamGameLink[]> {
+    if (!this.options.dataDir) return [];
+    return (await readLaunchRecords(this.options.dataDir)).flatMap((record) => {
+      if (record.location.toLowerCase() !== location.toLowerCase()) return [];
+      const shortcut = this.shortcuts.find((s) => s.appId === record.appId && s.accountId === record.accountId);
+      if (!shortcut?.name) return [];
+      return [{ appId: record.appId, name: shortcut.name, ...(record.accountId ? { accountId: record.accountId } : {}), provenance: "launch" as const }];
+    });
+  }
 
   /**
    * Auto-registrable installations: candidates with confirmed or likely
@@ -288,8 +329,11 @@ export class InstallationDetector {
       }
       const installation = await createInstallationForFlavorDir(candidate.location);
       if (installation) {
-        const games = this.steamGames.get(candidate.location);
-        if (games?.length) installation.steamGames = games;
+        // A proven link outranks the prefix link to the same shortcut.
+        const linked = new Map((this.steamGames.get(candidate.location) ?? []).map(g => [`${g.accountId}:${g.appId}`, g]));
+        for (const game of await this.launchLinks(candidate.location)) linked.set(`${game.accountId}:${game.appId}`, game);
+        const games = [...linked.values()].sort((a, b) => a.appId - b.appId);
+        if (games.length) installation.steamGames = games;
         installations.push(installation);
       }
     }
@@ -369,7 +413,7 @@ export class InstallationDetector {
   private async candidateWoWRoots(): Promise<Array<{ path: string; source: DetectionSource; sources: Set<DetectionSource>; games?: SteamGameLink[] }>> {
     const { homeDir, customPaths = [] } = this.options;
     const roots: Array<{ path: string; source: DetectionSource; sources: Set<DetectionSource>; games?: SteamGameLink[] }> = [];
-    const shortcuts = this.options.scanSteam === false ? [] : await this.steamShortcuts();
+    const shortcuts = this.shortcuts = [] as (SteamShortcut & { accountId?: number })[];
 
     const prefixes = new Set<string>();
 
@@ -407,6 +451,7 @@ export class InstallationDetector {
 
     // Steam proton prefixes
     if (this.options.scanSteam !== false) {
+      shortcuts.push(...(await this.steamShortcuts()));
       for (const shortcut of shortcuts) {
         for (const prefix of shortcutPrefixes(shortcut)) prefixes.add(prefix);
         for (const rawPath of [shortcut.exe, shortcut.startDir]) {
@@ -415,7 +460,7 @@ export class InstallationDetector {
           addRoot(
             isWowLaunchExecutable(basename(path)) ? dirname(path) : path,
             "steam-shortcut",
-            isWowShortcut(shortcut) && shortcut.name ? [{ appId: shortcut.appId, name: shortcut.name, ...(shortcut.accountId ? { accountId: shortcut.accountId } : {}) }] : [],
+            isWowShortcut(shortcut) && shortcut.name ? [{ appId: shortcut.appId, name: shortcut.name, ...(shortcut.accountId ? { accountId: shortcut.accountId } : {}), provenance: "prefix" }] : [],
           );
         }
       }
@@ -456,7 +501,7 @@ export class InstallationDetector {
         if (!canonical) continue;
         prefixes.add(canonical);
         const games = prefixGames.get(canonical) ?? new Map<string, SteamGameLink>();
-        games.set(`${shortcut.accountId}:${shortcut.appId}`, { appId: shortcut.appId, name: shortcut.name, ...(shortcut.accountId ? { accountId: shortcut.accountId } : {}) });
+        games.set(`${shortcut.accountId}:${shortcut.appId}`, { appId: shortcut.appId, name: shortcut.name, ...(shortcut.accountId ? { accountId: shortcut.accountId } : {}), provenance: "prefix" });
         prefixGames.set(canonical, games);
         // A launcher can still locate the standard layout when its registry is missing.
         for (const folder of ["drive_c", "drive_c/Program Files (x86)", "drive_c/Program Files"]) {
@@ -507,6 +552,7 @@ export class InstallationDetector {
     return [];
   }
 
+  /** Every Steam account's shortcuts. */
   async steamShortcuts(): Promise<(SteamShortcut & { accountId?: number })[]> {
     const shortcuts: (SteamShortcut & { accountId?: number })[] = [];
     for (const root of this.steamHomes()) {

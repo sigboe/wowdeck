@@ -98,7 +98,12 @@ async function resolveCase(path: string): Promise<string | undefined> {
   return current;
 }
 
-async function translate(prefix: string, windowsPath: string): Promise<string | undefined> {
+/**
+ * The Linux folder a Windows folder path (`C:\...`) names in this prefix,
+ * through its dosdevices drive links, matching case like Windows; undefined
+ * when the drive is unmapped or the folder isn't there.
+ */
+export async function translate(prefix: string, windowsPath: string): Promise<string | undefined> {
   const match = /^([a-z]):\\(.*)$/i.exec(windowsPath);
   if (!match) return undefined;
   let drive: string;

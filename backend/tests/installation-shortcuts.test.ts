@@ -321,7 +321,7 @@ test.each(["World of Warcraft Launcher.exe", "Battle.net.exe", "Battle.net Launc
   shortcuts("100", [{ appid: 42, exe: `"${join(retail, "..", exe)}"`, start: "" }]);
   const found = await detector().detect();
   expect(found.map(i => i.location)).toEqual([retail]);
-  expect(found[0]!.steamGames).toEqual([{ appId: 42, name: "World of Warcraft", accountId: 100 }]);
+  expect(found[0]!.steamGames).toEqual([{ appId: 42, name: "World of Warcraft", accountId: 100, provenance: "prefix" }]);
 });
 
 test("every WoW launcher sharing a registry prefix attaches, but another Blizzard game does not", async () => {
@@ -337,7 +337,7 @@ test("every WoW launcher sharing a registry prefix attaches, but another Blizzar
     { appid: 45, name: "Overlay", exe: "/launcher/battlenet.overlay.runtime.exe", start: "", options },
   ]);
   expect((await detector().detect())[0]!.steamGames).toEqual([
-    { appId: 42, name: "WoW", accountId: 100 }, { appId: 43, name: "Battle.net", accountId: 100 },
+    { appId: 42, name: "WoW", accountId: 100, provenance: "prefix" }, { appId: 43, name: "Battle.net", accountId: 100, provenance: "prefix" },
   ]);
 });
 
@@ -357,7 +357,7 @@ test.each([false, true])("discovery persists all Steam links, removes stale link
   const store = new StateStore(join(home, "state.json"));
   store.updateSettings({ autoUpdate, steamAutoCheck: false, steamBadge: false, steamGame: { appId: 9, name: "My manual entry" } });
   const service = new InstallationService(store, async () => {});
-  expect((await service.detect(home))[0]!.steamGames).toEqual([{ appId: 42, name: "World of Warcraft", accountId: 100 }]);
+  expect((await service.detect(home))[0]!.steamGames).toEqual([{ appId: 42, name: "World of Warcraft", accountId: 100, provenance: "prefix" }]);
   expect(store.settings.autoUpdate).toBe(autoUpdate);
   expect(store.settings.steamAutoCheck).toBe(false);
   expect(store.settings.steamBadge).toBe(false);
@@ -377,7 +377,7 @@ test("an explicit prefix override does not attach the shortcut to its old defaul
   }
   shortcuts("100", [{ appid: 42, exe: "/launcher/Battle.net.exe", start: "", options: `STEAM_COMPAT_DATA_PATH=${join(steam, "steamapps/compatdata/123")} %command%` }]);
   const found = await detector().detect();
-  expect(found.find(i => i.location === actual)!.steamGames).toEqual([{ appId: 42, name: "World of Warcraft", accountId: 100 }]);
+  expect(found.find(i => i.location === actual)!.steamGames).toEqual([{ appId: 42, name: "World of Warcraft", accountId: 100, provenance: "prefix" }]);
   expect(found.find(i => i.location === old)!.steamGames ?? []).toEqual([]);
 });
 
@@ -391,7 +391,7 @@ test("an executable's prefix ancestry does not override Proton's default appId p
   }
   shortcuts("100", [{ appid: 42, exe: join(steam, "steamapps/compatdata/123/pfx/drive_c/Battle.net.exe"), start: "" }]);
   const found = await detector().detect();
-  expect(found.find(i => i.location === actual)!.steamGames).toEqual([{ appId: 42, name: "World of Warcraft", accountId: 100 }]);
+  expect(found.find(i => i.location === actual)!.steamGames).toEqual([{ appId: 42, name: "World of Warcraft", accountId: 100, provenance: "prefix" }]);
   expect(found.find(i => i.location === copied)!.steamGames ?? []).toEqual([]);
 });
 
@@ -406,7 +406,7 @@ test("a wrapper with an explicit WoW product and prefix attaches through registr
     { appid: 43, name: "Unknown game", exe: "/usr/bin/umu-run", start: "", options },
     { appid: 44, name: "Diablo", exe: "/usr/bin/umu-run", start: "", options: options + ' --exec="launch Fen"' },
   ]);
-  expect((await detector().detect())[0]!.steamGames).toEqual([{ appId: 42, name: "Wrapped WoW", accountId: 100 }]);
+  expect((await detector().detect())[0]!.steamGames).toEqual([{ appId: 42, name: "Wrapped WoW", accountId: 100, provenance: "prefix" }]);
 });
 
 test("a direct client shortcut whose start folder ends in a slash shares the launcher entry's installation", async () => {
@@ -437,14 +437,14 @@ test("a renamed shortcut keeps its link under the new name; a deleted one drops 
     { appid: 43, name: "Battle.net", exe: `"${launcher}"`, start: "" },
   ]);
   expect((await service.detect(home))[0]!.steamGames).toEqual([
-    { appId: 42, name: "World of Warcraft", accountId: 100 },
-    { appId: 43, name: "Battle.net", accountId: 100 },
+    { appId: 42, name: "World of Warcraft", accountId: 100, provenance: "prefix" },
+    { appId: 43, name: "Battle.net", accountId: 100, provenance: "prefix" },
   ]);
 
   // The player renames entry 42 in Steam and removes entry 43.
   shortcuts("100", [{ appid: 42, name: "WoW (Proton)", exe: join(retail, "Wow.exe"), start: "" }]);
 
-  const renamed = [{ appId: 42, name: "WoW (Proton)", accountId: 100 }];
+  const renamed = [{ appId: 42, name: "WoW (Proton)", accountId: 100, provenance: "prefix" as const }];
   expect((await detector().detect())[0]!.steamGames).toEqual(renamed);
   expect((await service.detect(home))[0]!.steamGames).toEqual(renamed);
   // A later engine reads the stored list the same way.
