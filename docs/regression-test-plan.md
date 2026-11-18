@@ -1365,6 +1365,12 @@ shortcuts and a catalogue with layouts (CL-266-2).
 | CL-274-3 | P1 | S | Choose, in turn: a shortcut with a unique name whose controls are your own saved controls (an autosave or export, no controller-specific override); a shortcut that shares its name with another in a different case; a shortcut whose controls are a template or Workshop layout; a shortcut with an accented letter in its name. Then connect a second controller and open the pane again | The unique name with your own controls shows no warning line. The shared name shows a warning "Shares controls with 1 other entry named" and the name in quotes, with "Applying a layout changes them all." under it. The other cases show a "Preview only" warning with the reason: WoWDeck applies layouts only over your own saved controls, not over a template or Workshop layout; or it can't apply layouts yet to names with accented or non-Latin letters. With a second controller the dropdown still lists the same entries, and the warning reads "Preview only". Each warning has its triangle icon and reads without colour (S38) |
 | CL-274-4 | P1 | S | Pick an entry in the dropdown, focus a layout and press A. Press B in Steam's preview | The footer names A "Preview". Steam's own layout preview opens for the picked entry, with no WoWDeck menu between. B returns to Controller layouts with focus on that layout |
 
+### Layout target icons (#278)
+
+| ID | Pri | S | Steps | Expected |
+|---|---|---|---|---|
+| CL-278-1 | P2 | S | Link two shortcuts, one with a custom icon in Steam and one without. Restart Steam, then open Controller layouts at once and open the dropdown. Pick the other entry. Then open Get Addons › Popular and open the Source and Category menus | Each entry shows its Steam icon at 20 px left of its name, in the open menu and on the button. The entry without an icon keeps a blank 20 px slot, so both names start at the same place. An icon Steam had not loaded yet appears about half a second later. The button's name ends in "…" inside the button when it runs long (S27). Source and Category show no icon slot, as before |
+
 ### Controller layout playtime attribution (#263)
 
 Native attribution is pending. WoWDeck omits playtime from catalogue

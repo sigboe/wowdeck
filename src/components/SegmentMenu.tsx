@@ -2,6 +2,7 @@ import { useRef, useState, type FocusEvent, type ReactNode } from "react";
 import { DialogButton, Focusable, GamepadButton, type GamepadEvent } from "@decky/ui";
 import { FaCheck, FaChevronDown } from "react-icons/fa";
 import { STEAM, STEAM_FONT } from "../steamTheme";
+import { ShortcutIconSlot } from "./ShortcutIcon";
 
 /**
  * A browse bar segment's picker (ADR 0002, revised 2026-10-24): the choices
@@ -27,7 +28,12 @@ export interface SegmentChoice<T> {
   /** The pick's value; null is a real choice ("All categories"), not "none". */
   data: T;
   label: string;
+  /** The choice's icon URL, shown only in a menu with `withIcons`; none leaves its slot blank. */
+  icon?: string;
 }
+
+/** A choice's icon size (spec #273): a little over the 16 px body text beside it. */
+const SEGMENT_ICON_SIZE = "20px";
 
 /** The caption over a segment's button: Steam's row label, one size down. */
 export const SEGMENT_LABEL = {
@@ -46,6 +52,7 @@ export function SegmentMenu<T>({
   selected,
   onPick,
   renderValue,
+  withIcons = false,
 }: {
   /** The menu's name for the button's label; the caption above it is BrowseBar's. */
   menuLabel: string;
@@ -55,6 +62,11 @@ export function SegmentMenu<T>({
   onPick: (data: T) => void;
   /** The button's value renderer (BAR_DROPDOWN_VALUE keeps it inside the button). */
   renderValue: (value: ReactNode) => ReactNode;
+  /**
+   * An icon slot before every choice's name and the button's value, blank
+   * where a choice has no icon, so the names line up. Off: no slot at all.
+   */
+  withIcons?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   // The button is queried through its wrapper: @decky/ui's DialogButton does
@@ -139,7 +151,7 @@ export function SegmentMenu<T>({
     setOpen(false);
   };
 
-  const selectedLabel = choices.find((c) => c.data === selected)?.label ?? "";
+  const selectedChoice = choices.find((c) => c.data === selected);
 
   return (
     <div>
@@ -149,7 +161,8 @@ export function SegmentMenu<T>({
           onClick={() => (open ? close(true) : openList())}
           style={{ display: "flex", alignItems: "center", gap: "8px", width: "100%" }}
         >
-          {renderValue(selectedLabel)}
+          {withIcons && <ShortcutIconSlot icon={selectedChoice?.icon} size={SEGMENT_ICON_SIZE} />}
+          {renderValue(selectedChoice?.label ?? "")}
           <FaChevronDown style={{ flex: "none", width: "10px", color: STEAM.textMuted }} />
         </DialogButton>
       </div>
@@ -182,6 +195,13 @@ export function SegmentMenu<T>({
                 onGamepadFocus={() => (cursorRef.current = index)}
                 onClick={() => pick(choice)}
               >
+                {withIcons && (
+                  <ShortcutIconSlot
+                    icon={choice.icon}
+                    size={SEGMENT_ICON_SIZE}
+                    style={{ marginRight: "8px" }}
+                  />
+                )}
                 <span className="wowdeck-segment-menu-label">{choice.label}</span>
                 {choice.data === selected && (
                   <FaCheck style={{ flex: "none", width: "12px", color: STEAM.positive }} />

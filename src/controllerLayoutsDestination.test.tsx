@@ -1,5 +1,5 @@
 /// <reference types="bun-types" />
-import { afterAll, afterEach, beforeEach, expect, mock, test } from "bun:test";
+import { afterAll, afterEach, beforeEach, expect, jest, mock, test } from "bun:test";
 import { JSDOM } from "jsdom";
 import { act } from "react";
 import type {
@@ -105,8 +105,10 @@ beforeEach(() => {
 });
 afterEach(async () => {
   await act(async () => root.unmount());
+  jest.useRealTimers();
   restoreSteam?.();
   restoreSteam = undefined;
+  iconsLoading = [];
   fake.answers["installations.list"] = { installations: [] };
   await act(async () => addonSession.reloadInstallations());
 });
@@ -123,20 +125,43 @@ const SHORTCUT = 1073741824;
 let restoreSteam: (() => void) | undefined;
 
 /**
- * Steam's library shortcuts and the built-in controller, signed in as
- * account 123. `url` is the controls the entries have now: the player's own
- * saved controls by default, which WoWDeck can apply over.
+ * App ids whose icon Steam has still to load: like Steam, the first icon
+ * lookup reads null and asks for it, and only a fresh overview has it.
+ */
+let iconsLoading: number[] = [];
+
+/**
+ * Steam's library shortcuts, each with its icon's URL if it has one, and the
+ * built-in controller, signed in as account 123. `url` is the controls the
+ * entries have now: the player's own saved controls by default, which
+ * WoWDeck can apply over.
  */
 function steam(
-  apps: [number, string][],
+  apps: [number, string, string?][],
   url = "usercloud://fixture-saved-controls",
   secondController = false,
 ) {
   const keys = ["appStore", "SteamClient", "controllerConfiguratorStore"];
   const saved = keys.map((key) => [key, Object.getOwnPropertyDescriptor(globalThis, key)] as const);
+  const loading = new Set(iconsLoading);
+  const overview = ([appid, display_name, icon]: [number, string, string?]) => ({
+    appid,
+    display_name,
+    app_type: SHORTCUT,
+    ...(icon && !loading.has(appid) ? { icon } : {}),
+  });
+  let overviews = apps.map(overview);
   Object.assign(globalThis, {
     appStore: {
-      allApps: apps.map(([appid, display_name]) => ({ appid, display_name, app_type: SHORTCUT })),
+      get allApps() {
+        return overviews;
+      },
+      GetAppOverviewByAppID: (appId: number) => overviews.find((o) => o.appid === appId) ?? null,
+      GetIconURLForApp: (o: { appid: number; icon?: string }) => {
+        if (o.icon) return o.icon;
+        if (loading.delete(o.appid)) overviews = apps.map(overview);
+        return null;
+      },
     },
     SteamClient: {
       User: { GetSteamID: () => "76561197960265851" },
@@ -376,6 +401,68 @@ test("a pick is kept per installation when the QAM closes or the destination cha
   await installations(["active", [[42, "World of Warcraft", 123]]], ["other", []]);
   await settle();
   expect(targetButton()?.textContent).toBe("World of Warcraft");
+});
+
+const ICON_WOW = "data:image/png;base64,V09X";
+const ICON_BNET = "data:image/ico;base64,Qk5FVA==";
+
+/** An element's icon slot: "icon <url>" with an image, "blank" without, "none" with no slot. */
+function slot(el: Element | null): string {
+  const iconSlot = el?.querySelector("[data-icon-slot]");
+  const img = iconSlot?.querySelector("img");
+  return img ? `icon ${img.getAttribute("src")}` : iconSlot ? "blank" : "none";
+}
+async function menuIcons(): Promise<string[]> {
+  await act(async () => targetButton()!.click());
+  const icons = menuItems().map((item) => `${item.getAttribute("aria-label")}: ${slot(item)}`);
+  await act(async () => targetButton()!.click());
+  return icons;
+}
+
+test("each entry shows its Steam icon in the menu and on the button; one without keeps a blank slot", async () => {
+  steam([
+    [42, "World of Warcraft", ICON_WOW],
+    [44, "Battle.net"],
+  ]);
+  linkSettings = { steamGame: { appId: 42, name: "World of Warcraft" }, steamAutoLink: true };
+  await installations(["active", [[44, "Battle.net", 123]]]);
+
+  await showSettled();
+
+  expect(slot(targetButton())).toBe(`icon ${ICON_WOW}`);
+  expect(targetButton()?.textContent).toBe("World of Warcraft");
+  expect(await menuIcons()).toEqual(["Battle.net: blank", `World of Warcraft: icon ${ICON_WOW}`]);
+  await act(async () => targetButton()!.click());
+  const slots = [targetButton()!, ...menuItems()].map((el) =>
+    el.querySelector<HTMLElement>("[data-icon-slot]")!,
+  );
+  expect(slots.map((s) => `${s.style.width} ${s.style.height}`)).toEqual([
+    "20px 20px",
+    "20px 20px",
+    "20px 20px",
+  ]);
+  expect(slots.every((s) => s.getAttribute("aria-hidden") === "true")).toBe(true);
+  await act(async () => targetButton()!.click());
+
+  await pickTarget("Battle.net");
+  expect(slot(targetButton())).toBe("blank");
+});
+
+test("an icon Steam loads late appears after the single re-read", async () => {
+  jest.useFakeTimers();
+  iconsLoading = [42];
+  steam([
+    [42, "World of Warcraft", ICON_WOW],
+    [44, "Battle.net", ICON_BNET],
+  ]);
+  linkSettings = { steamGame: { appId: 42, name: "World of Warcraft" } };
+  await installations(["active", []]);
+
+  await show();
+  expect(slot(targetButton())).toBe("blank");
+
+  await act(async () => jest.advanceTimersByTime(500));
+  expect(slot(targetButton())).toBe(`icon ${ICON_WOW}`);
 });
 
 test("A on a layout opens Steam's preview for the selected entry, with no menu between", async () => {
