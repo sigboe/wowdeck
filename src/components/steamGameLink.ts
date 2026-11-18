@@ -1,6 +1,6 @@
 import { settingsStore } from "../settings";
 import { addonSession } from "../session";
-import { listSteamShortcuts, pickerLinks, type SteamGame } from "../steamLibrary";
+import { pickerLinks, type SteamGame } from "../steamLibrary";
 import { openSteamGamePicker } from "./SteamGamePicker";
 
 /**
@@ -34,7 +34,7 @@ export function openSteamGameLinkPicker(
   const { settings } = settingsStore.get();
   const { installations } = addonSession.get();
   openSteamGamePicker(
-    pickerLinks(listSteamShortcuts(), installations, settings),
+    pickerLinks(installations, settings),
     (game) => void linkSteamGame(game).then((saved) => then?.(game, saved)),
   );
 }

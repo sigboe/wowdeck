@@ -1,4 +1,4 @@
-import type { Installation, PluginSettings } from "../backend/src/api/contracts";
+import type { Installation, PluginSettings, SteamGameLink } from "../backend/src/api/contracts";
 import { isLikelyWow, linkedSteamGames, type SteamGame } from "./steamLibrary";
 import { createStore } from "./store";
 
@@ -30,32 +30,33 @@ export function layoutTargetChoices(
     (link) => accountId !== undefined && link.accountId === accountId,
   );
   const linked = linkedSteamGames(
-    games,
     [{ steamGames: detected }],
     settings.steamGame,
     settings.steamAutoLink,
+    games,
   );
   const choices = games.filter((g) => linked.some((l) => l.appId === g.appId));
   const listed = (appId: number | undefined) => choices.find((g) => g.appId === appId);
-  const detectedHere = (proven: boolean) =>
-    settings.steamAutoLink
-      ? choices.filter((g) =>
-          detected.some((d) => d.appId === g.appId && (d.provenance === "launch") === proven),
-        )
-      : [];
-  const pathDetected = detectedHere(false);
+  /** The entries among `of` that a detected link of this installation, passing `which`, names. */
+  const detectedAmong = (of: SteamGame[], which: (link: SteamGameLink) => boolean) =>
+    of.filter((g) => detected.some((d) => d.appId === g.appId && which(d)));
+  const autoLinked = settings.steamAutoLink ? choices : [];
+  const pathDetected = detectedAmong(autoLinked, (link) => !isProven(link));
   const initial =
     listed(settings.steamGame?.appId) ??
-    detectedHere(true)[0] ??
+    detectedAmong(autoLinked, isProven)[0] ??
     (pathDetected.length === 1 ? pathDetected[0] : undefined) ??
     choices[0];
   if (choices.length > 0) return { choices, suggested: false, initial };
-  const wouldLink = games.filter((g) => detected.some((d) => d.appId === g.appId));
+  const wouldLink = detectedAmong(games, () => true);
   const suggestions = wouldLink.length > 0 ? wouldLink : games.filter((g) => isLikelyWow(g.name));
-  const proven = suggestions.find((g) =>
-    detected.some((d) => d.appId === g.appId && d.provenance === "launch"),
-  );
+  const proven = detectedAmong(suggestions, isProven)[0];
   return { choices: suggestions, suggested: true, initial: proven ?? suggestions[0] };
+}
+
+/** A proven link (GLOSSARY): the shortcut was seen launching WoW from the installation. */
+function isProven(link: SteamGameLink): boolean {
+  return link.provenance === "launch";
 }
 
 /**

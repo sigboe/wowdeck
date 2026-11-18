@@ -9,7 +9,7 @@
 
 import { findSP } from "@decky/ui";
 import { STEAM } from "../steamTheme";
-import { badgeState, linkedSteamGames, listSteamShortcuts, type BadgeState } from "../steamLibrary";
+import { badgeState, linkedSteamGames, type BadgeState } from "../steamLibrary";
 import { addonSession } from "../session";
 import { settingsStore } from "../settings";
 import { steamUpdates } from "../steamUpdates";
@@ -152,12 +152,7 @@ export function startHomeBadge(): () => void {
         return;
       }
       const { steamGame, steamAutoLink, steamBadge: badge } = settingsStore.get().settings;
-      const games = linkedSteamGames(
-        listSteamShortcuts(),
-        addonSession.get().installations,
-        steamGame,
-        steamAutoLink,
-      );
+      const games = linkedSteamGames(addonSession.get().installations, steamGame, steamAutoLink);
       const tiles = badge ? games.flatMap((game) => findTiles(doc!, game.appId)) : [];
       const { summary, checking } = steamUpdates.get();
       const state = tiles.length ? badgeState(summary, checking) : null;
@@ -203,12 +198,7 @@ export function startHomeBadge(): () => void {
   // any other setting leaves them alone.
   const steamKey = () => {
     const { steamGame, steamAutoLink, steamBadge } = settingsStore.get().settings;
-    return `${linkedSteamGames(
-      listSteamShortcuts(),
-      addonSession.get().installations,
-      steamGame,
-      steamAutoLink,
-    )
+    return `${linkedSteamGames(addonSession.get().installations, steamGame, steamAutoLink)
       .map((g) => g.appId)
       .join(",")}:${steamBadge}`;
   };

@@ -30,13 +30,14 @@ function inLibrary(library: SteamGame[], links: SteamGame[]): SteamGame[] {
  * The entries WoWDeck is linked to, for every consumer (game page, home
  * badge, Options, layout target): the hand-set link, plus the engine's
  * detected links while automatic linking is on, matched against `library`
- * (`listSteamShortcuts`) by app id. By app id, one each.
+ * (Steam's own, `listSteamShortcuts`, unless given) by app id. By app id,
+ * one each.
  */
 export function linkedSteamGames(
-  library: SteamGame[],
   installations: { steamGames?: SteamGame[] }[],
   manual: SteamGame | null,
   automatic = true,
+  library: SteamGame[] = listSteamShortcuts(),
 ): SteamGame[] {
   const links = [
     ...(automatic ? installations.flatMap((i) => i.steamGames ?? []) : []),
@@ -57,17 +58,18 @@ export interface PickerLinks {
 }
 
 /**
- * The picker's links matched against `library` by app id: current names,
- * and none for a deleted shortcut, so Unlink names the entry as Steam shows it.
+ * The picker's links matched against `library` (Steam's own unless given)
+ * by app id: current names, and none for a deleted shortcut, so Unlink
+ * names the entry as Steam shows it.
  */
 export function pickerLinks(
-  library: SteamGame[],
   installations: { steamGames?: SteamGame[] }[],
   settings: { steamGame: SteamGame | null; steamAutoLink: boolean },
+  library: SteamGame[] = listSteamShortcuts(),
 ): PickerLinks {
   return {
-    manual: linkedSteamGames(library, [], settings.steamGame)[0] ?? null,
-    detected: linkedSteamGames(library, installations, null),
+    manual: linkedSteamGames([], settings.steamGame, true, library)[0] ?? null,
+    detected: linkedSteamGames(installations, null, true, library),
     autoLinkOn: settings.steamAutoLink,
   };
 }

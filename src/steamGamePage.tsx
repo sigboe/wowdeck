@@ -4,7 +4,7 @@ import { WowGameSection } from "./components/WowGameSection";
 import { settingsStore } from "./settings";
 import { useSyncExternalStore } from "react";
 import { addonSession } from "./session";
-import { linkedSteamGames, listSteamShortcuts } from "./steamLibrary";
+import { linkedSteamGames } from "./steamLibrary";
 import { createSteamLaunchSwitch, type AttachLaunch } from "./steamLaunchPatch";
 import { createWarnOnce } from "./warnOnce";
 
@@ -17,12 +17,7 @@ function LinkedWowGameSection({
 }) {
   const { settings } = useSyncExternalStore(settingsStore.subscribe, settingsStore.get);
   const { installations } = useSyncExternalStore(addonSession.subscribe, addonSession.get);
-  const linked = linkedSteamGames(
-    listSteamShortcuts(),
-    installations,
-    settings.steamGame,
-    settings.steamAutoLink,
-  );
+  const linked = linkedSteamGames(installations, settings.steamGame, settings.steamAutoLink);
   return linked.some((g) => g.appId === appId) ? (
     <WowGameSection appId={appId} attachLaunch={attachLaunch} />
   ) : null;

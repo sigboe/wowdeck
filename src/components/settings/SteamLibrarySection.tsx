@@ -7,20 +7,14 @@ import { settingsStore } from "../../settings";
 import { openSteamGameLinkPicker } from "../steamGameLink";
 import { SettingsRow } from "./common";
 import { addonSession } from "../../session";
-import { linkedSteamGames, listSteamShortcuts, pickerLinks } from "../../steamLibrary";
+import { linkedSteamGames, pickerLinks } from "../../steamLibrary";
 
 /** BEYOND-05: the WoW entry in Steam's library gets an addons section on its game page. */
 export function SteamLibrarySection() {
   const { settings } = useSyncExternalStore(settingsStore.subscribe, settingsStore.get);
   const { installations } = useSyncExternalStore(addonSession.subscribe, addonSession.get);
-  const library = listSteamShortcuts();
-  const linked = linkedSteamGames(
-    library,
-    installations,
-    settings.steamGame,
-    settings.steamAutoLink,
-  );
-  const linkedSteamGame = pickerLinks(library, installations, settings).manual;
+  const linked = linkedSteamGames(installations, settings.steamGame, settings.steamAutoLink);
+  const linkedSteamGame = pickerLinks(installations, settings).manual;
 
   return (
     <PanelSection title="Steam library">
