@@ -219,3 +219,43 @@ test("recording a launch updates the installation list's links without a scan th
   const restarted = new InstallationService(new StateStore(join(home, "state.json")), async () => {}, () => {}, { dataDir: data });
   expect((await restarted.detect(home))[0]!.steamGames).toEqual([{ appId: 42, name: "My games", accountId: 100, provenance: "launch" }]);
 });
+
+test.each([
+  ["an app id that is no Steam app id", { appId: 0 }],
+  ["a fractional account id", { appId: 42, accountId: 1.5 }],
+])("recording a launch rejects %s", async (_, launch) => {
+  const { StateStore } = await import("../src/wow/storage/StateStore");
+  const { InstallationService } = await import("../src/wow/installation/InstallationService");
+  const service = new InstallationService(new StateStore(join(home, "state.json")), async () => {}, () => {}, { dataDir: data });
+  await expect(service.recordLaunch(home, launch)).rejects.toThrow(/must be/);
+});
+
+test("a deleted shortcut's proven link is dropped for good: the same app id added again is not linked", async () => {
+  const { compat, retail } = protonInstall(999);
+  shortcuts("100", [{ appid: 42, name: "My games" }]);
+  const reader = procs({
+    "2": { comm: "Wow.exe", cmdline: [RETAIL_EXE], environ: { SteamGameId: shortcutGameId(42), STEAM_COMPAT_DATA_PATH: compat } },
+  });
+  await detector(reader).recordLaunch({ appId: 42, accountId: 100 }, [retail]);
+
+  shortcuts("100", []);
+  await detector().detect();
+  shortcuts("100", [{ appid: 42, name: "My games" }]);
+  expect((await detector().detect())[0]!.steamGames ?? []).toEqual([]);
+});
+
+test("an unreadable shortcut list keeps the proven links", async () => {
+  const { compat, retail } = protonInstall(999);
+  shortcuts("100", [{ appid: 42, name: "My games" }]);
+  const reader = procs({
+    "2": { comm: "Wow.exe", cmdline: [RETAIL_EXE], environ: { SteamGameId: shortcutGameId(42), STEAM_COMPAT_DATA_PATH: compat } },
+  });
+  await detector(reader).recordLaunch({ appId: 42, accountId: 100 }, [retail]);
+
+  writeFileSync(join(steam, "userdata/100/config/shortcuts.vdf"), Buffer.from("\0shortcuts\0\x01trunc"));
+  await detector().detect();
+  shortcuts("100", [{ appid: 42, name: "My games" }]);
+  expect((await detector().detect())[0]!.steamGames).toEqual([
+    { appId: 42, name: "My games", accountId: 100, provenance: "launch" },
+  ]);
+});

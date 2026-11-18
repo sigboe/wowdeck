@@ -22,7 +22,7 @@ import { translate } from "./PrefixRegistry";
 import { isWowClientExecutable } from "./WowExecutables";
 
 /** One proven link as stored: the installation by its location. */
-export interface LaunchRecord {
+export interface ProvenLinkRecord {
   appId: number;
   accountId?: number;
   location: string;
@@ -99,11 +99,11 @@ export async function runningLaunches(
   return [...found];
 }
 
-const sameRecord = (a: LaunchRecord, b: LaunchRecord) =>
+const sameRecord = (a: ProvenLinkRecord, b: ProvenLinkRecord) =>
   a.appId === b.appId && a.accountId === b.accountId && a.location.toLowerCase() === b.location.toLowerCase();
 
-function isRecord(value: unknown): value is LaunchRecord {
-  const r = value as LaunchRecord;
+function isProvenLinkRecord(value: unknown): value is ProvenLinkRecord {
+  const r = value as ProvenLinkRecord;
   return (
     typeof r === "object" && r !== null &&
     Number.isSafeInteger(r.appId) &&
@@ -113,18 +113,29 @@ function isRecord(value: unknown): value is LaunchRecord {
 }
 
 /** The proven links stored in the data folder; none when the file is missing or unreadable. */
-export async function readLaunchRecords(dataDir: string): Promise<LaunchRecord[]> {
+export async function readProvenLinks(dataDir: string): Promise<ProvenLinkRecord[]> {
   try {
     const parsed: unknown = JSON.parse(await readTextFile(join(dataDir, FILE)));
-    return Array.isArray(parsed) ? parsed.filter(isRecord) : [];
+    return Array.isArray(parsed) ? parsed.filter(isProvenLinkRecord) : [];
   } catch {
     return [];
   }
 }
 
 /** Store proven links, once each, keeping those already there. */
-export async function addLaunchRecords(dataDir: string, records: LaunchRecord[]): Promise<void> {
-  const stored = await readLaunchRecords(dataDir);
+export async function addProvenLinks(dataDir: string, records: ProvenLinkRecord[]): Promise<void> {
+  const stored = await readProvenLinks(dataDir);
   const fresh = records.filter((r) => !stored.some((s) => sameRecord(s, r)));
   if (fresh.length) await writeFileAtomic(join(dataDir, FILE), JSON.stringify([...stored, ...fresh], null, 2));
+}
+
+/** The stored proven links that `keep` accepts; the others are removed from the data folder. */
+export async function pruneProvenLinks(
+  dataDir: string,
+  keep: (record: ProvenLinkRecord) => boolean,
+): Promise<ProvenLinkRecord[]> {
+  const stored = await readProvenLinks(dataDir);
+  const kept = stored.filter(keep);
+  if (kept.length < stored.length) await writeFileAtomic(join(dataDir, FILE), JSON.stringify(kept, null, 2));
+  return kept;
 }

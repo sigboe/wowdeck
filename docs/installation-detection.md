@@ -260,7 +260,11 @@ engine keeps proven links in `steam-launch-links.json` in its data
 folder, by app id, account and installation location. Each scan adds
 them to the installation's links with provenance `launch`, under the
 shortcut's current name. A proven link replaces the prefix link to the
-same shortcut, and it goes away once the shortcut is deleted. Links found
+same shortcut. When a scan reads an account's `shortcuts.vdf` and the
+shortcut is no longer in it, the engine deletes that shortcut's proven
+links from the file. A new shortcut that gets the same app id then
+starts unlinked. When the scan can't read an account's `shortcuts.vdf`,
+the engine keeps that account's proven links. Links found
 from shortcut fields and prefixes carry provenance `prefix`. A Deck run
 still has to confirm which variables Steam sets (regression row L-14).
 The engine never logs the environment, the command line or their paths.
