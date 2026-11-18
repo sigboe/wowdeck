@@ -44,6 +44,10 @@ import { patchGamePage } from "./steamGamePage";
 import { steamLaunch } from "./steamLaunchActions";
 import { settingsStore } from "./settings";
 import { startHomeBadge } from "./steamDom/homeBadge";
+import { startLaunchWatch, steamRunningApps } from "./steamDom/launchWatch";
+import { listSteamShortcuts } from "./steamLibrary";
+import { currentSteamAccountId } from "./nativeControllerLayouts";
+import { systemClock } from "./clock";
 import { startPluginExitWatch, startQamVisibilityWatch } from "./steamDom/qamVisibility";
 import { setQamExpander, stopQamWidening } from "./steamDom/qamWidening";
 import { QamExpandHook } from "./steamDom/qamExpandHook";
@@ -363,6 +367,17 @@ export default definePlugin(() => {
   const unpatchGamePage = patchGamePage();
   // ...and the badge on its home tile.
   const stopHomeBadge = startHomeBadge();
+  // A shortcut seen launching WoW becomes a proven link (#279): the game
+  // page, the badge and the layout target dropdown use it once recorded.
+  const stopLaunchWatch = startLaunchWatch({
+    steamClient: (globalThis as { SteamClient?: unknown }).SteamClient,
+    runningApps: steamRunningApps,
+    shortcuts: listSteamShortcuts,
+    accountId: currentSteamAccountId,
+    record: (params) => engine.rpc("installations.recordLaunch", params),
+    recorded: () => void addonSession.reloadInstallations(),
+    clock: systemClock,
+  });
   // A QAM close must end the browse session, so reopening lands Get Addons
   // collapsed (UI-02 story 33): the module-scope machine alone would carry a
   // widened mode into the reopened QAM. Watched here, at plugin-load scope,
@@ -430,6 +445,7 @@ export default definePlugin(() => {
       unpatchGamePage();
       steamLaunch.stopWatching();
       stopHomeBadge();
+      stopLaunchWatch();
       stopQamVisibilityWatch();
       stopPluginExitWatch();
       // The whole plugin is unloading (not a modal round-trip): the next
