@@ -1,7 +1,7 @@
 import { useRef, useState, type FocusEvent, type ReactNode } from "react";
 import { DialogButton, Focusable, GamepadButton, type GamepadEvent } from "@decky/ui";
 import { FaCheck, FaChevronDown } from "react-icons/fa";
-import { STEAM } from "../steamTheme";
+import { STEAM, STEAM_FONT } from "../steamTheme";
 
 /**
  * A browse bar segment's picker (ADR 0002, revised 2026-10-24): the choices
@@ -28,6 +28,17 @@ export interface SegmentChoice<T> {
   data: T;
   label: string;
 }
+
+/** The caption over a segment's button: Steam's row label, one size down. */
+export const SEGMENT_LABEL = {
+  color: STEAM.text,
+  fontSize: STEAM_FONT.small,
+  lineHeight: "16px",
+  fontWeight: "bold",
+  letterSpacing: ".5px",
+  textTransform: "uppercase",
+  padding: "0 0 4px 2px",
+} as const;
 
 export function SegmentMenu<T>({
   menuLabel,

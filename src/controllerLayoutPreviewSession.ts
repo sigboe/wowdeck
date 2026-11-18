@@ -8,7 +8,7 @@ import {
 import { engine } from "./engineLink";
 import { backendErrorMessage } from "./errors";
 import { createKeyedResource } from "./keyedResource";
-import { nativeControllerLayouts } from "./nativeControllerLayouts";
+import { currentSteamAccountId, nativeControllerLayouts } from "./nativeControllerLayouts";
 import type { Rpc } from "./services/envelope";
 
 export type PreviewPaneState = LayoutPreviewOutcome | { state: "preparing" };
@@ -79,39 +79,13 @@ export function createLayoutPreviewSession(deps: {
     },
   };
 }
-let choice: {
-  layout: ControllerLayout;
-  key: string | null;
-  target?: number;
-  correcting?: boolean;
-} | null = null;
-const listeners = new Set<() => void>();
-export const previewChoice = {
-  get: () => choice,
-  subscribe: (listener: () => void) => {
-    listeners.add(listener);
-    return () => {
-      listeners.delete(listener);
-    };
-  },
-  select: (layout: ControllerLayout | null, target?: number, correcting = false) => {
-    choice = layout
-      ? {
-          layout,
-          key: target ? layoutPreviewSession.key(layout, target) : null,
-          target,
-          correcting,
-        }
-      : null;
-    listeners.forEach((listener) => listener());
-  },
-};
 export const layoutNative = nativeControllerLayouts();
-export const layoutTargetContext = createKeyedResource({
+/** The signed-in Steam account, which detected links must belong to. One key: "current". */
+export const steamAccount = createKeyedResource({
   clock: systemClock,
   pollMs: 1000,
-  errorText: () => "Couldn't establish the Steam account. Choose a library entry for preview.",
-  read: (key) => layoutNative.context(Number(key)),
+  errorText: () => "Couldn't establish the Steam account.",
+  read: () => currentSteamAccountId(),
 });
 /** Key: `${target}|${installationId}`. Scope is reread on every Apply boundary too. */
 export const layoutOperationContext = createKeyedResource({

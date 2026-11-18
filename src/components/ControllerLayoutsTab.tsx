@@ -3,6 +3,7 @@ import { toaster } from "@decky/api";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { engine } from "../engineLink";
 import { openNativePreview } from "../nativeLayoutPreview";
+import { PREVIEW_ONLY_REASON } from "../nativeControllerLayouts";
 import {
   ControllerGlyph,
   InfoIcon,
@@ -10,12 +11,7 @@ import {
   layoutRowClasses,
   useWorkshopLikes,
 } from "../steamControllerUi";
-import {
-  layoutPreviewSession,
-  layoutOperationContext,
-  layoutTargetContext,
-  previewChoice,
-} from "../controllerLayoutPreviewSession";
+import { layoutOperationContext, steamAccount } from "../controllerLayoutPreviewSession";
 import {
   layoutApplyStatus,
   layoutRecovery,
@@ -23,9 +19,15 @@ import {
 } from "../controllerLayoutRecoverySession";
 import { Warning, WarningLine } from "./Warning";
 import { addonSession } from "../session";
-import { layoutTargets, possibleSharedTargets } from "../controllerLayoutTargets";
+import {
+  layoutTargetPicks,
+  linkedLayoutTargets,
+  possibleSharedTargets,
+  selectedLayoutTarget,
+} from "../controllerLayoutTargets";
+import { settingsStore } from "../settings";
 import { useResource } from "../useResource";
-import { listSteamShortcuts } from "../steamLibrary";
+import { listSteamShortcuts, type SteamGame } from "../steamLibrary";
 import {
   forgetFocus,
   registerFocusElement,
@@ -35,7 +37,9 @@ import {
 } from "../focusMemory";
 import { layoutRow, useControllerLayoutCatalogue } from "../controllerLayouts";
 import { useControllerLayoutsSourceOn } from "../controllerLayoutsSource";
-import { focusTarget } from "./FocusSlot";
+import { FocusSlot, focusTarget } from "./FocusSlot";
+import { SEGMENT_LABEL, SegmentMenu } from "./SegmentMenu";
+import { PANE_DROPDOWN_VALUE } from "./dropdownValue";
 import { FactLine } from "./FactLine";
 import {
   STEAM,
@@ -50,7 +54,8 @@ import type { ControllerLayout } from "../../backend/src/api/contracts";
 /**
  * The Controller layouts destination's pane (GLOSSARY: Controller layouts
  * destination): the reviewed catalogue in the maintainers' order, with no
- * search, sorting or browse bar. A opens the read-only preview pane.
+ * search, sorting or browse bar. A dropdown above the list chooses the
+ * layout target (GLOSSARY), and A on a layout opens Steam's own preview for it.
  * Each layout is one focus stop (S14) that keeps its place (S21), read the
  * way Steam's controller-layout browser reads one: the title at 16/20 px,
  * then author and controller, then the description. The rows are Steam's
@@ -64,18 +69,13 @@ import type { ControllerLayout } from "../../backend/src/api/contracts";
 export function ControllerLayoutsTab({ view }: { view: string }) {
   const sourceOn = useControllerLayoutsSourceOn();
   const catalogue = useControllerLayoutCatalogue(sourceOn);
-  const chosen = useSyncExternalStore(previewChoice.subscribe, previewChoice.get);
   if (!sourceOn) {
     return null;
   }
   return (
     <>
       <RecoveryPane view={view} />
-      {chosen ? (
-        <PreviewPane choice={chosen} view={view} />
-      ) : (
-        <CatalogueBody catalogue={catalogue} view={view} />
-      )}
+      <CatalogueBody catalogue={catalogue} view={view} />
     </>
   );
 }
@@ -185,7 +185,12 @@ function CatalogueBody({
   useEffect(() => {
     const keys = shown.kind === "ready" ? shown.layouts.map((l) => l.id) : ["retry", "state"];
     const key = rememberedFocus(view);
-    if (key !== undefined && key !== "layout-recovery" && !keys.includes(key)) {
+    if (
+      key !== undefined &&
+      key !== "layout-recovery" &&
+      key !== "layout-target" &&
+      !keys.includes(key)
+    ) {
       forgetFocus(view);
     }
   }, [view, shown]);
@@ -263,13 +268,31 @@ function Heading({ text }: { text: string }) {
   return <div className={quickAccessControlsClasses?.PanelSectionTitle}>{text}</div>;
 }
 
-function Layouts({ layouts, view }: { layouts: ControllerLayout[]; view: string }) {
+/**
+ * The layout target for the selected installation: the linked entries
+ * (`linkedLayoutTargets`) and the one chosen, the player's remembered pick
+ * or the default.
+ */
+function useLayoutTarget() {
   const session = useSyncExternalStore(addonSession.subscribe, addonSession.get);
+  const { settings } = useSyncExternalStore(settingsStore.subscribe, settingsStore.get);
+  useSyncExternalStore(layoutTargetPicks.subscribe, layoutTargetPicks.get);
   const games = listSteamShortcuts();
-  const account = useResource(layoutTargetContext, games.length ? String(games[0].appId) : null);
+  const accountId = useResource(steamAccount, "current").data ?? undefined;
+  const installationId = session.selectedId ?? "";
   const active = session.installations.find((i) => i.id === session.selectedId);
-  const preferred = layoutTargets(games, active, account.data?.accountId).preferred;
-  const accountId = account.data?.accountId;
+  const targets = linkedLayoutTargets(games, settings, active, accountId);
+  return {
+    games,
+    installationId,
+    choices: targets.choices,
+    selected: selectedLayoutTarget(targets, installationId),
+    accountId,
+  };
+}
+
+function Layouts({ layouts, view }: { layouts: ControllerLayout[]; view: string }) {
+  const { games, installationId, choices, selected, accountId } = useLayoutTarget();
   const [cached, setCached] = useState<string[]>([]);
   const shas = layouts.map((l) => l.revision?.sha256).filter((s): s is string => !!s);
   useEffect(() => {
@@ -285,6 +308,15 @@ function Layouts({ layouts, view }: { layouts: ControllerLayout[]; view: string 
   }, [accountId, shas.join()]);
   return (
     <>
+      <LayoutTargetRow
+        view={view}
+        choices={choices}
+        selected={selected}
+        onPick={(appId) => layoutTargetPicks.pick(installationId, appId)}
+      />
+      {selected && (
+        <TargetWarning target={selected} games={games} installationId={installationId} />
+      )}
       <Heading text="Reviewed layouts" />
       {/* Steam's 6 px between rows (S10): the Fields alone touched (0 px, DEVICE 2026-11-17). */}
       <div style={{ display: "flex", flexDirection: "column", gap: STEAM_ROW_GAP }}>
@@ -293,12 +325,103 @@ function Layouts({ layouts, view }: { layouts: ControllerLayout[]; view: string 
             key={layout.id}
             layout={layout}
             view={view}
-            target={preferred?.appId}
+            target={selected?.appId}
             cached={!!layout.revision && cached.includes(layout.revision.sha256)}
           />
         ))}
       </div>
     </>
+  );
+}
+
+/**
+ * The layout target dropdown: the in-pane segment menu of the browse bar
+ * (G14), its caption above it as there. With nothing linked, a row says
+ * where to link the game instead, so the pane still opens on a focus stop.
+ */
+function LayoutTargetRow({
+  view,
+  choices,
+  selected,
+  onPick,
+}: {
+  view: string;
+  choices: SteamGame[];
+  selected: SteamGame | undefined;
+  onPick: (appId: number) => void;
+}) {
+  if (!selected)
+    return (
+      <PanelSectionRow>
+        <Field
+          focusable
+          {...focusTarget(view, "layout-target")}
+          label="No linked game"
+          description={
+            <span style={descriptionStyle}>
+              Choose World of Warcraft in Steam under Options › Steam library to preview layouts
+            </span>
+          }
+        />
+      </PanelSectionRow>
+    );
+  return (
+    <PanelSectionRow>
+      {/* The open list is placed against this box, as in the browse bar. */}
+      <div style={{ position: "relative" }}>
+        <FocusSlot view={view} id="layout-target">
+          <div style={SEGMENT_LABEL}>Library entry</div>
+          <SegmentMenu
+            menuLabel="Library entry"
+            choices={choices.map((g) => ({ data: g.appId, label: g.name }))}
+            selected={selected.appId}
+            renderValue={PANE_DROPDOWN_VALUE}
+            onPick={onPick}
+          />
+        </FocusSlot>
+      </div>
+    </PanelSectionRow>
+  );
+}
+
+/**
+ * The warning line under the dropdown (S38), shown only when needed: the
+ * entry shares controls with same-named entries, or WoWDeck can only
+ * preview for it, with the reason. Read per layout target and installation,
+ * as Apply reads it again. Nothing shows while it is read: most entries
+ * need no warning, and a placeholder would make every pane jump (S26).
+ */
+function TargetWarning({
+  target,
+  games,
+  installationId,
+}: {
+  target: SteamGame;
+  games: SteamGame[];
+  installationId: string;
+}) {
+  const scope = useResource(layoutOperationContext, `${target.appId}|${installationId}`);
+  if (!scope.data && !scope.error) return null;
+  const established = scope.data?.scope.state === "established";
+  const others =
+    (established ? scope.data!.scope.targets : possibleSharedTargets(games, target.appId)).length -
+    1;
+  const sharing = `Shares controls with ${others} other ${others === 1 ? "entry" : "entries"} named “${target.name}”`;
+  if (established)
+    return others < 1 ? null : (
+      <PanelSectionRow>
+        <Warning heading={sharing}>
+          <WarningLine text="Applying a layout changes them all." />
+        </Warning>
+      </PanelSectionRow>
+    );
+  return (
+    <PanelSectionRow>
+      <Warning heading="Preview only">
+        <WarningLine text={scope.error ?? scope.data?.scope.reason ?? PREVIEW_ONLY_REASON} />
+        {others > 0 && <WarningLine text={`${sharing}.`} />}
+      </Warning>
+    </PanelSectionRow>
   );
 }
 
@@ -318,20 +441,16 @@ function LayoutRow({
   const likes = useWorkshopLikes(layout.publishedFileId);
   const [opening, setOpening] = useState(false);
   const preview = async () => {
-    if (target === undefined) {
-      previewChoice.select(layout);
-      return;
-    }
+    if (target === undefined) return;
     setOpening(true);
     const error = await openNativePreview(layout, target);
     setOpening(false);
     if (error) toaster.toast({ title: layout.title, body: error });
   };
-  const choose = () => {
-    previewChoice.select(layout, undefined, true);
-    requestFocus(view, `preview:${layout.id}:Choose a library entry`);
-  };
-  if (!cls) return <FallbackRow layout={layout} view={view} onPreview={preview} />;
+  // Nothing to preview for without a layout target.
+  const noPreview = row.inactive || target === undefined;
+  if (!cls)
+    return <FallbackRow layout={layout} view={view} onPreview={noPreview ? undefined : preview} />;
   const focus = focusTarget(view, layout.id);
   return (
     // The slot is the wrapper around Steam's Focusable (DEVICE 2026-11-17:
@@ -343,11 +462,9 @@ function LayoutRow({
         noFocusRing
         preferredFocus={focus.preferredFocus}
         onGamepadFocus={focus.onGamepadFocus}
-        onActivate={row.inactive || opening ? undefined : preview}
-        onOKButton={row.inactive || opening ? undefined : preview}
-        onOKActionDescription={row.inactive ? undefined : opening ? "Preparing…" : "Preview"}
-        onSecondaryButton={row.inactive ? undefined : choose}
-        onSecondaryActionDescription={row.inactive ? undefined : "Library entry"}
+        onActivate={noPreview || opening ? undefined : preview}
+        onOKButton={noPreview || opening ? undefined : preview}
+        onOKActionDescription={noPreview ? undefined : opening ? "Preparing…" : "Preview"}
       >
         <div className={cls.IconContainer}>
           <ControllerGlyph type={controllerTypeNumber(layout.controllerType)} />
@@ -395,7 +512,7 @@ function FallbackRow({
 }: {
   layout: ControllerLayout;
   view: string;
-  onPreview: () => void;
+  onPreview?: () => void;
 }) {
   const row = layoutRow(layout);
   const muted = row.inactive ? { color: STEAM.textDisabled } : undefined;
@@ -405,8 +522,8 @@ function FallbackRow({
         focusable
         {...focusTarget(view, layout.id)}
         className="wowdeck-layout-row"
-        onClick={row.inactive ? undefined : onPreview}
-        onOKActionDescription={row.inactive ? undefined : "Preview"}
+        onClick={onPreview}
+        onOKActionDescription={onPreview ? "Preview" : undefined}
         label={
           <span
             style={{
@@ -436,144 +553,5 @@ function FallbackRow({
         }
       />
     </PanelSectionRow>
-  );
-}
-
-function PreviewPane({
-  choice,
-  view,
-}: {
-  choice: NonNullable<ReturnType<typeof previewChoice.get>>;
-  view: string;
-}) {
-  const result = useResource(layoutPreviewSession.resource, choice.key);
-  const session = useSyncExternalStore(addonSession.subscribe, addonSession.get);
-  const games = listSteamShortcuts();
-  const account = useResource(layoutTargetContext, games.length ? String(games[0].appId) : null);
-  const active = session.installations.find((i) => i.id === session.selectedId);
-  const scope = useResource(
-    layoutOperationContext,
-    choice.target !== undefined && session.selectedId
-      ? `${choice.target}|${session.selectedId}`
-      : null,
-  );
-  const context = scope.data?.scope.state === "established" ? scope.data : undefined;
-  const preferred = layoutTargets(games, active, account.data?.accountId).preferred;
-  useEffect(() => {
-    if (!choice.key && !choice.correcting && preferred)
-      previewChoice.select(choice.layout, preferred.appId);
-  }, [choice, preferred?.appId]);
-  useEffect(() => {
-    revealRemembered(view);
-  }, [view, choice.key]);
-  const back = () => {
-    previewChoice.select(null);
-    requestFocus(view, choice.layout.id);
-  };
-  const row = (label: string, description?: string, onClick?: () => void, key = label) => (
-    <PanelSectionRow key={key}>
-      <Field
-        focusable
-        {...focusTarget(view, `preview:${choice.layout.id}:${key}`)}
-        label={label}
-        description={description}
-        onClick={onClick}
-        onCancelButton={() => {
-          back();
-          return true;
-        }}
-        onCancelActionDescription="Back"
-        onOKActionDescription={onClick ? "Choose" : undefined}
-      />
-    </PanelSectionRow>
-  );
-  return (
-    <>
-      <PanelSectionRow>
-        <Field
-          focusable
-          {...focusTarget(view, `preview:${choice.layout.id}:back`)}
-          label="Back to layouts"
-          onClick={back}
-        />
-      </PanelSectionRow>
-      {row(
-        choice.layout.title,
-        context
-          ? "Preview the mappings, then apply. Your previous controls are saved first."
-          : "Preview only. Your controls stay in place.",
-      )}
-      {choice.target !== undefined && (
-        <>
-          {row(
-            "Selected library entry",
-            games.find((g) => g.appId === choice.target)?.name ?? "Entry no longer available",
-          )}
-          {row("Change library entry", "Choose a different entry without renaming it", () => {
-            previewChoice.select(choice.layout, undefined, true);
-            requestFocus(view, `preview:${choice.layout.id}:Choose a library entry`);
-          })}
-          {context ? (
-            row("Shared controls", context.scope.targets.map((g) => g.name).join(", "))
-          ) : (
-            <>
-              {row(
-                "Possibly shared controls",
-                possibleSharedTargets(games, choice.target)
-                  .map((g) => g.name)
-                  .join(", "),
-              )}
-              {row(
-                "Applying unavailable",
-                scope.loading
-                  ? "Checking which entries share these controls…"
-                  : "WoWDeck applies layouts only over your own saved controls on the built-in controller, without a controller-specific override. Preview remains available.",
-              )}
-            </>
-          )}
-        </>
-      )}
-      {!choice.key ? (
-        <>
-          {row(
-            "Choose a library entry",
-            "Entries with the same name may share controls. This preview changes none of them.",
-          )}
-          {games.length === 0 &&
-            row(
-              "No library entries available",
-              "Open Steam's controller settings for your controller, then try again.",
-            )}
-          {games.map((game) =>
-            row(
-              game.name,
-              `Library entry ${games.indexOf(game) + 1}`,
-              () => {
-                previewChoice.select(choice.layout, game.appId);
-                requestFocus(view, `preview:${choice.layout.id}:Selected library entry`);
-              },
-              String(game.appId),
-            ),
-          )}
-        </>
-      ) : result.error ? (
-        row("Couldn't preview the layout", result.error)
-      ) : result.data?.state === "error" ? (
-        row("Couldn't preview the layout", result.data.message)
-      ) : result.data?.state === "ready" ? (
-        <>
-          {row(
-            "Preview in Steam",
-            "Shows how this layout maps to your controller. X there applies it.",
-            async () => {
-              const error = await openNativePreview(choice.layout, choice.target!);
-              if (error) toaster.toast({ title: choice.layout.title, body: error });
-            },
-          )}
-        </>
-      ) : (
-        row("Preparing preview…")
-      )}
-    </>
   );
 }

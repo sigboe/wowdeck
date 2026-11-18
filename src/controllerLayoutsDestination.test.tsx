@@ -2,7 +2,12 @@
 import { afterAll, afterEach, beforeEach, expect, mock, test } from "bun:test";
 import { JSDOM } from "jsdom";
 import { act } from "react";
-import type { ControllerLayout, ControllerLayoutCatalogue } from "../backend/src/api/contracts";
+import type {
+  ControllerLayout,
+  ControllerLayoutCatalogue,
+  Installation,
+  PluginSettings,
+} from "../backend/src/api/contracts";
 import { defaultSettings } from "../backend/src/wow/storage/settings";
 import { deckyUiStub } from "./deckyUiStub";
 import { connectEngine } from "./engineLink";
@@ -42,16 +47,25 @@ let answer: ControllerLayoutCatalogue | EngineFailure = {
   layouts: [LAYOUT_A, LAYOUT_B],
 };
 let operationAnswer: import("../backend/src/api/contracts").ControllerLayoutOperation | null = null;
+let linkSettings: Partial<PluginSettings> = {};
 const fake = createFakeEngine({
   "controllerLayouts.operationStatus": () => operationAnswer,
   "settings.get": () => ({
-    settings: { ...defaultSettings(), controllerLayoutsEnabled: sourceOn },
+    settings: { ...defaultSettings(), controllerLayoutsEnabled: sourceOn, ...linkSettings },
   }),
   "controllerLayouts.catalogue": () => answer,
 });
 connectEngine(fake);
 mock.module("@decky/api", () => ({ toaster: { toast: () => {} } }));
 mock.module("@decky/ui", () => deckyUiStub);
+// Steam's own preview needs Steam; the pane's part is which entry it opens for.
+const previews: [string, number][] = [];
+mock.module("./nativeLayoutPreview", () => ({
+  openNativePreview: async (layout: ControllerLayout, target: number) => {
+    previews.push([layout.id, target]);
+    return null;
+  },
+}));
 
 const dom = new JSDOM('<div id="root"></div>');
 const doc = dom.window.document;
@@ -74,17 +88,27 @@ const { createRoot } = await import("react-dom/client");
 const { settingsStore } = await import("./settings");
 const { controllerLayoutsModule } = await import("./controllerLayouts");
 const { ControllerLayoutsTab } = await import("./components/ControllerLayoutsTab");
+const { addonSession } = await import("./session");
+const { layoutTargetPicks } = await import("./controllerLayoutTargets");
+const { steamAccount, layoutOperationContext } = await import("./controllerLayoutPreviewSession");
 
 let root: ReturnType<typeof createRoot>;
 beforeEach(() => {
   sourceOn = true;
   answer = { state: "ready", layouts: [LAYOUT_A, LAYOUT_B] };
+  linkSettings = {};
+  previews.length = 0;
+  layoutTargetPicks.reset();
   fake.calls.length = 0;
   controllerLayoutsModule.catalogue.forget(controllerLayoutsModule.KEY);
   root = createRoot(doc.getElementById("root")!);
 });
 afterEach(async () => {
   await act(async () => root.unmount());
+  restoreSteam?.();
+  restoreSteam = undefined;
+  fake.answers["installations.list"] = { installations: [] };
+  await act(async () => addonSession.reloadInstallations());
 });
 
 async function show(): Promise<string> {
@@ -93,6 +117,110 @@ async function show(): Promise<string> {
   await act(async () => root.render(<ControllerLayoutsTab view="qam.browse.controllerLayouts" />));
   await act(async () => {});
   return doc.getElementById("root")!.textContent ?? "";
+}
+
+const SHORTCUT = 1073741824;
+let restoreSteam: (() => void) | undefined;
+
+/**
+ * Steam's library shortcuts and the built-in controller, signed in as
+ * account 123. `url` is the controls the entries have now: the player's own
+ * saved controls by default, which WoWDeck can apply over.
+ */
+function steam(
+  apps: [number, string][],
+  url = "usercloud://fixture-saved-controls",
+  secondController = false,
+) {
+  const keys = ["appStore", "SteamClient", "controllerConfiguratorStore"];
+  const saved = keys.map((key) => [key, Object.getOwnPropertyDescriptor(globalThis, key)] as const);
+  Object.assign(globalThis, {
+    appStore: {
+      allApps: apps.map(([appid, display_name]) => ({ appid, display_name, app_type: SHORTCUT })),
+    },
+    SteamClient: {
+      User: { GetSteamID: () => "76561197960265851" },
+      Input: {
+        GetConfigForAppAndController: async (appid: number) => ({
+          accountID: 0,
+          nControllerType: 4,
+          unControllerIndex: 15,
+          eSelectionType: 0,
+          // "per-entry": each entry has its own saved controls.
+          URL: url === "per-entry" ? `usercloud://fixture-saved-controls-${appid}` : url,
+        }),
+        PreviewConfigForAppAndController: async () => new Uint8Array(),
+        FreeControllerConfig: () => {},
+      },
+    },
+    controllerConfiguratorStore: {
+      m_controllerList: [
+        { nControllerIndex: 15, eControllerType: 4, strSerialNumber: "FIXTURE" },
+        ...(secondController ? [{ nControllerIndex: 16, eControllerType: 45 }] : []),
+      ],
+    },
+  });
+  restoreSteam = () => {
+    for (const [key, descriptor] of saved) {
+      if (descriptor) Object.defineProperty(globalThis, key, descriptor);
+      else Reflect.deleteProperty(globalThis, key);
+    }
+    steamAccount.forget("current");
+    layoutOperationContext.retainOnly([]);
+  };
+}
+
+/** Installations with their detected links; the first is selected. */
+async function installations(...list: [string, [number, string, number?][]][]) {
+  fake.answers["installations.list"] = {
+    installations: list.map(
+      ([id, links], index) =>
+        ({
+          id,
+          selected: index === 0,
+          steamGames: links.map(([appId, name, accountId]) => ({ appId, name, accountId })),
+        }) as Installation,
+    ),
+  };
+  await act(async () => addonSession.reloadInstallations());
+}
+
+/** Lets the account and shared-controls reads settle. */
+async function settle() {
+  // Steam's native reads and the identity digest settle on later tasks.
+  for (let i = 0; i < 10; i++) await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
+}
+
+const root$ = () => doc.getElementById("root")!;
+const targetButton = () =>
+  root$().querySelector<HTMLButtonElement>('button[aria-label="Library entry"]');
+/** The open menu's entries: every button but the dropdown's own. */
+const menuItems = () =>
+  [...root$().querySelectorAll<HTMLButtonElement>("button[aria-label]")].filter(
+    (b) => b !== targetButton(),
+  );
+async function targetChoices(): Promise<string[]> {
+  await act(async () => targetButton()!.click());
+  const labels = menuItems().map((item) => item.getAttribute("aria-label") ?? "");
+  await act(async () => targetButton()!.click());
+  return labels;
+}
+async function pickTarget(label: string) {
+  await act(async () => targetButton()!.click());
+  const item = menuItems().find((b) => b.getAttribute("aria-label") === label)!;
+  await act(async () => item.click());
+}
+async function pressA(title: string) {
+  const row = [...root$().querySelectorAll("b")].find((b) => b.textContent === title)!;
+  await act(async () =>
+    row.parentElement!.dispatchEvent(new doc.defaultView!.MouseEvent("click", { bubbles: true })),
+  );
+  await settle();
+}
+async function showSettled() {
+  const text = await show();
+  await settle();
+  return root$().textContent ?? text;
 }
 
 const catalogueRequests = () =>
@@ -166,35 +294,203 @@ test("Retry asks again and shows what comes back", async () => {
   expect(doc.getElementById("root")!.textContent).toContain("Fixture layout A");
 });
 
-test("A opens a preview-only pane with scope disclosure and no apply action", async () => {
-  const { resetFocusMemory } = await import("./focusMemory");
-  resetFocusMemory();
-  await show();
-  const row =
-    doc.querySelector(".wowdeck-layout-row") ??
-    [...doc.querySelectorAll("b")].find((node) => node.textContent === "Fixture layout A")
-      ?.parentElement;
-  expect(row).toBeDefined();
-  await act(async () =>
-    row?.dispatchEvent(new doc.defaultView!.MouseEvent("click", { bubbles: true })),
+test("the dropdown lists the hand-set link and this installation's detected links for this account", async () => {
+  steam([
+    [42, "World of Warcraft"],
+    [43, "WoW Classic"],
+    [44, "Battle.net"],
+    [45, "Warcraft Logs"],
+    [46, "WoW Legacy"],
+    [47, "Unrelated game"],
+  ]);
+  linkSettings = { steamGame: { appId: 44, name: "Battle.net" }, steamAutoLink: true };
+  await installations(
+    [
+      "active",
+      [
+        [42, "World of Warcraft", 123],
+        [45, "Warcraft Logs", 456], // another Steam account's link
+        [46, "WoW Legacy"], // a link from before links carried an account
+      ],
+    ],
+    ["other", [[43, "WoW Classic", 123]]],
   );
-  const text = doc.getElementById("root")!.textContent ?? "";
+
+  await showSettled();
+
+  expect(await targetChoices()).toEqual(["Battle.net", "World of Warcraft"]);
+
+  linkSettings = { ...linkSettings, steamAutoLink: false };
+  await act(async () => root.render(null));
+  await showSettled();
+
+  expect(await targetChoices()).toEqual(["Battle.net"]);
+});
+
+test.each<[string, number | null, [number, string, number][], string]>([
+  ["the hand-set link", 42, [[44, "Battle.net", 123]], "World of Warcraft"],
+  ["the only detected entry", null, [[42, "World of Warcraft", 123]], "World of Warcraft"],
+  [
+    "the first A–Z",
+    null,
+    [
+      [42, "World of Warcraft", 123],
+      [44, "Battle.net", 123],
+    ],
+    "Battle.net",
+  ],
+])("the dropdown starts on %s", async (_case, handSet, detected, shown) => {
+  steam([
+    [42, "World of Warcraft"],
+    [44, "Battle.net"],
+  ]);
+  linkSettings = {
+    steamGame: handSet ? { appId: handSet, name: "World of Warcraft" } : null,
+    steamAutoLink: true,
+  };
+  await installations(["active", detected]);
+
+  await showSettled();
+
+  expect(targetButton()?.textContent).toBe(shown);
+});
+
+test("a pick is kept per installation when the QAM closes or the destination changes", async () => {
+  steam([
+    [42, "World of Warcraft"],
+    [44, "Battle.net"],
+  ]);
+  linkSettings = { steamGame: { appId: 44, name: "Battle.net" }, steamAutoLink: true };
+  await installations(["active", [[42, "World of Warcraft", 123]]], ["other", []]);
+  await showSettled();
+
+  await pickTarget("World of Warcraft");
+  await act(async () => root.render(null)); // QAM closed, or another destination
+  await showSettled();
+  expect(targetButton()?.textContent).toBe("World of Warcraft");
+
+  await installations(["other", []], ["active", [[42, "World of Warcraft", 123]]]);
+  await settle();
+  expect(targetButton()?.textContent).toBe("Battle.net");
+
+  await installations(["active", [[42, "World of Warcraft", 123]]], ["other", []]);
+  await settle();
+  expect(targetButton()?.textContent).toBe("World of Warcraft");
+});
+
+test("A on a layout opens Steam's preview for the selected entry, with no menu between", async () => {
+  steam([
+    [42, "World of Warcraft"],
+    [44, "Battle.net"],
+  ]);
+  linkSettings = { steamGame: { appId: 44, name: "Battle.net" }, steamAutoLink: true };
+  await installations(["active", [[42, "World of Warcraft", 123]]]);
+  await showSettled();
+  await pickTarget("World of Warcraft");
+
+  await pressA("Fixture layout B");
+
+  expect(previews).toEqual([[LAYOUT_B.id, 42]]);
+  const text = root$().textContent ?? "";
+  expect(text).toContain("Reviewed layouts");
+  expect(text).not.toContain("Choose a library entry");
+  expect(text).not.toContain("Back to layouts");
+});
+
+test("the pane reads dropdown, warning line, heading, then the layouts", async () => {
+  steam([[42, "WoW"]], "workshop://fixture-community-layout");
+  linkSettings = { steamGame: { appId: 42, name: "WoW" } };
+  await installations(["active", []]);
+
+  const text = await showSettled();
+
+  const order = ["WoW", "Preview only", "Reviewed layouts", "Fixture layout A"].map((s) =>
+    text.indexOf(s),
+  );
+  expect(order).toEqual([...order].sort((a, b) => a - b));
+  expect(order.every((i) => i >= 0)).toBe(true);
+});
+
+test.each<[string, [number, string][], string | undefined, string[], string[]]>([
+  [
+    "a plain entry WoWDeck can apply to",
+    [
+      [42, "World of Warcraft"],
+      [43, "WoW Classic"],
+    ],
+    undefined,
+    [],
+    ["Preview only", "Shares controls"],
+  ],
+  [
+    "an entry sharing controls by name",
+    [
+      [42, "World of Warcraft"],
+      [43, "world of warcraft"],
+      [44, "World of Warcraft"],
+    ],
+    undefined,
+    ["Shares controls with 2 other entries", "“World of Warcraft”"],
+    ["Preview only"],
+  ],
+  [
+    "an entry WoWDeck can only preview for",
+    [[42, "World of Warcraft"]],
+    "workshop://fixture-community-layout",
+    ["Preview only", "only over your own saved controls, not over a template or Workshop layout"],
+    ["Shares controls"],
+  ],
+  [
+    "an entry whose name WoWDeck can't apply to",
+    [[42, "World of Warcraft Ünïcode"]],
+    undefined,
+    ["Preview only", "accented or non-Latin letters"],
+    ["Shares controls"],
+  ],
+  [
+    "same-named entries whose controls differ",
+    [
+      [42, "World of Warcraft"],
+      [43, "World of Warcraft"],
+    ],
+    "per-entry",
+    ["Preview only", "have different controls", "Shares controls with 1 other entry"],
+    [],
+  ],
+])("the warning line for %s", async (_case, apps, url, shown, hidden) => {
+  steam(apps, url);
+  linkSettings = { steamGame: { appId: 42, name: "World of Warcraft" } };
+  await installations(["active", []]);
+
+  const text = await showSettled();
+
+  for (const line of shown) expect(text).toContain(line);
+  for (const line of hidden) expect(text).not.toContain(line);
+  expect(root$().querySelector('[role="note"]') !== null).toBe(shown.length > 0);
+});
+
+test("a second controller keeps the detected links and explains that only preview is possible", async () => {
+  steam([[42, "World of Warcraft"]], undefined, true);
+  linkSettings = { steamGame: null, steamAutoLink: true };
+  await installations(["active", [[42, "World of Warcraft", 123]]]);
+
+  const text = await showSettled();
+
+  expect(await targetChoices()).toEqual(["World of Warcraft"]);
   expect(text).toContain("Preview only");
-  expect(text).toContain("Entries with the same name may share controls");
-  expect(text).not.toContain("Apply layout");
-  await act(async () =>
-    [...doc.querySelectorAll("b")]
-      .find((node) => node.textContent === "Back to layouts")
-      ?.parentElement?.focus(),
-  );
-  await act(async () =>
-    [...doc.querySelectorAll("b")]
-      .find((node) => node.textContent === "Back to layouts")
-      ?.parentElement?.dispatchEvent(new doc.defaultView!.MouseEvent("click", { bubbles: true })),
-  );
-  expect(doc.activeElement).not.toBe(doc.body);
-  expect(doc.activeElement?.textContent).toContain("Fixture layout A");
-  expect(doc.activeElement?.textContent).not.toContain("Back to layouts");
+});
+
+test("with nothing linked, the pane says so and A previews nothing", async () => {
+  steam([[42, "World of Warcraft"]]);
+  linkSettings = { steamGame: null, steamAutoLink: true };
+  await installations(["active", []]);
+
+  const text = await showSettled();
+  await pressA("Fixture layout A");
+
+  expect(text).toContain("No linked game");
+  expect(targetButton()).toBeNull();
+  expect(previews).toEqual([]);
 });
 
 import { createManualClock } from "./testSupport/manualClock";
@@ -242,125 +538,6 @@ test("preview reconnects to its typed preparation job across pane teardown", asy
   ).toHaveLength(1);
   session.reset();
   expect(clock.activeTimers()).toBe(0);
-});
-
-test("chosen target discloses equal-name entries and unknown wider scope, with correction but no Apply", async () => {
-  const { previewChoice } = await import("./controllerLayoutPreviewSession");
-  const previous = Object.getOwnPropertyDescriptor(globalThis, "appStore");
-  Object.assign(globalThis, {
-    appStore: {
-      allApps: [
-        { appid: 42, display_name: "WoW", app_type: 1073741824 },
-        { appid: 43, display_name: "WoW", app_type: 1073741824 },
-        { appid: 44, display_name: "Other", app_type: 1073741824 },
-      ],
-    },
-  });
-  try {
-    await act(async () => previewChoice.select(LAYOUT_A, 42));
-    const text = await show();
-    expect(text).toContain("WoW, WoW");
-    expect(text).not.toContain("(42)");
-    expect(text).not.toContain("(43)");
-    const { rememberedFocus, restoreFocus } = await import("./focusMemory");
-    const selectedRow = [...doc.querySelectorAll("b")].find(
-      (n) => n.textContent === "Change library entry",
-    )!.parentElement!;
-    await act(async () => selectedRow.focus());
-    const identity = rememberedFocus("qam.browse.controllerLayouts");
-    expect(identity).toBe(`preview:${LAYOUT_A.id}:Change library entry`);
-    await act(async () => root.render(null));
-    await show();
-    restoreFocus("qam.browse.controllerLayouts");
-    expect(doc.activeElement?.textContent).toContain("Change library entry");
-    expect(text).toContain("Possibly shared controls");
-    expect(text).toContain("Applying unavailable");
-    expect(text).not.toContain("Apply layout");
-    const change = [...doc.querySelectorAll("b")].find(
-      (n) => n.textContent === "Change library entry",
-    )!;
-    await act(async () =>
-      change.parentElement!.dispatchEvent(
-        new doc.defaultView!.MouseEvent("click", { bubbles: true }),
-      ),
-    );
-    expect(doc.getElementById("root")!.textContent).toContain("Choose a library entry");
-    expect(doc.getElementById("root")!.textContent).toContain("Other");
-  } finally {
-    await act(async () => previewChoice.select(null));
-    if (previous) Object.defineProperty(globalThis, "appStore", previous);
-    else Reflect.deleteProperty(globalThis, "appStore");
-  }
-});
-
-test("preference uses the active installation and current account, leaving ambiguous or legacy links for correction", async () => {
-  const { previewChoice, layoutTargetContext } = await import("./controllerLayoutPreviewSession");
-  const { addonSession } = await import("./session");
-  const keys = ["appStore", "SteamClient", "controllerConfiguratorStore"];
-  const saved = keys.map((key) => [key, Object.getOwnPropertyDescriptor(globalThis, key)] as const);
-  Object.assign(globalThis, {
-    appStore: {
-      allApps: [42, 43].map((appid) => ({ appid, display_name: "WoW", app_type: 1073741824 })),
-    },
-    SteamClient: {
-      User: { GetSteamID: () => "76561197960265851" },
-      Input: {
-        GetConfigForAppAndController: async () => ({
-          accountID: 0,
-          nControllerType: 4,
-          unControllerIndex: 15,
-        }),
-        PreviewConfigForAppAndController: async () => new Uint8Array(),
-        FreeControllerConfig: () => {},
-      },
-    },
-    controllerConfiguratorStore: {
-      m_controllerList: [{ nControllerIndex: 15, eControllerType: 4 }],
-    },
-  });
-  try {
-    await layoutTargetContext.refresh("42");
-    for (const scenario of ["legacy", "another account", "ambiguous", "unique"] as const) {
-      const accountId =
-        scenario === "legacy" ? undefined : scenario === "another account" ? 456 : 123;
-      const steamGames = [
-        { appId: 42, name: "WoW", accountId },
-        ...(scenario === "ambiguous" ? [{ appId: 43, name: "WoW", accountId }] : []),
-      ];
-      fake.answers["installations.list"] = {
-        installations: [
-          {
-            id: "active",
-            selected: true,
-            steamGames,
-          } as import("../backend/src/api/contracts").Installation,
-          {
-            id: "other",
-            selected: false,
-            steamGames: [{ appId: 43, name: "WoW", accountId: 123 }],
-          } as import("../backend/src/api/contracts").Installation,
-        ],
-      };
-      await act(async () => {
-        await addonSession.reloadInstallations();
-        previewChoice.select(LAYOUT_A);
-      });
-      const text = await show();
-      expect(text.includes("Selected library entry")).toBe(scenario === "unique");
-      expect(text.includes("Choose a library entry")).toBe(scenario !== "unique");
-    }
-  } finally {
-    await act(async () => {
-      previewChoice.select(null);
-      fake.answers["installations.list"] = { installations: [] };
-      await addonSession.reloadInstallations();
-    });
-    layoutTargetContext.forget("42");
-    for (const [key, descriptor] of saved) {
-      if (descriptor) Object.defineProperty(globalThis, key, descriptor);
-      else Reflect.deleteProperty(globalThis, key);
-    }
-  }
 });
 
 test("interrupted recovery discloses uncertainty without offering Apply", async () => {

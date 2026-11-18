@@ -1,23 +1,75 @@
-import type { Installation, SteamGameLink } from "../backend/src/api/contracts";
-import type { SteamGame } from "./steamLibrary";
+import type { Installation, PluginSettings } from "../backend/src/api/contracts";
+import { linkedSteamGames, type SteamGame } from "./steamLibrary";
+import { createStore } from "./store";
 
-/** Account-scoped path evidence is a preference only, never mutation scope proof. */
-export function layoutTargets(
+/**
+ * The entries the layout target dropdown offers (GLOSSARY: Layout target),
+ * by the rule the game page and the home badge use (`linkedSteamGames`):
+ * the hand-set link from Options, plus the selected installation's detected
+ * links while "Link detected Steam games" is on. Detected links count only
+ * for the Steam account signed in now; with the account unknown, none do.
+ * Entries come from Steam's library, A–Z, under the names it shows; a link
+ * whose app id is no longer a shortcut is left out.
+ *
+ * The default: the hand-set link, then the only detected entry, then the
+ * first A–Z.
+ */
+export function linkedLayoutTargets(
   games: SteamGame[],
+  settings: Pick<PluginSettings, "steamGame" | "steamAutoLink">,
   active: Pick<Installation, "steamGames"> | undefined,
   accountId: number | undefined,
-) {
-  const linked = (active?.steamGames ?? []).filter(
-    (link: SteamGameLink) =>
-      accountId !== undefined &&
-      link.accountId === accountId &&
-      games.some((g) => g.appId === link.appId && g.name === link.name),
+): { choices: SteamGame[]; initial: SteamGame | undefined } {
+  const detected = (active?.steamGames ?? []).filter(
+    (link) => accountId !== undefined && link.accountId === accountId,
   );
-  const ids = new Set(linked.map((g) => g.appId));
-  return { preferred: ids.size === 1 ? games.find((g) => ids.has(g.appId)) : undefined, games };
+  const linked = linkedSteamGames(
+    [{ steamGames: detected }],
+    settings.steamGame,
+    settings.steamAutoLink,
+  );
+  const choices = games.filter((g) => linked.some((l) => l.appId === g.appId));
+  const listed = (appId: number | undefined) => choices.find((g) => g.appId === appId);
+  const detectedHere = settings.steamAutoLink
+    ? choices.filter((g) => detected.some((d) => d.appId === g.appId))
+    : [];
+  const initial =
+    listed(settings.steamGame?.appId) ??
+    (detectedHere.length === 1 ? detectedHere[0] : undefined) ??
+    choices[0];
+  return { choices, initial };
 }
-/** Name equality establishes a warning group, never the full affected scope. */
+
+/**
+ * The player's dropdown pick per installation id. Module scope (guide P6):
+ * it outlives the QAM closing and destination switches while the plugin
+ * stays loaded. A pick the dropdown no longer lists falls back to the
+ * default.
+ */
+const picks = createStore<{ byInstallation: Record<string, number> }>({ byInstallation: {} });
+export const layoutTargetPicks = {
+  get: picks.get,
+  subscribe: picks.subscribe,
+  pick: (installationId: string, appId: number) =>
+    picks.set({ byInstallation: { ...picks.get().byInstallation, [installationId]: appId } }),
+  reset: () => picks.set({ byInstallation: {} }),
+};
+
+/** The selected entry: the remembered pick while it is still listed, else the default. */
+export function selectedLayoutTarget(
+  targets: ReturnType<typeof linkedLayoutTargets>,
+  installationId: string,
+): SteamGame | undefined {
+  const picked = layoutTargetPicks.get().byInstallation[installationId];
+  return targets.choices.find((g) => g.appId === picked) ?? targets.initial;
+}
+
+/**
+ * Entries that share the target's controls: Steam keys a shortcut's controls
+ * by its lowercased name (LIVE 2026-11-17), so case variants share them.
+ * Name equality establishes a warning group, never the full affected scope.
+ */
 export function possibleSharedTargets(games: SteamGame[], target: number) {
   const selected = games.find((g) => g.appId === target);
-  return selected ? games.filter((g) => g.name === selected.name) : [];
+  return selected ? games.filter((g) => g.name.toLowerCase() === selected.name.toLowerCase()) : [];
 }

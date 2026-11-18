@@ -325,19 +325,25 @@ export function nativeControllerLayouts(): LayoutRecoveryAdapter {
       );
       const controllerIdentity = await sha256(physical);
       const value = JSON.parse(context.selection).value as Selection;
-      let established =
-        !!key &&
-        physical !== "|" &&
-        context.controllerType === 4 &&
-        value.eSelectionType === 0 &&
-        archivableSource(value.URL);
+      // The first rule that refuses Apply is the reason shown; none: established.
+      let reason: string | undefined = !key
+        ? NOT_APPLIABLE.name
+        : physical === "|" || context.controllerType !== 4
+          ? NOT_APPLIABLE.controller
+          : value.eSelectionType !== 0
+            ? NOT_APPLIABLE.override
+            : !archivableSource(value.URL)
+              ? NOT_APPLIABLE.source
+              : undefined;
       for (const other of targets) {
-        if (!established) break;
+        if (reason) break;
         const shared = await bounded(
           input.GetConfigForAppAndController(other.appId, context.controllerIndex),
         );
-        established = shared.URL === value.URL && shared.eSelectionType === value.eSelectionType;
+        if (shared.URL !== value.URL || shared.eSelectionType !== value.eSelectionType)
+          reason = NOT_APPLIABLE.shared;
       }
+      const established = !reason;
       return {
         ...context,
         installationId,
@@ -349,16 +355,12 @@ export function nativeControllerLayouts(): LayoutRecoveryAdapter {
               identity: await sha256(JSON.stringify({ key, controllerIdentity, selectionType: 0 })),
               targets,
             }
-          : { state: "unknown", identity: "", targets },
+          : { state: "unknown", identity: "", targets, reason },
       };
     },
     async context(target) {
       const { input, user, controller } = capabilities();
-      const steamId = await bounded(Promise.resolve(user.GetSteamID!()));
-      if (!/^[0-9]{17}$/.test(steamId)) throw Error("Steam account unavailable");
-      const accountId = Number(BigInt(steamId) - 76561197960265728n);
-      if (!Number.isSafeInteger(accountId) || accountId < 1 || accountId > 0xffffffff)
-        throw Error("Steam account unavailable");
+      const accountId = await accountOf(user);
       const targets = listSteamShortcuts();
       if (!targets.some((game) => game.appId === target)) throw Error("Native target unavailable");
       const value = await bounded(input.GetConfigForAppAndController(target, controller));
@@ -477,6 +479,55 @@ export function nativeControllerLayouts(): LayoutRecoveryAdapter {
     }
   }
   return adapter;
+}
+
+/** The preview-only reason when there is no specific one (a read that failed). */
+export const PREVIEW_ONLY_REASON =
+  "WoWDeck applies layouts only over your own saved controls on the built-in controller, without a controller-specific override.";
+
+/** Why WoWDeck can only preview for an entry, in player words (operationContext). */
+const NOT_APPLIABLE = {
+  name: "WoWDeck can't apply layouts yet to entries with accented or non-Latin letters in their names.",
+  controller: "WoWDeck applies layouts only on the Steam Deck's built-in controls.",
+  override: "WoWDeck doesn't apply over controls saved for one specific controller.",
+  source:
+    "WoWDeck applies layouts only over your own saved controls, not over a template or Workshop layout.",
+  shared:
+    "Entries with this name have different controls, so WoWDeck can't tell which ones a change would reach.",
+} as const;
+
+interface SteamUser {
+  GetSteamID?: () => string | Promise<string>;
+}
+
+/** The signed-in account's id (the userdata folder name) from its 64-bit Steam id. */
+async function accountOf(user: SteamUser | undefined): Promise<number> {
+  if (typeof user?.GetSteamID !== "function") throw Error("Steam account unavailable");
+  const steamId = await bounded(Promise.resolve(user.GetSteamID()));
+  if (!/^[0-9]{17}$/.test(steamId)) throw Error("Steam account unavailable");
+  const accountId = Number(BigInt(steamId) - 76561197960265728n);
+  if (!Number.isSafeInteger(accountId) || accountId < 1 || accountId > 0xffffffff)
+    throw Error("Steam account unavailable");
+  return accountId;
+}
+
+/**
+ * The Steam account signed in now, read without the controller checks an
+ * operation needs: which entries are linked never depends on the
+ * controllers connected. Same sources as the native adapter (LIVE
+ * 2026-11-17: friendStore first, User.GetSteamID where it exists).
+ */
+export function currentSteamAccountId(): Promise<number> {
+  const globals = globalThis as unknown as {
+    SteamClient?: { User?: SteamUser };
+    friendStore?: { currentUserSteamID?: { ConvertTo64BitString?: () => string } };
+  };
+  const steamID = globals.friendStore?.currentUserSteamID;
+  return accountOf(
+    typeof steamID?.ConvertTo64BitString === "function"
+      ? { GetSteamID: () => steamID.ConvertTo64BitString!() }
+      : globals.SteamClient?.User,
+  );
 }
 
 function findDecoder(): Decoder {

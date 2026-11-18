@@ -2,11 +2,8 @@ import { toaster } from "@decky/api";
 import type { ControllerLayout, ControllerLayoutPreviewJob } from "../backend/src/api/contracts";
 import { engine } from "./engineLink";
 import { backendErrorMessage } from "./errors";
-import {
-  layoutNative,
-  layoutPreviewSession,
-  previewChoice,
-} from "./controllerLayoutPreviewSession";
+import { layoutNative, layoutPreviewSession } from "./controllerLayoutPreviewSession";
+import { PREVIEW_ONLY_REASON } from "./nativeControllerLayouts";
 import { layoutApplyStatus, startLayoutApply } from "./controllerLayoutRecoverySession";
 import { addonSession } from "./session";
 import { browseFocusView, holdBrowseSessionForModal, onNextQamShown } from "./browseSessionState";
@@ -128,7 +125,6 @@ function returnAfterPreview(history: MemoryHistory | undefined, layoutId: string
         /* Steam stays where it navigated */
       }
       // Back on the list, where "Restore previous controls" sits above the rows.
-      previewChoice.select(null);
       openPanel("browse");
       release();
       // DEVICE 2026-11-17: focus requested while the QAM was hidden, or on a
@@ -179,9 +175,7 @@ async function applyFromSteam(appid: number, url: string) {
     const installationId = addonSession.get().selectedId ?? "";
     const context = await layoutNative.operationContext(appid, installationId);
     if (context.scope.state !== "established") {
-      notify(
-        "Couldn't apply the layout. WoWDeck applies layouts only over your own saved controls on the built-in controller, without a controller-specific override.",
-      );
+      notify(`Couldn't apply the layout. ${context.scope.reason ?? PREVIEW_ONLY_REASON}`);
       return;
     }
     await startLayoutApply(current.jobId, context, () => addonSession.get().selectedId ?? "");

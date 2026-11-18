@@ -9,7 +9,7 @@ What's new in each version of WoWDeck Addon Manager. The format follows
 ### Added
 
 - Pick the WoW client Steam's Play button starts from its menu, even with Battle.net closed. Options can turn it off.
-- Browse reviewed controller layouts with Workshop likes, preview and apply approved mappings, and restore previous controls on supported library entries.
+- Browse reviewed controller layouts with Workshop likes, preview and apply approved mappings on your linked WoW entry, and restore previous controls.
 
 ### Changed
 

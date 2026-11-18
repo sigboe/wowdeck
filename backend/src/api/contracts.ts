@@ -1849,6 +1849,8 @@ export interface ControllerLayoutContext {
     /** Identity includes native selection semantics and all equivalent controllers. */
     identity: string;
     targets: { appId: number; name: string }[];
+    /** Unknown scope only: why WoWDeck can only preview, in player words. Never sent for Apply. */
+    reason?: string;
   };
 }
 /** Full decoded mappings and an explicit record of override presence for every target.
