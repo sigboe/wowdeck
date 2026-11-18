@@ -12,6 +12,7 @@
  */
 
 import { prefixRegistryDiscoveries } from "./PrefixRegistry";
+import { launcherShortcutTarget } from "./LauncherShortcuts";
 import { readSteamShortcuts, shortcutPrefixes, shortcutPrefixOverrides, isWowShortcut, type SteamShortcut } from "./SteamShortcuts";
 import { realpath } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join } from "node:path";
@@ -448,8 +449,11 @@ export class InstallationDetector {
     const prefixGames = new Map<string, Map<string, SteamGameLink>>();
     const libraries = this.options.scanSteam === false ? [] : await this.steamLibraryFolders();
     for (const shortcut of shortcuts) {
-      if (!isWowShortcut(shortcut) || !shortcut.name) continue;
-      const explicit = shortcutPrefixOverrides(shortcut);
+      if (!shortcut.name) continue;
+      // Lutris and Bottles run their own prefix; the program they start decides whether it is WoW.
+      const launched = await launcherShortcutTarget(shortcut, homeDir);
+      if (!isWowShortcut(launched ? { ...shortcut, exe: launched.exe, launchOptions: launched.args } : shortcut)) continue;
+      const explicit = launched ? [launched.prefix] : shortcutPrefixOverrides(shortcut);
       const referenced = explicit.length ? explicit : libraries.map(lib => join(lib, "steamapps/compatdata", String(shortcut.appId), "pfx"));
       for (const reference of referenced) {
         const canonical = await realpath(reference).catch(() => undefined);
