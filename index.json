@@ -1,0 +1,24 @@
+{
+  "builds": [
+    {
+      "number": 270,
+      "title": "Controller Profiles Phase 1",
+      "author": "sigboe",
+      "version": "1.2.2-pr.270.18",
+      "headSha": "345c9aa9e0be9b758de55d7c3b65da22976ff6b1",
+      "builtAt": "2026-11-20T17:56:38Z",
+      "zipSize": 73869503,
+      "sha256": "e3a4673db1b9a1ccd5045074489246d7f068ebd86cc4b0ca1735272c62b3765f",
+      "zipUrl": "https://sigboe.github.io/wowdeck/pr/270/WoWDeck.zip"
+    }
+  ],
+  "published": {
+    "210": "1.1.2-pr.210.5",
+    "211": "1.1.2-pr.211.5",
+    "225": "1.1.2-pr.225.3",
+    "251": "1.2.1-pr.251.2",
+    "258": "1.2.2-pr.258.10",
+    "270": "1.2.2-pr.270.18",
+    "284": "1.2.2-pr.284.18"
+  }
+}
