@@ -1,4 +1,4 @@
-import { expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, expect, mock, test } from "bun:test";
 import { JSDOM } from "jsdom";
 import { act, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
@@ -7,6 +7,17 @@ import { defaultSettings } from "../backend/src/wow/storage/settings";
 import { deckyUiStub } from "./deckyUiStub";
 import { connectEngine } from "./engineLink";
 import { createFakeEngine } from "./testSupport/fakeEngine";
+
+// A link counts only while its shortcut is in Steam's library.
+const steam = globalThis as { appStore?: unknown };
+let oldAppStore: unknown;
+beforeEach(() => {
+  oldAppStore = steam.appStore;
+  steam.appStore = { allApps: [{ appid: 42, display_name: "WoW", app_type: 1073741824 }] };
+});
+afterEach(() => {
+  steam.appStore = oldAppStore;
+});
 
 mock.module("@decky/ui", () => ({ ...deckyUiStub, QuickAccessTab: {} }));
 mock.module("@decky/api", () => ({ toaster: { toast: () => {} } }));

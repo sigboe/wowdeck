@@ -420,8 +420,8 @@ test("a direct client shortcut whose start folder ends in a slash shares the lau
   const found = await detector().detect();
   expect(found.map((i) => i.location)).toEqual([forever]);
   expect(found[0]!.steamGames).toEqual([
-    { appId: 42, name: "World of Warcraft", accountId: 100 },
-    { appId: 43, name: "Forever", accountId: 100 },
+    { appId: 42, name: "World of Warcraft", accountId: 100, provenance: "prefix" },
+    { appId: 43, name: "Forever", accountId: 100, provenance: "prefix" },
   ]);
 });
 
