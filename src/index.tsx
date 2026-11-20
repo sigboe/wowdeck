@@ -12,6 +12,7 @@ import {
   PanelSectionRow,
 } from "@decky/ui";
 import { definePlugin } from "@decky/api";
+import { interceptNativeApply } from "./nativeLayoutPreview";
 import { FaBoxOpen, FaDiceD6, FaSearch, FaCog } from "react-icons/fa";
 import { deckyEngineLink } from "./services/backend";
 import { connectEngine, engine } from "./engineLink";
@@ -43,6 +44,9 @@ import { patchGamePage } from "./steamGamePage";
 import { steamLaunch } from "./steamLaunchActions";
 import { settingsStore } from "./settings";
 import { startHomeBadge } from "./steamDom/homeBadge";
+import { startLaunchWatch } from "./steamDom/launchWatch";
+import { listSteamShortcuts } from "./steamLibrary";
+import { currentSteamAccountId } from "./nativeControllerLayouts";
 import { startPluginExitWatch, startQamVisibilityWatch } from "./steamDom/qamVisibility";
 import { setQamExpander, stopQamWidening } from "./steamDom/qamWidening";
 import { QamExpandHook } from "./steamDom/qamExpandHook";
@@ -339,6 +343,8 @@ export default definePlugin(() => {
   // (session.ts, wtfSession.ts, selfUpdate.ts, steamUpdates.ts,
   // engineChanges.ts), so they arrive while no panel is mounted.
   const disconnectEngine = connectEngine(deckyEngineLink());
+  // X on Steam's layout preview runs WoWDeck's Apply for WoWDeck's layouts.
+  const stopNativeApply = interceptNativeApply();
 
   // Widened mode has a native half the QAM window cannot reach: Steam moves
   // the QAM view itself while its placeholder carries Steam's `Expanded`
@@ -360,6 +366,24 @@ export default definePlugin(() => {
   const unpatchGamePage = patchGamePage();
   // ...and the badge on its home tile.
   const stopHomeBadge = startHomeBadge();
+  // A shortcut seen launching WoW becomes a proven link (#279): the game
+  // page, the badge and the layout target dropdown use it once recorded.
+  const offLaunchRecorded = engine.events.on(
+    "installations.launchRecorded",
+    () => void addonSession.reloadInstallations(),
+  );
+  const stopLaunchWatch = startLaunchWatch({
+    steamClient: (globalThis as { SteamClient?: unknown }).SteamClient,
+    shortcuts: listSteamShortcuts,
+    // Hand-set and every detected link, toggle or not: any could launch WoW.
+    linked: () => {
+      const { steamGame } = settingsStore.get().settings;
+      const detected = addonSession.get().installations.flatMap((i) => i.steamGames ?? []);
+      return [...(steamGame ? [steamGame] : []), ...detected].map((g) => g.appId);
+    },
+    accountId: currentSteamAccountId,
+    watch: (params) => engine.rpc("installations.watchLaunch", params),
+  });
   // A QAM close must end the browse session, so reopening lands Get Addons
   // collapsed (UI-02 story 33): the module-scope machine alone would carry a
   // widened mode into the reopened QAM. Watched here, at plugin-load scope,
@@ -422,10 +446,13 @@ export default definePlugin(() => {
     content: <Content />,
     icon: <FaBoxOpen />,
     onDismount() {
+      stopNativeApply();
       stopTsmSignIn();
       unpatchGamePage();
       steamLaunch.stopWatching();
       stopHomeBadge();
+      stopLaunchWatch();
+      offLaunchRecorded();
       stopQamVisibilityWatch();
       stopPluginExitWatch();
       // The whole plugin is unloading (not a modal round-trip): the next

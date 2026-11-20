@@ -1,0 +1,8 @@
+"controller_mappings"
+{
+  "version" "3"
+  "title" "Synthetic approved layout"
+  "controller_type" "controller_neptune"
+  "actions" { "Default" { "title" "Default" } }
+  "group" { "id" "0" "mode" "four_buttons" "inputs" { "button_a" { "binding" "gamepad_button A" } } }
+}

@@ -6,6 +6,7 @@
 
 import type { AddonService } from "../../wow/addons/AddonService";
 import type { Catalogue } from "../../wow/catalogue/Catalogue";
+import type { SteamLaunchLog } from "../../wow/installation/SteamLaunchLog";
 import type { InstallationService } from "../../wow/installation/InstallationService";
 import type { CompanionSyncCoordinator } from "../../wow/notifications/CompanionSync";
 import type { AddonUpdates } from "../../wow/addons/AddonUpdates";
@@ -21,6 +22,7 @@ import type { WtfBackupService } from "../../wow/wtf/WtfBackupService";
 import type { WtfJobRunner, WtfJobTarget } from "../../wow/wtf/WtfJobRunner";
 import type { RecentErrorsBuffer } from "../../diagnostics/RecentErrors";
 import type { About } from "../../about/About";
+import type { ControllerLayoutCatalogueSource } from "../../wow/controllerLayouts/ControllerLayoutCatalogue";
 
 export interface HandlerDeps {
   launch: import("../../wow/launch/LaunchService").LaunchService;
@@ -34,6 +36,7 @@ export interface HandlerDeps {
   /** Search, Latest/Popular, details and finding sources (read-only). */
   catalogue: Catalogue;
   installationService: InstallationService;
+  steamLaunchLog: SteamLaunchLog;
   companionCoordinator: CompanionSyncCoordinator;
   /** The update check, eligibility, Update all and automatic updates. */
   addonUpdates: AddonUpdates;
@@ -53,4 +56,8 @@ export interface HandlerDeps {
   recentErrors: RecentErrorsBuffer;
   /** Options › About (about.get). */
   about: About;
+  /** The Controller layouts catalogue (controllerLayouts.catalogue). */
+  controllerLayouts: ControllerLayoutCatalogueSource;
+  controllerLayoutOperations: import("../../wow/controllerLayouts/ControllerLayoutOperations").ControllerLayoutOperations;
+  controllerLayoutPreviews: import("../../wow/controllerLayouts/ControllerLayoutPreviews").ControllerLayoutPreviews;
 }

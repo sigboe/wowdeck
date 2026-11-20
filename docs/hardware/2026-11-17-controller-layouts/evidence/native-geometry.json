@@ -1,0 +1,80 @@
+[
+ {
+  "tag": "DIV",
+  "className": "T3fXpugMImu53P2QZWj2P EI1IQ18YtMAcExga8nmll",
+  "x": 531.99462890625,
+  "y": 168.68896484375,
+  "width": 144.9951171875,
+  "height": 22.98583984375,
+  "padding": "0px 0px 3px",
+  "margin": "0px",
+  "fontSize": "16px",
+  "lineHeight": "20px",
+  "borderRadius": "0px"
+ },
+ {
+  "tag": "DIV",
+  "className": "_3evQaEjGszDq04fKtatxpl",
+  "x": 531.99462890625,
+  "y": 168.68896484375,
+  "width": 492.00439453125,
+  "height": 22.98583984375,
+  "padding": "0px",
+  "margin": "0px",
+  "fontSize": "12px",
+  "lineHeight": "16px",
+  "borderRadius": "0px"
+ },
+ {
+  "tag": "DIV",
+  "className": "OzYkdF3inaoNCxZ5Lv55g",
+  "x": 531.99462890625,
+  "y": 148.69384765625,
+  "width": 492.00439453125,
+  "height": 74.96337890625,
+  "padding": "0px",
+  "margin": "0px 0px 2px",
+  "fontSize": "12px",
+  "lineHeight": "16px",
+  "borderRadius": "0px"
+ },
+ {
+  "tag": "DIV",
+  "className": "_2luCNihqvaHXeE1nGg0AXj Panel Focusable",
+  "x": 468.00537109375,
+  "y": 140.6982421875,
+  "width": 563.9892578125,
+  "height": 92.9443359375,
+  "padding": "8px",
+  "margin": "0px 0px 6px",
+  "fontSize": "12px",
+  "lineHeight": "16px",
+  "borderRadius": "2px"
+ },
+ {
+  "tag": "DIV",
+  "className": "",
+  "x": 0,
+  "y": 0,
+  "width": 0,
+  "height": 0,
+  "padding": "0px",
+  "margin": "0px",
+  "fontSize": "16px",
+  "lineHeight": "normal",
+  "borderRadius": "0px"
+ },
+ {
+  "tag": "DIV",
+  "className": "",
+  "x": 0,
+  "y": 0,
+  "width": 0,
+  "height": 0,
+  "padding": "0px",
+  "margin": "0px",
+  "fontSize": "16px",
+  "lineHeight": "normal",
+  "borderRadius": "0px"
+ }
+]

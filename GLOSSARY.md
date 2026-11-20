@@ -4,6 +4,7 @@
 
 - [Language](#language)
 - [Get Addons rework](#get-addons-rework)
+- [Controller layouts](#controller-layouts)
 - [WoW clients](#wow-clients)
 - [Addon archives](#addon-archives)
 - [Addon recovery](#addon-recovery)
@@ -149,7 +150,7 @@ ids — it is never a destination.
 _Avoid_: menu, picker, dropdown row, tab
 
 **Options jump**:
-Navigation from Get Addons to Options' Addon sources section carrying a set of
+Navigation from Get Addons to Options' Sources section carrying a set of
 marked provider ids. Their rows blink briefly, then focus lands on the first
 marked row that can take focus; the jump never enables or disables anything.
 _Avoid_: deep link, shortcut, quick toggle
@@ -293,6 +294,46 @@ The plugin restores where you were on each plugin tab. One exception: entering
 Get Addons always lands collapsed on the nav bar and never restores the
 slid-out state; widened mode is entered only by focusing a destination.
 _Avoid_: state restore
+
+## Controller layouts
+
+**Controller layouts destination**:
+The Get Addons destination immediately above TradeSkillMaster that lists
+maintainer-approved controller layouts. It is visible while its source is
+on.
+_Avoid_: controller tab, profiles page
+
+**Controller layout**:
+A Steam Input configuration that maps a controller's inputs to game actions.
+_Avoid_: profile, config
+
+**Layout revision**:
+A particular version of an author's controller layout. Maintainers approve
+each revision before offering it through WoWDeck.
+_Avoid_: latest layout, auto-update
+
+**Layout target**:
+The non-Steam library entry whose controller layout the player chooses to
+change. Entries with the same name can share that controller configuration.
+_Avoid_: target installation, target flavor
+
+**Proven link**:
+A detected link between a Steam shortcut and an installation, recorded
+when WoW was seen running from that installation after the shortcut
+started it. It counts like any detected link, and outranks one found
+from the Wine prefix.
+_Avoid_: confirmed link, launch link (in player text)
+
+**Layout nomination**:
+A request to include an already-published Steam controller layout in the
+curated catalogue. Maintainers review it before it appears.
+_Avoid_: layout upload
+
+**Withdrawn revision**:
+A layout revision that maintainers no longer offer for application.
+Players already using it retain their controls and receive a warning when
+WoWDeck learns of the withdrawal.
+_Avoid_: deleted layout, uninstalled layout
 
 ## WoW clients
 

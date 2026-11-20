@@ -1,9 +1,34 @@
 import { resetDestinations } from "./browseDestinations";
 
-export type GetAddonsTab = "search" | "latest" | "popular" | "url" | "tsm";
+export type GetAddonsTab = "search" | "latest" | "popular" | "url" | "controllerLayouts" | "tsm";
 
-/** The four destinations in list order (Search, Latest, Popular, Manual Install). */
-export const BROWSE_TABS: GetAddonsTab[] = ["search", "latest", "popular", "url", "tsm"];
+/**
+ * The destinations in list order (Search, Latest, Popular, Manual Install,
+ * Controller layouts, TradeSkillMaster). The last two are shown only while
+ * their source is on (shownDestinations).
+ */
+export const BROWSE_TABS: GetAddonsTab[] = [
+  "search",
+  "latest",
+  "popular",
+  "url",
+  "controllerLayouts",
+  "tsm",
+];
+
+/**
+ * The destinations Get Addons lists, in order: Controller layouts while its
+ * source is on (Options › Sources), immediately above TradeSkillMaster, which
+ * shows while its own source is on.
+ */
+export function shownDestinations(on: {
+  controllerLayouts: boolean;
+  tsm: boolean;
+}): GetAddonsTab[] {
+  return BROWSE_TABS.filter(
+    (tab) => (tab !== "controllerLayouts" || on.controllerLayouts) && (tab !== "tsm" || on.tsm),
+  );
+}
 
 /**
  * Focus-memory view per destination (focusMemory.ts). The list destinations
@@ -189,9 +214,20 @@ export function qamHidden(): void {
   }
 }
 
+const shownOnce = new Set<() => void>();
+/** Run `listener` the next time the QAM window shows; returns a cancel. */
+export function onNextQamShown(listener: () => void): () => void {
+  shownOnce.add(listener);
+  return () => shownOnce.delete(listener);
+}
+
 /** The QAM window is showing again: any popup over it has closed. */
 export function qamShown(): void {
   popupOpen = false;
+  for (const listener of [...shownOnce]) {
+    shownOnce.delete(listener);
+    listener();
+  }
   // Steam may hide the content before it unmounts. The widening adapter can
   // collapse its visible layout then even though the session remains wide.
   // A return is therefore an enforcement boundary, including when Steam

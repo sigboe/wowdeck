@@ -78,9 +78,21 @@ export interface FoundInstallation {
 
 /** A Steam library shortcut linked to a discovered installation. */
 export interface SteamGameLink {
+  /** Steam userdata account that supplied this path-based link. Legacy links have no evidence. */
+  accountId?: number;
   appId: number;
   name: string;
+  /**
+   * How the engine found this link (GLOSSARY: Proven link): "prefix" when
+   * the shortcut's fields or its Wine prefix lead to the installation,
+   * "launch" when WoW was seen running from this shortcut. Absent on the
+   * hand-set link and on links stored before it existed (read as "prefix").
+   */
+  provenance?: SteamLinkProvenance;
 }
+
+/** How a detected Steam link was found (SteamGameLink.provenance). */
+export type SteamLinkProvenance = "prefix" | "launch";
 
 export type InstallationPreferences = Partial<Pick<Installation, "autoUpdateEnabled" | "hidden">>;
 
@@ -869,6 +881,73 @@ export interface MethodMap {
     params: Record<string, never>;
     result: AboutInfo;
   };
+  "controllerLayouts.beginOperation": {
+    params: { previewJobId: string; context: ControllerLayoutContext; nativeOwner: string };
+    result: ControllerLayoutOperation;
+  };
+  /** Owner releases only after all native promises settle, including late results. */
+  "controllerLayouts.releaseOperation": {
+    params: { id: string; nativeOwner: string };
+    result: ControllerLayoutOperation;
+  };
+  "controllerLayouts.operationStatus": {
+    params: Record<string, never>;
+    result: ControllerLayoutOperation | null;
+  };
+  "controllerLayouts.advanceOperation": {
+    params: { id: string; from: ControllerLayoutPhase; phase: ControllerLayoutPhase; recoveryId?: string };
+    result: ControllerLayoutOperation;
+  };
+  "controllerLayouts.saveRecovery": {
+    params: { id: string; snapshot: ControllerLayoutRecoverySnapshot };
+    result: { recoveryId: string };
+  };
+  "controllerLayouts.sealRecovery": {
+    params: { id: string; sourceURL: string };
+    result: { recoveryId: string };
+  };
+  "controllerLayouts.readRecovery": {
+    params: { id: string };
+    result: ControllerLayoutRecoverySnapshot;
+  };
+  /** Explicitly stage archived bytes without replacing the original personal file. */
+  "controllerLayouts.prepareRecovery": {
+    params: { id: string };
+    result: ControllerLayoutRecoverySnapshot;
+  };
+  "controllerLayouts.resumeRestore": {
+    params: { id: string; nativeOwner: string };
+    result: ControllerLayoutOperation;
+  };
+  "controllerLayouts.preparePreview": {
+    params: { layoutId: string; revision: number; accountId: number };
+    result: { jobId: string };
+  };
+  /** Which approved revisions this account already has staged with matching bytes. */
+  "controllerLayouts.cached": {
+    params: { accountId: number; sha256s: string[] };
+    result: { cached: string[] };
+  };
+  "controllerLayouts.previewStatus": {
+    params: { jobId: string };
+    result: ControllerLayoutPreviewJob;
+  };
+  "controllerLayouts.catalogue": {
+    /**
+     * The Controller layouts destination's catalogue (GLOSSARY: Controller
+     * layout, Layout revision, Withdrawn revision): the reviewed manifest
+     * fetched from the public catalogue repository (ADR-0015), one bounded
+     * network call per call (size and time capped), no cache. Never an RPC
+     * error for an expected outcome: `state` tells a failed request
+     * ("unavailable"), content that is not a catalogue ("malformed") and a
+     * manifest newer than this client reads ("unsupported") apart from a
+     * catalogue with no layouts ("ready" with an empty list). While the
+     * Controller layouts source is off it answers "disabled" without a
+     * request. Read-only: it applies nothing.
+     */
+    params: Record<string, never>;
+    result: ControllerLayoutCatalogue;
+  };
   "system.getUpdateChannel": {
     /** Which WoWDeck builds the update check offers (GLOSSARY: Update channel). Stable until the owner picks another. */
     params: Record<string, never>;
@@ -1006,6 +1085,25 @@ export interface MethodMap {
   "installations.detect": {
     params: Record<string, never>;
     result: { installations: Installation[] };
+  };
+  /**
+   * A non-Steam shortcut started (`appId`, from Steam's app lifetime
+   * notification; `accountId`, the Steam account signed in, when known).
+   * One look at the running processes: a WoW client whose environment names
+   * this shortcut's app id, running from a listed installation, records a
+   * proven link (provenance "launch") in the engine's data folder.
+   * `recorded` is false when no such process runs yet, the app id is not a shortcut of
+   * that account, or the game runs from no listed installation.
+   * `installations` is the list after, with its links.
+   */
+  "installations.recordLaunch": {
+    params: { appId: number; accountId?: number };
+    result: { recorded: boolean; installations: Installation[] };
+  };
+  /** Follow Steam process additions while this shortcut runs. */
+  "installations.watchLaunch": {
+    params: { appId: number; accountId?: number; running: boolean };
+    result: Record<string, never>;
   };
   "installations.update": {
     params: { installationId: string } & InstallationPreferences;
@@ -1593,6 +1691,16 @@ export interface PluginSettings {
   pluginUpdateLastRunVersion: string | null;
   /** Last successfully verified updater package; engine-written only. */
   pluginUpdateStagedVersion: string | null;
+  /**
+   * The Controller layouts source (Options › Sources; GLOSSARY: Controller
+   * layouts destination). Off stops the destination and every catalogue
+   * request; controls already applied stay as they are. The engine enforces
+   * it through controllerLayoutsSourceEnabled (wow/controllerLayouts/source.ts):
+   * controllerLayouts.catalogue answers "disabled" while it is off. On once
+   * for new installs and for the first upgrade that carries this key: a
+   * stored value (an opt-out included) is kept by every later upgrade.
+   */
+  controllerLayoutsEnabled: boolean;
   /** User-chosen folder for WTF backups (e.g. on an SD card); null = the plugin's own data folder. */
   wtfBackupDir: string | null;
   /** How many automatic pre-restore safety backups to keep per game version (1-10). */
@@ -1724,6 +1832,134 @@ export interface FundingLink {
    * parameters, the address's checksum verified.
    */
   url: string;
+}
+
+/**
+ * The Controller layouts catalogue as the engine read it
+ * (controllerLayouts.catalogue). Every string in it comes from the
+ * catalogue repository, which is untrusted data: shown as plain text only.
+ */
+export type ControllerLayoutCatalogue =
+  /** Layouts in the maintainers' order; an empty list is a catalogue with none. */
+  | { state: "ready"; layouts: ControllerLayout[] }
+  /** The request failed (offline, timeout, HTTP error, too large). Never "empty". */
+  | { state: "unavailable" }
+  /** The answer is not a catalogue: not JSON, the wrong shape, or no usable entry. */
+  | { state: "malformed" }
+  /** The manifest's schema is newer than this client understands. */
+  | { state: "unsupported"; schemaVersion: number }
+  /** The Controller layouts source is off (controllerLayoutsEnabled): nothing was fetched. */
+  | { state: "disabled" };
+
+/**
+ * Whether a layout is offered for new application (GLOSSARY: Layout
+ * revision, Withdrawn revision):
+ * - `available`: `revision` is the newest approved, non-withdrawn revision
+ *   this client can read;
+ * - `withdrawn`: maintainers withdrew every revision;
+ * - `unsupported`: no revision that isn't withdrawn has content this
+ *   client can safely understand.
+ */
+export type ControllerLayoutOffer = "available" | "withdrawn" | "unsupported";
+
+/** Evidence supplied by the native scope resolver, never inferred from names alone. */
+export interface ControllerLayoutContext {
+  installationId: string;
+  target: number;
+  accountId: number;
+  controllerIndex: number;
+  controllerType: number;
+  controllerIdentity: string;
+  selection: string;
+  scope: {
+    state: "established" | "unknown";
+    /** Proven native override layer for application, including equivalent-controller scope. */
+    selectionType?: 0 | 1;
+    /** Identity includes native selection semantics and all equivalent controllers. */
+    identity: string;
+    targets: { appId: number; name: string }[];
+    /** Unknown scope only: why WoWDeck can only preview, in player words. Never sent for Apply. */
+    reason?: string;
+  };
+}
+/** Full decoded mappings and an explicit record of override presence for every target.
+ * sourceURL is read by the engine before export; no browser filesystem paths cross RPC.
+ */
+export interface ControllerLayoutRecoverySnapshot {
+  mapping: string;
+  sourceURL: string;
+  selections: { target: number; selectionType: number; present: boolean; url?: string }[];
+}
+
+export type ControllerLayoutPhase = "validating" | "preserving" | "preserved" | "applying" | "verifying" |
+  "succeeded" | "restoring" | "restored" | "failed" | "recovery-required";
+export interface ControllerLayoutOperation {
+  id: string;
+  phase: ControllerLayoutPhase;
+  context: ControllerLayoutContext;
+  approved: ControllerLayoutPreview;
+  /** Opaque reference to durable recovery bytes and semantics, never just a URL. */
+  recoveryId?: string;
+  /** Durable claim. No timeout grants another browser permission to replay. */
+  nativeOwner?: string;
+}
+
+/** An approved snapshot staged by the engine for read-only native preview. */
+export interface ControllerLayoutPreview {
+  /** Original Steam identity survives local delivery and durable operations. */
+  provenance?: { layoutId: string; revision: number; publishedFileId: string };
+  url: string;
+  sha256: string;
+  title: string;
+  accountId: number;
+  /** Reviewed SHA-256 of canonical {type, sets, modes}, keyed by native controller type. */
+  mappings: Record<string, string>;
+}
+
+export type ControllerLayoutPreviewJob =
+  | { state: "preparing" }
+  | { state: "ready"; preview: ControllerLayoutPreview }
+  | { state: "error"; message: string };
+
+/** One reviewed layout revision (GLOSSARY: Layout revision). */
+export interface ControllerLayoutRevision {
+  /** Reviewed native decode fingerprints. Absent means preview cannot be verified yet. */
+  previewMappings?: Record<string, string>;
+  /** The revision's number, unique within its layout and increasing. */
+  number: number;
+  /** SHA-256 of the approved VDF content (64 lowercase hex). */
+  sha256: string;
+  /** The content format's version; this client reads CONTROLLER_LAYOUT_CONTENT_FORMAT and lower. */
+  contentFormat: number;
+  /** Maintainers no longer offer it for new application. */
+  withdrawn: boolean;
+}
+
+/** One curated controller layout (GLOSSARY: Controller layout). */
+export interface ControllerLayout {
+  /** The stable layout identity: lowercase letters, digits and inner hyphens. Never changes across revisions. */
+  id: string;
+  title: string;
+  /** The original author as Steam credits them. */
+  author: string;
+  /** The original description; absent when the catalogue gives none. */
+  description?: string;
+  /** The original Steam controller-type declaration, e.g. "controller_triton". */
+  controllerType: string;
+  /** The original Steam published-file ID, as decimal digits (a uint64). */
+  publishedFileId: string;
+  offer: ControllerLayoutOffer;
+  /** The revision offered for new application; null unless `offer` is "available". */
+  revision: ControllerLayoutRevision | null;
+  /** Every reviewed revision, oldest first, so a client can warn players of a withdrawal. */
+  revisions: ControllerLayoutRevision[];
+  /**
+   * Metric values the catalogue publishes, by name (finite and
+   * non-negative). A metric the catalogue doesn't give is absent, never 0.
+   */
+  metrics?: Record<string, number>;
+  /** Provenance notes by name (who nominated or reviewed it), as plain text. */
+  provenance?: Record<string, string>;
 }
 
 // ---------------------------------------------------------------------------
@@ -1900,6 +2136,7 @@ export type UpdateAllProgress = {
 
 export interface EventMap {
   "launch.completed": LaunchCompletion;
+  "installations.launchRecorded": Record<string, never>;
   /** An automatic update ran and updated or failed something (WF-02). */
   "addons.autoUpdated": { result: AutoUpdateResult };
   "tradeskillmaster.changed": Record<string, never>;

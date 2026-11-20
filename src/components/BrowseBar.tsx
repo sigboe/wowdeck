@@ -6,9 +6,8 @@ import { browseBarItems, validDiscoverSources, type BrowseBarItem } from "../sou
 import { browseFocusView } from "../browseSessionState";
 import { providerLabel } from "../addonRow";
 import { BAR_DROPDOWN_VALUE } from "./dropdownValue";
-import { STEAM, STEAM_FONT } from "../steamTheme";
 import { FocusSlot } from "./FocusSlot";
-import { SegmentMenu } from "./SegmentMenu";
+import { SEGMENT_LABEL, SegmentMenu } from "./SegmentMenu";
 
 /**
  * The bar segments' focus-memory ids within the destination's browse view.
@@ -39,17 +38,6 @@ export function segmentOfFocusKey(key: string | undefined): BrowseBarItem | null
 }
 
 const SEGMENT_LABELS: Record<BrowseBarItem, string> = { source: "Source", category: "Category" };
-
-/** The caption over a segment's button: Steam's row label, one size down. */
-const SEGMENT_LABEL = {
-  color: STEAM.text,
-  fontSize: STEAM_FONT.small,
-  lineHeight: "16px",
-  fontWeight: "bold",
-  letterSpacing: ".5px",
-  textTransform: "uppercase",
-  padding: "0 0 4px 2px",
-} as const;
 
 /**
  * The browse bar (glossary, ADR 0002): the pane's one picker row above the

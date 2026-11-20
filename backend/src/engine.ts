@@ -30,6 +30,7 @@ import { TradeSkillMasterData } from "./wow/tsm/TradeSkillMasterData";
 import { TradeSkillMasterAuth, TradeSkillMasterProvider } from "./wow/tsm/TradeSkillMasterAuth";
 import { DownloadService } from "./wow/downloads/DownloadService";
 import { AddonService, type ServiceEvents } from "./wow/addons/AddonService";
+import { SteamLaunchLog } from "./wow/installation/SteamLaunchLog";
 import { InstallationService } from "./wow/installation/InstallationService";
 import { Catalogue } from "./wow/catalogue/Catalogue";
 import { getGameTypeForClientType } from "./wow/utils/gametype";
@@ -44,6 +45,9 @@ import { WtfBackupService } from "./wow/wtf/WtfBackupService";
 import { WtfJobRunner, type WtfJobTarget } from "./wow/wtf/WtfJobRunner";
 import { flavorKeyFor, wtfPathFor } from "./wow/wtf/WtfPaths";
 import { About } from "./about/About";
+import { ControllerLayoutOperations } from "./wow/controllerLayouts/ControllerLayoutOperations";
+import { ControllerLayoutPreviews } from "./wow/controllerLayouts/ControllerLayoutPreviews";
+import { ControllerLayoutCatalogueSource } from "./wow/controllerLayouts/ControllerLayoutCatalogue";
 import type { HandlerDeps } from "./api/handlers/deps";
 import { handlerTable } from "./api/handlers";
 
@@ -68,6 +72,8 @@ export interface EngineUrls {
   curseForge?: string;
   /** The raw base FUNDING.yml and SUPPORTERS.md are fetched from (About's default when unset). */
   about?: string;
+  /** The Controller layouts catalogue manifest (CONTROLLER_LAYOUT_CATALOGUE_URL when unset). */
+  controllerLayouts?: string;
 }
 
 export interface EngineConfig {
@@ -114,6 +120,7 @@ export function configFromEnv(env: Record<string, string | undefined>, backendVe
       tukui: env.WOWDECK_TUKUI_URL,
       curseForge: env.WOWDECK_CF_URL,
       about: env.WOWDECK_ABOUT_URL,
+      controllerLayouts: env.WOWDECK_CONTROLLER_LAYOUTS_URL,
     },
     bundledCurseForgeKey: env.WOWDECK_BUNDLED_CURSEFORGE_API_KEY?.trim() || undefined,
     pluginDir: env.WOWDECK_PLUGIN_DIR ?? null,
@@ -139,7 +146,7 @@ export function assembleEngine(config: EngineConfig): Engine & { start(): Promis
   const server = new JsonlServer(config.out);
   const store = createStateStore(dataDir);
   /**
-   * The optional GitHub token (Options › Addon sources › GitHub), read live: a token saved
+   * The optional GitHub token (Options › Sources › GitHub), read live: a token saved
    * later in the session is picked up by the next request. The GitHub addon
    * source, the WoWDeck update check, its staging and About all share it.
    */
@@ -192,6 +199,7 @@ export function assembleEngine(config: EngineConfig): Engine & { start(): Promis
     store,
     (installationId, removeEntry): Promise<void> => service.removeInstallation(installationId, removeEntry),
     () => addonEvents.addonsChanged([]),
+    { dataDir },
   );
   const service: AddonService = new AddonService(
     store,
@@ -240,6 +248,9 @@ export function assembleEngine(config: EngineConfig): Engine & { start(): Promis
     rawBaseUrl: urls.about,
     tokenProvider: githubToken,
   });
+  // Fetched only when the Controller layouts destination asks (ADR-0015).
+  const controllerLayouts = new ControllerLayoutCatalogueSource(network, urls.controllerLayouts);
+  const controllerLayoutPreviews = new ControllerLayoutPreviews({ catalogue: controllerLayouts, net: network, homeDir });
   const prBuilds = new PrBuildList(network, urls.prBuilds);
   // The PR channel's source (GLOSSARY: PR channel). A PR's own state comes from
   // the repo's API, unauthenticated: the repo is public, and no token ever
@@ -320,8 +331,14 @@ export function assembleEngine(config: EngineConfig): Engine & { start(): Promis
     config.launchWorld ?? localLaunchWorld(homeDir, () => steam.steamHomes()),
     (completion) => server.emit("launch.completed", completion),
   );
+  const steamLaunchLog = new SteamLaunchLog(homeDir, async (launch, pid) => {
+    const { recorded } = await installationService.recordLaunch(homeDir, launch, pid);
+    if (recorded) server.emit("installations.launchRecorded", {});
+    return recorded;
+  });
   const deps: HandlerDeps = {
     launch,
+    steamLaunchLog,
     tsmAuth,
     tsmData,
     backendVersion,
@@ -344,6 +361,9 @@ export function assembleEngine(config: EngineConfig): Engine & { start(): Promis
     wtfJobTarget,
     recentErrors,
     about,
+    controllerLayouts,
+    controllerLayoutPreviews,
+    controllerLayoutOperations: new ControllerLayoutOperations(join(dataDir, "controller-layouts"), controllerLayoutPreviews, homeDir),
   };
   server.handle(handlerTable(deps));
 

@@ -1,8 +1,11 @@
 import { TsmIcon } from "../icons/TsmIcon";
+import { ConfigureControllerIcon } from "../steamControllerUi";
 import { TSM_ADDON_ACTION, TSM_REFRESH, TsmAddon } from "./TsmAddon";
 import { tsmSession, tsmOptionsSources, tsmDestinationVisible } from "../tsmSession";
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { FaClock, FaFileArchive, FaFire, FaSearch } from "react-icons/fa";
+import { ControllerLayoutsTab } from "./ControllerLayoutsTab";
+import { useControllerLayoutsSourceOn } from "../controllerLayoutsSource";
 import {
   ButtonItem,
   Field,
@@ -15,7 +18,6 @@ import {
 import type { Installation, ProviderInfo } from "../types";
 import { usePaneBarInsets } from "../steamDom/qamBars";
 import {
-  BROWSE_TABS,
   browseFocusView,
   browseZone,
   enterBrowsePane,
@@ -25,6 +27,7 @@ import {
   popBrowseToList,
   popBrowseToNav,
   showWithoutClosing,
+  shownDestinations,
   subscribeWidening,
   type GetAddonsTab,
   widening,
@@ -78,6 +81,10 @@ const DESTINATIONS: Record<GetAddonsTab, { label: string; icon: ReactNode }> = {
   // Rebranded, not new: the internal id stays "url" so focus memory and the
   // widened-session state survive the rename (spec: install-from-file).
   url: { label: "Manual Install", icon: <FaFileArchive /> },
+  controllerLayouts: {
+    label: "Controller Layouts",
+    icon: <ConfigureControllerIcon />,
+  },
 };
 
 /** Before the first load: a stable empty list, so the sources' derivations don't re-run. */
@@ -109,7 +116,7 @@ export function GetAddonsTab({
   /** Put focus on the plugin-tab nav bar (B out of the widened session). */
   onExitToNav: () => void;
   /**
-   * Open Options' Addon sources section, marking these provider ids (the
+   * Open Options' Sources section, marking these provider ids (the
    * zero-capability screen's button). Nothing is enabled: the jump only
    * navigates and blink-highlights.
    */
@@ -196,12 +203,19 @@ export function GetAddonsTab({
     categories: categoriesBySource,
   } = useSyncExternalStore(sourcesStore.subscribe, sourcesStore.get);
   const providers = loadedProviders ?? NO_PROVIDERS;
+  // The destinations a source shows (Options › Sources); a hidden one that
+  // was selected falls back to Search, like a TradeSkillMaster turned off.
+  const controllerLayoutsOn = useControllerLayoutsSourceOn();
+  const destinations = shownDestinations({
+    controllerLayouts: controllerLayoutsOn,
+    tsm: tsmDestinationVisible(providers),
+  });
   useEffect(() => {
-    if (active === "tsm" && !tsmDestinationVisible(providers)) {
+    if (!destinations.includes(active)) {
       pageState.tab = "search";
       setActive("search");
     }
-  }, [active, providers]);
+  }, [active, destinations.join()]);
   useEffect(() => {
     void sourcesStore.load();
   }, []);
@@ -301,6 +315,16 @@ export function GetAddonsTab({
         return row;
       }
     }
+    if (tab === "controllerLayouts") {
+      // The first layout, else the row that says why there is none.
+      const row =
+        first(".wowdeck-layout-row") ??
+        first(".wowdeck-layout-state") ??
+        first(".wowdeck-layout-retry");
+      if (row) {
+        return row;
+      }
+    }
     // Search and Manual Install's link row: the text input itself. Steam's
     // first `.Focusable` there is a wrapper, so landing on it took two
     // rights to reach the field (owner). With nothing to search, Search
@@ -328,7 +352,10 @@ export function GetAddonsTab({
       // remember our place"); a first visit, or a list reset since, falls back
       // to its first item rather than the browse bar. Search and From URL
       // land on their field (their rows are remembered for round-trips only).
-      if ((tab === "latest" || tab === "popular") && restoreFocus(view)) {
+      if (
+        (tab === "latest" || tab === "popular" || tab === "controllerLayouts") &&
+        restoreFocus(view)
+      ) {
         return;
       }
       firstPaneControl(tab)?.focus();
@@ -493,6 +520,8 @@ export function GetAddonsTab({
         );
       case "url":
         return <ManualInstallTab sources={sources} />;
+      case "controllerLayouts":
+        return <ControllerLayoutsTab view={browseFocusView("controllerLayouts")} />;
     }
   };
 
@@ -511,7 +540,7 @@ export function GetAddonsTab({
             own segments from the destination and the sources — Popular gets
             Source then Category, Latest Source, Search and From URL no bar;
             nothing to choose is no bar at all. */}
-        {active !== "tsm" && (
+        {active !== "tsm" && active !== "controllerLayouts" && (
           <BrowseBar
             destination={active}
             providers={providers}
@@ -582,38 +611,34 @@ export function GetAddonsTab({
               </Focusable>
             </PanelSectionRow>
           )}
-          {BROWSE_TABS.filter((tab) => tab !== "tsm" || tsmDestinationVisible(providers)).map(
-            (tab) => (
-              <PanelSectionRow key={tab}>
-                <Field
-                  focusable
-                  ref={(el) => {
-                    destinationRefs.current[tab] = el ?? undefined;
-                  }}
-                  className={
-                    wide && paneFocused && active === tab
-                      ? "wowdeck-destination-selected"
-                      : undefined
-                  }
-                  icon={DESTINATIONS[tab].icon}
-                  label={DESTINATIONS[tab].label}
-                  description={
-                    (tab === "latest" || tab === "popular") &&
-                    destinationNote(providers) && (
-                      <span style={descriptionStyle}>{destinationNote(providers)}</span>
-                    )
-                  }
-                  onClick={() => openDestination(tab)}
-                  onOKActionDescription="Open"
-                  onGamepadFocus={() => {
-                    setPaneFocused(false);
-                    setActive(tab);
-                    focusDestination(tab);
-                  }}
-                />
-              </PanelSectionRow>
-            ),
-          )}
+          {destinations.map((tab) => (
+            <PanelSectionRow key={tab}>
+              <Field
+                focusable
+                ref={(el) => {
+                  destinationRefs.current[tab] = el ?? undefined;
+                }}
+                className={
+                  wide && paneFocused && active === tab ? "wowdeck-destination-selected" : undefined
+                }
+                icon={DESTINATIONS[tab].icon}
+                label={DESTINATIONS[tab].label}
+                description={
+                  (tab === "latest" || tab === "popular") &&
+                  destinationNote(providers) && (
+                    <span style={descriptionStyle}>{destinationNote(providers)}</span>
+                  )
+                }
+                onClick={() => openDestination(tab)}
+                onOKActionDescription="Open"
+                onGamepadFocus={() => {
+                  setPaneFocused(false);
+                  setActive(tab);
+                  focusDestination(tab);
+                }}
+              />
+            </PanelSectionRow>
+          ))}
         </PanelSection>
       </Focusable>
       {wideningAvailable ? (

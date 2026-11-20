@@ -7,6 +7,7 @@
 import type { FoundInstallation, Installation, InstallationPreferences } from "../../api/contracts";
 import type { WowInstallation } from "../models";
 import type { StateStore } from "../storage/StateStore";
+import type { ProcReader } from "../wtf/GameProcessGuard";
 import { NotFoundError, ValidationError } from "../errors";
 import { isDirectory } from "../fs/safe-fs";
 import {
@@ -74,7 +75,13 @@ export class InstallationService {
     private removeGuarded: (installationId: string, removeEntry: () => void) => Promise<void>,
     /** Called after an installation (and its addon records) was removed. */
     private onRemoved: () => void = () => {},
+    /** Where proven links are kept (the engine's data folder) and the /proc they are read from. */
+    private launches: { dataDir?: string; procReader?: ProcReader } = {},
   ) {}
+
+  #detector(homeDir: string): InstallationDetector {
+    return new InstallationDetector({ homeDir, customPaths: this.store.settings.customWowPaths, ...this.launches });
+  }
 
   /**
    * Called after a detection scan or a manual add: the list may hold an
@@ -88,13 +95,36 @@ export class InstallationService {
 
   /** Detect installations into the list; the whole list after. */
   async detect(homeDir: string): Promise<Installation[]> {
-    const detector = new InstallationDetector({ homeDir, customPaths: this.store.settings.customWowPaths });
-    const found = await detector.detect();
-    // Keep installations through an unmounted drive, but never keep stale shortcut links.
-    this.store.setInstallations(mergeInstallations(this.store.installations.map(i => ({ ...i, steamGames: [] })), found,
-      (prior, current) => { prior.steamGames = current.steamGames ?? []; }));
+    await this.#relink(homeDir, true);
     this.#found();
     return this.listed();
+  }
+
+  /**
+   * Detect, then keep every installation's Steam links as found: stale
+   * shortcut links never stay. `add` false refreshes links only, adding no
+   * installation (a new one would want the update check `detect` starts).
+   */
+  async #relink(homeDir: string, add: boolean): Promise<void> {
+    const found = await this.#detector(homeDir).detect();
+    const known = (f: WowInstallation) => add || this.store.installations.some((i) => i.id === f.id);
+    // Keep installations through an unmounted drive, but never keep stale shortcut links.
+    this.store.setInstallations(mergeInstallations(this.store.installations.map(i => ({ ...i, steamGames: [] })), found.filter(known),
+      (prior, current) => { prior.steamGames = current.steamGames ?? []; }));
+  }
+
+  /**
+   * A shortcut started (installations.recordLaunch): record a proven link
+   * when WoW now runs from a listed installation through it, then refresh
+   * the links.
+   */
+  async recordLaunch(homeDir: string, launch: { appId: number; accountId?: number }, pid?: string): Promise<{ recorded: boolean; installations: Installation[] }> {
+    if (!Number.isSafeInteger(launch.appId) || launch.appId <= 0) throw new ValidationError("appId must be a Steam app id");
+    if (launch.accountId !== undefined && !Number.isSafeInteger(launch.accountId)) throw new ValidationError("accountId must be a number");
+    const { appId, accountId } = launch;
+    const recorded = await this.#detector(homeDir).recordLaunch({ appId, accountId }, this.store.installations.map((i) => i.location), pid);
+    if (recorded) await this.#relink(homeDir, false);
+    return { recorded, installations: this.listed() };
   }
 
   /** The list in wire form (installations.list). */

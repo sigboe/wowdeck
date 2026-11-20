@@ -1,3 +1,5 @@
+import { STEAM, STEAM_FONT, STEAM_LINE } from "./steamTheme";
+
 /**
  * Valve's scroll buffer (guide S21): `scroll-margin` from the variables that
  * useScrollBuffer measures and sets. Steam's focus scroller reads it. Every
@@ -155,6 +157,15 @@ export function wowdeckSharedStyleCss(): string {
 .wowdeck-segment-menu-label {
   flex: 1; min-width: 0; text-align: left;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* A choice's marker after its label ("Suggested"): Steam's description line. */
+.wowdeck-segment-menu-note {
+  flex: none; color: ${STEAM.textMuted};
+  font-size: ${STEAM_FONT.small}; line-height: ${STEAM_LINE.small};
+}
+.wowdeck-segment-menu-item:is(.gpfocus, :focus-visible) .wowdeck-segment-menu-note,
+.wowdeck-segment-trigger:is(.gpfocus, :focus-visible) .wowdeck-segment-menu-note {
+  color: inherit;
 }
 .wowdeck-glyph-text {
   display: inline-flex; align-items: center; justify-content: center;

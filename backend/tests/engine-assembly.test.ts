@@ -5,11 +5,12 @@
  */
 
 import { afterEach, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { configFromEnv, runEngine, startEngine, type EngineConfig } from "../src/engine";
 import { loadCassette, ReplayNetwork } from "./providers/cassette";
+import { CONTROLLER_LAYOUT_CATALOGUE_URL } from "../src/wow/controllerLayouts/ControllerLayoutCatalogue";
 
 const roots: string[] = [];
 afterEach(() => {
@@ -85,6 +86,7 @@ test("the environment maps to the configuration, with the public hosts as defaul
       WOWDECK_TUKUI_URL: "http://127.0.0.1:4/tukui",
       WOWDECK_CF_URL: "http://127.0.0.1:5",
       WOWDECK_ABOUT_URL: "http://127.0.0.1:6/raw",
+      WOWDECK_CONTROLLER_LAYOUTS_URL: "http://127.0.0.1:7/catalogue.json",
       WOWDECK_BUNDLED_CURSEFORGE_API_KEY: " key \n",
       WOWDECK_PLUGIN_DIR: "/plugins/wowdeck",
       DECKY_PLUGIN_VERSION: "1.2.3",
@@ -102,6 +104,7 @@ test("the environment maps to the configuration, with the public hosts as defaul
       tukui: "http://127.0.0.1:4/tukui",
       curseForge: "http://127.0.0.1:5",
       about: "http://127.0.0.1:6/raw",
+      controllerLayouts: "http://127.0.0.1:7/catalogue.json",
     },
     bundledCurseForgeKey: "key",
     pluginDir: "/plugins/wowdeck",
@@ -120,4 +123,30 @@ test("the environment maps to the configuration, with the public hosts as defaul
     bundledCurseForgeKey: undefined,
     pluginDir: null,
   });
+});
+
+test("the assembled engine reads the Controller layouts catalogue from its published URL", async () => {
+  const { root, homeDir } = home();
+  const catalogue = readFileSync(join(import.meta.dir, "fixtures", "controller-layouts", "two-entries.json"), "utf-8");
+  const network = new ReplayNetwork({
+    recordedAt: "2026-11-17T00:00:00Z",
+    interactions: [{ method: "GET", url: CONTROLLER_LAYOUT_CATALOGUE_URL, status: 200, response: catalogue }],
+  });
+  const base = configFromEnv({ HOME: homeDir, WOWDECK_DATA_DIR: join(root, "data") }, "9.9.9");
+  const engine = await startEngine({ ...base, network, now: () => Date.UTC(2026, 10, 1) });
+
+  const answer = await engine.call("controllerLayouts.catalogue", {});
+
+  expect(answer.state).toBe("ready");
+  expect(answer.state === "ready" && answer.layouts.map((l) => l.id)).toEqual(["fixture-synthetic-a", "kinzo-wow-forever"]);
+  expect(network.misses).toEqual([]);
+});
+
+test("an unreachable Controller layouts catalogue answers unavailable through the engine", async () => {
+  const { root, homeDir } = home();
+  const network = new ReplayNetwork({ recordedAt: "2026-11-17T00:00:00Z", interactions: [] });
+  const base = configFromEnv({ HOME: homeDir, WOWDECK_DATA_DIR: join(root, "data") }, "9.9.9");
+  const engine = await startEngine({ ...base, network, now: () => Date.UTC(2026, 10, 1) });
+
+  expect(await engine.call("controllerLayouts.catalogue", {})).toEqual({ state: "unavailable" });
 });

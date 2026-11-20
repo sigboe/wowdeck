@@ -32,9 +32,18 @@ export const QAM_DROPDOWN_VALUE = ellipsisValue("120px");
  * installation names.
  */
 export const QAM_DROPDOWN_BELOW_VALUE = ellipsisValue("200px");
+/** The widened pane's content width: the QAM less the 348 px list column and the insets. */
+const WIDE_PANE = "(100vw - 348px - 60px)";
+
 /**
  * A browse bar segment's button (BrowseBar): half the widened pane — the
  * QAM's width less the 348 px list column, the pane's and row's insets and
  * the 12 px gap — less the button's padding and arrow.
  */
-export const BAR_DROPDOWN_VALUE = ellipsisValue("calc((100vw - 348px - 60px) / 2 - 56px)");
+export const BAR_DROPDOWN_VALUE = ellipsisValue(`calc(${WIDE_PANE} / 2 - 56px)`);
+/**
+ * A segment button spanning the widened pane (the Controller layouts
+ * destination's layout target): the pane's width less its insets, the
+ * button's padding and the arrow.
+ */
+export const PANE_DROPDOWN_VALUE = ellipsisValue(`calc(${WIDE_PANE} - 56px)`);

@@ -37,7 +37,7 @@ export function searchHelperText(providers: ProviderInfo[], clientLabel: string 
     // People's names for providers ("CurseForge"), not engine ids ("Curse").
     .map((p) => providerLabel(p.id));
   if (available.length === 0) {
-    return "No source that searches by name is turned on. Turn one on in Options › Addon sources";
+    return "No source that searches by name is turned on. Turn one on in Options › Sources";
   }
   if (!clientLabel) {
     return "Select a WoW installation in Options to search";

@@ -206,8 +206,10 @@ const env = globalThis as {
   window?: unknown;
   CSS?: unknown;
   IS_REACT_ACT_ENVIRONMENT?: boolean;
+  appStore?: unknown;
 };
 const oldWindow = env.window;
+const oldAppStore = env.appStore;
 const oldDebug = console.debug;
 
 beforeEach(async () => {
@@ -215,6 +217,8 @@ beforeEach(async () => {
   env.window = dom.window;
   env.CSS = { escape: (value: string) => value };
   env.IS_REACT_ACT_ENVIRONMENT = true;
+  // A link counts only while its shortcut is in Steam's library.
+  env.appStore = { allApps: [{ appid: 42, display_name: "WoW", app_type: 1073741824 }] };
   // Decky's patcher logs every patch and unpatch.
   console.debug = () => {};
   shownMenu = null;
@@ -247,6 +251,7 @@ afterEach(async () => {
   disconnect();
   dom.window.close();
   env.window = oldWindow;
+  env.appStore = oldAppStore;
   delete env.CSS;
   delete env.IS_REACT_ACT_ENVIRONMENT;
   console.debug = oldDebug;

@@ -111,6 +111,7 @@ the status tag and the glyph fallback; all fixed in the next build.
 | E-3 | P0 | | SSH: `file` / `readelf -l` on `bin/wowdeck-x86_64`; `grep "engine binary" ~/homebrew/logs/wowdeck/*.log` | Interpreter `/lib64/ld-linux-x86-64.so.2`; the log line names machine `x86_64` and `wowdeck-x86_64` |
 | E-4 | P1 | | Kill the engine process (`kill <pid>`), open the plugin | "Engine is not running" row with a Retry button; Retry brings it back |
 | E-5 | P0 | | Decky → reload plugin, or restart Steam | Engine respawns; the plugin opens on the last tab |
+| E-5b | P0 | | Leave the panel on Options, close the QAM, `deck up --reload` (or Decky → reload plugin), then open WoWDeck | The panel opens normally, never on Decky's "An error occurred while rendering this content" screen. The About section loads its rows. Regression from #258: the old panel rendered once more after onDismount, and an engine call threw instead of failing (DEVICE 2026-11-17) |
 | E-6 | P1 | | Read the latest plugin log under `~/homebrew/logs/` | No exceptions. (Decky lowers the log level once the UI connects, so a clean log doesn't prove much.) |
 | E-7 | P0 | | An arm64 device (the owner's DroidDeck test bed, or an arm64 SteamOS machine): install the same `WoWDeck.zip`; open the panel; list addons; install and remove one addon; then E-3's log check | My Addons lists addons; install works as GA-7 and remove as M-8; the log names machine `aarch64` and engine binary `wowdeck-aarch64` (#59). Verified DEVICE 2026-11-01 on DroidDeck 0.6.9, build `1.0.2-test.2`: the universal zip installed through Decky's own installer, a session restart cleared the Decky-reload wedge (`.claude/skills/droiddeck-test/SKILL.md`), the engine started with its execute bit self-restored, the log names machine `aarch64` and `wowdeck-aarch64`, `get_status` is ok and the panel renders normally. The WoW-dependent steps ran against a hand-made flavor dir inside our data directory, registered by hand as the `addon-data` tier because the phone has no real WoW, so FEX install detection stayed unexercised: My Addons listed its one TOC as unmanaged, Latest installed MPDM 3.4.7.15 from CurseForge, Menu → Remove deleted the folder, and the log had no errors. The test installation and folder were removed afterwards |
 | E-8 | P1 | | The unsupported-machine panel, simulated on any one device (Steam itself runs only on x86_64 and arm64, so no real device reports an unsupported machine): a diagnostic build with one changed line in `main.py`'s `_main` (`machine = platform.machine()` becomes `machine = "riscv64"`), deployed like any other; open the panel; then deploy the normal build again; SSH: read the log and `ps aux \| grep wowdeck` | Panel: "This device isn't supported" / "WoWDeck doesn't run on riscv64 devices.", **no Retry button**; log: "Machine riscv64 has no engine binary"; no `wowdeck-` process starts. The error envelope and the no-spawn rule for every call are already pinned by G-5's bridge tests (#57) |
@@ -119,6 +120,7 @@ the status tag and the glyph fallback; all fixed in the next build.
 | E-11 | P1 | | Options → Scan with a non-Steam shortcut launching Wow.exe directly outside the usual folders. Repeat with its flavor folder and WoW root as program or start folder, and with shortcuts under two Steam users. Include registry-only installs in live, deleted-shortcut and installed Steam app prefixes. Repeat with a missing or malformed shortcuts.vdf | Direct-launch installs appear once with the usual validity rules. Every user's shortcuts count. Registry discovery searches all prefixes, including shared, named and unreferenced ones, and continues past broken shortcut files. Unreferenced prefixes do not create Steam links. Custom paths retain priority. Not run on device for #76 |
 | E-12 | P1 | | Find WoW through registries, direct client shortcuts and the WoW/Battle.net launchers. Include a shared prefix override, an old default prefix, several matching Steam entries, a different Blizzard game and a folder-only fallback. Open each linked game page and its home tile. Rescan after removing a shortcut, and disable automatic linking in Options | All matching WoW/Battle.net entries get the existing addon section and badge. Another Blizzard game, an old overridden prefix and folder-only fallback do not create links. Removed shortcuts lose their links. Manual linking still works. Automatic addon updates and existing check/badge choices stay as the user set them. DEVICE 2026-11-03, x86_64 Deck via `tools/deck-ui`: all three installed clients linked to World of Warcraft. With the manual link cleared, its game-page section and two visible home-tile badges remained. Disabling automatic linking removed the section; enabling it restored the section after reload. Automatic updates stayed off under the test guard, then the original update setting and manual link were restored. Multiple shortcuts, external overrides, old prefixes, wrappers, fallback-only discovery and grep failure are covered by deterministic fixtures. DEVICE recheck for PR #114 on 2026-11-03 via `tools/deck-ui/deck`: the exact build was already installed. A rescan retained the same three clients and Steam links. After clearing the manual link and reloading, the game page had one addon section and home had two badges. Controller A toggled automatic linking off and on, removing and restoring the section without another reload. Restored the manual link, automatic linking, automatic updates, background checks and badges to their original values. DEVICE 2026-11-03, Galaxy S25 on DroidDeck 0.6.9 via adb and droiddeckctl, PR #114 at de29c5e: build 1.0.2-test.114 started the native ARM64 engine and detected Forever with Wow-ARM64.exe. It linked the Steam entry without a manual link. The game-page addon section and Open button worked; disabling automatic linking removed the section, and re-enabling restored it. No addons were installed, so pending-update badges were not verified. Shared-prefix layouts were not tested on this device. Automatic linking was left enabled, the test build remained installed and Steam was running |
 | E-13 | P1 | S | Runner toast evidence and active-document eval (spec #140), on a disposable installation: one batch with `toast-start` before a source change (X Find online source) and an unrelated addon's Menu → Remove, `toast-read` after; `eval --active` on a control inside the open file-picker or a modal; one batch ending cleanly and one failing an `expect` on purpose, each with `toast-start` active; then a bare `toast-read` | Both notices retained complete and in action order; `eval --active` sees the same document focus navigation drives (picker entries, focused dialog control); both exits clean the observer up and print the captured history, `toast-stop` reports what it retained, and every later `toast-read` says there is no observer. Verified DEVICE 2026-11-09 on the owner's x86_64 Deck, build `c374c0f` (runner-only change; the installed plugin already ran it): capture `["Speedy AutoLoot now updates from CurseForge Your files are kept: Roll back returns to 1.0.0.","Removed BNetToast"]`; a failed `expect` exited 1 with its capture retained in cleanup. Review-fix follow-up: the structural selector retained real controller notices with hashed classes, explicit stop printed their text, and a failed expectation printed its history and removed the observer; the second review follow-up also verified SIGINT during the final timed step exits 130 with captured controller text and observer removal; details and evidence in [hardware/2026-11-09-spec140-acceptance](hardware/2026-11-09-spec140-acceptance/README.md) |
+| E-14 | P1 | | Install WoW through Lutris in a prefix outside `~/Games/battlenet`, and in a bottle. Add each to Steam from its launcher ("Create Steam shortcut" in Lutris, "Add to Steam" in Bottles), native or Flatpak. Restart Steam, then Options → Scan. Add a Lutris game or Bottles program in the same prefix that launches another Blizzard product. Then put `$VAR` or `; true` into one shortcut's launch options and scan again | The installation in each prefix appears, and the Lutris and Bottles WoW shortcuts link to it: the game page and home badge show, and the Options picker marks them "Linked automatically". The other Blizzard product links nothing. The shortcut with shell syntax loses its link, and nothing it names is run. Heroic shortcuts link nothing. Deterministic fixtures cover native and Flatpak Lutris, bottles-cli, the `bottles:run` link and Flatpak Bottles. Not run on device for #276 |
 
 One initial R1 press during E-9 skipped Get Addons. Four follow-up checks,
 including one immediately after a plugin reload and one using the previous
@@ -273,7 +275,7 @@ device-passed 2026-10-23 on the Deck screen, pane 506 CSS px):
 | GA-19 | P1 | S | Popular with two discover sources on (WowUp Hub + CurseForge) | One bar row: **Source** and **Category** inline side by side, values truncated with an ellipsis, nothing wraps; with one source on, Source is hidden and Category closes up to the left. No "(off)"/"(not set up)" entry in either menu |
 | GA-20 | P1 | S | Popular open on row 3; R1 to Options, toggle a discover source off; L1 back to Popular | Get Addons lands collapsed (GA-1); opening Popular again shows the same list and source with focus back on row 3; the bar stays one row (a segment may hide); results never reload or jump (verified DEVICE 2026-10-27: WowUp Hub off, Popular on CurseForge kept its page and row 3, Source hid, Category closed up to the left, no request) |
 | GA-21 | P1 | S | Turn every discover source off (CurseForge and WowUp Hub); open Latest, then Popular | The zero-source screen, not results: each destination with its own icon (clock for Latest, flame for Popular) and words ("No addon source is on for Latest" / "…for Popular"), body naming the sources that can serve it, **Open addon sources** focused on entry; no turn-on offer row. Search with no name-search source shows the same shape naming those sources. Destination rows read "Needs an addon source" |
-| GA-22 | P1 | S | A on **Open addon sources** | Options opens at Addon sources; the compatible rows (WowUp Hub, CurseForge) pulse together with Steam's own row highlight, full row size and no outline, three times (~1.8 s), and the first one's toggle has focus. Nothing was turned on. Moving focus clears the marks; focus is never trapped |
+| GA-22 | P1 | S | A on **Open addon sources** | Options opens at Sources; the compatible rows (WowUp Hub, CurseForge) pulse together with Steam's own row highlight, full row size and no outline, three times (~1.8 s), and the first one's toggle has focus. Nothing was turned on. Moving focus clears the marks; focus is never trapped |
 | GA-22b | P1 | S | Build without the bundled key, no CurseForge key saved, WowUp Hub off: Latest, then A on **Open addon sources**. Move Down to the CurseForge row, press A, save a working key | WowUp Hub and CurseForge blink; focus starts on WowUp Hub's toggle. CurseForge is a `>` row and keeps blinking when focus moves onto it. A opens the key modal. After saving, the modal closes, CurseForge is a toggle that is on, and focus is on it |
 | GA-23 | P1 | S | From URL: a direct .zip link (test data), Look up, X; then a WoWInterface link with WoWInterface off | The zip installs into the selected installation as a Zip addon; the WoWInterface result shows its "turned off: installs, but won't get updates" notice on an **Open addon sources** row; A jumps to Options with WoWInterface marked and focused, nothing turned on (Get Addons never enables a source) |
 | GA-24 | P1 | S | ADR 0001 pattern with the bar in place: focus destinations, Right into the pane, B | The destination list still slides the pane open on focus and stays beside it; B collapses the QAM and leaves focus on the plugin-tab nav bar; details stay a modal |
@@ -323,15 +325,16 @@ device-passed 2026-10-23 on the Deck screen, pane 506 CSS px):
 | O-5e | P0 | S | From Options open **Export addon list**, **Import addon list**, **Manage backups**, **Installation details** (Y on Active installation) and each dropdown; back out with B each time | Focus returns to the **same row** every time (regression 2026-10-17) |
 | O-6 | P1 | | Addon list: **Export** → Generate, Copy, Save to file | Export code shown; file written |
 | O-7 | P1 | | **Import** from a string and from a file (WowUp's own `.txt` export too) | Preview lists names; "Install N new" installs them; each result line starts with the addon's name ("Alpha: installed" / "Beta: failed, …"); footer is action first, Close second |
-| O-8 | P1 | | Release build (built-in CurseForge access works): Options › Addon sources, CurseForge row | A plain CurseForge toggle with no Options (≡) action in the footer. There is no CurseForge section, and no row says "see CurseForge above" |
-| O-9 | P1 | S | Build without the bundled key (`make build` without `curseForgeAPIKey-dontcommit`), no key saved: Options › Addon sources, CurseForge row, then A | The row reads "CurseForge" with a `>` and "Needs an API key", and D-pad focus stops on it. A opens the "CurseForge API key" modal: status first ("No CurseForge key saved yet" and a line about built-in access), the key field (typed text hidden), **Save key** (off until something is typed), **Get a CurseForge API key**, Close. No Clear key. B closes it and focus is back on the CurseForge row |
+| O-8 | P1 | | Release build (built-in CurseForge access works): Options › Sources, CurseForge row | A plain CurseForge toggle with no Options (≡) action in the footer. There is no CurseForge section, and no row says "see CurseForge above" |
+| O-9 | P1 | S | Build without the bundled key (`make build` without `curseForgeAPIKey-dontcommit`), no key saved: Options › Sources, CurseForge row, then A | The row reads "CurseForge" with a `>` and "Needs an API key", and D-pad focus stops on it. A opens the "CurseForge API key" modal: status first ("No CurseForge key saved yet" and a line about built-in access), the key field (typed text hidden), **Save key** (off until something is typed), **Get a CurseForge API key**, Close. No Clear key. B closes it and focus is back on the CurseForge row |
 | O-9a | P1 | S | Same build: open the CurseForge `>` row, type a working key, **Save key** | Toast "CurseForge key saved and verified", the modal closes, and the row is now a CurseForge toggle that is on, with focus on it. Get Addons lists CurseForge results. The key itself is never shown |
 | O-9b | P1 | S | With your own key in use, on the CurseForge toggle press the Options button (≡) | The footer shows ≡ **API key**; it opens the same modal with "Your key works", **Replace key** and **Clear key**. **Clear key**: toast "CurseForge key cleared", the status becomes "No CurseForge key saved yet" and the modal stays open. B closes it, the row is a `>` row again and focus is on it |
 | O-9c | P2 | | Same modal: type a wrong key, **Save key**; then **Get a CurseForge API key** | A wrong key gives "Couldn't check the key", nothing is saved and the modal stays open. Get a key opens the CurseForge console in Steam's browser; after closing the browser, the modal or the row has focus |
 | O-9d | P2 | | A build whose bundled key CurseForge rejects (set `WOWDECK_BUNDLED_CURSEFORGE_API_KEY` to a wrong key): open the CurseForge `>` row | The modal also offers **Try built-in access again**; pressing it shows a spinner, then the updated status. It is not offered when built-in access was never there |
-| O-10 | P2 | | Move to GitHub at the end of Addon sources, with and without a saved token | GitHub is a single `>` row with no token help text. The chevron is at the far right, centered against the whole row |
+| O-10 | P2 | | Move to GitHub, the last addon source in Sources, with and without a saved token | GitHub is a single `>` row with no token help text. The chevron is at the far right, centered against the whole row |
 | O-10a | P1 | | Open GitHub, enter a rejected token, then a valid token and Save | The masked field keeps rejected input and shows the error. A valid token saves and closes the modal. Explanation and saved status appear beside the field, with no separate status focus stop |
 | O-10b | P1 | | With a token saved, open GitHub and choose Remove token; reopen and Cancel | Removal clears the token. Closing returns to the GitHub row. The modal uses Steam spacing and native controls |
+| O-10c | P1 | | Options › Sources on a fresh install, and on a Deck upgraded from 1.2.x; turn **Controller layouts** off, restart the plugin, then update to a newer build | Sources ends with a Controller layouts toggle after GitHub, with the description "Steam controller layouts picked for WoW". It starts on in both cases. Once off, it stays off after the restart and the update. Turning it off changes no controller layout already in use |
 | O-11 | P1 | | Providers: turn one off | Its results vanish from Search; turning it back on restores them |
 | O-12 | P2 | | Notifications: **Update available toast** off/on | Respected by the once-a-day toast (L-3) (verified DEVICE 2026-10-29, build 521db61: with the switch off and the daily check due, a plugin reload showed no toast and `notifications.checkUpdateToast` answered `{"toast":null}`; switched on again, the next reload toasted) |
 | O-13 | P2 | | Options › About › **Diagnostics** (A) | Diagnostics is the last About row. A modal titled "Diagnostics" opens with versions, installations and recent errors; no paths, keys or tokens. Nested values read as words ("Signed in: Yes", "Followed realms: 2") and TradeSkillMaster's last push as a local date and time, not milliseconds. Options has no Diagnostics section |
@@ -370,6 +373,8 @@ device-passed 2026-10-23 on the Deck screen, pane 506 CSS px):
 | L-25 | P1 | S | Leave a WoW folder Battle.net doesn't list beside its installs (the Deck's leftover `_retail_`), then open the menu | No row for that folder. Retail, Classic and Forever keep their rows when Battle.net lists their clients |
 | L-26 | P2 | | Add `WINEPREFIX=<another prefix>` before `%command%` in the Battle.net shortcut's launch options, then open the menu and start a client | The menu and the launch are the same as without it. Proton ignores that WINEPREFIX, and so does WoWDeck |
 | L-27 | P1 | S | Pick Forever on the linked page. Leave the page open, open Options → Steam library, turn **Choose the WoW version from Play** off and go back to the page. Wait 10 s, then turn it back on | Off: Play is Steam's plain button with no forced chevron and no client under "Play", and Steam's "Play from…" menu, if Steam shows one, has only its own rows. The WoW addons section keeps Update all, Check for updates and Open, with no launch status line. WoWDeck makes no launch state calls while off, seen from Steam's CEF console. On again: WoWDeck's Play button is back with Forever, without reopening the page (verified DEVICE 2026-11-20, build cfc00d8: off, Play was Steam's plain button with no chevron, the band had no launch line and no `launch.state` went out for 22 s; on again, Play read "Play \| Forever" on the same page and polling resumed. No updates were waiting, so Update all was absent in both states; [report](hardware/2026-11-18-steam-launch-integration/README.md#turning-wowdecks-play-button-off-and-on-l-27-286)) |
+| L-28 | P1 | S | Link WoW's shortcut by hand and let WoWDeck detect another. Rename both in Steam, then open Options › Steam library, **World of Warcraft in Steam**, WoW's game page, the home tile and the Controller layouts dropdown. Then delete the detected shortcut and look again | After the rename, every place shows the new names, the band and badge stay, and Unlink names the new name. After the delete, that entry is gone from the picker and the dropdown, with no restart. The hand-set link still works |
+| L-29 | P1 | S | Unlink World of Warcraft in Steam in Options and turn **Link detected Steam games** on. Launch WoW once from its Steam shortcut and, if it opens Battle.net, wait for Battle.net to finish starting and then press Play. Confirm that Steam's Linux console log reports the new WoW PID for the shortcut. Once WoW is in the game, read the WoW process environment on the device (never paste it into a log or ticket) and note which of `SteamGameId`, `SteamAppId`, `STEAM_COMPAT_APP_ID`, `STEAM_COMPAT_DATA_PATH` and `WINEPREFIX` are set. Quit WoW, then open the game page, the home tile, **World of Warcraft in Steam** and the Controller layouts dropdown. Restart the Deck and look again, then turn the toggle off | The app id variable names the shortcut and the prefix variable names its prefix. Within 15 seconds of WoW starting, `steam-launch-links.json` in the plugin's data folder holds the shortcut's app id and the installation. The band, the badge and "Linked automatically" show for that shortcut, and the dropdown starts on it. All of this survives the restart. With the toggle off, the dropdown offers the shortcut only as a suggestion |
 
 ### 4.5c WoWDeck update notice (the plugin's own update check)
 
@@ -571,7 +576,7 @@ or restore strays remain. The pre-test snapshot is
 | N-3 | P2 | | The N-1 toast with updates in one installation, then in two or three | Title "N addon updates available" ("1 addon update available" for one), counting every installation. Body "Open WoWDeck Manager to update" for one installation; "In A and B" or "In A, B and C" for several, naming only those with updates, in the installation list's order (verified DEVICE 2026-10-29, build 521db61: both updates in Forever Beta gave "2 addon updates available" / "Open WoWDeck Manager to update"; two in Forever Beta and one in Classic Era gave "3 addon updates available" / "In Forever Beta and Classic Era". Not checked on device: one update, and three installations with updates) |
 | N-2 | P2 | | Start WoW after the plugin has run | The companion data addon (`wowup_data_addon`) is present and not shown in My Addons |
 | N-4 | P1 | | With WowUp Hub on and WowUp Companion missing from the active installation, scroll Options with the D-pad to **Updates inside WoW** and press A | The row takes focus and shows `>`. A opens "Install WowUp Companion into *name*?" with **Install** and **Cancel**. Cancel or B closes it, nothing is installed, and focus is back on **Updates inside WoW**. Repeat by tapping the row without focusing it first |
-| N-5 | P1 | | Turn WowUp Hub off in Addon sources, then press A on **Updates inside WoW** | The dialog reads "Turn on WowUp Hub in Addon sources to install it." and has only **Close**. Closing it puts focus back on the row, and WowUp Hub is still off |
+| N-5 | P1 | | Turn WowUp Hub off in Sources, then press A on **Updates inside WoW** | The dialog reads "Turn on WowUp Hub in Sources to install it." and has only **Close**. Closing it puts focus back on the row, and WowUp Hub is still off |
 | N-6 | P1 | | Repeat N-4 and press **Install** | A toast says "Installed WowUp Companion". It shows in My Addons as a WowUp Hub addon and updates like the others. Once the toast shows, **Updates inside WoW** reads "Installed in *name*", loses its `>` and A does nothing. The row still names other installations without it. With the network off, Install shows "Couldn't install WowUp Companion" instead |
 | N-7 | P2 | | With the companion in another installation but not the active one, switch the active installation back and forth and open Options each time | Only the active installation is offered the install; the row names the others that lack it, and never offers to install there |
 
@@ -658,6 +663,131 @@ updated for the widened-QAM rework.
 10. M-5: where the context menu opens inside the QAM.
 
 ## 8. Result record
+
+### Controller layout Apply (#261), November 17, 2026
+
+Build c67f548 with the engine, on the Deck, driven by keys only. The live
+layout `kinzo-wow-forever` revision 61 has no published mappings. The test
+target was a disposable "WoWDeck Probe" shortcut whose controls were a raw
+template copy selected as an autosave. The shortcut and every WoWDeck config
+entry were removed afterwards, and World of Warcraft kept `"autosave" "1"`.
+
+- CL-261-1 passed (UI, native and engine readback). The pane listed only
+  WoWDeck Probe under "Shared controls" and in the confirmation. After Apply,
+  Steam selected `usercloud://wowdeck-approved/…` on layer 0, the engine
+  reported `succeeded`, and the Apply row offered no action. Restore put the
+  original autosave URL back (`restored`), and a second Apply right after it
+  succeeded and restored the same way.
+- CL-261-1 negative passed (UI). With a layer-1 override on the probe the
+  pane showed "Applying unavailable" and no Apply row.
+- Fixed in 992f32a and rerun on the Deck: after OK or Cancel on the
+  confirmation, the preview pane stays open with focus on the Apply row.
+- Follow-up, 17 November 2026 (DEVICE, UI through CDP keys and React
+  handlers): A–E passed on the frontend based on f3610f6 plus the Back focus
+  fix. X focused Choose a library entry; choosing the probe focused Selected
+  library entry; Back, native Apply and Restore focused Kinzo after 1.5 s.
+  Apply showed "Applied to WoWDeck Probe…" and returned Steam to its earlier
+  page; Restore showed "Previous controls restored." and selected the original
+  autosave URL. With two controllers, the row's A handler refused preview
+  with the disconnect-others message. The first keyboard attempt was
+  inconclusive. Cleanup removed the probe and all WoWDeck config entries and
+  folders; World of Warcraft stayed autosave. See
+  [the follow-up report](controller-layout-follow-up.md#ui-follow-up-17-november-2026)
+  for the installed frontend hash and remaining limitations.
+
+### Controller layouts (#266), November 17, 2026
+
+DEVICE 2026-11-17, Steam Deck (target defaulted to `deck`; the brief named
+none). Build: PR #270 build 1.2.2-pr.270.3 at 5f92f66, with an engine change.
+It was installed before this run and not redeployed. Installed
+`dist/index.js` sha256 `bead7c44…8358382` matches the local build. Installed
+`bin/wowdeck-x86_64` is `ce0d5145…edf15bf`; it differs from the unpatched
+local binary because deployment runs patchelf. Method: virtual pad and CDP
+key presses (UI), CDP probes, the plugin log, and the request log of a
+fixture server.
+
+Fixtures: CL-266-3, CL-266-4 and CL-266-6 ran through a test wrapper. The
+wrapper replaced `bin/wowdeck-x86_64` with a shell script that set
+`WOWDECK_CONTROLLER_LAYOUTS_URL=http://127.0.0.1:18766/catalogue.json` and
+ran the real binary. The fixtures were served from the workstation through
+an SSH reverse tunnel, so no server ran on the Deck. Between states the
+served file was swapped and the frontend reloaded in memory. A server
+started on the Deck over SSH died when its session closed; the tunnel
+replaced it. Afterwards the real engine was moved back (hash `ce0d5145…`
+again), the plugin reloaded, the fixture files were deleted, and port 18766
+was closed on the Deck. Controller layouts and TradeSkillMaster were left
+on, autoUpdate stayed off as found, and the panel was left on Get Addons.
+
+- E-5b passed (UI). With the panel on Options and the QAM closed, the
+  plugin was reloaded through `loader/reload_plugin`. WoWDeck opened on My
+  Addons with no "An error occurred" text. Options › About listed Support
+  WoWDeck, Third-party notices and Diagnostics.
+- O-10c partial (UI). Sources ends with Controller layouts after GitHub,
+  with the description "Steam controller layouts picked for WoW". It was on
+  in `state.json` after the upgrade from 1.2.x. Turned off, it stayed off
+  after a plugin reload (`controllerLayoutsEnabled: false`), then it was
+  turned back on. Not tested: a fresh install, and the off setting
+  surviving an update to a newer build.
+- CL-266-1 passed (UI). With both sources on, the destinations read Search,
+  Latest, Popular, Manual Install, Controller layouts (gamepad icon),
+  TradeSkillMaster. With TradeSkillMaster off, its destination was gone, and
+  turning it back on kept the account signed in. With Controller layouts off,
+  its destination was gone and the list collapsed. Entering the list focused
+  Search, and Right opened the Search pane. With Controller layouts off, a
+  plugin reload and a Get Addons visit made no request: the plugin log had
+  no `controller-layouts` line, and the server's request count stayed at
+  20.
+- CL-266-2 passed (UI). Live catalogue: the note read "Layouts the WoWDeck
+  maintainers reviewed for WoW. WoWDeck can't apply these layouts yet.",
+  then one row: "Kinzo WoW Forever", "by Kinzo · Steam Controller" (the dot
+  is a `::before` separator), and "My current LayOut". Right put focus on
+  the row; A changed nothing. With `two-entries.json`: "Fixture layout A"
+  came before "Kinzo WoW Forever", one focus stop each, and focus started on
+  the first. The title is 16 px on a 20 px line; the facts and description
+  are 12 px on 16 px. The footer was not read.
+- CL-266-3 passed (UI). Closed port: Retry with "Couldn't load controller
+  layouts. Try again later." Non-JSON: Retry with "Couldn't read the
+  controller layouts list." `empty.json`: a focusable "No controller layouts
+  yet" row. `future-schema.json`: "Update WoWDeck" with "This list needs a
+  newer WoWDeck." In `withdrawn-and-unsupported.json`, the withdrawn and
+  newer-format rows render every line in rgb(103, 112, 123) and read
+  "Withdrawn by the WoWDeck maintainers" and "Needs a newer WoWDeck". The
+  readable row renders at rgb(220, 222, 223) and rgb(184, 188, 191). A on
+  any of these rows changed nothing. The audit was clean in every state.
+- CL-266-4 passed (UI). A on Retry with the port still closed showed
+  "Loading…" and then Retry again. With the server up, A brought in the
+  layouts, and focus moved to "Fixture layout A".
+- CL-266-5 passed (UI). From the second row, Left, then Up and Down through
+  the destinations, then Right into Controller layouts returned focus to
+  "Kinzo WoW Forever". B from the pane, and from the destination list,
+  collapsed the QAM onto the nav bar, with focus on GET ADDONS.
+- CL-266-6 partial (UI). Long fixture: title, author and description at 120,
+  120 and 2000 characters, with a 168-character unbroken word. Every row
+  stayed inside the pane (row 357–846 px, pane 348–854 px with 8 px
+  padding). The title wrapped to two lines and the unbroken word broke
+  (`overflow-wrap: anywhere`). The facts wrapped only between facts:
+  "Steam Deck" went to its own line. The pane scrolled (scrollTop 188 on
+  the second row), and the focused row stayed inside the view. Audit
+  OVERFLOW was clean, but INSET flagged the long row (right inset −318).
+  The author fact has `white-space: nowrap` and ends in "…" rather than
+  wrapping, which the row's expectation ("long text wraps") does not
+  cover. Against the native browser (8 px padding, 6 px gap, 2 px
+  radius): the radius is 2 px; the padding is 10 px 16 px, not 8 px; the gap
+  between rows is 0 px, not 6 px. The footer and the native browser itself
+  were not measured on this run.
+- CL-266-6 rerun, row gap only: passed (UI). Frontend of e252fac
+  (`dist/index.js` sha256 `23cd50e7…886441b0`, matching the local build);
+  the engine was left at `ce0d5145…edf15bf`. Measured box to box with
+  `tools/deck-ui eval`. Live catalogue: the note block ends at 40 px and
+  the Kinzo row starts at 40 px (0 px; the note is not a focus stop).
+  Nothing follows the Kinzo row. With `two-entries.json` served through the
+  same wrapper and tunnel as above: "Fixture layout A" spans 40–118 px and
+  "Kinzo WoW Forever" 124–184 px, a 6 px gap; the list's computed `gap` is
+  6px and each row keeps 10px 16px padding. Focus landed on the first row
+  in both states, Down and Up moved between the two rows, and the audit
+  reported 0 issues. Afterwards the engine was restored (`ce0d5145…`,
+  backend 1.2.2-pr.270.3), the fixture server and port 18766 were closed,
+  and the panel was left on My Addons.
 
 ### Release 1.1.0, November 4, 2026
 
@@ -871,7 +1001,7 @@ URL. Installation must refuse the conflict and leave both addons unchanged.
 
 | ID | Pri | S | Steps | Expected |
 |---|---|---|---|---|
-| TSM-174-1 | P1 | | In game mode, open Options → Addon sources. Enable TradeSkillMaster and finish browser sign-in. Turn the source off, then on. Press X on its row (Sign out). Repeat on arm64 when phone testing is authorized | Source starts off. Steam's browser signs in without copied codes, closes once sign-in finishes and Options reopens. The row shows the account. Off keeps the account and says X signs out; on again needs no browser. Sign out turns the source off, forgets the account and leaves installed addons intact |
+| TSM-174-1 | P1 | | In game mode, open Options → Sources. Enable TradeSkillMaster and finish browser sign-in. Turn the source off, then on. Press X on its row (Sign out). Repeat on arm64 when phone testing is authorized | Source starts off. Steam's browser signs in without copied codes, closes once sign-in finishes and Options reopens. The row shows the account. Off keeps the account and says X signs out; on again needs no browser. Sign out turns the source off, forgets the account and leaves installed addons intact |
 | TSM-174-2 | P1 | | Start sign-in, return and cancel. Start again and leave it unfinished for ten minutes | Both attempts leave the source off; a late browser callback cannot enable it |
 
 Device runs are pending; this ticket's automated checks use local endpoints.
@@ -1202,3 +1332,149 @@ the view externally. Each exit closes the keyboard. A rejected key keeps
 entry open for correction. Deterministic tests cover terminal sign-in
 states, key save, explicit close and unmount. Human keyboard verification
 on the Deck remains required.
+
+### Controller layouts destination (#266)
+
+Device results: §8 "Controller layouts (#266), November 17, 2026". A normal build reads the WoW catalogue in
+[sigboe/steam-input-layouts](https://github.com/sigboe/steam-input-layouts),
+which lists one layout, Kinzo WoW Forever, since November 17, 2026. To see layouts,
+start the engine with `WOWDECK_CONTROLLER_LAYOUTS_URL` pointing at a local
+server that serves one of the fixtures in
+`backend/tests/fixtures/controller-layouts/` (the way PU-25 pointed
+`WOWDECK_RELEASES_URL` at a local port). The fixture layouts are synthetic,
+not production entries.
+
+| ID | Pri | S | Steps | Expected |
+|---|---|---|---|---|
+| CL-266-1 | P1 | S | Controller layouts on, TradeSkillMaster on: open Get Addons. Then turn TradeSkillMaster off, then Controller layouts off, and reopen Get Addons each time | Controller layouts sits after Manual Install and immediately above TradeSkillMaster, with a gamepad icon. Each destination disappears when its source is off. With Controller layouts off the engine log shows no catalogue request, and a selected Controller layouts destination falls back to Search |
+| CL-266-2 | P1 | S | Serve `two-entries.json`; focus Controller layouts, then Right into the pane | The QAM widens as for the other destinations. No browse bar. The heading "Reviewed layouts" in Steam's QAM section-title style, no help text under it. Two rows follow in the fixture's order, each one focus stop: the title at 16 px with a 20 px line, then "by <author> · <controller>", then the description. Focus lands on the first row. A opens Steam's preview for the layout target (CL-274-4). Withdrawn and unsupported rows have no action |
+| CL-266-3 | P1 | S | Serve, in turn: nothing (closed port), `empty.json`, a non-JSON file, `future-schema.json`, `withdrawn-and-unsupported.json` | Closed port: a Retry row with "Couldn't load controller layouts. Try again later." Non-JSON: Retry with "Couldn't read the controller layouts list." Empty: a focusable "No controller layouts yet" row. Future schema: an "Update WoWDeck" row with "This list needs a newer WoWDeck." under it. Withdrawn and unsupported entries are greyed with "Withdrawn by the WoWDeck maintainers" or "Needs a newer WoWDeck"; nothing offers them. A failure never reads as an empty list |
+| CL-266-4 | P1 | S | With the closed port, focus Retry; start the server, press A | The row reads "Loading…", then the layouts appear and focus moves to the first row instead of falling to nothing |
+| CL-266-5 | P1 | S | Focus the second layout, Left to the destination list, Down and Up through the destinations, then Right into Controller layouts again; B out, then come back | Re-entry returns to the second layout. B collapses the QAM onto the nav bar as in GA-5 |
+| CL-266-6 | P1 | S | Pane sizing: serve a copy of `two-entries.json` whose first title, author and description are at their maximum length (120, 120 and 2000 characters), with one unbroken word longer than the pane | Every row stays inside the pane (S32, audit OVERFLOW clean). The title and description wrap. The facts line wraps only between facts, and a single fact wider than the line ends in "…" (`FactLine`), which the audit may flag as a negative right INSET. Rows are 6 px apart (S10) with Steam's own `Field` padding (10 px 16 px, S3) and its 2 px radius, the pane's adaptation of the native browser's 8 px padding, 6 px gap and 2 px radius (§8.4f). The pane scrolls with the scroll buffer and the focused row stays clear of the bars |
+| CL-261-1 | P1 | D | Use a live revision, with or without `previewMappings`. On a disposable shortcut whose controls are an autosave (no physical-controller override), choose the shortcut in the layout target dropdown, open the layout, then Apply and confirm. Afterwards restore from the top of the tab | When other entries share the name case-insensitively, the warning line under the dropdown counts them (CL-274-3). The confirmation names them. After Apply the preview mappings are active and the top of the tab offers "Restore previous controls". Restore puts the original autosave back. A shortcut with a physical-controller override, a template or Workshop source, or a non-ASCII name shows the "Preview only" warning line instead |
+
+### Layout target dropdown (#274)
+
+A dropdown at the top of the Controller layouts pane chooses the layout
+target. It lists the entries WoWDeck is linked to, by the rule the game
+page and the home badge use. These cases need two or more non-Steam
+shortcuts and a catalogue with layouts (CL-266-2).
+
+| ID | Pri | S | Steps | Expected |
+|---|---|---|---|---|
+| CL-274-1 | P1 | S | In Options › Steam library, set World of Warcraft in Steam to one shortcut, with Link detected Steam games on and another shortcut detected for the selected installation. Open Controller layouts, open the dropdown, then B. Turn Link detected Steam games off and open it again. Then unlink World of Warcraft in Steam | The pane reads, top to bottom: the "Library entry" caption over the dropdown, the warning line when there is one, "Reviewed layouts", the layouts. The menu opens inside the pane (G14) with the current entry checked. It lists the hand-set and the detected entry A–Z under Steam's names, then "Other game…", and nothing else. A detected link from another installation or another Steam account never appears. A and B return focus to the dropdown (S36). With the toggle off, the dropdown lists only the hand-set entry and "Other game…". With nothing linked, the dropdown offers suggestions instead (CL-277-1) |
+| CL-274-2 | P1 | S | Start from the setup of CL-274-1 and note the starting entry. Unlink the hand-set entry, then link two detected entries. Then pick the second entry, close the QAM and reopen it, Left to the destination list and Right back, then switch to another installation and back. Reload the plugin | The dropdown starts on the hand-set link, then on the only detected entry, then on the first A–Z. A pick survives the QAM closing and destination changes. The other installation starts on its own default, and switching back shows the pick again. After the reload the default is back |
+| CL-274-3 | P1 | S | Choose, in turn: a shortcut with a unique name whose controls are your own saved controls (an autosave or export, no controller-specific override); a shortcut that shares its name with another in a different case; a shortcut whose controls are a template or Workshop layout; a shortcut with an accented letter in its name. Then connect a second controller and open the pane again | The unique name with your own controls shows no warning line. The shared name shows a warning "Shares controls with 1 other entry named" and the name in quotes, with "Applying a layout changes them all." under it. The other cases show a "Preview only" warning with the reason: WoWDeck applies layouts only over your own saved controls, not over a template or Workshop layout; or it can't apply layouts yet to names with accented or non-Latin letters. With a second controller the dropdown still lists the same entries, and "Preview only" asks for the built-in controller alone to apply a layout. Each warning has its triangle icon and reads without colour (S38) |
+| CL-274-4 | P1 | S | Pick an entry in the dropdown, focus a layout and press A on a compatible controller while a second controller is connected. Press B in Steam's preview | The footer names A "Preview". Steam opens its layout preview for the picked entry and the active controller. B returns to Controller layouts with focus on that layout |
+
+### Suggested layout targets and Other game… (#277)
+
+With nothing linked, the layout target dropdown offers suggestions, and
+"Other game…" ends the list in every state. These cases need non-Steam
+shortcuts and a catalogue with layouts (CL-266-2).
+
+| ID | Pri | S | Steps | Expected |
+|---|---|---|---|---|
+| CL-277-1 | P1 | S | Unlink World of Warcraft in Steam in Options and turn Link detected Steam games off, with a shortcut detected for the selected installation. Open the dropdown. Then remove that shortcut's detection (or switch to an installation with none), with shortcuts named "World of Warcraft", "Battle.net" and an unrelated game in the library. Then remove the WoW-like shortcuts too | First the detected entry is listed with "Suggested" after its name in the description grey, then "Other game…". Next the WoW-like shortcuts are listed A–Z, each marked "Suggested", then "Other game…"; the unrelated game is not listed. The button shows the selected entry's name and "· Suggested". On the focused button and menu row, the note takes Steam's focused text colour. With none left, the list holds only "Other game…", the button reads "Choose a game", and A on a layout does nothing |
+| CL-277-2 | P1 | S | With a suggested entry listed, pick it and press A on a layout. Then open Options › Steam library | Steam's preview opens for the suggested entry. Options still shows no hand-set link and the toggle unchanged |
+| CL-277-3 | P1 | S | With linked entries listed, pick "Other game…". In the picker, search for and pick a different shortcut. Repeat, pressing B in the picker instead | The Options Steam game picker opens over the QAM. Picking a shortcut toasts "Linked to Steam", and the pane comes back with the dropdown focused (S36) and the picked shortcut selected and listed. Options › Steam library shows it as World of Warcraft in Steam. B leaves the link and selection as they were and returns focus to the dropdown |
+
+### Layout target icons (#278)
+
+| ID | Pri | S | Steps | Expected |
+|---|---|---|---|---|
+| CL-278-1 | P2 | S | Link two shortcuts, one with a custom icon in Steam and one without. Restart Steam, then open Controller layouts at once and open the dropdown. Pick the other entry. Then open Get Addons › Popular and open the Source and Category menus | Each entry shows its Steam icon at 20 px left of its name, in the open menu and on the button. Icons on the button and in the open menu begin 8 px from the left edge and retain their aspect ratio. The entry without an icon keeps a blank 20 px slot, so both names start at the same place. An icon Steam had not loaded yet appears about half a second later. The button's name ends in "…" inside the button when it runs long (S27). Source and Category show no icon slot, as before |
+
+### Controller layout playtime attribution (#263)
+
+Native attribution is pending. WoWDeck omits playtime from catalogue
+rows because the Steam field's units and meaning are unverified. Native
+snapshot application does not establish playtime credit. The archived-candidate
+import and local export both selected ID 14. The inspected SteamRT64 upload
+loop excludes IDs at or below 15. See the
+[device investigation](hardware/2026-11-17-controller-layouts/README.md#playtime-investigation-for-263-17-november-2026).
+
+| ID | Priority | Tier | Steps | Expected |
+| --- | --- | --- | --- | --- |
+| CL-263-1 | P1 | H | Launch WoW from a non-Steam shortcut whose name differs from the published layout's source shortcut. During genuine play with a known published layout, passively observe native activity records and the selected identity. Repeat for the identical approved snapshot, a personal edit and a reverted edit. Record bounded baseline and follow-up observations with controls for other players and delayed aggregation | Establish which published identity receives activity in each case. An inconclusive observation remains unknown. Matching mappings, a retained source ID and a successful upload alone do not prove original-item credit. Approved content must remain frozen. Do not write duration counters or alter ancestry to make this pass |
+| CL-263-2 | P1 | H | After ordinary attribution is established, repeat across suspend, offline use and an interrupted session, observing retries without injecting reports | Establish supported accounting boundaries and any loss or duplication. Report untested behavior as pending; never convert unknown metrics to zero |
+| CL-263-3 | P2 | S | Open Controller layouts with a published item whose Steam Workshop likes are available | The row shows the Workshop likes. WoWDeck shows no hours-played label, including when the Steam field returns zero |
+
+### Controller layout preview (#267)
+
+T1 through T3 are local checks. No device run is recorded for this change.
+See [preview requirements and limitations](controller-layout-preview.md).
+Do not use the existing publication to claim a successful preview while its
+reviewed native fingerprints are absent.
+
+| ID | Pri | S | Steps | Expected |
+|---|---|---|---|---|
+| CL-267-1 | P1 | S | Press A on an available layout | A preview-only pane offers library entries, explains shared names and offers no Apply. Back returns to the layout row |
+| CL-267-2 | P1 | S | Select a target with native support missing, or a revision without reviewed mappings | A visible failure explains why preview is unavailable. Browsing still works and controls stay unchanged |
+| CL-267-3 | P1 | F | Run the deterministic preview suites | Approved bytes stage under a separate account namespace. Changed bytes, wrong sources, fallback, decoded mismatch and account/controller/selection changes fail safely. Native handles are released |
+| CL-267-4 | P1 | H | After explicit bounded device approval, prepare a revision with independently reviewed native fingerprints and preview a disposable target | Exact staged bytes load through usercloud. The pane shows expected mappings. Selection and active controls remain unchanged. No native screen with F3 Apply opens. Repeat after pane teardown and capability removal |
+
+## Controller layout targets and application boundary (#268)
+
+- With one detected shortcut for the active installation and current Steam
+  account, opening a layout prefers that entry. Change library entry still
+  offers every library entry. With several candidates, another account or
+  links without account provenance, the player chooses explicitly.
+- Choose either of two identically named entries. Both names and IDs appear
+  in the possible shared-controls disclosure. The warning also says that
+  differently named entries may share controls. No shortcut is renamed.
+- Native capabilities or complete scope evidence missing leaves Apply
+  unavailable. Catalogue browsing still works. Raw preview remains usable
+  when its own capabilities are available.
+- Through the operation interface with fake native outcomes, verify success
+  only after reviewed decoded readback. Silent fallback and disappearing
+  native support restore preserved controls. Account, physical controller
+  and scope changes refuse mutation and retain recovery evidence. Failed
+  capture or restore reports recovery required. Notifications invalidate
+  state and never establish success.
+- Through typed engine operations, corrupt staged bytes refuse progression.
+  Interrupted intent survives a new engine instance, retains its recovery
+  reference and blocks another operation. Missing or malformed recovery
+  state must not silently reset the gate.
+
+Automated tests cover the engine operations, fake native outcomes and pane
+disclosure/correction. T1 through T3 are the local verification targets.
+Visual layout and physical controller behavior remain unverified. Real
+application stays blocked until #269 connects preservation, explicit recovery
+and bounded device verification. Do not use the native F3 preview screen.
+
+### Controller layout recovery (#269)
+
+| Scenario | Expected result | Evidence |
+| --- | --- | --- |
+| Restart after pre-export preservation | Recovery intent and personal bytes remain; another apply is refused | `backend/tests/controller-layout-operation.test.ts`, deterministic RPC |
+| Original personal VDF changes before restore | Restore refuses to overwrite edits; recovery reference remains | Same RPC suite |
+| Local export changes selection | Pre-export evidence already exists; original mappings and explicit or inherited semantics are verified before continuing | `src/controllerLayoutPreservation.test.ts`, fake native adapter |
+| Explicit restore fails | Recovery stays required and the snapshot remains available | Same fake-native suite |
+| Pane reopens with interrupted work | Uncertainty and same-account/controller/scope requirement are disclosed; no Apply action | `src/controllerLayoutsDestination.test.tsx` |
+| Scope, physical identity or override absence cannot be proven | Native mutation remains unavailable | Production adapter guard; device verification pending |
+| Workshop/template source, missing original or changed original | Capture or restore fails closed; existing archives remain | Resolver restriction; recovery delivery still incomplete |
+
+No new device run was authorized for this implementation. The parent must
+perform the bounded disposable-target run after resolving its Steam-state
+permission scope. Restart, cloud, offline, gameplay and two-controller results
+remain pending.
+
+
+### Controller layout review regressions, #261
+
+- Through the production native adapter, active readback must reach Steam without
+  a URL. A personal usercloud export must preview; traversal, empty path segments,
+  query strings and foreign schemes must fail before native work starts.
+- Explicit recovery after the original personal source changes or disappears must
+  stage archived bytes under a separate recovery URL. New edits stay untouched.
+  Confirm decoded mappings and both override layers before reporting restoration.
+- A second browser must not claim restoration while the original owns native work,
+  including after an engine restart. Late native results must settle before release.
+- In the preview pane, focus Change library entry, close and reopen the pane, and
+  confirm that row retains focus. Duplicate names must not reveal native app numbers.
+
+The deterministic checks cover these boundaries with recorded/fake external
+interfaces. Hardware verification and a supported live Apply scope remain pending;
+see [the follow-up evidence plan](controller-layout-follow-up.md).

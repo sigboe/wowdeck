@@ -94,6 +94,29 @@ describe("the connected engine", () => {
     expect(heard).toEqual([["new"]]);
   });
 
+  test("after disconnecting, rpc and bridge reject instead of throwing", async () => {
+    // A plugin reload disconnects in onDismount, and Steam can render the old
+    // panel once more after that: a synchronous throw from a mount effect's
+    // engine call escapes its .catch() and wedges the panel on Decky's error
+    // screen. A rejection reaches the caller's .catch() like any engine failure.
+    const disconnect = connectEngine(createFakeEngine());
+    disconnect();
+    let rpc: Promise<unknown> | undefined;
+    let bridge: Promise<unknown> | undefined;
+    expect(() => {
+      rpc = engine.rpc("about.get");
+      bridge = engine.bridge("read_text_file", "/a.txt");
+    }).not.toThrow();
+    expect(rpc).toBeInstanceOf(Promise);
+    expect(bridge).toBeInstanceOf(Promise);
+    expect(((await rpc!.catch((e: Error) => e)) as Error).message).toBe(
+      "The engine isn't connected yet",
+    );
+    expect(((await bridge!.catch((e: Error) => e)) as Error).message).toBe(
+      "The engine isn't connected yet",
+    );
+  });
+
   test("rpc and bridge go to the link connected when the call is made", async () => {
     connectEngine(createFakeEngine({ "about.get": { version: "1" } as never }));
     expect(await engine.rpc("about.get")).toEqual({ version: "1" } as never);

@@ -1,0 +1,5 @@
+{
+  "$comment": "TEST FIXTURE: a valid catalogue with no layouts.",
+  "schemaVersion": 1,
+  "layouts": []
+}

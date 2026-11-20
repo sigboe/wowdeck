@@ -1,0 +1,203 @@
+# Controller layout preview
+
+WoWDeck previews approved bytes through Steam's raw preview interface. It
+shows the decoded action sets and mappings in its own pane. It never opens
+Steam's native preview screen, whose F3 action can apply a layout without
+WoWDeck's future preservation checks. No apply or restore action is exposed.
+
+## Publication requirements
+
+A revision needs its existing SHA-256 plus optional `previewMappings` to
+be previewable. This object maps decimal native controller types to reviewed
+SHA-256 fingerprints of decoded mappings. For example, key `"4"` describes
+the decoded Deck controller type observed in the November 17 experiment.
+Each target controller type needs its own reviewed fingerprint. Conversion
+between controller types is never assumed to preserve every mapping.
+
+The fingerprint input is UTF-8 JSON of `{type, sets, modes}` from Steam's
+decoded configuration. Sort every object's keys lexicographically, preserve
+array order, use compact JSON, and omit the outer configuration's handles,
+URL and other metadata. `mappingContent` in `src/controllerLayoutPreview.ts`
+defines this serialization. Maintainers must establish the expected mappings
+independently from the approved source, rather than approving whatever a
+client preview happens to return. Revisions without this evidence remain
+browsable and explain why preview is unavailable.
+
+The current catalogue has no archived VDF locator. Preparation resolves the
+original published item through Steam's public metadata endpoint, accepts
+only HTTPS Steam content hosts, bounds the download, and verifies the exact
+approved byte hash. A changed source fails safely. Older revisions may become
+unavailable until the catalogue publishes an archive delivery contract.
+Nothing follows author updates automatically.
+
+## Operation and ownership
+
+`controllerLayouts.preparePreview` starts an engine job and returns its ID.
+`controllerLayouts.previewStatus` reports preparation, failure or the staged
+snapshot. The engine resolves the account's existing controller-config root
+and writes atomically into its separate `wowdeck-approved` namespace. The
+content-addressed file retains the exact approved bytes and is addressed as
+`usercloud://wowdeck-approved/<sha256>`. The browser receives no filesystem
+path. Staged data is retained for later previews; this ticket adds no cache
+cleanup action.
+
+The browser adapter owns Steam capability checks, protobuf discovery, native
+handle lifetime and selection readback. It captures the target, account,
+controller index/type, complete selection metadata and library entries. The
+account comes from guarded `SteamClient.User.GetSteamID`, whose availability
+needs device verification. Selection metadata may name a source author, so
+its account field never chooses the staging folder. A
+changed readback or missing capability rejects the result. This is a
+preview-only comparison, not a proof of mutation isolation for shared names
+or of physical controller identity across reconnects.
+
+The module-scope resource retains the preparation job and native outcome
+across pane teardown. It polls only while viewed. Native calls have no
+selection or editing-store mutation, no callback registration, and no native
+navigation. Preview handles are freed after the decoded data is copied and
+verified. Only one native preview handle may be owned at a time.
+
+## Verification limits
+
+Deterministic tests cover approved staging, changed downloads, source
+rejection, missing reviewed mappings, native fallback, decoded mismatch,
+account/controller/selection changes and disappearing capability. Pane tests
+cover disclosure and the absence of Apply. Synthetic VDF and metadata
+fixtures live under `backend/tests/fixtures/controller-layouts/`.
+
+The current published revision has no reviewed native fingerprints. It
+therefore fails safely rather than claiming a verified preview. Protobuf
+discovery and direct preview-handle release follow the recorded installed
+Steam source, but have not been exercised by this implementation on a Deck.
+The pane currently renders complete decoded named values, including native
+numeric codes, rather than Steam's graphical controller diagram.
+
+Static checks, tests and build reach T1 through T3 only. No visual, keyboard,
+physical controller, gameplay, restart, cloud or hardware verification is
+claimed. Apply and recovery belong to #268 and #269 and must stay unavailable
+until preservation and rollback are connected.
+
+## Target choice and guarded application
+
+The pane prefers a unique detected shortcut for the active installation
+only when its account and exact library name match the current Steam
+account and library. Detection now retains the account that supplied each
+shortcut. Legacy links without account evidence and the global manual
+Options link do not establish this preference. Multiple matching shortcuts
+leave the choice to the player. Change library entry reopens the picker
+without renaming anything.
+
+The pane lists equal-name entries as possibly sharing controls and warns
+that other names may share them too. A complete native scope needs separate
+evidence for every affected target and equivalent controller. The current
+native adapter cannot establish that scope or a physical controller's
+identity, so it reports unknown scope. It cannot apply a layout. Browsing
+and raw preview remain available when their own capabilities are present.
+
+`applyLayout` is the operation interface for connecting recovery in #269.
+It requires a native adapter and a preservation implementation with both
+capture and verified restore. Without that connection it returns blocked
+before any native work. No player Apply action invokes it yet. Tests use
+fake native outcomes through this interface, including silent fallback,
+changed scope, changed account and reconnected controller identity.
+
+The engine owns the durable operation under its data directory's
+`controller-layouts/operation.json`. `beginOperation` returns a validating
+operation while approval is rechecked. `operationStatus` allows the browser
+to reattach. The approved byte hash and reviewed decoded fingerprints stay
+separate. The operation retains original published-item provenance even
+though the delivered URL addresses a local copy.
+
+Before capture, the browser verifies decoded preview mappings and rereads
+its installation, account, controller, selection and complete scope.
+Before application it repeats context checks and the engine checks staged
+bytes again. Success requires independently reviewed decoded mappings from
+active native readback and unchanged account, controller and affected scope.
+All selection callbacks, including app ID 0, invalidate state only. A
+callback never establishes success. The adapter owns callback disposal.
+
+## Preservation handoff to #269
+
+Capture receives an already persisted intent because exporting previous
+controls can itself change Steam selection. It must persist complete previous
+bytes, decoded mappings and explicit or inherited selection semantics under
+that operation's identity. It returns an opaque recovery reference only
+after persistence succeeds. It must leave selection semantics matching the
+captured context before approved application can proceed.
+
+Restore receives the retained operation and recovery reference. It must
+verify previous decoded mappings and selection semantics before resolving.
+A changed account, physical controller or affected scope prevents automatic
+restore onto that new context. Capture failures, restore failures and
+interrupted work retain recovery-required intent. A restarted engine never
+replays native work. #269 must add explicit recovery actions for these
+records; this ticket supplies read-only status and blocks another mutation.
+
+The engine serializes operation transitions and synchronizes the intent file
+and its directory before acknowledging each phase. Browser operation and
+callback lifetimes are independent of pane teardown. The shipped pane has
+no application operation to resume yet. #269 must connect its module-lifetime
+operation resource and recovery UI before exposing Apply.
+
+These are deterministic interface tests and static checks only. No device,
+visual layout, controller navigation, offline, restart durability of Steam
+selections, cloud or gameplay result is claimed. Native scope resolution,
+physical controller identity, preservation and real apply/readback still
+need bounded device evidence before activation.
+
+## Recovery implementation for #269
+
+The engine now retains pre-export VDF bytes, their SHA-256, complete decoded
+mapping content and explicit presence or absence of both selection layers for
+every established shared target. `saveRecovery` synchronizes this archive and
+the operation reference before native export can run. `sealRecovery` retains
+the type-1 export bytes separately. Advancing to preserved requires both
+archives. Neither archive is deleted on success, failure or interruption.
+
+The browser preservation interface checks mappings and selection semantics
+before capture, checks exported mappings, then restores and verifies the
+original selection before approved application. A failed or timed-out export
+leaves recovery required. Explicit restoration rechecks the installation,
+account, physical controller and complete scope, reloads the retained evidence,
+and verifies mappings and selection semantics before reporting success. The
+module-level operation slot and status resource survive pane teardown. A full
+browser reload while the engine remains live can leave a nonterminal operation
+without its browser owner. The durable claim stays blocked across an engine
+restart. Another browser cannot restore until the original owner releases after
+all native promises settle. Reconciliation after the owner dies still needs a
+proven native barrier; no timeout grants permission to replay.
+
+The pane shows retained or uncertain previous controls and an explicit restore
+retry when there is recovery evidence. Reading the catalogue or reopening the
+pane never starts restoration. Recovery RPC remains available with the source
+off, though the source's destination is hidden while off.
+
+The browser adapter contains guarded native apply, active decoded readback,
+local export and explicit selection restore calls from the recorded client
+source. Its scope resolver still refuses mutation. `GetConfigForAppAndController`
+returns the winning selection, which does not establish absence of both
+selection layers, all equivalent controllers, physical identity across
+reconnects or isolation between differently named shortcuts. Equal-name groups
+alone cannot supply those proofs. No live Apply action is exposed.
+
+The byte resolver currently supports existing account-local `usercloud` and
+`autosave` VDFs. Workshop and template URLs fail before export because their
+pre-export byte location has not been established. If the original source is
+changed or missing, explicit restoration stages retained bytes in a separate
+recovery namespace and substitutes present selection URLs. It preserves absent
+overrides and never overwrites personal edits. An inherited source still refuses
+restoration if delivery would require adding a previously absent override. A
+restart reattaches a complete archive if a crash interrupted its later reference
+write. It never replays export or application. The
+[follow-up evidence plan](controller-layout-follow-up.md) describes the remaining
+scope, publication and abandoned-call questions.
+
+Tests cover the typed recovery RPC across restart and failed restoration,
+changed source bytes, fake-native preservation of personal edits and inherited
+defaults, export selection changes, explicit restore and failed restore. The
+existing operation tests cover fallback, changing target context and unknown
+native outcomes. Pane tests cover recovery disclosure and absence of Apply.
+These are deterministic tests only. #269 and #261 remain incomplete pending
+native scope and selection evidence, unsupported-source recovery delivery and
+the parent's bounded device run. Steam restart, cloud conflicts, offline use,
+gameplay and two simultaneous controllers remain unverified.

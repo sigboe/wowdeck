@@ -7,6 +7,7 @@ import {
   badgeState,
   filterSteamGames,
   likelyWowFirst,
+  pickerLinks,
   pickerRowMarker,
   shouldAutoCheck,
   shortcutIconUrl,
@@ -129,16 +130,57 @@ describe("automatic Steam attachments", () => {
   const wow = { appId: 42, name: "WoW" };
   const battle = { appId: 43, name: "Battle.net" };
   const installs = [{ steamGames: [wow, battle] }, { steamGames: [wow] }, {}];
+  const library = [battle, { appId: 9, name: "Manual" }, wow];
   test("every detected entry is attached once, alongside an explicit manual choice", () => {
-    expect(linkedSteamGames(installs, { appId: 9, name: "Manual" })).toEqual([
+    expect(linkedSteamGames(installs, { appId: 9, name: "Manual" }, true, library)).toEqual([
       { appId: 9, name: "Manual" },
       wow,
       battle,
     ]);
   });
   test("turning off automatic attachment keeps only the explicit manual choice", () => {
-    expect(linkedSteamGames(installs, wow, false)).toEqual([wow]);
-    expect(linkedSteamGames(installs, null, false)).toEqual([]);
+    expect(linkedSteamGames(installs, wow, false, library)).toEqual([wow]);
+    expect(linkedSteamGames(installs, null, false, library)).toEqual([]);
+  });
+  test("a renamed shortcut stays linked under the name Steam shows now", () => {
+    const renamed = [
+      { appId: 9, name: "My WoW" },
+      { appId: 42, name: "World of Warcraft (Proton)" },
+      { appId: 43, name: "Blizzard App" },
+    ];
+    expect(linkedSteamGames(installs, { appId: 9, name: "Manual" }, true, renamed)).toEqual(
+      renamed,
+    );
+  });
+  test("a link whose app id is no longer a shortcut is dropped, detected or by hand", () => {
+    expect(linkedSteamGames(installs, { appId: 9, name: "Manual" }, true, [battle])).toEqual([
+      battle,
+    ]);
+    expect(linkedSteamGames(installs, wow, true, [])).toEqual([]);
+  });
+});
+
+describe("pickerLinks (#275)", () => {
+  const installs = [{ steamGames: [{ appId: 42, name: "WoW" }] }];
+  const settings = { steamGame: { appId: 43, name: "Battle.net" }, steamAutoLink: true };
+  test("the picker's links carry the names Steam shows now", () => {
+    expect(
+      pickerLinks(installs, settings, [
+        { appId: 42, name: "World of Warcraft" },
+        { appId: 43, name: "Blizzard App" },
+      ]),
+    ).toEqual({
+      manual: { appId: 43, name: "Blizzard App" },
+      detected: [{ appId: 42, name: "World of Warcraft" }],
+      autoLinkOn: true,
+    });
+  });
+  test("links to deleted shortcuts are gone, so nothing says it is linked or offers Unlink", () => {
+    expect(pickerLinks(installs, settings, [{ appId: 7, name: "Other" }])).toEqual({
+      manual: null,
+      detected: [],
+      autoLinkOn: true,
+    });
   });
 });
 

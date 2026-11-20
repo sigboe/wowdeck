@@ -2,6 +2,7 @@
 
 import type { HandlerTable } from "../../bridge/jsonl";
 import type { AddonService } from "../../wow/addons/AddonService";
+import type { SteamLaunchLog } from "../../wow/installation/SteamLaunchLog";
 import type { InstallationService } from "../../wow/installation/InstallationService";
 import { getClientTypeForGameType } from "../../wow/utils/gametype";
 
@@ -9,20 +10,28 @@ import { getClientTypeForGameType } from "../../wow/utils/gametype";
 export interface InstallationsDeps {
   installationService: Pick<
     InstallationService,
-    "update" | "listed" | "detect" | "select" | "addManual" | "inspect" | "remove" | "list" | "require"
+    "update" | "listed" | "detect" | "recordLaunch" | "select" | "addManual" | "inspect" | "remove" | "list" | "require"
   >;
   service: Pick<AddonService, "recovery" | "retryRecovery" | "verifyRecovery">;
+  steamLaunchLog: SteamLaunchLog;
   /** The home installation detection scans. */
   homeDir: string;
 }
 
-export function installationsHandlers({ installationService, service, homeDir }: InstallationsDeps) {
+export function installationsHandlers({ installationService, service, homeDir, steamLaunchLog }: InstallationsDeps) {
   return {
     "installations.update": async (params) => ({ installation: installationService.update(params.installationId, params) }),
 
     "installations.list": async () => ({ installations: installationService.listed() }),
 
     "installations.detect": async () => ({ installations: await installationService.detect(homeDir) }),
+
+    "installations.recordLaunch": async (params) => installationService.recordLaunch(homeDir, params),
+
+    "installations.watchLaunch": async ({ running, ...launch }) => {
+      await steamLaunchLog.update(launch, running);
+      return {};
+    },
 
     "installations.select": async (params) => ({ installation: installationService.select(params.installationId) }),
 

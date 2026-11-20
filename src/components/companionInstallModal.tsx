@@ -2,7 +2,7 @@ import { ConfirmModal, showModal } from "@decky/ui";
 import { installCompanion, type CompanionInstallDeps } from "../companionInstall";
 import { pluginToast, toastError } from "../toast";
 
-const HUB_OFF = "Turn on WowUp Hub in Addon sources to install it.";
+const HUB_OFF = "Turn on WowUp Hub in Sources to install it.";
 
 /**
  * A on Updates inside WoW while the active installation lacks WowUp

@@ -207,6 +207,82 @@ flavor, can identify the root. If that evidence points to more than one
 root or is absent, Steam's Play button stays as it is. The launch product
 and remembered client choice apply after the root is known.
 
+### Lutris and Bottles shortcuts
+
+A shortcut that starts a Lutris game or a Bottles program runs in that
+launcher's Wine prefix, not in a Steam one. The detector reads the launch
+options as literal words and follows them to the prefix:
+
+- Lutris: `lutris:rungameid/<n>`, passed to `lutris`, to `flatpak run
+  net.lutris.Lutris` or to `xdg-open`. The detector reads that game's
+  `configpath` from Lutris' `pga.db`, then `games/<configpath>.yml` under
+  Lutris' config or data folder. Its `game.prefix` is the prefix, and
+  `game.exe` with `game.args` is the program. Flatpak Lutris keeps all of
+  this under `~/.var/app/net.lutris.Lutris`.
+- Bottles: `-b`/`--bottle` with `-p`/`--program` or `-e`/`--executable`,
+  passed to `bottles-cli`, `bottles` or `flatpak run com.usebottles.bottles`.
+  Bottles' own `xdg-open bottles:run/<bottle>/<program>` form works too. The
+  bottle is the folder whose `bottle.yml` has that `Name`, or failing that,
+  the folder with that name, in the native or Flatpak bottles folder. A
+  program name resolves through the bottle's `External_Programs`.
+
+The program decides whether the shortcut is WoW, by the same rule as a
+direct shortcut. A Lutris game or Bottles program that launches another
+Blizzard product from a shared prefix links nothing. The prefix's registry
+then finds the installation, and the shortcut links to it.
+
+Any word a shell would expand, substitute, chain, redirect or glob makes
+the whole launch line unreadable, and the shortcut links nothing. So do an
+unclosed quote and more than one Lutris game id. No launcher is run.
+Heroic shortcuts are not read.
+
+### Proven links
+
+A proven link (GLOSSARY) ties a shortcut to the installation the engine saw WoW
+running from after that shortcut started. The plugin learns that a
+shortcut started from Steam's app lifetime notification
+(`SteamClient.GameSessions.RegisterForAppLifetimeNotifications`). It
+doesn't poll Steam's running-apps store for starts. It watches only
+shortcuts that could be WoW:
+
+- a shortcut linked by hand, or detected for any installation with
+  either provenance, even with "Link detected Steam games" off;
+- a shortcut whose name looks like WoW or Battle.net, the test the
+  Options picker uses to list likely entries first.
+
+For such a shortcut, the engine follows new process entries in Steam's
+Linux console log (`logs/console-linux.txt`) and checks for a WoW client
+already running at shortcut start. A later `Adding process` entry supplies a
+PID and a Steam game ID. The engine matches the game ID to the active
+shortcut and checks only that PID. This catches WoW starting after
+Battle.net opens. The watcher ends when it records a link or the
+shortcut quits. If Steam's log is unavailable, the initial check and
+prefix detection still work.
+
+To prove the link, the engine checks the process in `/proc`:
+
+- The command line must name a WoW client executable.
+- The environment must name the started app id, in `SteamGameId` (a
+  64-bit shortcut game id carries the app id in its high 32 bits),
+  `SteamAppId` or `STEAM_COMPAT_APP_ID`.
+- A Windows path resolves through the prefix's `dosdevices`. The prefix
+  is `WINEPREFIX`, or else `STEAM_COMPAT_DATA_PATH/pfx`.
+- The client's folder must be a listed installation.
+
+The app id must also be a shortcut of the signed-in Steam account. The
+engine keeps proven links in `steam-launch-links.json` in its data
+folder, by app id, account and installation location. Each scan adds
+them to the installation's links with provenance `launch`, under the
+shortcut's current name. A proven link replaces the prefix link to the
+same shortcut. When a scan reads an account's `shortcuts.vdf` and the
+shortcut is no longer in it, the engine deletes that shortcut's proven
+links from the file. A new shortcut that gets the same app id then
+starts unlinked. When the scan can't read an account's `shortcuts.vdf`,
+the engine keeps that account's proven links. Links found
+from shortcut fields and prefixes carry provenance `prefix`. A Deck run
+still has to confirm which variables Steam sets (regression row L-29).
+The engine never logs the environment, the command line or their paths.
+
 Discovery runs at engine startup and through Find WoW. The game-page section
 and home-tile badge use all detected links, alongside the existing manual
 picker. Options can disable automatic linking. Linking never changes
@@ -216,7 +292,10 @@ opt-in, and existing user choices remain in effect.
 Detector tests construct synthetic binary `shortcuts.vdf` fixtures in
 temporary homes. They cover multiple users, both Steam locations, executable
 and folder paths, validity tiers, source priority, live appIds, shared and
-external prefixes, literal overrides, symlinks and broken files.
+external prefixes, literal overrides, symlinks and broken files. Lutris
+and Bottles tests add a synthetic `pga.db`, game configs and `bottle.yml`
+files in native and Flatpak locations. Proven-link tests run a fake
+process reader over a synthetic Proton prefix.
 
 ## Identity
 

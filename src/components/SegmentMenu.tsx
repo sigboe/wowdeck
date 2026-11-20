@@ -1,7 +1,8 @@
 import { useRef, useState, type FocusEvent, type ReactNode } from "react";
 import { DialogButton, Focusable, GamepadButton, type GamepadEvent } from "@decky/ui";
 import { FaCheck, FaChevronDown } from "react-icons/fa";
-import { STEAM } from "../steamTheme";
+import { STEAM, STEAM_FONT } from "../steamTheme";
+import { IconSlot } from "./IconSlot";
 
 /**
  * A browse bar segment's picker (ADR 0002, revised 2026-10-24): the choices
@@ -27,7 +28,26 @@ export interface SegmentChoice<T> {
   /** The pick's value; null is a real choice ("All categories"), not "none". */
   data: T;
   label: string;
+  /** The choice's icon URL, shown only in a menu with `withIcons`; none leaves its slot blank. */
+  icon?: string;
+  /** A marker after the label in the description grey ("Suggested"); not part of the value. */
+  note?: string;
 }
+
+/** A choice's icon size (spec #273): a little over the 16 px body text beside it. */
+const SEGMENT_ICON_SIZE = "20px";
+const SEGMENT_ICON_INSET = "8px";
+
+/** The caption over a segment's button: Steam's row label, one size down. */
+export const SEGMENT_LABEL = {
+  color: STEAM.text,
+  fontSize: STEAM_FONT.small,
+  lineHeight: "16px",
+  fontWeight: "bold",
+  letterSpacing: ".5px",
+  textTransform: "uppercase",
+  padding: "0 0 4px 2px",
+} as const;
 
 export function SegmentMenu<T>({
   menuLabel,
@@ -35,6 +55,7 @@ export function SegmentMenu<T>({
   selected,
   onPick,
   renderValue,
+  withIcons = false,
 }: {
   /** The menu's name for the button's label; the caption above it is BrowseBar's. */
   menuLabel: string;
@@ -44,6 +65,11 @@ export function SegmentMenu<T>({
   onPick: (data: T) => void;
   /** The button's value renderer (BAR_DROPDOWN_VALUE keeps it inside the button). */
   renderValue: (value: ReactNode) => ReactNode;
+  /**
+   * An icon slot before every choice's name and the button's value, blank
+   * where a choice has no icon, so the names line up. Off: no slot at all.
+   */
+  withIcons?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   // The button is queried through its wrapper: @decky/ui's DialogButton does
@@ -87,8 +113,8 @@ export function SegmentMenu<T>({
   };
 
   const pick = (choice: SegmentChoice<T>) => {
-    onPick(choice.data);
     close(true);
+    onPick(choice.data);
   };
 
   const onListButtonDown = (evt: GamepadEvent) => {
@@ -128,17 +154,25 @@ export function SegmentMenu<T>({
     setOpen(false);
   };
 
-  const selectedLabel = choices.find((c) => c.data === selected)?.label ?? "";
+  const selectedChoice = choices.find((c) => c.data === selected);
 
   return (
     <div>
       <div ref={triggerRef}>
         <DialogButton
+          className="wowdeck-segment-trigger"
           aria-label={menuLabel}
           onClick={() => (open ? close(true) : openList())}
-          style={{ display: "flex", alignItems: "center", gap: "8px", width: "100%" }}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
+            width: "100%",
+            paddingInlineStart: withIcons ? SEGMENT_ICON_INSET : undefined,
+          }}
         >
-          {renderValue(selectedLabel)}
+          {withIcons && <IconSlot icon={selectedChoice?.icon} size={SEGMENT_ICON_SIZE} />}
+          {renderValue(selectedChoice?.label ?? "")}
           <FaChevronDown style={{ flex: "none", width: "10px", color: STEAM.textMuted }} />
         </DialogButton>
       </div>
@@ -168,10 +202,22 @@ export function SegmentMenu<T>({
                 data-seg-index={index}
                 aria-label={choice.label}
                 className="wowdeck-segment-menu-item"
+                style={
+                  withIcons
+                    ? {
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "8px",
+                        paddingInlineStart: SEGMENT_ICON_INSET,
+                      }
+                    : undefined
+                }
                 onGamepadFocus={() => (cursorRef.current = index)}
                 onClick={() => pick(choice)}
               >
+                {withIcons && <IconSlot icon={choice.icon} size={SEGMENT_ICON_SIZE} />}
                 <span className="wowdeck-segment-menu-label">{choice.label}</span>
+                {choice.note && <span className="wowdeck-segment-menu-note">{choice.note}</span>}
                 {choice.data === selected && (
                   <FaCheck style={{ flex: "none", width: "12px", color: STEAM.positive }} />
                 )}

@@ -9,8 +9,17 @@ What's new in each version of WoWDeck Addon Manager. The format follows
 ### Added
 
 - Pick the WoW client Steam's Play button starts from its menu, even with Battle.net closed. Options can turn it off.
+- Browse reviewed controller layouts with Workshop likes, preview them on your WoW entry or any other game, apply approved mappings, and restore previous controls.
+- WoW shortcuts added to Steam from Lutris or Bottles now link to their installation without setting it by hand.
+- WoWDeck links your Steam shortcut to the installation it starts, including when WoW opens later through Battle.net.
+
+### Changed
+
+- Options' Addon sources section is now called Sources.
 
 ### Fixed
+
+- Controller layout previews keep your place when reopened, return focus after Back and Restore, and hide internal library numbers.
 
 - Sources no longer says a revoked TradeSkillMaster account stays signed in.
 
@@ -21,6 +30,7 @@ What's new in each version of WoWDeck Addon Manager. The format follows
 - Switching WoW installations after an addon install keeps the correct addon list.
 - TradeSkillMaster shows followed-realm refresh failures and lets you retry.
 - Rescanning an installation that needs recovery shows the recovery steps instead of an error.
+- Renaming WoW's Steam shortcut keeps it linked and shows its new name everywhere. Deleting the shortcut removes its link.
 
 ## [1.2.1] - 2026-11-15
 

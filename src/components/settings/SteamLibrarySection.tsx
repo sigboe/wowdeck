@@ -4,30 +4,17 @@ import { Field, PanelSection, ToggleField } from "@decky/ui";
 
 import { descriptionStyle } from "../../steamTheme";
 import { settingsStore } from "../../settings";
-import type { SteamGame } from "../../steamLibrary";
-import { openSteamGamePicker } from "../SteamGamePicker";
+import { openSteamGameLinkPicker } from "../steamGameLink";
 import { SettingsRow } from "./common";
 import { addonSession } from "../../session";
-import { linkedSteamGames } from "../../steamLibrary";
+import { linkedSteamGames, pickerLinks } from "../../steamLibrary";
 
 /** BEYOND-05: the WoW entry in Steam's library gets an addons section on its game page. */
 export function SteamLibrarySection() {
   const { settings } = useSyncExternalStore(settingsStore.subscribe, settingsStore.get);
   const { installations } = useSyncExternalStore(addonSession.subscribe, addonSession.get);
   const linked = linkedSteamGames(installations, settings.steamGame, settings.steamAutoLink);
-  const linkedSteamGame = settings.steamGame;
-  const linkSteamGame = (game: SteamGame | null) =>
-    settingsStore.save(
-      { steamGame: game },
-      game
-        ? ["Linked to Steam", `${game.name}'s game page and tile show addon updates`]
-        : [
-            "Manual Steam link removed",
-            settings.steamAutoLink
-              ? "Detected games remain linked"
-              : "No game page shows addon updates",
-          ],
-    );
+  const linkedSteamGame = pickerLinks(installations, settings).manual;
 
   return (
     <PanelSection title="Steam library">
@@ -56,16 +43,7 @@ export function SteamLibrarySection() {
                   : "Pick its library entry (WoW or Battle.net) to show addon updates there"}
             </span>
           }
-          onClick={() =>
-            openSteamGamePicker(
-              {
-                manual: linkedSteamGame,
-                detected: linkedSteamGames(installations, null),
-                autoLinkOn: settings.steamAutoLink,
-              },
-              (g) => void linkSteamGame(g),
-            )
-          }
+          onClick={() => openSteamGameLinkPicker()}
         >
           <RowChevron />
         </Field>
