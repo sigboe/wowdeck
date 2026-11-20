@@ -280,7 +280,7 @@ links from the file. A new shortcut that gets the same app id then
 starts unlinked. When the scan can't read an account's `shortcuts.vdf`,
 the engine keeps that account's proven links. Links found
 from shortcut fields and prefixes carry provenance `prefix`. A Deck run
-still has to confirm which variables Steam sets (regression row L-14).
+still has to confirm which variables Steam sets (regression row L-29).
 The engine never logs the environment, the command line or their paths.
 
 Discovery runs at engine startup and through Find WoW. The game-page section

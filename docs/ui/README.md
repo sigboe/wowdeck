@@ -43,7 +43,7 @@ in one line each; open the linked section when a rule applies to you.
 | [focus.md](focus.md) | §6 | `Focusable` facts, F1–F10, details modal, nav contract, forms |
 | [feedback.md](feedback.md) | §7 | A1–A10, copy rules C01–C12 |
 | [verification.md](verification.md) | §8 (not §8.4a–c) | Tooling, test tiers, hardware-claim policy, report template |
-| [device-notes.md](device-notes.md) | §8.4a–§8.4e | Device measurements the rules cite |
+| [device-notes.md](device-notes.md) | §8.4a–§8.4h | Device measurements the rules cite |
 | [lessons.md](lessons.md) | §9 | Case studies, reverted attempts, anti-patterns |
 | [backlog.md](backlog.md) | §10 | Known improvements not yet done |
 | [sources.md](sources.md) | §11 | Reference plugins, licensing, maintenance, known gaps |

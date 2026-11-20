@@ -202,7 +202,7 @@ Steam's plain Play button and its own menu, which keep working.
 | Steam's arrow component, prop `direction`, down path `M17.98 26.54` (`SteamChevronDown`, `src/steamIcons.tsx`) | Draws our chevron as Steam's filled triangle | LIVE (2026-11-18, exported, the same SVG as Steam's own chevron) | A thin chevron (`FaChevronDown`) |
 | `SteamClient.Apps.SetStreamingClientForApp(appId, clientId)` (`setSteamStreamingClient`, `src/steamLaunchActions.ts`) | Points Steam's Play back at this Deck when a WoW row is picked | Steam's own rows calling it is LIVE. WoWDeck's call is INFERRED | Play keeps Steam's selected client. WoWDeck logs a warning if the call throws |
 
-## 8.4d Native controller layouts (2026-11-17)
+## 8.4f Native controller layouts (2026-11-17)
 
 DEVICE, SSH and Steam CEF on the attached display, with native interface
 calls and keyboard navigation. No plugin build was deployed. The native
@@ -224,7 +224,7 @@ cleanup and untested behavior. Actual WoW gameplay, physical controller
 output, restart durability and playtime contribution remain untested.
 
 
-## 8.4d Download icon in the Steam header (DEVICE 2026-11-18)
+## 8.4g Download icon in the Steam header (DEVICE 2026-11-18)
 
 In the Deck's installed `steamui/sp.js`, the header download control uses the
 app icon asset in `HeaderAppPortrait`. In `css/sp.css`, the portrait is a
@@ -232,7 +232,7 @@ app icon asset in `HeaderAppPortrait`. In `css/sp.css`, the portrait is a
 Chromium's default. The layout target menu uses the same sampling in a
 20 px square. It preserves the aspect ratio of non-square shortcut icons.
 
-## 8.4e Active controller for layout preview (DEVICE 2026-11-18)
+## 8.4h Active controller for layout preview (DEVICE 2026-11-18)
 
 Steam's layout browser reads `SteamUIStore.MostRecentlyActiveControllerIndex`.
 A CDP probe in SharedJSContext showed index 0 for the Steam Controller

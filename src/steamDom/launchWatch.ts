@@ -1,6 +1,6 @@
 /**
  * Steam's GameSessions.RegisterForAppLifetimeNotifications reports shortcut
- * starts and stops ({ unAppID, bRunning }). Verified live on Deck in L-14.
+ * starts and stops ({ unAppID, bRunning }). Verified live on Deck in L-29.
  * When missing, prefix detection still supplies links.
  */
 
