@@ -1,0 +1,13 @@
+press b → tree="ModalDialogOverlay_Modal_17"
+target SharedJSContext → target=SharedJSContext
+eval --file=.scratch/arch-review-229/pass2-ctl-bus… → {"n":65}
+target QuickAccess → target=QuickAccess
+reload-frontend → frontend reloaded in memory; backend unchanged; tree="ModalDialogOverlay_Modal_17" focus="Review229 pass2 WhatTheWhisper 2.0 CURSEFORGEFOREV" route="/routes/library/app/4221385996" plugin=null tab=null
+close → no change
+open → tree="QuickAccess-NA" focus="Review229 pass2 CurseForge · 1.0 → 2.0" plugin="WoWDeck" tab="My Addons"
+seek Review229 pass2 → found "Review229 pass2CurseForge · 1.0 → 2.0" (jump, 4 matches)
+press x → no change
+key enter → tree="ModalDialogOverlay_Modal_19" focus="Review229 pass2 WhatTheWhisper 2.0 CURSEFORGEFOREV" tab=null
+eval --active --file=.scratch/arch-review-229/pass… → {"modal":"Review229 pass2\nWhatTheWhisper\n2.0\nCURSEFORGEFOREVER\nDescription\nWHAT ","actions":[{"onOptionsActionDescription":"View on CurseForge","onOptionsButton":"function","onSecondaryActionDescription":"Update…","onSecondaryButton":"function"},{"onOptionsActionDescription":"View on CurseForge","onOptionsButton":"function","onSecondaryActionDescription":"Update…","onSecondaryButton":"function"},{"onOptionsActionDescription":"View on CurseForge","onOptionsButton":"function","onSecondaryActionDescription":"Update…","onSecondaryButton":"function"},{"onOptionsActionDescription":"View on CurseForge","onOptionsButton":"function","onSecondaryActionDescription":"Update…","onSecondaryButton":"function"}]}
+press menu → plugin=null
+probe tree → tree="ModalDialogOverlay_Modal_19"

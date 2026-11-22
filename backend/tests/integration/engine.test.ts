@@ -94,6 +94,8 @@ let cfServer: ReturnType<typeof Bun.serve> | undefined;
 let engine: Bun.Subprocess<"pipe"> | undefined;
 let nextId = 0;
 const pending = new Map<number, (value: any) => void>();
+/** The detected Retail installation, set once the tests select it. */
+let retailId = "";
 const events: any[] = [];
 let cfSeenAuth: string[] = [];
 /** What the mock /releases/latest answers, and the Authorization headers it saw. */
@@ -325,22 +327,23 @@ describe("engine JSONL integration", () => {
   });
 
   test("installations.select and addons.list (empty)", async () => {
-    const sel = await send("installations.select", { installationId: (await send("installations.list")).result.installations[0].id });
+    retailId = (await send("installations.list")).result.installations[0].id;
+    const sel = await send("installations.select", { installationId: retailId });
     expect(sel.result.installation).not.toBeNull();
 
-    const res = await send("addons.list");
+    const res = await send("addons.list", { installationId: retailId });
     expect(res.result.addons).toEqual([]);
   });
 
   test("addons.search returns mock hub results", async () => {
-    const res = await send("addons.search", { query: "mock" });
+    const res = await send("addons.search", { installationId: retailId, query: "mock" });
     expect(res.result.results.length).toBeGreaterThan(0);
     expect(res.result.results[0].providerId).toBe("WowUpHub");
     expect(res.result.results[0].latestVersion).toBe("1.1.0");
   });
 
   test("addons.install downloads and installs folders", async () => {
-    const res = await send("addons.install", { providerId: "WowUpHub", externalId: "2791" });
+    const res = await send("addons.install", { installationId: retailId, providerId: "WowUpHub", externalId: "2791" });
     expect(res.result.operation.status).toBe("installed");
     expect(res.result.addon.version).toBe("1.1.0");
 
@@ -349,12 +352,14 @@ describe("engine JSONL integration", () => {
     expect(existsSync(join(addonsPath, "MockLib", "MockLib.toc"))).toBe(true);
     expect(readFileSync(join(addonsPath, "MockAddon", "init.lua"), "utf-8")).toContain("1.1.0");
 
-    // the result event was emitted
-    expect(events.some((e) => e.event === "operation.completed")).toBe(true);
+    // #242: the dead operation result events are never emitted; each
+    // action's own answer carries its result instead.
+    expect(events.map((e) => e.event)).not.toContain("operation.completed");
+    expect(events.map((e) => e.event)).not.toContain("operation.failed");
   });
 
   test("installed addon listed as managed, no update", async () => {
-    const res = await send("addons.list");
+    const res = await send("addons.list", { installationId: retailId });
     const addon = res.result.addons.find((a: any) => a.name === "MockAddon");
     expect(addon).toBeDefined();
     expect(addon.providerId).toBe("WowUpHub");
@@ -365,24 +370,26 @@ describe("engine JSONL integration", () => {
     // provider publishes r3
     catalog["2791"]!.releases.push({ version: "1.2.0", releaseId: "r3" });
 
-    await send("addons.refresh");
-    let res = await send("addons.list");
+    await send("addons.refresh", { installationId: retailId });
+    let res = await send("addons.list", { installationId: retailId });
     const addon = res.result.addons.find((a: any) => a.name === "MockAddon");
     expect(addon.updateAvailable).toBe(true);
     expect(addon.availableVersion).toBe("1.2.0");
 
-    const upd = await send("addons.updateAll");
+    const upd = await send("addons.updateAll", { installationId: retailId });
     expect(upd.result.operations).toHaveLength(1);
     expect(upd.result.operations[0].status).toBe("updated");
+    // #242: updates report through the answer, never as operation events.
+    expect(events.map((e) => e.event)).not.toContain("operation.completed");
 
-    res = await send("addons.list");
+    res = await send("addons.list", { installationId: retailId });
     const updated = res.result.addons.find((a: any) => a.name === "MockAddon");
     expect(updated.updateAvailable).toBe(false);
     expect(updated.version).toBe("1.2.0");
   });
 
   test("addons.remove deletes folders and record", async () => {
-    const list = await send("addons.list");
+    const list = await send("addons.list", { installationId: retailId });
     const addon = list.result.addons.find((a: any) => a.name === "MockAddon");
 
     const res = await send("addons.remove", { addonId: addon.id });
@@ -401,19 +408,19 @@ describe("engine JSONL integration", () => {
       "## Title: Loose\n## Version: 0.1\n",
     );
 
-    const before = await send("addons.list");
+    const before = await send("addons.list", { installationId: retailId });
     expect(before.result.addons.some((a: any) => a.folderName === "LooseUnmanaged")).toBe(true);
 
-    const res = await send("addons.removeUnmanaged", { folderName: "LooseUnmanaged" });
+    const res = await send("addons.removeUnmanaged", { installationId: retailId, folderName: "LooseUnmanaged" });
     expect(res.result.operation.status).toBe("removed");
     expect(existsSync(join(addonsPath, "LooseUnmanaged"))).toBe(false);
 
-    const after = await send("addons.list");
+    const after = await send("addons.list", { installationId: retailId });
     expect(after.result.addons.some((a: any) => a.folderName === "LooseUnmanaged")).toBe(false);
   });
 
   test("addons.removeUnmanaged refuses a path-traversal-shaped name", async () => {
-    const res = await send("addons.removeUnmanaged", { folderName: "../escape" });
+    const res = await send("addons.removeUnmanaged", { installationId: retailId, folderName: "../escape" });
     expect(res.error.code).toBe("invalid_request");
   });
 
@@ -459,12 +466,12 @@ describe("CurseForge end-to-end", () => {
 
   test("search and install via CurseForge carry the API key", async () => {
     cfSeenAuth = []; // only requests from this test
-    const res = await send("addons.search", { query: "cfmock" });
+    const res = await send("addons.search", { installationId: retailId, query: "cfmock" });
     const cf = res.result.results.find((r: any) => r.providerId === "Curse");
     expect(cf).toBeDefined();
     expect(cf.name).toBe("CfMockAddon");
 
-    const install = await send("addons.install", { providerId: "Curse", externalId: "7777" });
+    const install = await send("addons.install", { installationId: retailId, providerId: "Curse", externalId: "7777" });
     expect(install.result.operation.status).toBe("installed");
     expect(install.result.addon.version).toBe("2.1.0");
 
@@ -479,11 +486,11 @@ describe("CurseForge end-to-end", () => {
   // End-to-end through the real compiled binary, not just the
   // provider unit tests.
   test("discover.latest and discover.popular return results with pagination", async () => {
-    const latest = await send("discover.latest", { providerId: "Curse", index: 0, pageSize: 5 });
+    const latest = await send("discover.latest", { installationId: retailId, providerId: "Curse", index: 0, pageSize: 5 });
     expect(latest.result.results.length).toBeGreaterThan(0);
     expect(typeof latest.result.totalCount).toBe("number");
 
-    const popular = await send("discover.popular", { providerId: "Curse", index: 0, pageSize: 5 });
+    const popular = await send("discover.popular", { installationId: retailId, providerId: "Curse", index: 0, pageSize: 5 });
     expect(popular.result.results.length).toBeGreaterThan(0);
   });
 });
@@ -493,7 +500,7 @@ describe("Discover unavailable without CurseForge", () => {
     // an earlier test in this file configured a key; clear it to exercise
     // the "not available" path rather than relying on fresh-engine state.
     await send("settings.set", { settings: { curseApiKey: null } });
-    const res = await send("discover.latest", { providerId: "Curse", index: 0, pageSize: 5 });
+    const res = await send("discover.latest", { installationId: retailId, providerId: "Curse", index: 0, pageSize: 5 });
     expect(res.error).toBeDefined();
   });
 });
@@ -509,7 +516,7 @@ describe("settings.set, key by key", () => {
   }
 
   test("the toggles store only a real true as true", async () => {
-    for (const key of ["steamAutoCheck", "steamBadge", "hideLibraries", "hideUnmanaged", "keepPreviousVersions", "autoUpdate"]) {
+    for (const key of ["steamAutoCheck", "steamBadge", "steamLaunchMenu", "hideLibraries", "hideUnmanaged", "keepPreviousVersions", "autoUpdate"]) {
       expect((await set({ [key]: true }))[key]).toBe(true);
       expect((await set({ [key]: "false" }))[key]).toBe(false);
       expect((await set({ [key]: 1 }))[key]).toBe(false);
@@ -539,24 +546,18 @@ describe("settings.set, key by key", () => {
     expect((await set({ wtfBackupDir: "" })).wtfBackupDir).toBeNull();
   });
 
-  test("the Steam game is normalized", async () => {
-    expect((await set({ steamGame: { appId: 42, name: "  World of Warcraft " } })).steamGame).toEqual({
-      appId: 42,
-      name: "World of Warcraft",
-    });
-    expect((await set({ steamGame: { appId: "42", name: "x" } })).steamGame).toBeNull();
-  });
-
   test("engine-owned keys are never taken from the UI", async () => {
     const before = await set({});
     const after = await set({
       lastAutoUpdate: { at: 1, updated: ["x"], failed: [], skipped: null },
       newlyUpdatedHours: 1,
       pluginUpdateToastShownFor: "9.9.9",
+      steamLaunchTargets: { "42": "forged-installation" },
     });
     expect(after.lastAutoUpdate).toEqual(before.lastAutoUpdate);
     expect(after.newlyUpdatedHours).toEqual(before.newlyUpdatedHours);
     expect(after.pluginUpdateToastShownFor).toEqual(before.pluginUpdateToastShownFor);
+    expect(after.steamLaunchTargets).toEqual(before.steamLaunchTargets);
   });
 
   test("keys the UI never writes", async () => {
@@ -576,12 +577,15 @@ describe("settings.set, key by key", () => {
 const TOAST_FROM_STRING: unknown = false;
 const OTHER_KEYS_STORED = false;
 
-// RF-14: the handler split must keep every declared method served.
-describe("every declared method has a handler", () => {
-  test("no MethodMap key answers method_not_found", async () => {
-    const src = readFileSync(join(import.meta.dir, "..", "..", "src", "api", "contracts.ts"), "utf-8");
-    const block = src.slice(src.indexOf("export interface MethodMap {"), src.indexOf("export type MethodName"));
-    const methods = [...block.matchAll(/^ {2}"([a-zA-Z]+\.[a-zA-Z]+)": \{/gm)].map((m) => m[1]!);
+// The handler table is typed complete against the contract; this checks the
+// binary serves every method it lists.
+describe("every method the binary lists has a handler", () => {
+  test("--methods prints the served methods, and none answers method_not_found", async () => {
+    const listed = Bun.spawnSync([BIN, "--methods"], { stderr: "pipe" });
+    expect(listed.exitCode).toBe(0);
+    const methods = JSON.parse(listed.stdout.toString()) as string[];
+    expect(methods).toContain("system.getStatus");
+    expect(methods).toContain("wtf.cancel");
     expect(methods.length).toBeGreaterThan(40);
     // Methods that would change this run's state are probed with params that
     // fail validation, so only "is there a handler" is asked.
@@ -598,7 +602,7 @@ describe("every declared method has a handler", () => {
 
 describe("Install from URL error codes", () => {
   test("a bad URL is invalid input; an unknown repository is not found or a provider code", async () => {
-    const bad = await send("addons.resolveUrlImport", { url: "not a url" });
+    const bad = await send("addons.resolveUrlImport", { installationId: retailId, url: "not a url" });
     expect(bad.result.result).toBeNull();
     expect(bad.result.error.code).toBe(URL_INVALID_CODE);
   });
@@ -615,7 +619,7 @@ describe("Manual Install's From a file (addons.inspectArchive)", () => {
       }),
     );
     const path = realpathSync(join(dir, "Foo-1.2.zip"));
-    const ok = await send("addons.inspectArchive", { path });
+    const ok = await send("addons.inspectArchive", { installationId: retailId, path });
     expect(ok.result.error).toBeNull();
     expect(ok.result.result).toMatchObject({
       fileName: "Foo-1.2.zip",
@@ -625,7 +629,7 @@ describe("Manual Install's From a file (addons.inspectArchive)", () => {
       providerId: "File",
       externalId: path,
     });
-    const missing = await send("addons.inspectArchive", { path: join(dir, "gone.zip") });
+    const missing = await send("addons.inspectArchive", { installationId: retailId, path: join(dir, "gone.zip") });
     expect(missing.result.result).toBeNull();
     expect(missing.result.error.code).toBe("archive_unreadable");
   });

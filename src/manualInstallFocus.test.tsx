@@ -5,6 +5,8 @@ import { act, useEffect, type ReactElement, type ReactNode, type Ref } from "rea
 import { createRoot, type Root } from "react-dom/client";
 import type { ArchivePreview } from "./types";
 import { deckyUiStub } from "./deckyUiStub";
+import { connectEngine } from "./engineLink";
+import { createFakeEngine } from "./testSupport/fakeEngine";
 
 /**
  * Manual Install's conflict card with its real FocusSlots (#130, #132): a
@@ -35,11 +37,10 @@ const updatesClassic: ArchivePreview = {
 };
 
 let inspected: ArchivePreview = updatesClassic;
+connectEngine(
+  createFakeEngine({ "addons.inspectArchive": () => ({ result: inspected, error: null }) }),
+);
 mock.module("@decky/api", () => ({
-  callable: (name: string) => async (method: string) =>
-    name === "rpc" && method === "addons.inspectArchive" ? { result: inspected, error: null } : {},
-  addEventListener: () => {},
-  removeEventListener: () => {},
   toaster: { toast: () => {} },
   openFilePicker: () => {},
 }));
@@ -93,6 +94,7 @@ const addons = [
 ];
 const sessionState = { addons, selectedId: null, recoveryRequired: {}, installations: [] };
 mock.module("./session", () => ({
+  activeInstallationId: () => "",
   addonSession: {
     get: () => sessionState,
     subscribe: () => () => {},

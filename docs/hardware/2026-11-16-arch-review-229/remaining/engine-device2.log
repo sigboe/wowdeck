@@ -1,0 +1,6 @@
+{"component":"detection","flavor":"_retail_","validity":"likely","sources":["lutris"]}
+{"claim":"detect starts update discovery","result":"PASS","checks":1}
+[service] provider scan failed for TukUI: Error: no recorded response for GET https://api.tukui.org/v1/addons (re-record: make record-provider-fixtures)
+{"claim":"add starts update discovery","result":"PASS","checks":2}
+{"claim":"signed-out enable refusal","message":"Sign in to TradeSkillMaster first","result":"PASS"}
+[rpc] providers.setEnabled failed (internal_error): Sign in to TradeSkillMaster first

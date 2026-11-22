@@ -27,8 +27,11 @@ Rules A1–A11 on async state and feedback, and the copy rules C01–C12.
 
 ## 7.2 Rules
 
-**A1 [GENERAL] MUST** use a request-id/ref guard for any fetch whose result
-can arrive after the user changed the inputs ([§4.5](architecture.md#45-async-patterns-that-are-working)).
+**A1 [GENERAL] MUST** read engine data through a keyed resource
+(`src/keyedResource.ts`, in a component via `useResource`), never a request
+counter or active flag of your own: the resource ignores any answer that
+arrives after a newer read, a `forget` or an `invalidate`
+([§4.5](architecture.md#45-async-patterns-that-are-working)).
 
 **A2 [GENERAL] MUST** distinguish loading / error / empty / success as four
 rendered states. `DetailsText` does; a thrown error must never render like
@@ -63,7 +66,7 @@ code).
 **A9 [PROJECT] MUST NOT** show a failed load as an empty state: Latest
 Addons / Popular keep a separate red inline error line (via
 `friendlySearchError`) distinct from the muted "No addons found." The Import
-modal preview takes a request-id guard like other fetches (A1), since a pasted
+modal preview reads through a keyed resource like other reads (A1), since a pasted
 string and a loaded file can overlap. Removing a WoW installation also
 confirms (A8), because it drops the installation's addon records and ignore
 flags (WoW files stay). Found in the audit pass; accepted by the owner on the Deck (2026-10-13): flight-mode red error, Remove-installation dialog and Import preview verified; the My Addons empty-text wording was not tested.
@@ -100,7 +103,7 @@ delivers on the Deck was not captured, so the fix is defensive.
   Root cause (DEVICE, owner, 2026-10-13): Decky replaces any exception raised
   in `main.py` with the text "Python Exception", so the engine's message never
   reached the UI at all. `Plugin._rpc` now returns a failure as
-  `{"__error": {code, message}}` and `src/services/backend.ts` rethrows it with
+  `{"__error": {code, message}}` and `src/services/envelope.ts` rethrows it with
   the real message (`unwrapBackendResult`, unit-tested). New bridge methods
   MUST call `self._rpc(...)`, not `self.backend.request(...)`, unless they
   handle `BackendError` themselves (as `get_status` does). A `main.py` change

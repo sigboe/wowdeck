@@ -10,7 +10,8 @@ import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { zipSync } from "fflate";
-import { AddonService } from "../src/wow/addons/AddonService";
+import { addonService } from "./helpers/addon-service";
+import { AddonUpdates } from "../src/wow/addons/AddonUpdates";
 import { DownloadService } from "../src/wow/downloads/DownloadService";
 import { NetworkClient } from "../src/wow/net/network";
 import { AddonProvider, type ScanMatch } from "../src/wow/providers/addon-provider";
@@ -91,12 +92,13 @@ test.each(["TradeSkillMaster first", "AppHelper first"])(
     const tsm = new RecordedTradeSkillMaster();
     registry.register(tsm);
     registry.register(new FileProvider());
-    const service = new AddonService(
+    const service = addonService(
       store,
       registry,
       new DownloadService(new NetworkClient(), join(root, "downloads")),
       { addonsChanged() {}, operationResult() {} },
     );
+    const updates = new AddonUpdates(service, registry, store);
 
     // An old File install from before the source existed.
     tsm.enabled = false;
@@ -128,7 +130,7 @@ test.each(["TradeSkillMaster first", "AppHelper first"])(
     }) as unknown as typeof fsPromises.readdir);
     tsm.enabled = true;
     try {
-      await service.scanInstallation(installation);
+      await updates.refresh(installation);
     } finally {
       listing.mockRestore();
     }

@@ -10,7 +10,8 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync
 import { join } from "node:path";
 import { identifyUrlImportProvider } from "../src/wow/providers/url-import";
 import { ZipProvider, parseArchiveUrl } from "../src/wow/providers/zip/ZipProvider";
-import { AddonService } from "../src/wow/addons/AddonService";
+import { addonService } from "./helpers/addon-service";
+import { AddonUpdates } from "../src/wow/addons/AddonUpdates";
 import { Catalogue } from "../src/wow/catalogue/Catalogue";
 import { ProviderRegistry } from "../src/wow/providers/provider-registry";
 import { DownloadService } from "../src/wow/downloads/DownloadService";
@@ -66,12 +67,12 @@ function fixture(dir: string, files: Record<string, Uint8Array>) {
   registry.register(new ZipProvider());
   registry.attachStore(store);
   const { net, downloads } = fakeNet(files);
-  const service = new AddonService(store, registry, new DownloadService(net, join(root, "dl")), {
+  const service = addonService(store, registry, new DownloadService(net, join(root, "dl")), {
     addonsChanged: () => {},
     operationResult: () => {},
   });
   const catalogue = new Catalogue(registry);
-  return { service, catalogue, store, registry, installation, downloads, addonsPath: join(location, "Interface", "AddOns") };
+  return { service, updates: new AddonUpdates(service, registry, store), catalogue, store, registry, installation, downloads, addonsPath: join(location, "Interface", "AddOns") };
 }
 
 const fooZip = zipSync({
@@ -144,10 +145,10 @@ describe("direct archive links (WF-09)", () => {
   test("an update check never asks about it, so it is never 'gone from its source'", async () => {
     const f = fixture("refresh", { [ZIP_URL]: fooZip });
     const { addon } = await f.service.install({ intent: "install", providerId: "Zip", externalId: ZIP_URL, installation: f.installation });
-    await f.service.refresh(f.installation);
+    await f.updates.refresh(f.installation);
     const [listed] = await f.service.listAddons(f.installation);
     expect(listed!.problem).toBeNull();
-    expect(f.service.eligibleUpdatesFor(f.installation)).toEqual([]);
+    expect(f.updates.eligibleFor(f.installation)).toEqual([]);
     expect(f.store.addons.all().find((a) => a.id === addon.id)!.warningType).toBeUndefined();
     expect(f.downloads).toEqual([ZIP_URL]);
   });

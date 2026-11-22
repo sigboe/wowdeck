@@ -8,29 +8,25 @@
  * Tags arrive one per line on stdin; answers go to stdout, one per line.
  */
 
-// Semver numbers: no leading zeros, as tools/version.py's SEMVER and STAMPED.
-const N = String.raw`(0|[1-9]\d*)`;
-const STABLE_TAG = new RegExp(`^v${N}\\.${N}\\.${N}$`);
-/** The only shape pruning ever matches, so stable tags can never be selected. */
-const BETA_TAG = new RegExp(`^v${N}\\.${N}\\.${N}-beta\\.${N}$`);
+import { compareParsed, compareReleases, parseVersion, type Version } from "../backend/src/api/version";
+import { stdinLines } from "./stdin-lines";
+
+/** A tag `v<canonical version>`; anything else (a leading zero, -rc1) is no WoWDeck tag here. */
+function tagVersion(tag: string): Version | null {
+  return tag.startsWith("v") ? parseVersion(tag.slice(1)) : null;
+}
 
 /** How many beta releases stay published. */
 export const BETAS_KEPT = 3;
 
-type Triple = [number, number, number];
-
-function compareTriples(a: Triple, b: Triple): number {
-  return a[0] - b[0] || a[1] - b[1] || a[2] - b[2];
-}
-
-/** Beta tags only, newest version first. */
+/** Beta tags only, newest version first. The only form pruning matches, so a stable tag is never selected. */
 function betasNewestFirst(tags: string[]): string[] {
-  const betas: { tag: string; base: Triple; run: number }[] = [];
+  const betas: { tag: string; version: Version }[] = [];
   for (const tag of tags) {
-    const m = BETA_TAG.exec(tag);
-    if (m) betas.push({ tag, base: [Number(m[1]), Number(m[2]), Number(m[3])], run: Number(m[4]) });
+    const version = tagVersion(tag);
+    if (version?.form === "beta") betas.push({ tag, version });
   }
-  betas.sort((a, b) => compareTriples(b.base, a.base) || b.run - a.run);
+  betas.sort((a, b) => compareParsed(b.version, a.version));
   return betas.map((b) => b.tag);
 }
 
@@ -41,14 +37,13 @@ export function betasToPrune(tags: string[], keep: number = BETAS_KEPT): string[
 
 /** The newest stable tag with patch+1, e.g. 0.3.1 after v0.3.0; 0.0.1 before any. */
 export function nextPatchBase(tags: string[]): string {
-  let newest: Triple = [0, 0, 0];
+  let newest: Version | null = null;
   for (const tag of tags) {
-    const m = STABLE_TAG.exec(tag);
-    if (!m) continue;
-    const triple: Triple = [Number(m[1]), Number(m[2]), Number(m[3])];
-    if (compareTriples(triple, newest) > 0) newest = triple;
+    const version = tagVersion(tag);
+    if (version?.form === "stable" && (newest === null || compareReleases(version, newest) > 0)) newest = version;
   }
-  return `${newest[0]}.${newest[1]}.${newest[2] + 1}`;
+  const [major, minor, patch] = newest?.release ?? [0, 0, 0];
+  return `${major}.${minor}.${patch + 1}`;
 }
 
 /** `<newest stable tag with patch+1>-beta.<run number>`, e.g. 0.3.1-beta.57 after v0.3.0. */
@@ -58,10 +53,7 @@ export function nextBetaVersion(tags: string[], runNumber: number): string {
 
 async function main(argv: string[]): Promise<number> {
   const [command, ...args] = argv;
-  const tags = (await Bun.stdin.text())
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean);
+  const tags = await stdinLines();
   const print = (lines: string[]) => {
     if (lines.length > 0) process.stdout.write(lines.join("\n") + "\n");
   };

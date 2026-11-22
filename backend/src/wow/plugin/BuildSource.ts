@@ -19,7 +19,7 @@
 
 import type { UpdateChannel } from "../../api/contracts";
 import type { NetworkClient } from "../net/network";
-import { isBetaVersion, isTestVersion, normalizeVersion } from "./PluginVersion";
+import { isOfferedOn, normalizeVersion } from "../../api/version";
 
 /** One build a channel offers. */
 export interface CandidateBuild {
@@ -69,7 +69,7 @@ export class GithubLatestReleaseSource implements BuildSource {
     const build = candidateOf(release);
     // A beta, test or pr tag GitHub calls latest (published without the
     // pre-release flag) is still a pre-release: Stable never offers one.
-    return build && !isBetaVersion(build.version) && !isTestVersion(build.version) ? [build] : [];
+    return build && isOfferedOn("stable", build.version) ? [build] : [];
   }
 }
 
@@ -94,7 +94,7 @@ export class GithubReleaseListSource implements BuildSource {
       const build = release && !release.draft ? candidateOf(release) : null;
       // A test or pr tag is a device-test build, never a published one; it must
       // not be offered to Beta however it was pushed to GitHub.
-      return build && !isTestVersion(build.version) ? [build] : [];
+      return build && isOfferedOn("beta", build.version) ? [build] : [];
     });
   }
 }

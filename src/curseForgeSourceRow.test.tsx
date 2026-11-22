@@ -4,7 +4,9 @@ import { JSDOM } from "jsdom";
 import { act, useSyncExternalStore, type ReactElement, type ReactNode, type Ref } from "react";
 import type { Root } from "react-dom/client";
 import { deckyUiStub } from "./deckyUiStub";
-import type { CurseForgeAuthStatus, ProviderInfo } from "./types";
+import type { CurseForgeAuthStatus, PluginSettings, ProviderInfo } from "./types";
+import { connectEngine } from "./engineLink";
+import { createFakeEngine } from "./testSupport/fakeEngine";
 
 /**
  * CurseForge's row in Options › Addon sources (#206): a `>` row that opens
@@ -15,9 +17,6 @@ import type { CurseForgeAuthStatus, ProviderInfo } from "./types";
  */
 
 mock.module("@decky/api", () => ({
-  callable: () => async () => ({}),
-  addEventListener: () => {},
-  removeEventListener: () => {},
   toaster: { toast: () => {} },
   openFilePicker: () => {},
   FileSelectionType: { FILE: 0, FOLDER: 1 },
@@ -132,33 +131,24 @@ const curse = (configured: boolean, enabled: boolean): ProviderInfo => ({
 });
 const hub: ProviderInfo = { ...curse(true, true), id: "WowUpHub", requiresApiKey: false };
 
-const calls: string[] = [];
 let auth: CurseForgeAuthStatus;
 // The engine's source list: a saved key makes CurseForge configured.
 let engineProviders: ProviderInfo[] = [];
-mock.module("./services/backend", () => ({
-  rpc: async (method: string) => {
-    calls.push(method);
-    switch (method) {
-      case "providers.testApiKey":
-        return { ok: true };
-      case "settings.set":
-        engineProviders = [hub, curse(true, engineProviders[1]!.enabled)];
-        return { settings: {} };
-      case "providers.setEnabled":
-        engineProviders = [hub, curse(true, true)];
-        return { providers: engineProviders };
-      case "providers.list":
-        return { providers: engineProviders };
-      case "curseforge.authStatus":
-        return auth;
-      case "tradeskillmaster.status":
-        return { state: "signedOut" };
-      default:
-        return {};
-    }
+const fake = createFakeEngine({
+  "providers.testApiKey": { ok: true, httpStatus: 200, message: "" },
+  "settings.set": () => {
+    engineProviders = [hub, curse(true, engineProviders[1]!.enabled)];
+    return { settings: {} as PluginSettings };
   },
-}));
+  "providers.setEnabled": () => {
+    engineProviders = [hub, curse(true, true)];
+    return { providers: engineProviders };
+  },
+  "providers.list": () => ({ providers: engineProviders }),
+  "curseforge.authStatus": () => auth,
+  "tradeskillmaster.status": { state: "signedOut", account: null },
+});
+connectEngine(fake);
 
 // The DOM exists before react-dom loads (it decides then whether it can
 // listen for input events, and the key field needs them).
@@ -176,12 +166,11 @@ env.IS_REACT_ACT_ENVIRONMENT = true;
 
 const { createRoot } = await import("react-dom/client");
 const { SourcesSection } = await import("./components/settings/SourcesSection");
-const { sourcesStore, resetSourcesStore, loadSources } = await import("./sourcesStore");
-const api = await import("./services/backend");
+const { sourcesStore } = await import("./sourcesStore");
 const { resetFocusMemory } = await import("./focusMemory");
 
 // Stable, as SettingsView's useCallback: the section's polling effect depends on it.
-const reloadProviders = () => loadSources(api.rpc);
+const reloadProviders = () => sourcesStore.load();
 function Sources() {
   const { providers } = useSyncExternalStore(sourcesStore.subscribe, sourcesStore.get);
   return (
@@ -221,10 +210,10 @@ afterAll(() => {
   dom.window.close();
 });
 beforeEach(() => {
-  calls.length = 0;
+  fake.calls.length = 0;
   modalsShown = 0;
   resetFocusMemory(() => 0);
-  resetSourcesStore();
+  sourcesStore.reset();
   root = createRoot(doc.getElementById("root")!);
 });
 afterEach(async () => {
@@ -237,7 +226,7 @@ afterEach(async () => {
 async function show(state: CurseForgeAuthStatus, configured: boolean, enabled = configured) {
   auth = state;
   engineProviders = [hub, curse(configured, enabled)];
-  sourcesStore.patch({ providers: engineProviders, loaded: true });
+  await sourcesStore.load();
   await act(async () => root.render(<Sources />));
 }
 
@@ -303,7 +292,7 @@ describe("CurseForge's source row", () => {
       (r) => r.getAttribute("aria-label") === "Save key",
     )!;
     await act(async () => save.click());
-    expect(calls).toContain("providers.setEnabled");
+    expect(fake.calls.map((c) => c.method)).toContain("providers.setEnabled");
     expect(modalRoot).toBeNull();
     expect(keyRow()).toBeNull();
     expect(doc.activeElement).toBe(curseToggle());
@@ -317,4 +306,14 @@ describe("CurseForge's source row", () => {
     expect(modalRoot).toBeNull();
     expect(doc.activeElement).toBe(keyRow());
   });
+});
+
+test("revoked TSM account offers sign-in without claiming it stays signed in", async () => {
+  auth = builtIn;
+  engineProviders = [{ ...hub, id: "TradeSkillMaster", enabled: false }];
+  await sourcesStore.load();
+  await act(async () => root.render(<Sources />));
+  expect(doc.body.textContent).toContain("Sign in");
+  expect(doc.body.textContent).not.toContain("stays signed in");
+  expect(doc.body.textContent).not.toContain("X signs out");
 });

@@ -13,7 +13,7 @@ import {
   showContextMenu,
 } from "@decky/ui";
 import { FaEllipsisH, FaFilter, FaSync } from "react-icons/fa";
-import type { Addon, DetailsResult } from "../types";
+import type { Addon } from "../types";
 import {
   addonActions,
   addonRowDescription,
@@ -33,6 +33,8 @@ import { STEAM, descriptionStyle } from "../steamTheme";
 import { QAM_VIEW } from "../qamState";
 import { addonSession } from "../session";
 import { recoveryNeededFor } from "../addonSession";
+import { installedDetails } from "../installedDetails";
+import { installedActions, type InstalledActionsDeps } from "../resultActions";
 import { settingsStore } from "../settings";
 import { FocusSlot, focusTarget, useRefocusWhenLost, useRestoreFocus } from "./FocusSlot";
 import { openAddonDetailsModal } from "./AddonDetailsModal";
@@ -41,8 +43,7 @@ import { confirmRemoveAddon } from "./confirmRemove";
 import { showChoiceMenu } from "./choiceMenu";
 import { openFindSourceModal } from "./FindSourceModal";
 import { openFilterAddonsModal } from "./FilterAddonsModal";
-import { dependencyNote } from "../detailsHeader";
-import { channelTag, followChannelChoices } from "../releaseChannel";
+import { channelTag } from "../releaseChannel";
 
 interface Props {
   addons: Addon[];
@@ -102,66 +103,29 @@ export function InstalledView({ addons, loading, restoreRows, multipleInstallati
 
   const { actions } = addonSession;
 
-  const openChannelMenu = (addon: Addon, afterPick?: () => void) => {
-    const current = addon.channel ?? "stable";
-    showChoiceMenu("Release channel", followChannelChoices(addon.allowedChannels), current, (c) => {
-      afterPick?.();
-      // The marked channel is already followed: nothing to install.
-      if (c !== current) {
-        void actions.setChannel(addon, c);
-      }
-    });
+  // Details and the row's channel action share one view-model: what Details
+  // offers comes from the row's own action rules (addonRow), read live.
+  const detailsDeps: InstalledActionsDeps = {
+    actions,
+    showChannelMenu: (choices, current, pick) =>
+      showChoiceMenu("Release channel", choices, current, pick),
+  };
+
+  const openChannelMenu = (addon: Addon) => {
+    installedActions(addonSession.get(), addon, detailsDeps).channelMenu?.();
   };
 
   /** Reuses the Get Addons Details view; Install there means Update for an installed addon. */
   const openDetails = (addon: Addon) => {
-    const result: DetailsResult = {
-      providerId: addon.providerId ?? "",
-      externalId: addon.externalId ?? "",
-      name: addon.name,
-      author: addon.author,
-      downloadCount: null,
-      summary: addon.notes,
-      thumbnailUrl: addon.thumbnailUrl,
-      websiteUrl: addon.externalUrl,
-      latestVersion: addon.availableVersion ?? addon.version,
-      gameVersion: addon.gameVersion,
-      gameVersions: addon.gameVersion ? [addon.gameVersion] : null,
-      gameVersionClients: null,
-      releasedAt: null,
-      channel: null,
-      screenshots: [],
-    };
     openAddonDetailsModal({
-      result,
-      installLabel: addon.updateAvailable && !locked ? "Update" : null,
-      onInstall: () => actions.update(addon),
-      channelMenu:
-        addon.canChangeChannel && !locked
-          ? (afterPick) => openChannelMenu(addon, afterPick)
-          : undefined,
-      dependencies: dependencyNote({
-        required: addon.dependencies,
-        missing: addon.missingDependencies ?? [],
-      }),
-      relationships: {
-        kind: "toc",
-        items: addon.dependencies.map((name) => ({
-          name,
-          installed: !(addon.missingDependencies ?? []).includes(name),
-        })),
-      },
+      ...installedDetails(addon),
+      live: (state) => installedActions(state, addon, detailsDeps),
     });
   };
 
+  /** What runs a row action: the session by id, the view for what opens something first. */
   const run = (addon: Addon, action: AddonActionId) => {
     switch (action) {
-      case "update":
-        void actions.update(addon);
-        return;
-      case "reinstall":
-        void actions.reinstall(addon);
-        return;
       case "details":
         openDetails(addon);
         return;
@@ -171,17 +135,6 @@ export function InstalledView({ addons, loading, restoreRows, multipleInstallati
       case "channel":
         openChannelMenu(addon);
         return;
-      case "rollback":
-        void actions.rollback(addon);
-        return;
-      case "pauseAuto":
-      case "resumeAuto":
-        void actions.setAutoUpdatePaused(addon, action === "pauseAuto");
-        return;
-      case "ignore":
-      case "unignore":
-        void actions.setIgnored(addon, action === "ignore");
-        return;
       case "findSource":
       case "changeSource":
         openFindSourceModal(addon, (source) => void actions.useSource(addon, source));
@@ -189,6 +142,8 @@ export function InstalledView({ addons, loading, restoreRows, multipleInstallati
       case "remove":
         confirmRemoveAddon(addon, (removeLibraries) => void actions.remove(addon, removeLibraries));
         return;
+      default:
+        addonSession.run(addon, action);
     }
   };
 

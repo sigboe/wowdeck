@@ -1,5 +1,4 @@
 import { FaEyeSlash } from "react-icons/fa";
-import { rpc } from "../services/backend";
 import { toastError } from "../toast";
 import { showChoiceMenu } from "./choiceMenu";
 import { useRef, useState, useSyncExternalStore } from "react";
@@ -9,7 +8,7 @@ import { descriptionStyle } from "../steamTheme";
 
 type Props = Omit<DropdownItemProps, "rgOptions" | "selectedOption" | "onChange" | "disabled"> & {
   showHidden?: boolean;
-  session: Pick<AddonSession, "get" | "subscribe" | "selectInstallation" | "reloadAll">;
+  session: Pick<AddonSession, "get" | "subscribe" | "selectInstallation" | "updateInstallation">;
 };
 
 /**
@@ -55,8 +54,8 @@ export function InstallationSelect({
                   if (pending.current) return;
                   pending.current = true;
                   setSaving(true);
-                  void rpc("installations.update", { installationId: selected.id, hidden: false })
-                    .then(() => session.reloadAll())
+                  void session
+                    .updateInstallation(selected.id, { hidden: false })
                     .catch((e) => toastError("Couldn't unhide installation", e))
                     .finally(() => {
                       pending.current = false;

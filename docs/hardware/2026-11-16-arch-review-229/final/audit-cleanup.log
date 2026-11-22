@@ -1,0 +1,2 @@
+{"filesScanned": 5, "charactersScanned": 21300, "configuredSecretMatches": 0, "credentialQueryUrlMatches": 0, "scope": "existing *.log directly under plugin log directory; no in-memory access token available"}
+rmdir: failed to remove '/home/deck/homebrew/data/wowdeck/test-backups/review229-final': Directory not empty

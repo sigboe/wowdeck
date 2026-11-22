@@ -6,10 +6,16 @@ import type {
   RpcEvent,
   RpcMessage,
   RpcRequest,
-  RpcResult,
   Settled,
 } from "../api/contracts";
-import { InstallError, NotFoundError, ProviderError, RecoveryRequiredError, ValidationError } from "../wow/errors";
+import {
+  InstallError,
+  NotFoundError,
+  PlayLeftToDroidDeckError,
+  ProviderError,
+  RecoveryRequiredError,
+  ValidationError,
+} from "../wow/errors";
 import { PathEscapeError } from "../wow/fs/safe-fs";
 import { WtfBackupError } from "../wow/wtf/errors";
 
@@ -33,6 +39,9 @@ export function errorCodeFor(err: unknown): string {
   }
   if (err instanceof NotFoundError) {
     return "not_found";
+  }
+  if (err instanceof PlayLeftToDroidDeckError) {
+    return "play_left_to_droiddeck";
   }
   if (err instanceof ValidationError) {
     return "invalid_request";
@@ -66,7 +75,14 @@ export async function settle<T>(work: () => T | Promise<T>): Promise<Settled<T>>
   }
 }
 
-type Handler<K extends MethodName> = (params: MethodMap[K]["params"]) => Promise<MethodMap[K]["result"]>;
+export type Handler<K extends MethodName> = (params: MethodMap[K]["params"]) => Promise<MethodMap[K]["result"]>;
+
+/**
+ * A handler for every contract method. Each handler module returns its part
+ * (typed `satisfies Partial<HandlerTable>`); the engine merges them into
+ * one HandlerTable, so a method without a handler fails the typecheck.
+ */
+export type HandlerTable = { [K in MethodName]: Handler<K> };
 
 /**
  * Minimal JSONL RPC dispatcher. Reads requests line-by-line on stdin,
@@ -83,6 +99,13 @@ export class JsonlServer {
 
   on<K extends MethodName>(method: K, handler: Handler<K>): void {
     this.#handlers.set(method, handler as (params: never) => Promise<unknown>);
+  }
+
+  /** Serve every method in `table`. */
+  handle(table: Partial<HandlerTable>): void {
+    for (const [method, handler] of Object.entries(table)) {
+      this.#handlers.set(method, handler as (params: never) => Promise<unknown>);
+    }
   }
 
   emit<K extends keyof EventMap & string>(event: K, params: EventMap[K]): void {
@@ -106,23 +129,37 @@ export class JsonlServer {
       return;
     }
     const req = msg as RpcRequest;
-    const handler = this.#handlers.get(req.method);
+    const answer = await this.#answer(req.method, req.params);
+    this.#send("error" in answer ? { id: req.id, error: answer.error } : { id: req.id, result: answer.result });
+  }
+
+  /**
+   * Call a method in-process, through the same handler and error mapping as
+   * a request on stdin. The result crosses JSON like a wire answer does; an
+   * error answer throws an EngineError carrying its code.
+   */
+  async call<K extends MethodName>(method: K, params: MethodMap[K]["params"]): Promise<MethodMap[K]["result"]> {
+    const answer = await this.#answer(method, params);
+    if ("error" in answer) {
+      throw new EngineError(answer.error.code, answer.error.message);
+    }
+    return JSON.parse(JSON.stringify(answer.result)) as MethodMap[K]["result"];
+  }
+
+  async #answer(method: string, params: unknown): Promise<{ result: unknown } | { error: RpcError["error"] }> {
+    const handler = this.#handlers.get(method);
     if (!handler) {
-      this.#send({
-        id: req.id,
-        error: { code: "method_not_found", message: `Unknown method: ${req.method}` },
-      } satisfies RpcError);
-      return;
+      return { error: { code: "method_not_found", message: `Unknown method: ${method}` } };
     }
     try {
-      const result = await handler((req.params ?? {}) as never);
+      const result = await handler((params ?? {}) as never);
       // JSON drops an undefined result, and the bridge needs the key.
-      this.#send({ id: req.id, result: result ?? null } satisfies RpcResult);
+      return { result: result ?? null };
     } catch (err) {
       const code = errorCodeFor(err);
       const message = err instanceof Error ? err.message : String(err);
-      console.error(`[rpc] ${req.method} failed (${code}): ${message}`);
-      this.#send({ id: req.id, error: { code, message } } satisfies RpcError);
+      console.error(`[rpc] ${method} failed (${code}): ${message}`);
+      return { error: { code, message } };
     }
   }
 

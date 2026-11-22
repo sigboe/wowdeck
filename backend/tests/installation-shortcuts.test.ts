@@ -355,13 +355,13 @@ test.each([false, true])("discovery persists all Steam links, removes stale link
   const retail = flavor(join(home, "outside/_retail_"));
   shortcuts("100", [{ appid: 42, exe: join(retail, "Wow.exe"), start: "" }]);
   const store = new StateStore(join(home, "state.json"));
-  store.updateSettings({ autoUpdate, steamAutoCheck: false, steamBadge: false, steamGame: { appId: 9, name: "My manual entry" } });
+  store.updateSettings({ autoUpdate, steamAutoCheck: false, steamBadge: false, steamEnabled: false });
   const service = new InstallationService(store, async () => {});
   expect((await service.detect(home))[0]!.steamGames).toEqual([{ appId: 42, name: "World of Warcraft" }]);
   expect(store.settings.autoUpdate).toBe(autoUpdate);
   expect(store.settings.steamAutoCheck).toBe(false);
   expect(store.settings.steamBadge).toBe(false);
-  expect(store.settings.steamGame).toEqual({ appId: 9, name: "My manual entry" });
+  expect(store.settings.steamEnabled).toBe(false);
   shortcuts("100", []);
   expect((await service.detect(home))[0]!.steamGames).toEqual([]);
   expect(store.settings.autoUpdate).toBe(autoUpdate);
@@ -407,4 +407,20 @@ test("a wrapper with an explicit WoW product and prefix attaches through registr
     { appid: 44, name: "Diablo", exe: "/usr/bin/umu-run", start: "", options: options + ' --exec="launch Fen"' },
   ]);
   expect((await detector().detect())[0]!.steamGames).toEqual([{ appId: 42, name: "Wrapped WoW" }]);
+});
+
+test("a direct client shortcut whose start folder ends in a slash shares the launcher entry's installation", async () => {
+  // Steam stores a shortcut's start folder with a trailing slash (Deck, 2026-11-18).
+  const forever = flavor(join(home, "Applications/World of Warcraft/_forever_"));
+  writeFileSync(join(forever, "..", "Battle.net.exe"), "");
+  shortcuts("100", [
+    { appid: 42, name: "World of Warcraft", exe: `"${join(forever, "..", "Battle.net.exe")}"`, start: "" },
+    { appid: 43, name: "Forever", exe: `"${join(forever, "Wow.exe")}"`, start: `"${forever}/"` },
+  ]);
+  const found = await detector().detect();
+  expect(found.map((i) => i.location)).toEqual([forever]);
+  expect(found[0]!.steamGames).toEqual([
+    { appId: 42, name: "World of Warcraft" },
+    { appId: 43, name: "Forever" },
+  ]);
 });

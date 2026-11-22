@@ -1,0 +1,14 @@
+Product commit 4c2a7c3320c7568f23f9bc8b93384cb5c1e4591b
+CI run 43961705220: Frontend failed, 1295 pass, 5 fail.
+Prior commit 2df2b848af2f0e4fb88cfb8a98bbaed4d557b8b2
+CI run 43956250558: same five failures.
+Both logs report missing backend/out/wowdeck-x86_64 in Deck-tool runner tests.
+Failed tests:
+- a batch preserves quoted JSON and separators, and projects RPC arrays
+- RPC names and engine errors fail the command
+- local method consistency check needs no device
+- logs support checkpoints, bounded matching waits and scrubbed diagnostic snapshots
+- missing RPC projection reports the field without a TypeError
+Backend engine and Build jobs succeeded at product commit.
+PR build run 43961702742 succeeded.
+Local full make lint typecheck test build passed with compiled engine present.

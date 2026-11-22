@@ -58,7 +58,8 @@ tools/deck-ui/deck down          # restore autoUpdate, close owned tunnel
 - `wait <probe> ~ <text>` replaces sleeps; `expect` checks once. A failed check
   stops the run and prints where the UI stands.
 - `rpc <method> '{json}' --pick=a.b[].c` calls the engine and checks the method
-  name against `contracts.ts`; `rpc --list` lists them.
+  name against the built engine's method list (`backend/out/wowdeck-x86_64
+  --methods`, so build the engine first); `rpc --list` lists them.
 - `toast-start` installs an observer in the notification DOM before the
   action; `toast-read` returns every retained notice in order (`INCOMPLETE`
   when the history limit overflowed), `toast-reset` drops earlier evidence,

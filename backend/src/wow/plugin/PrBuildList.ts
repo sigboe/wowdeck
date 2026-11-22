@@ -1,22 +1,18 @@
 /**
  * The PR builds published right now (GLOSSARY: PR build), read from the
  * `index.json` CI publishes on GitHub Pages beside each `pr/<n>/WoWDeck.zip`
- * (ADR 0010; the shape is documented in the header of tools/pr-build.ts,
- * which the engine never imports). Asked only when the PR builds modal
- * opens: no cache, no polling.
+ * (ADR 0010). One entry's shape is the PublishedPrBuild type (PublishedPrBuild.ts), shared
+ * with the tool that writes the list (tools/pr-build.ts imports it; the
+ * engine never imports the tool), and the engine's tests read that tool's
+ * output. Asked only when the PR builds modal opens: no cache, no polling.
  */
 
 import type { PrBuild } from "../../api/contracts";
+import type { PublishedPrBuild } from "./PublishedPrBuild";
 import type { NetworkClient } from "../net/network";
-import { normalizeVersion, prNumber } from "./PluginVersion";
+import { normalizeVersion, prNumber } from "../../api/version";
 
-/** A listed PR build with what installing it needs: the zip and its checksum. */
-export interface PublishedPrBuild extends PrBuild {
-  /** The zip's sha256, 64 lowercase hex. */
-  sha256: string;
-  /** Where the zip is served. */
-  zipUrl: string;
-}
+export type { PublishedPrBuild };
 
 export class PrBuildList {
   constructor(

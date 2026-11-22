@@ -8,7 +8,7 @@
  * methods via a breaking constructor change — see that file's own
  * comment on `reportOutcome`. This keeps the ~25 existing
  * `new CurseForgeProvider(net, () => key)` test call sites valid
- * unchanged; only backend/src/main.ts (the real composition root)
+ * unchanged; only backend/src/engine.ts (the engine's assembly)
  * wires the real service in.
  */
 

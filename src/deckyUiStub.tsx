@@ -92,8 +92,19 @@ export const deckyUiStub = {
   GamepadButton: {},
   ConfirmModal: () => null,
   Menu: () => null,
-  MenuItem: () => null,
+  // A context menu row: A (a click here) selects it unless it is disabled.
+  MenuItem: ({
+    children,
+    disabled,
+    onSelected,
+  }: Kids & { disabled?: boolean; onSelected?: () => void }) => (
+    <div role="menuitem" aria-disabled={disabled} onClick={disabled ? undefined : onSelected}>
+      {children}
+    </div>
+  ),
   showContextMenu: () => {},
+  findClassModule: () => undefined,
+  findModuleExport: () => undefined,
   TextField: ({ "aria-label": ariaLabel }: { "aria-label"?: string }) =>
     ariaLabel ? <input aria-label={ariaLabel} /> : null,
   Spinner: () => <span role="progressbar" />,

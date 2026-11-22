@@ -1,14 +1,27 @@
-import { expect, mock, test, setSystemTime } from "bun:test";
+import { expect, mock, test, setSystemTime, beforeEach } from "bun:test";
 import type { ReactElement } from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { JSDOM } from "jsdom";
 import { fakeDeckyUi } from "./testing/fakeDeckyUi";
+import { connectEngine } from "./engineLink";
+import { createFakeEngine } from "./testSupport/fakeEngine";
+import type {
+  TradeSkillMasterAccount,
+  TradeSkillMasterDestination,
+} from "../backend/src/api/contracts";
+import type { Addon } from "./types";
 
-const listeners = new Set<(event: { event: string }) => void>();
-const notify = (event: { event: string }) => {
-  for (const listener of listeners) listener(event);
-};
+// The addon session TsmAddon now writes through pulls in the plugin toasts,
+// which import Decky's API: not installed outside the Deck.
+mock.module("@decky/api", () => ({
+  toaster: { toast: () => {} },
+  openFilePicker: async () => {
+    throw new Error("cancel");
+  },
+  FileSelectionType: { FILE: 0, FOLDER: 1 },
+}));
+
 let updated: number | null = null;
 let installed = true;
 let modal: ReactElement<{ onOK(): void; strDescription: string }> | undefined;
@@ -31,127 +44,130 @@ let qamOpens = 0;
 let cancelModal: (() => void) | undefined;
 let modalRoot: ReturnType<typeof createRoot> | undefined;
 
-mock.module("./services/backend", () => ({
-  rpc: async (method: string, params?: { installationId?: string }) => {
-    if (method === "tradeskillmaster.account") await holdAccount;
-    if (method === "tradeskillmaster.destination") await holdDestination;
-    if (method === "addons.list") await holdAddons;
-    if (method === "tradeskillmaster.cleanupPreview")
-      return [
-        {
-          realmId: 1,
-          name: "Cleanup realm",
-          region: "EU",
-          gameVersion: "Retail",
-          auctionHouseType: "ALL",
-        },
-      ];
-    if (method === "tradeskillmaster.removeAddons") {
-      removals.push(params);
-      await holdRemoval;
-      if (!removalFails) installed = false;
-      return {
-        operations: [{ status: removalFails ? "failed" : "removed" }],
-        cleanup: (params as { cleanupFollows?: boolean })?.cleanupFollows
-          ? {
-              error: cleanupError,
-              removed: [],
-              leftBehind: [
+/** What the fake account, destination and follow calls answer: one fixture for all. */
+const accountFixture = (params: { installationId?: string }) => {
+  requests.push(params.installationId ?? "");
+  return {
+    account: "Fixture",
+    follows: followed
+      ? [
+          ...(extraFollows
+            ? [
                 {
                   realmId: 1,
-                  name: "Cleanup realm",
+                  name: "First realm",
                   region: "EU",
                   gameVersion: "Retail",
                   auctionHouseType: "ALL",
                 },
-              ],
-            }
-          : undefined,
-      };
-    }
-    if (method === "tradeskillmaster.refresh") {
-      refreshRequests.push(params);
-      return;
-    }
-    if (method === "addons.list")
-      return {
-        addons: installed
-          ? [
-              {
-                folderName: "TradeSkillMaster_AppHelper",
-                providerId: "TradeSkillMaster",
-                externalId: "TradeSkillMaster",
-                version: "4.14",
-                channel: "stable",
-              },
-            ]
-          : [],
-      };
-    if (method === "tradeskillmaster.unfollow") {
-      followRequests.push(params);
-      if (failUnfollow) throw new Error("fixture failure");
-      followed = false;
-    }
-    if (method === "tradeskillmaster.setFollow") {
-      followRequests.push(params);
-      await holdFollow;
-      followed = !followed;
-    }
-    requests.push(params?.installationId ?? "");
-    return {
-      account: "Fixture",
-      follows: followed
-        ? [
-            ...(extraFollows
-              ? [
-                  {
-                    realmId: 1,
-                    name: "First realm",
-                    region: "EU",
-                    gameVersion: "Retail",
-                    auctionHouseType: "ALL",
-                  },
-                ]
-              : []),
+              ]
+            : []),
+          {
+            realmId: 99,
+            name: "Remote realm",
+            region: "US",
+            gameVersion: "Classic Era",
+            auctionHouseType: "HORDE",
+          },
+        ]
+      : [],
+    tier: "gold",
+    followedCount: followed ? 7 : 6,
+    allowance: unlimited ? null : 25,
+    realms:
+      params?.installationId === "empty"
+        ? []
+        : [
             {
-              realmId: 99,
-              name: "Remote realm",
-              region: "US",
-              gameVersion: "Classic Era",
-              auctionHouseType: "HORDE",
+              id: 1,
+              name:
+                params?.installationId === "inactive" ? "Other installation" : "Der Abyssische Rat",
+              auctionHouseType: params?.installationId === "inactive" ? "HORDE" : "ALL",
+              followed,
+              owned: false,
+              declined: false,
+              updated,
+            },
+          ],
+    regions: params?.installationId === "empty" ? [] : [{ id: 2, name: "EU", updated }],
+  };
+};
+const fake = createFakeEngine({
+  "tradeskillmaster.account": async () => {
+    await holdAccount;
+    return accountFixture({}) as unknown as TradeSkillMasterAccount;
+  },
+  "tradeskillmaster.destination": async (params) => {
+    await holdDestination;
+    return accountFixture(params) as unknown as TradeSkillMasterDestination;
+  },
+  "addons.list": async () => {
+    await holdAddons;
+    return {
+      addons: installed
+        ? [
+            {
+              folderName: "TradeSkillMaster_AppHelper",
+              providerId: "TradeSkillMaster",
+              externalId: "TradeSkillMaster",
+              version: "4.14",
+              channel: "stable",
             },
           ]
         : [],
-      tier: "gold",
-      followedCount: followed ? 7 : 6,
-      allowance: unlimited ? null : 25,
-      realms:
-        params?.installationId === "empty"
-          ? []
-          : [
+    } as { addons: Addon[] };
+  },
+  "tradeskillmaster.cleanupPreview": () => [
+    {
+      realmId: 1,
+      name: "Cleanup realm",
+      region: "EU",
+      gameVersion: "Retail",
+      auctionHouseType: "ALL",
+    },
+  ],
+  "tradeskillmaster.removeAddons": async (params) => {
+    removals.push(params);
+    await holdRemoval;
+    if (!removalFails) installed = false;
+    return {
+      operations: [{ status: removalFails ? "failed" : "removed" }],
+      cleanup: (params as { cleanupFollows?: boolean })?.cleanupFollows
+        ? {
+            error: cleanupError,
+            removed: [],
+            leftBehind: [
               {
-                id: 1,
-                name:
-                  params?.installationId === "inactive"
-                    ? "Other installation"
-                    : "Der Abyssische Rat",
-                auctionHouseType: params?.installationId === "inactive" ? "HORDE" : "ALL",
-                followed,
-                owned: false,
-                declined: false,
-                updated,
+                realmId: 1,
+                name: "Cleanup realm",
+                region: "EU",
+                gameVersion: "Retail",
+                auctionHouseType: "ALL",
               },
             ],
-      regions: params?.installationId === "empty" ? [] : [{ id: 2, name: "EU", updated }],
-    };
+          }
+        : undefined,
+    } as never;
   },
-  onBackendEvent: (listener: typeof notify) => {
-    listeners.add(listener);
-    return () => {
-      listeners.delete(listener);
-    };
+  "tradeskillmaster.refresh": (params) => {
+    refreshRequests.push(params);
   },
-}));
+  "tradeskillmaster.unfollow": (params) => {
+    followRequests.push(params);
+    if (failUnfollow) throw new Error("fixture failure");
+    followed = false;
+    return accountFixture({}) as unknown as TradeSkillMasterAccount;
+  },
+  "tradeskillmaster.setFollow": async (params) => {
+    followRequests.push(params);
+    await holdFollow;
+    followed = !followed;
+    return accountFixture(params) as unknown as TradeSkillMasterDestination;
+  },
+});
+connectEngine(fake);
+const notify = (event: { event: "tradeskillmaster.changed" }) =>
+  fake.emit({ ...event, params: {} });
 mock.module("@decky/ui", () => ({
   ...fakeDeckyUi,
   Navigation: {
@@ -239,6 +255,9 @@ mock.module("@decky/ui", () => ({
 }));
 const { resetFocusMemory } = await import("./focusMemory");
 const { TsmAddon } = await import("./components/TsmAddon");
+const { resetTsmReads } = await import("./tsmReads");
+
+beforeEach(resetTsmReads);
 
 test("destination shows account allowance, waiting data and live freshness for the selected installation", async () => {
   setSystemTime(new Date("2026-11-10T12:00:00Z"));
@@ -327,7 +346,7 @@ test("destination shows account allowance, waiting data and live freshness for t
     await act(async () => modal!.props.onOK());
     root = createRoot(container);
     await act(async () => root.render(<TsmAddon installationId="active" />));
-    expect(container.textContent).toContain("Could not uninstall");
+    expect(container.textContent).toContain("Couldn't uninstall");
     expect(uninstall()).toBeDefined();
     removalFails = false;
     await act(async () => modalRoot?.unmount());
@@ -441,7 +460,7 @@ test("Manage confirms remote follows, cancels without mutation, preserves failur
     await click("Unfollow");
     failUnfollow = true;
     await click("Unfollow");
-    expect(document.body.textContent).toContain("Could not unfollow");
+    expect(document.body.textContent).toContain("Couldn't unfollow");
     expect(document.body.textContent).toContain("7 realms followed");
     failUnfollow = false;
     await click("Unfollow");
@@ -477,7 +496,7 @@ for (const outcome of ["success", "failure", "cleanup unavailable"]) {
     installed = true;
     removalFails = outcome === "failure";
     cleanupError =
-      outcome === "cleanup unavailable" ? "Could not check account follows." : undefined;
+      outcome === "cleanup unavailable" ? "Couldn't check account follows." : undefined;
     holdRemoval = new Promise<void>((resolve) => {
       finish = resolve;
     });
@@ -505,10 +524,12 @@ for (const outcome of ["success", "failure", "cleanup unavailable"]) {
       expect(container.textContent).toContain("Working…");
       await act(async () => finish());
       expect(container.textContent).not.toContain("Working…");
-      if (removalFails) expect(container.textContent).toContain("Could not uninstall completely");
+      if (removalFails) expect(container.textContent).toContain("Couldn't uninstall completely");
       else expect(container.textContent).toContain("Install TradeSkillMaster");
       if (cleanupError) {
-        expect(container.textContent).toContain("Addons removed. Could not check account follows.");
+        expect(container.textContent).toContain(
+          "Addons removed. Couldn't clean up account follows.",
+        );
         expect(container.textContent).toContain(
           "Account follows left behind: Cleanup realm · EU · Retail",
         );
@@ -555,6 +576,7 @@ for (const dismissal of ["B", "Done"]) {
           [...document.querySelectorAll("button")].find((b) => b.textContent === "Done")!.click();
       });
       expect(qamOpens).toBe(1);
+      resetTsmReads(); // the remount's account read is a first load
       holdAccount = new Promise<void>((resolve) => {
         finish = resolve;
       });
@@ -720,6 +742,52 @@ test("pending removal stays visible without auction data and belongs only to its
       root.unmount();
       modalRoot?.unmount();
       modalRoot = undefined;
+    });
+    dom.window.close();
+  }
+});
+
+test("Manage shows a failed account refresh beside retained follows and can retry", async () => {
+  const dom = new JSDOM('<div id="root"></div>');
+  Object.assign(globalThis, {
+    window: dom.window,
+    document: dom.window.document,
+    IS_REACT_ACT_ENVIRONMENT: true,
+  });
+  const root = createRoot(document.getElementById("root")!);
+  const answer = fake.answers["tradeskillmaster.account"];
+  followed = true;
+  holdAccount = undefined;
+  const click = async (text: string) =>
+    act(async () => {
+      const button = [...document.querySelectorAll("button")].find((b) =>
+        b.textContent?.includes(text),
+      );
+      expect(button).toBeDefined();
+      button!.click();
+    });
+  try {
+    await act(async () => root.render(<TsmAddon installationId="empty" />));
+    fake.answers["tradeskillmaster.account"] = new Error("offline");
+    await act(async () => {
+      [...document.querySelectorAll("button")]
+        .find((b) => b.textContent?.includes("Manage"))!
+        .click();
+      root.unmount(); // Steam destroys the QAM opener when the modal opens.
+    });
+    await act(async () => fake.emit({ event: "tradeskillmaster.changed", params: {} }));
+    expect(document.body.textContent).toContain("Couldn't load followed realms");
+    expect(document.body.textContent).toContain("Remote realm");
+    fake.answers["tradeskillmaster.account"] = answer;
+    await click("Retry");
+    expect(document.body.textContent).not.toContain("Couldn't load followed realms");
+    expect(document.body.textContent).toContain("Remote realm");
+  } finally {
+    fake.answers["tradeskillmaster.account"] = answer;
+    await act(async () => {
+      modalRoot?.unmount();
+      modalRoot = undefined;
+      root.unmount();
     });
     dom.window.close();
   }

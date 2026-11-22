@@ -1,8 +1,15 @@
 /** RPC handlers: The daily update check behind the SteamOS toast. */
 
-import type { JsonlServer } from "../../bridge/jsonl";
-import type { HandlerDeps } from "./deps";
+import type { HandlerTable } from "../../bridge/jsonl";
+import type { UpdateToastGate } from "../../wow/notifications/UpdateToastGate";
 
-export function register(server: JsonlServer, { updateToastGate }: HandlerDeps): void {
-  server.on("notifications.checkUpdateToast", async () => updateToastGate.checkNow());
+/** What the notification handlers use. */
+export interface NotificationsDeps {
+  updateToastGate: Pick<UpdateToastGate, "checkNow">;
+}
+
+export function notificationsHandlers({ updateToastGate }: NotificationsDeps) {
+  return {
+    "notifications.checkUpdateToast": async () => updateToastGate.checkNow(),
+  } satisfies Partial<HandlerTable>;
 }

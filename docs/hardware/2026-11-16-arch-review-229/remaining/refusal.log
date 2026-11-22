@@ -1,0 +1,6 @@
+eval@SharedJSContext --file=.scratch/arch-review-2… → bounded source enable refusal fixture
+toast-start → observer on notificationtoasts (limit 50; 0 notice(s) displayed)
+eval --file=.scratch/arch-review-229/remaining-tog… → Sources toggle onChange(true)
+toast-read → 1 notice(s) ["Couldn't change TradeSkillMaster Sign in to TradeSkillMaster first"]
+toast cleanup → 1 notice(s) ["Couldn't change TradeSkillMaster Sign in to TradeSkillMaster first"]
+toast cleanup: observer removed

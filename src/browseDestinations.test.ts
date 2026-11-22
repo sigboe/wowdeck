@@ -1,20 +1,24 @@
 /// <reference types="bun-types" />
 import { beforeEach, describe, expect, test } from "bun:test";
 import {
+  createBrowseRequests,
   latestDestination,
-  loadMore,
   popularDestination,
   resetDestinations,
-  resolveUrl,
-  runSearch,
   searchDestination,
   setCategory,
   setSource,
   setUrl,
   urlDestination,
 } from "./browseDestinations";
-import { resetSourcesStore, sourcesStore } from "./sourcesStore";
-import type { Rpc } from "./services/envelope";
+import { sourcesStore } from "./sourcesStore";
+import { connectEngine } from "./engineLink";
+import {
+  createFakeEngine,
+  type Answer,
+  type Answers,
+  type FakeEngine,
+} from "./testSupport/fakeEngine";
 import type { ProviderInfo, SearchResult } from "./types";
 
 const result = (externalId: string) => ({ providerId: "Curse", externalId }) as SearchResult;
@@ -30,46 +34,63 @@ function pending<T>() {
   return { promise, resolve, reject };
 }
 
-/** A fake engine answering every call with `answer`, recording what was asked. */
-function fakeRpc(answer: (method: string, params: unknown) => Promise<unknown>) {
-  const calls: Array<{ method: string; params: unknown }> = [];
-  const rpc = ((method: string, params?: unknown) => {
-    calls.push({ method, params });
-    return answer(method, params);
-  }) as Rpc;
-  return { rpc, calls };
+/** The requests over a fake engine answering with `answers`, and what was asked. */
+function engineWith(answers: Answers) {
+  const fake = createFakeEngine(answers);
+  return { requests: createBrowseRequests({ rpc: fake.rpc }), calls: fake.calls };
 }
+/** Latest and Popular both answered with `answer`. */
+const lists = (answer: Answer<"discover.latest"> & Answer<"discover.popular">) =>
+  engineWith({ "discover.latest": answer, "discover.popular": answer });
+const search = (answer: Answer<"addons.search">) => engineWith({ "addons.search": answer });
+const lookup = (answer: Answer<"addons.resolveUrlImport">) =>
+  engineWith({ "addons.resolveUrlImport": answer });
 
 const page =
   (...ids: string[]) =>
   async () => ({ results: ids.map(result), totalCount: 20 });
 
 /** The sources as Get Addons and Options last loaded them. */
-const applySources = (providers: ProviderInfo[]) => sourcesStore.patch({ providers });
+let sources: FakeEngine;
+const applySources = async (providers: ProviderInfo[]) => {
+  sources.answers["providers.list"] = { providers };
+  await sourcesStore.load();
+};
 
 beforeEach(() => {
-  resetSourcesStore();
+  sources = createFakeEngine();
+  connectEngine(sources);
+  sourcesStore.reset();
   resetDestinations();
 });
 
 describe("the lists' requests", () => {
   test("Latest asks its source for the next page", async () => {
     latestDestination.patch({ sourceId: "WowUpHub", results: [result("1")], loaded: true });
-    const { rpc, calls } = fakeRpc(page("2"));
-    await loadMore("latest", rpc);
+    const { requests, calls } = lists(page("2"));
+    await requests.loadMore("i1", "latest");
     expect(calls).toEqual([
-      { method: "discover.latest", params: { providerId: "WowUpHub", index: 1, pageSize: 10 } },
+      {
+        method: "discover.latest",
+        params: { installationId: "i1", providerId: "WowUpHub", index: 1, pageSize: 10 },
+      },
     ]);
   });
 
   test("Popular in All categories names no category", async () => {
     popularDestination.patch({ sourceId: "Curse" });
-    const { rpc, calls } = fakeRpc(page("1"));
-    await loadMore("popular", rpc);
+    const { requests, calls } = lists(page("1"));
+    await requests.loadMore("i1", "popular");
     expect(calls).toEqual([
       {
         method: "discover.popular",
-        params: { providerId: "Curse", index: 0, pageSize: 10, categoryId: undefined },
+        params: {
+          installationId: "i1",
+          providerId: "Curse",
+          index: 0,
+          pageSize: 10,
+          categoryId: undefined,
+        },
       },
     ]);
   });
@@ -77,17 +98,18 @@ describe("the lists' requests", () => {
   test("Popular in a category asks for that category", async () => {
     popularDestination.patch({ sourceId: "Curse" });
     setCategory("1019");
-    const { rpc, calls } = fakeRpc(page("1"));
-    await loadMore("popular", rpc);
+    const { requests, calls } = lists(page("1"));
+    await requests.loadMore("i1", "popular");
     expect(calls[0].params).toMatchObject({ providerId: "Curse", categoryId: "1019" });
   });
 
   test("another source asks that source, without the old source's category", async () => {
     popularDestination.patch({ sourceId: "Curse", categoryId: "1019" });
     setSource("popular", "WowUpHub");
-    const { rpc, calls } = fakeRpc(page("1"));
-    await loadMore("popular", rpc);
+    const { requests, calls } = lists(page("1"));
+    await requests.loadMore("i1", "popular");
     expect(calls[0].params).toEqual({
+      installationId: "i1",
       providerId: "WowUpHub",
       index: 0,
       pageSize: 10,
@@ -96,19 +118,19 @@ describe("the lists' requests", () => {
   });
 
   test("before the sources have picked one, the source id is empty", async () => {
-    const { rpc, calls } = fakeRpc(page());
-    await loadMore("latest", rpc);
-    await loadMore("popular", rpc);
+    const { requests, calls } = lists(page());
+    await requests.loadMore("i1", "latest");
+    await requests.loadMore("i1", "popular");
     expect(calls.map((c) => c.params)).toEqual([
-      { providerId: "", index: 0, pageSize: 10 },
-      { providerId: "", index: 0, pageSize: 10, categoryId: undefined },
+      { installationId: "i1", providerId: "", index: 0, pageSize: 10 },
+      { installationId: "i1", providerId: "", index: 0, pageSize: 10, categoryId: undefined },
     ]);
   });
 
   test("a list follows the sources' default pick", async () => {
-    applySources([provider("WowUpHub", { discovers: true })]);
-    const { rpc, calls } = fakeRpc(page("1"));
-    await loadMore("latest", rpc);
+    await applySources([provider("WowUpHub", { discovers: true })]);
+    const { requests, calls } = lists(page("1"));
+    await requests.loadMore("i1", "latest");
     expect(calls[0].params).toMatchObject({ providerId: "WowUpHub" });
   });
 });
@@ -116,9 +138,9 @@ describe("the lists' requests", () => {
 describe("lists", () => {
   test("a page appends, and a second press while loading asks nothing", async () => {
     const answer = pending<{ results: SearchResult[]; totalCount: number }>();
-    const { rpc, calls } = fakeRpc(() => answer.promise);
-    const first = loadMore("latest", rpc);
-    void loadMore("latest", rpc); // e.g. the panel remounting mid-load
+    const { requests, calls } = lists(() => answer.promise);
+    const first = requests.loadMore("i1", "latest");
+    void requests.loadMore("i1", "latest"); // e.g. the panel remounting mid-load
     expect(latestDestination.get().loading).toBe(true);
     answer.resolve({ results: [result("1"), result("2")], totalCount: 20 });
     await first;
@@ -134,7 +156,7 @@ describe("lists", () => {
 
   test("a page for the previous installation is dropped after a reset", async () => {
     const answer = pending<{ results: SearchResult[]; totalCount: number }>();
-    const done = loadMore("latest", fakeRpc(() => answer.promise).rpc);
+    const done = lists(() => answer.promise).requests.loadMore("i1", "latest");
     resetDestinations();
     answer.resolve({ results: [result("old")], totalCount: 1 });
     await done;
@@ -143,7 +165,7 @@ describe("lists", () => {
 
   test("a failure keeps what was shown and names the list's source", async () => {
     latestDestination.patch({ sourceId: "WowUpHub", results: [result("1")], loaded: true });
-    await loadMore("latest", fakeRpc(() => Promise.reject(new Error("HTTP 500"))).rpc);
+    await lists(() => Promise.reject(new Error("HTTP 500"))).requests.loadMore("i1", "latest");
     expect(latestDestination.get().results).toHaveLength(1);
     expect(latestDestination.get().error).toStartWith("Couldn't load addons. WowUp Hub");
   });
@@ -156,7 +178,7 @@ describe("lists", () => {
       new Error("That WoW installation isn't available. Check Options"),
       { code: "not_found" },
     );
-    await loadMore("latest", fakeRpc(() => Promise.reject(noInstallation)).rpc);
+    await lists(() => Promise.reject(noInstallation)).requests.loadMore("i1", "latest");
     expect(latestDestination.get().error).toBe(
       "Couldn't load addons. That WoW installation isn't available. Check Options.",
     );
@@ -204,27 +226,27 @@ const curse = (o: Partial<ProviderInfo> = {}) => provider("Curse", { discovers: 
 const hub = (o: Partial<ProviderInfo> = {}) => provider("WowUpHub", { discovers: true, ...o });
 
 describe("the lists' source picks", () => {
-  test("no pick yet: each list opens on the default source", () => {
-    applySources([hub(), curse()]);
+  test("no pick yet: each list opens on the default source", async () => {
+    await applySources([hub(), curse()]);
     expect(latestDestination.get().sourceId).toBe("Curse");
     expect(popularDestination.get().sourceId).toBe("Curse");
   });
 
-  test("a remembered pick is kept while its source still works", () => {
-    applySources([curse(), hub()]);
+  test("a remembered pick is kept while its source still works", async () => {
+    await applySources([curse(), hub()]);
     setSource("latest", "WowUpHub");
     latestDestination.patch({ results: [result("1")], loaded: true });
-    applySources([curse(), hub()]);
+    await applySources([curse(), hub()]);
     expect(latestDestination.get().sourceId).toBe("WowUpHub");
     expect(latestDestination.get().results.map((r) => r.externalId)).toEqual(["1"]);
     expect(latestDestination.get().loaded).toBe(true);
   });
 
-  test("a pick whose source went off falls back silently, the list starting over", () => {
-    applySources([curse(), hub()]);
+  test("a pick whose source went off falls back silently, the list starting over", async () => {
+    await applySources([curse(), hub()]);
     setSource("latest", "WowUpHub");
     latestDestination.patch({ results: [result("1")], loaded: true });
-    applySources([curse(), hub({ enabled: false, available: false })]);
+    await applySources([curse(), hub({ enabled: false, available: false })]);
     expect(latestDestination.get()).toMatchObject({
       sourceId: "Curse",
       results: [],
@@ -233,19 +255,19 @@ describe("the lists' source picks", () => {
     });
   });
 
-  test("no source in use: the pick falls to the default, which the screen speaks for", () => {
-    applySources([curse(), hub()]);
+  test("no source in use: the pick falls to the default, which the screen speaks for", async () => {
+    await applySources([curse(), hub()]);
     setSource("latest", "WowUpHub");
-    applySources([
+    await applySources([
       curse({ enabled: false, available: false }),
       hub({ enabled: false, available: false }),
     ]);
     expect(latestDestination.get().sourceId).toBe("Curse");
   });
 
-  test("a pick whose source is gone falls back silently, the list starting over", () => {
+  test("a pick whose source is gone falls back silently, the list starting over", async () => {
     latestDestination.patch({ sourceId: "TukUI", results: [result("1")], loaded: true });
-    applySources([curse(), hub()]);
+    await applySources([curse(), hub()]);
     expect(latestDestination.get()).toMatchObject({
       sourceId: "Curse",
       results: [],
@@ -254,31 +276,31 @@ describe("the lists' source picks", () => {
     });
   });
 
-  test("the fallback takes Popular's category back to All categories", () => {
+  test("the fallback takes Popular's category back to All categories", async () => {
     popularDestination.patch({ sourceId: "Curse", categoryId: "1019" });
-    applySources([hub()]);
+    await applySources([hub()]);
     expect(popularDestination.get()).toMatchObject({ sourceId: "WowUpHub", categoryId: null });
   });
 
-  test("no source to fall back to: every pick is left alone", () => {
+  test("no source to fall back to: every pick is left alone", async () => {
     latestDestination.patch({ sourceId: "Curse", results: [result("1")], loaded: true });
-    applySources([]);
+    await applySources([]);
     expect(latestDestination.get().sourceId).toBe("Curse");
     expect(latestDestination.get().results.map((r) => r.externalId)).toEqual(["1"]);
     expect(latestDestination.get().loaded).toBe(true);
   });
 
-  test("Latest and Popular keep independent picks", () => {
-    applySources([curse(), hub()]);
+  test("Latest and Popular keep independent picks", async () => {
+    await applySources([curse(), hub()]);
     setSource("latest", "WowUpHub");
     popularDestination.patch({ sourceId: "TukUI" });
-    applySources([curse(), hub()]);
+    await applySources([curse(), hub()]);
     expect(latestDestination.get().sourceId).toBe("WowUpHub");
     expect(popularDestination.get().sourceId).toBe("Curse");
   });
 
-  test("another installation reopens each list on the default source", () => {
-    applySources([curse(), hub()]);
+  test("another installation reopens each list on the default source", async () => {
+    await applySources([curse(), hub()]);
     setSource("latest", "WowUpHub");
     resetDestinations();
     expect(latestDestination.get().sourceId).toBe("Curse");
@@ -289,12 +311,14 @@ describe("the lists' source picks", () => {
 describe("search", () => {
   test("answers land in module state, whoever is showing them", async () => {
     searchDestination.patch({ query: " details " });
-    const { rpc, calls } = fakeRpc(async () => ({
+    const { requests, calls } = search(async () => ({
       results: [result("61284")],
       providerErrors: [],
     }));
-    await runSearch(rpc);
-    expect(calls).toEqual([{ method: "addons.search", params: { query: "details" } }]);
+    await requests.runSearch("i1");
+    expect(calls).toEqual([
+      { method: "addons.search", params: { installationId: "i1", query: "details" } },
+    ]);
     expect(searchDestination.get()).toMatchObject({ searching: false, outcome: { kind: "none" } });
     expect(searchDestination.get().results).toHaveLength(1);
   });
@@ -304,18 +328,20 @@ describe("search", () => {
     const refused = Object.assign(new Error("Pick an installation first"), {
       code: "invalid_request",
     });
-    await runSearch(fakeRpc(() => Promise.reject(refused)).rpc);
+    await search(() => Promise.reject(refused)).requests.runSearch("i1");
     expect(searchDestination.get().outcome).toEqual({
       kind: "error",
       text: "Couldn't search. Pick an installation first.",
     });
-    await runSearch(fakeRpc(() => Promise.reject(new Error("TypeError: fetch failed"))).rpc);
+    await search(() => Promise.reject(new Error("TypeError: fetch failed"))).requests.runSearch(
+      "i1",
+    );
     expect(searchDestination.get().outcome.text).toContain("internet connection");
   });
 
   test("a blank query asks nothing", async () => {
-    const { rpc, calls } = fakeRpc(async () => ({ results: [], providerErrors: [] }));
-    await runSearch(rpc);
+    const { requests, calls } = search(async () => ({ results: [], providerErrors: [] }));
+    await requests.runSearch("i1");
     expect(calls).toEqual([]);
   });
 });
@@ -323,19 +349,21 @@ describe("search", () => {
 describe("From URL", () => {
   test("the looked-up result is kept (a modal round trip remounts the tab)", async () => {
     setUrl(" owner/repo ");
-    const { rpc, calls } = fakeRpc(async () => ({ result: result("gh"), error: null }));
-    await resolveUrl(rpc);
-    expect(calls).toEqual([{ method: "addons.resolveUrlImport", params: { url: "owner/repo" } }]);
+    const { requests, calls } = lookup(async () => ({ result: result("gh"), error: null }));
+    await requests.resolveUrl("i1");
+    expect(calls).toEqual([
+      { method: "addons.resolveUrlImport", params: { installationId: "i1", url: "owner/repo" } },
+    ]);
     expect(urlDestination.get()).toMatchObject({ url: " owner/repo ", resolving: false });
     expect(urlDestination.get().resolved?.externalId).toBe("gh");
   });
 
   test("an answer for an address that has since changed is dropped", async () => {
     setUrl("owner/old");
-    const lookup = pending<{ result: SearchResult | null; error: null }>();
-    const done = resolveUrl(fakeRpc(() => lookup.promise).rpc);
+    const answer = pending<{ result: SearchResult | null; error: null }>();
+    const done = lookup(() => answer.promise).requests.resolveUrl("i1");
     setUrl("owner/new");
-    lookup.resolve({ result: result("old"), error: null });
+    answer.resolve({ result: result("old"), error: null });
     await done;
     expect(urlDestination.get()).toMatchObject({
       url: "owner/new",
@@ -346,10 +374,10 @@ describe("From URL", () => {
 
   test("an expected failure shows its sentence", async () => {
     setUrl("owner/repo");
-    await resolveUrl(
-      fakeRpc(async () => ({ result: null, error: { code: "source_removed", message: "raw" } }))
-        .rpc,
-    );
+    await lookup(async () => ({
+      result: null,
+      error: { code: "source_removed", message: "raw" },
+    })).requests.resolveUrl("i1");
     expect(urlDestination.get().error).toBe("This addon is no longer available from its source.");
   });
 });

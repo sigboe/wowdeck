@@ -69,24 +69,33 @@ export class ProviderRegistry {
     return this.all().filter(isUsable);
   }
 
+  /** Called after a provider was turned on or off (setEnabled). */
+  readonly enabledListeners = new Set<() => void>();
+
   /**
    * Enable/disable a provider and persist the choice (settings
    * `enabledProviders`: null = provider defaults, otherwise the list of
    * enabled provider ids). Mirrors WowUp's per-provider addon_providers
-   * preference (wowup.service.ts L228-247).
+   * preference (wowup.service.ts L228-247). The provider's onEnable hook
+   * runs first and may refuse; its onDisable hook runs on the way off.
    *
    * Refuses a provider where `allowEdit` is false (GitHub) —
    * matches upstream's own `setProviderEnabled()`, which throws under
    * the identical condition rather than silently flipping a provider the
    * UI never even shows a toggle for.
    */
-  setEnabled(name: string, enabled: boolean): ProviderInfo[] {
+  async setEnabled(name: string, enabled: boolean): Promise<ProviderInfo[]> {
     const provider = this.#providers.get(name);
     if (!provider) {
       throw new NotFoundError("provider", name);
     }
     if (!provider.allowEdit) {
       throw new ValidationError(`${name} cannot be enabled or disabled`);
+    }
+    if (enabled) {
+      await provider.onEnable();
+    } else {
+      provider.onDisable();
     }
     provider.enabled = enabled;
     if (this.#store) {
@@ -99,6 +108,7 @@ export class ProviderRegistry {
       }
       this.#store.updateSettings({ enabledProviders: [...list] });
     }
+    for (const listener of this.enabledListeners) listener();
     return this.providerInfos();
   }
 

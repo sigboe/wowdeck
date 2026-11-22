@@ -8,7 +8,7 @@
  */
 
 import type { NetworkClient } from "../net/network";
-import { compareVersions, isBetaVersion, normalizeVersion } from "./PluginVersion";
+import { compareVersions, isBetaVersion, normalizeVersion } from "../../api/version";
 import { isRecord, type PrBuildList, type PublishedPrBuild } from "./PrBuildList";
 
 /**

@@ -8,9 +8,6 @@ import { deckyUiStub } from "../deckyUiStub";
 
 // Steam controls are the external boundary; retain native focus/disabled behavior.
 mock.module("@decky/api", () => ({
-  callable: () => async () => ({}),
-  addEventListener: () => {},
-  removeEventListener: () => {},
   toaster: { toast: () => {} },
   openFilePicker: () => {},
 }));

@@ -134,7 +134,8 @@ machine's display (owner, 2026-10-17). It is off and disabled when the backup ha
 A finished backup or restore shows a notification ("Backup created", "Settings restored",
 "Couldn't back up settings"), since the user may have left Options while the job ran; a cancel
 shows none.
-Text and defaults are pure functions in `src/wtfText.ts` (unit-tested).
+Outcome lines and notices are pure functions in `src/wtfOutcome.ts`; dialog and row wording, and
+the toggle defaults, in `src/wtfText.ts` (both unit-tested).
 
 ## Settings copy
 
@@ -196,13 +197,14 @@ trap focus (#12).
 
 ## Protocol (engine ⇄ UI)
 
-The engine serves one request at a time and the bridge times out after 120 s, so create and
-restore are background **jobs** (UI rule A10): `wtf.create` / `wtf.restore` return `{jobId}`
+The engine handles requests concurrently, and the bridge times a request out after 120 s, so
+create and restore are background **jobs** (UI rule A10): `wtf.create` / `wtf.restore` return
+`{jobId}`
 at once; `wtf.progress` (throttled to ≤ 4/s) and `wtf.completed` events report; `wtf.list`
 includes the running `job` so a reopened UI re-attaches. One job at a time
 (`job_in_progress`); `wtf.cancel` works until a restore starts swapping (`too_late_to_cancel`).
 Contract: `backend/src/api/contracts.ts`. Error codes are stable; the UI maps each to plain text
-(`src/wtfText.ts`). The UI calls them through `rpc` (`src/services/backend.ts`); `main.py` forwards them unchanged.
+(`src/wtfOutcome.ts`). The UI calls them through `engine.rpc` (`src/engineLink.ts`); `main.py` forwards them unchanged.
 
 ## Privacy and safety
 

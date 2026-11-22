@@ -10,13 +10,28 @@ mock.module("@decky/api", () => ({
   openFilePicker: async () => {
     throw new Error("cancel");
   },
-  callable: () => async () => ({}),
-  addEventListener: () => {},
-  removeEventListener: () => {},
 }));
 mock.module("@decky/ui", () => deckyUiStub);
 
 const { InstallationsSection } = await import("./components/settings/InstallationsSection");
+
+/** A session stub: the section's seam. No engine is connected in this file. */
+const stubState = {
+  installations: [],
+  addons: [],
+  recoveryRequired: {},
+  findingWow: false,
+};
+const session = {
+  get: () => stubState,
+  subscribe: () => () => {},
+  findWow: async () => {},
+  selectInstallation: async () => {},
+  addInstallation: async () => [],
+  updateInstallation: async () => ({}) as never,
+  removeInstallation: async () => {},
+  rescanInstallation: async () => "refreshed" as const,
+} as unknown as Parameters<typeof InstallationsSection>[0]["session"];
 
 test("Options places Add WoW folder directly below Find WoW installations", async () => {
   const dom = new JSDOM('<div id="root"></div>');
@@ -31,9 +46,7 @@ test("Options places Add WoW folder directly below Find WoW installations", asyn
   const root = createRoot(container);
   try {
     await act(async () =>
-      root.render(
-        <InstallationsSection installations={[]} selectedId={null} onChanged={async () => {}} />,
-      ),
+      root.render(<InstallationsSection installations={[]} selectedId={null} session={session} />),
     );
     const labels = [...container.querySelectorAll("b")].map((b) => b.textContent);
     expect(labels).toEqual(["Find WoW installations", "Add WoW folder"]);

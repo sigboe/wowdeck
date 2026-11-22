@@ -3,7 +3,7 @@ import { Field, PanelSection } from "@decky/ui";
 
 import type { Installation } from "../types";
 import { useBackupList } from "../wtfSession";
-import { formatBytes, formatWhen } from "../wtfFormat";
+import { formatBytes, formatWhen } from "../text";
 import { FocusRow } from "./FocusSlot";
 import { QAM_VIEW } from "../qamState";
 import { descriptionStyle } from "../steamTheme";

@@ -4,6 +4,7 @@ import { panelOffer, pluginUpdateDot, prChannelLine } from "./pluginUpdate";
 import type { PluginUpdateInfo, StagedUpdate, UpdateRequestResult } from "./pluginUpdate";
 import { createSelfUpdateStore, downloadView, type SelfUpdateDeps } from "./selfUpdateStore";
 import type { UpdateChannel } from "./types";
+import { createFakeEngine } from "./testSupport/fakeEngine";
 
 const info = (over: Partial<PluginUpdateInfo>): PluginUpdateInfo => ({
   status: "current",
@@ -71,48 +72,60 @@ function harness() {
   let channelAnswer: PluginUpdateInfo | Error = available;
   /** The engine's stored channel, as system.getUpdateChannel answers it. */
   let storedChannel: UpdateChannel | Error = "stable";
+  /** The download in flight: held while its gate is, then the stage answer. */
+  const stage = async () => {
+    if (stageGate) await stageGate.promise;
+    stageGate = null;
+    if (stageAnswer instanceof Error) throw stageAnswer;
+    return stageAnswer;
+  };
+  const fake = createFakeEngine({
+    "system.getUpdateChannel": () => {
+      calls.push("system.getUpdateChannel");
+      if (storedChannel instanceof Error) throw storedChannel;
+      return { channel: storedChannel };
+    },
+    "system.setUpdateChannel": (params) => {
+      calls.push("system.setUpdateChannel");
+      channelParams.push(params);
+      if (channelAnswer instanceof Error) throw channelAnswer;
+      storedChannel = params.channel;
+      return channelAnswer;
+    },
+    "system.updateCheck": async (params) => {
+      calls.push("system.updateCheck");
+      checkParams.push(params);
+      // The engine answers as of the ask; a held ask is that answer in transit.
+      const answer = checkAnswer;
+      if (checkGate) await checkGate.promise;
+      if (answer instanceof Error) throw answer;
+      // Like the engine: only a notify ask may report the toast.
+      return params.notify ? answer : { ...answer, toastPending: false };
+    },
+    "system.cancelDownload": () => {
+      calls.push("system.cancelDownload");
+      // Like the engine: the download in flight answers "cancelled".
+      const inFlight = stageGate !== null;
+      if (inFlight) {
+        stageAnswer = {
+          result: null,
+          error: { code: "cancelled", message: "The download was cancelled" },
+        };
+        stageGate!.resolve(null);
+      }
+      return { cancelled: inFlight };
+    },
+    "system.updateStage": () => {
+      calls.push("system.updateStage");
+      return stage();
+    },
+    "system.installPrBuild": () => {
+      calls.push("system.installPrBuild");
+      return stage();
+    },
+  });
   const deps: SelfUpdateDeps = {
-    rpc: (async (
-      method: string,
-      params?: { notify?: boolean; force?: boolean; channel?: UpdateChannel },
-    ) => {
-      calls.push(method);
-      if (method === "system.getUpdateChannel") {
-        if (storedChannel instanceof Error) throw storedChannel;
-        return { channel: storedChannel };
-      }
-      if (method === "system.setUpdateChannel") {
-        channelParams.push(params);
-        if (channelAnswer instanceof Error) throw channelAnswer;
-        storedChannel = params!.channel!;
-        return channelAnswer;
-      }
-      if (method === "system.updateCheck") {
-        checkParams.push(params);
-        // The engine answers as of the ask; a held ask is that answer in transit.
-        const answer = checkAnswer;
-        if (checkGate) await checkGate.promise;
-        if (answer instanceof Error) throw answer;
-        // Like the engine: only a notify ask may report the toast.
-        return params?.notify ? answer : { ...answer, toastPending: false };
-      }
-      if (method === "system.cancelDownload") {
-        // Like the engine: the download in flight answers "cancelled".
-        const inFlight = stageGate !== null;
-        if (inFlight) {
-          stageAnswer = {
-            result: null,
-            error: { code: "cancelled", message: "The download was cancelled" },
-          };
-          stageGate!.resolve(null);
-        }
-        return { cancelled: inFlight };
-      }
-      if (stageGate) await stageGate.promise;
-      stageGate = null;
-      if (stageAnswer instanceof Error) throw stageAnswer;
-      return stageAnswer;
-    }) as SelfUpdateDeps["rpc"],
+    rpc: fake.rpc,
     toast: (title, body = "") => toasts.push(body ? `${title}: ${body}` : title),
     toastError: (title, e) => toasts.push(e instanceof Error ? `${title}: ${e.message}` : title),
     requestUpdate: async (what) => {

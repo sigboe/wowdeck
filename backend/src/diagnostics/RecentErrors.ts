@@ -1,7 +1,7 @@
 /**
  * Bounded recent-operation-error buffer backing `system.diagnostics`'s
  * `recentErrors` field. Kept as its own small, independently testable
- * unit rather than inline state in main.ts's composition root.
+ * unit rather than inline state in the engine's assembly (engine.ts).
  */
 
 export interface RecentError {

@@ -6,7 +6,8 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { AddonService } from "../src/wow/addons/AddonService";
+import { addonService } from "./helpers/addon-service";
+import { AddonUpdates } from "../src/wow/addons/AddonUpdates";
 import { Catalogue } from "../src/wow/catalogue/Catalogue";
 import { AddonProvider } from "../src/wow/providers/addon-provider";
 import { ProviderRegistry } from "../src/wow/providers/provider-registry";
@@ -41,11 +42,11 @@ function makeStack(dataDir: string) {
   registry.register(hub);
   registry.register(tukui);
   registry.attachStore(store);
-  const service = new AddonService(store, registry, new DownloadService(new NetworkClient(), join(dataDir, "dl")), {
+  const service = addonService(store, registry, new DownloadService(new NetworkClient(), join(dataDir, "dl")), {
     addonsChanged: () => {},
     operationResult: () => {},
   });
-  return { store, registry, service, catalogue: new Catalogue(registry), hub, tukui };
+  return { store, registry, service, updates: new AddonUpdates(service, registry, store), catalogue: new Catalogue(registry), hub, tukui };
 }
 
 const installation: WowInstallation = {
@@ -78,22 +79,22 @@ describe("provider enable/disable", () => {
 
   test("disabling a provider removes it from search participation", async () => {
     const { registry, catalogue, hub, tukui } = makeStack(join(ROOT, "d2"));
-    registry.setEnabled("TukUI", false);
+    await registry.setEnabled("TukUI", false);
 
     await catalogue.search("anything", installation);
     expect(hub.searchCalls).toBe(1);
     expect(tukui.searchCalls).toBe(0);
 
     // re-enable restores participation
-    registry.setEnabled("TukUI", true);
+    await registry.setEnabled("TukUI", true);
     await catalogue.search("anything", installation);
     expect(tukui.searchCalls).toBe(1);
   });
 
-  test("enabled state persists across engine restart", () => {
+  test("enabled state persists across engine restart", async () => {
     const dataDir = join(ROOT, "d3");
     const first = makeStack(dataDir);
-    first.registry.setEnabled("WowUpHub", false);
+    await first.registry.setEnabled("WowUpHub", false);
     expect(first.registry.enabled().map((p) => p.name)).toEqual(["TukUI"]);
 
     const second = makeStack(dataDir);
@@ -102,9 +103,9 @@ describe("provider enable/disable", () => {
     expect(second.tukui.enabled).toBe(true);
   });
 
-  test("unknown provider fails loudly", () => {
+  test("unknown provider fails loudly", async () => {
     const { registry } = makeStack(join(ROOT, "d4"));
-    expect(() => registry.setEnabled("CurseForge", true)).toThrow(/isn't available|isn't in your list|weren't found|wasn't found/i);
+    await expect(registry.setEnabled("CurseForge", true)).rejects.toThrow(/isn't available|isn't in your list|weren't found|wasn't found/i);
   });
 
   test("null enabledProviders keeps provider defaults", () => {
@@ -123,13 +124,13 @@ class NonEditableProvider extends CountingProvider {
 }
 
 describe("allowEdit enforcement", () => {
-  test("setEnabled refuses to toggle a non-editable provider", () => {
+  test("setEnabled refuses to toggle a non-editable provider", async () => {
     const store = createStateStore(join(ROOT, "d6"));
     const registry = new ProviderRegistry();
     const github = new NonEditableProvider("GitHub");
     registry.register(github);
     registry.attachStore(store);
-    expect(() => registry.setEnabled("GitHub", false)).toThrow(/cannot be enabled or disabled/i);
+    await expect(registry.setEnabled("GitHub", false)).rejects.toThrow(/cannot be enabled or disabled/i);
     expect(github.enabled).toBe(true); // unchanged
   });
 
@@ -169,7 +170,7 @@ describe("allowEdit enforcement", () => {
   test("enabled but not set up is not usable: no search, install, update or reinstall, and the wire says so", async () => {
     const dataDir = join(ROOT, "d9");
     rmSync(dataDir, { recursive: true, force: true });
-    const { store, registry, service, catalogue, tukui } = makeStack(dataDir);
+    const { store, registry, service, updates, catalogue, tukui } = makeStack(dataDir);
     tukui.isConfigured = () => false;
     tukui.allowReinstall = true;
     expect(registry.usable("TukUI")).toBeUndefined();
@@ -198,10 +199,10 @@ describe("allowEdit enforcement", () => {
       } as never,
     ]);
     const record = store.addons.require("a1");
-    expect(service.eligibleUpdatesFor(installation)).toEqual([]);
+    expect(updates.eligibleFor(installation)).toEqual([]);
     expect(service.canReinstall(record)).toBe(false);
     tukui.isConfigured = () => true;
-    expect(service.eligibleUpdatesFor(installation).map((a) => a.id)).toEqual(["a1"]);
+    expect(updates.eligibleFor(installation).map((a) => a.id)).toEqual(["a1"]);
     expect(service.canReinstall(record)).toBe(true);
   });
 
@@ -209,7 +210,7 @@ describe("allowEdit enforcement", () => {
     const dataDir = join(ROOT, "d10");
     rmSync(dataDir, { recursive: true, force: true });
     const { store, registry, service, tukui } = makeStack(dataDir);
-    registry.setEnabled("TukUI", false);
+    await registry.setEnabled("TukUI", false);
     // Past the provider gate: the (fake) provider just has no such addon.
     await expect(service.install({ intent: "install", providerId: "TukUI", externalId: "1", installation })).rejects.not.toThrow(
       "That addon source isn't available",
@@ -239,8 +240,8 @@ describe("allowEdit enforcement", () => {
   test("Update all leaves out an addon whose source is off, and counts what the summary and toast count", async () => {
     const dataDir = join(ROOT, "d11");
     rmSync(dataDir, { recursive: true, force: true });
-    const { store, registry, service } = makeStack(dataDir);
-    registry.setEnabled("TukUI", false);
+    const { store, registry, updates } = makeStack(dataDir);
+    await registry.setEnabled("TukUI", false);
     store.setInstallations([installation]);
     store.addons.createMany([
       {
@@ -269,10 +270,10 @@ describe("allowEdit enforcement", () => {
       },
     ]);
 
-    const operations = await service.updateAll(installation);
+    const operations = await updates.updateAll(installation);
 
     expect(operations.map((o) => o.addonId)).toEqual(["on"]);
-    expect(service.eligibleUpdatesFor(installation).map((a) => a.id)).toEqual(["on"]);
-    expect(service.updateSummary()[0]?.updates).toBe(1);
+    expect(updates.eligibleFor(installation).map((a) => a.id)).toEqual(["on"]);
+    expect((await updates.updateSummary())[0]?.updates).toBe(1);
   });
 });

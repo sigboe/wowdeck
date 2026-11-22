@@ -29,7 +29,7 @@ import {
   unknownCancelOutcome,
   unknownOutcome,
   type WtfOutcome,
-} from "./wtfText";
+} from "./wtfOutcome";
 
 /** How often a viewed resource is read again (WoW may start or close meanwhile). */
 export const WTF_POLL_MS = 10_000;

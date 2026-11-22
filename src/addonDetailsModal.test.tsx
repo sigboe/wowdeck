@@ -2,25 +2,36 @@ import { describe, expect, mock, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { fakeDeckyUi } from "./testing/fakeDeckyUi";
 import type { Addon, Installation, SearchResult } from "./types";
-import { createAddonSession, type AddonSessionDeps } from "./addonSession";
+import { createAddonSession } from "./addonSession";
+import { connectEngine } from "./engineLink";
+import { createFakeEngine } from "./testSupport/fakeEngine";
 import { resultActions } from "./resultActions";
 
-/** Install and list answer only when the test says; the list holds the addon after the install. */
+/**
+ * Install answers only when the test says, and a switch never does; the list
+ * holds the addon after the install. The lazy description and changelog
+ * reads answer empty.
+ */
 let answerInstall!: () => void;
-const rpc = (async (method: string): Promise<unknown> => {
-  if (method === "addons.install") {
-    return new Promise<unknown>((resolve) => {
-      answerInstall = () => resolve({ addon: installedRow, operation: { status: "installed" } });
-    });
-  }
-  if (method === "installations.select") {
-    return new Promise<unknown>(() => {});
-  }
-  if (method === "installations.list") {
-    return { installations: [{ id: "i1", displayName: "Retail", selected: true } as Installation] };
-  }
-  return { addons: installedNow ? [installedRow] : [] };
-}) as unknown as AddonSessionDeps["rpc"];
+const fake = createFakeEngine({
+  "addons.install": () =>
+    new Promise((resolve) => {
+      answerInstall = () =>
+        resolve({
+          addon: installedRow,
+          operation: { operationId: "op", addonId: "a1", status: "installed", error: null },
+        });
+    }),
+  "installations.list": {
+    installations: [{ id: "i1", displayName: "Retail", selected: true } as Installation],
+  },
+  "installations.recoveryStatus": { installations: [], stateFile: { status: "readable" } },
+  "addons.list": () => ({ addons: installedNow ? [installedRow] : [] }),
+  "addons.getDescription": { description: "" },
+  "addons.getChangelog": { changelog: "" },
+});
+connectEngine(fake);
+const rpc = fake.rpc;
 let installedNow = false;
 const installedRow = {
   id: "a1",
@@ -40,11 +51,10 @@ const session = createAddonSession({
 });
 
 mock.module("@decky/ui", () => fakeDeckyUi);
-// The lazy description and changelog reads need no engine here.
-mock.module("./services/backend", () => ({
-  rpc: async () => ({ description: "", changelog: "" }),
+mock.module("./session", () => ({
+  addonSession: session,
+  activeInstallationId: () => session.get().selectedId ?? "",
 }));
-mock.module("./session", () => ({ addonSession: session }));
 
 const { AddonDetailsModal } = await import("./components/AddonDetailsModal");
 
@@ -64,13 +74,12 @@ const result = {
 function details() {
   const deps = { actions: session.actions, showChannelMenu: () => {} };
   const live = (state: ReturnType<typeof session.get>) => resultActions(state, result, deps);
-  return renderToStaticMarkup(
-    <AddonDetailsModal result={result as never} {...live(session.get())} live={live} />,
-  );
+  return renderToStaticMarkup(<AddonDetailsModal result={result as never} live={live} />);
 }
 
 describe("Details modal follows the shared session", () => {
   test("an install pending elsewhere shows here, and once landed Details offers the installed addon's action", async () => {
+    await session.reloadInstallations();
     await session.reloadAddons();
     const idle = details();
     expect(idle).toContain("X: Install");

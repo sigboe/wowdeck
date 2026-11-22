@@ -1,0 +1,2 @@
+eval --file=.scratch/arch-review-229/245-retry.js → Retry clicked → tab="My Addons"
+probe text → text="scrollTop=[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0] WoWDeck Manager MY ADDONS Forever INSTALLED (9) Update all (1) What The Whisper CurseForge · 1.0.0 → WhatTheWhisper Baganator UPDATEDCurseForge · 861 ConsolePort UPDATEDCurseForge · 3.3.14 Addon Update Notifications WowUp Hub · 1.0.30 Forever Loot Sparkles CurseForge · v2.0.0 RestedXP Guide Local file · v4.11.36 TradeSkillMaster TradeSkillMaster · 4.15.7 Show libraries Addons installed only becaus"

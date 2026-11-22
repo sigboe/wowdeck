@@ -4,6 +4,7 @@ import type { FoundInstallation, Installation } from "./types";
 import {
   addInstallation,
   addWowFolder,
+  type AddFolderParams,
   type AddInstallationRequest,
   type AddWowFolderDeps,
 } from "./addWowFolder";
@@ -11,7 +12,7 @@ import {
 const installation = (gameType: Installation["gameType"], path: string, displayName: string) =>
   ({ id: `id-${path}`, gameType, path, displayName }) as Installation;
 
-/** Fakes for every collaborator; records what the engine was asked and what the player saw. */
+/** Fakes for every collaborator; records what the add was asked and what the player saw. */
 function fakes(opts: {
   picked: string | null;
   found?: FoundInstallation[];
@@ -19,36 +20,36 @@ function fakes(opts: {
   addResult?: Installation[];
   addError?: Error;
 }) {
-  const calls: { method: string; params: unknown }[] = [];
+  const adds: AddFolderParams[] = [];
   const toasts: string[] = [];
   const modals: AddInstallationRequest[] = [];
-  let reloads = 0;
+  const state = { inspectFails: false };
   const deps: AddWowFolderDeps = {
     pickFolder: async () => opts.picked,
-    rpc: (async (method: string, params: unknown) => {
-      calls.push({ method, params });
-      if (method === "installations.inspect") return { found: opts.found ?? [] };
-      if (method === "installations.add") {
-        if (opts.addError) throw opts.addError;
-        return { installations: opts.addResult ?? [] };
+    inspect: async () => {
+      if (state.inspectFails) {
+        throw new Error("unreadable");
       }
-      throw new Error(`unexpected ${method}`);
-    }) as AddWowFolderDeps["rpc"],
+      return opts.found ?? [];
+    },
+    add: async (params) => {
+      adds.push(params);
+      if (opts.addError) {
+        throw opts.addError;
+      }
+      return opts.addResult ?? [];
+    },
     openModal: (request) => modals.push(request),
     toast: (title, body = "") => toasts.push(body ? `${title} | ${body}` : title),
     toastError: (title) => toasts.push(`error: ${title}`),
     installations: opts.installations ?? [],
-    onAdded: async () => {
-      reloads++;
-    },
   };
   return {
     deps,
-    calls,
     toasts,
     modals,
-    adds: () => calls.filter((c) => c.method === "installations.add").map((c) => c.params),
-    reloads: () => reloads,
+    state,
+    adds: () => adds,
   };
 }
 
@@ -74,7 +75,6 @@ describe("Add WoW folder", () => {
     expect(f.adds()).toEqual([{ path: ROOT }]);
     expect(f.modals).toEqual([]);
     expect(f.toasts).toEqual(["Added 3 installations | Retail, Classic Era, Classic"]);
-    expect(f.reloads()).toBe(1);
   });
 
   test("a single version folder opens Add installation with its name and version", async () => {
@@ -107,9 +107,7 @@ describe("Add WoW folder", () => {
 
   test("a folder the engine can't inspect counts as unrecognised", async () => {
     const f = fakes({ picked: "/mnt/odd", found: [] });
-    f.deps.rpc = (async () => {
-      throw new Error("unreadable");
-    }) as unknown as AddWowFolderDeps["rpc"];
+    f.state.inspectFails = true;
     await addWowFolder(f.deps);
     expect(f.modals).toEqual([{ path: "/mnt/odd", displayName: "odd", gameType: null }]);
   });
@@ -124,7 +122,6 @@ describe("Add WoW folder", () => {
     expect(f.adds()).toEqual([]);
     expect(f.modals).toEqual([]);
     expect(f.toasts).toEqual(["Already added: Retail"]);
-    expect(f.reloads()).toBe(0);
   });
 
   test("a parent with every version added names them all", async () => {
@@ -168,7 +165,6 @@ describe("Add WoW folder", () => {
     expect(f.adds()).toEqual([{ path: ROOT }]);
     expect(f.modals).toEqual([]);
     expect(f.toasts).toEqual(["Added Classic Era, Classic"]);
-    expect(f.reloads()).toBe(1);
   });
 
   test("a parent with one new version opens the modal for that one", async () => {
@@ -188,7 +184,7 @@ describe("Add WoW folder", () => {
   test("backing out of the picker adds nothing", async () => {
     const f = fakes({ picked: null, found: THREE });
     await addWowFolder(f.deps);
-    expect(f.calls).toEqual([]);
+    expect(f.adds()).toEqual([]);
     expect(f.modals).toEqual([]);
     expect(f.toasts).toEqual([]);
   });
@@ -197,14 +193,13 @@ describe("Add WoW folder", () => {
     const f = fakes({ picked: ROOT, found: THREE, addError: new Error("disk") });
     await addWowFolder(f.deps);
     expect(f.toasts).toEqual(["error: Couldn't add installations"]);
-    expect(f.reloads()).toBe(0);
   });
 });
 
 describe("Add installation modal's Add", () => {
   const request = { path: `${ROOT}/_retail_`, displayName: "Main", clientType: "retail" as const };
 
-  test("adds the folder under the chosen name and version, then reloads", async () => {
+  test("adds the folder under the chosen name and version", async () => {
     const f = fakes({
       picked: null,
       addResult: [installation("retail", `${ROOT}/_retail_`, "Main")],
@@ -212,13 +207,11 @@ describe("Add installation modal's Add", () => {
     expect(await addInstallation(f.deps, request)).toBe(true);
     expect(f.adds()).toEqual([request]);
     expect(f.toasts).toEqual(["Added Main"]);
-    expect(f.reloads()).toBe(1);
   });
 
   test("a failed add shows an error and reports failure so the modal stays open", async () => {
     const f = fakes({ picked: null, addError: new Error("no markers") });
     expect(await addInstallation(f.deps, request)).toBe(false);
     expect(f.toasts).toEqual(["error: Couldn't add installation"]);
-    expect(f.reloads()).toBe(0);
   });
 });

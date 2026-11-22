@@ -5,11 +5,13 @@
  *       + wowup/wowup-electron/app/services/warcraft/warcraft-platform.service.ts
  *         (getClientTypeForFolderName)
  * Commit: 89a0981ad00290d40368bf2a9f60209a40198502
- * Modified: yes — merged TOC tag constants, Toc shape, flavor folder names
- *   and folder-name -> client-type mapping into one module.
+ * Modified: yes — merged TOC tag constants, Toc shape and the flavor folder
+ *   lookups into one module; the folder names and the folder-name ->
+ *   client-type mapping now live in the client table (wow/clients.ts).
  * See docs/wowup-provenance.md.
  */
 
+import { WOW_CLIENTS, wowClient, wowClientForFolder } from "../clients";
 import { WowClientType } from "../types";
 
 export const TOC_AUTHOR = "Author";
@@ -58,100 +60,16 @@ export interface Toc {
 // WoW installation flavor folders
 // ---------------------------------------------------------------------------
 
-export const WOW_BETA_FOLDER = "_beta_";
-export const WOW_CLASSIC_FOLDER = "_classic_";
-export const WOW_CLASSIC_BETA_FOLDER = "_classic_beta_";
-export const WOW_CLASSIC_ERA_FOLDER = "_classic_era_";
-export const WOW_CLASSIC_ERA_PTR_FOLDER = "_classic_era_ptr_";
-export const WOW_CLASSIC_PTR_FOLDER = "_classic_ptr_";
-export const WOW_RETAIL_PTR_FOLDER = "_ptr_";
-export const WOW_RETAIL_XPTR_FOLDER = "_xptr_";
-export const WOW_RETAIL_FOLDER = "_retail_";
-export const WOW_ANNIVERSARY_FOLDER = "_anniversary_";
-export const WOW_FOREVER_FOLDER = "_forever_";
-export const WOW_CLASSIC_TITAN_FOLDER = "_classic_titan_";
-export const WOW_CN_BETA_FOLDER = "_cn_beta_";
 export const WOW_ADDON_FOLDER_NAME = "AddOns";
 export const WOW_INTERFACE_FOLDER_NAME = "Interface";
 
-export const WOW_FLAVOR_FOLDERS = [
-  WOW_RETAIL_FOLDER,
-  WOW_CLASSIC_FOLDER,
-  WOW_CLASSIC_ERA_FOLDER,
-  WOW_RETAIL_PTR_FOLDER,
-  WOW_CLASSIC_PTR_FOLDER,
-  WOW_CLASSIC_ERA_PTR_FOLDER,
-  WOW_BETA_FOLDER,
-  WOW_CLASSIC_BETA_FOLDER,
-  WOW_RETAIL_XPTR_FOLDER,
-  WOW_ANNIVERSARY_FOLDER,
-  WOW_FOREVER_FOLDER,
-  WOW_CLASSIC_TITAN_FOLDER,
-  WOW_CN_BETA_FOLDER,
-] as const;
+/** Every flavor folder, in client table order. */
+export const WOW_FLAVOR_FOLDERS: readonly string[] = WOW_CLIENTS.map((c) => c.folder);
 
 export function getClientTypeForFolderName(folderName: string): WowClientType {
-  switch (folderName) {
-    case WOW_RETAIL_FOLDER:
-      return WowClientType.Retail;
-    case WOW_RETAIL_PTR_FOLDER:
-      return WowClientType.RetailPtr;
-    case WOW_RETAIL_XPTR_FOLDER:
-      return WowClientType.RetailXPtr;
-    case WOW_CLASSIC_ERA_FOLDER:
-      return WowClientType.ClassicEra;
-    case WOW_CLASSIC_FOLDER:
-      return WowClientType.Classic;
-    case WOW_CLASSIC_PTR_FOLDER:
-      return WowClientType.ClassicPtr;
-    case WOW_BETA_FOLDER:
-      return WowClientType.Beta;
-    case WOW_CLASSIC_BETA_FOLDER:
-      return WowClientType.ClassicBeta;
-    case WOW_CLASSIC_ERA_PTR_FOLDER:
-      return WowClientType.ClassicEraPtr;
-    case WOW_ANNIVERSARY_FOLDER:
-      return WowClientType.Anniversary;
-    case WOW_FOREVER_FOLDER:
-      return WowClientType.Forever;
-    case WOW_CLASSIC_TITAN_FOLDER:
-      return WowClientType.ClassicTitan;
-    case WOW_CN_BETA_FOLDER:
-      return WowClientType.ClassicCnBeta;
-    default:
-      return WowClientType.None;
-  }
+  return wowClientForFolder(folderName)?.clientType ?? WowClientType.None;
 }
 
 export function getFolderNameForClientType(clientType: WowClientType): string | null {
-  switch (clientType) {
-    case WowClientType.Retail:
-      return WOW_RETAIL_FOLDER;
-    case WowClientType.RetailPtr:
-      return WOW_RETAIL_PTR_FOLDER;
-    case WowClientType.RetailXPtr:
-      return WOW_RETAIL_XPTR_FOLDER;
-    case WowClientType.ClassicEra:
-      return WOW_CLASSIC_ERA_FOLDER;
-    case WowClientType.Classic:
-      return WOW_CLASSIC_FOLDER;
-    case WowClientType.ClassicPtr:
-      return WOW_CLASSIC_PTR_FOLDER;
-    case WowClientType.Beta:
-      return WOW_BETA_FOLDER;
-    case WowClientType.ClassicBeta:
-      return WOW_CLASSIC_BETA_FOLDER;
-    case WowClientType.ClassicEraPtr:
-      return WOW_CLASSIC_ERA_PTR_FOLDER;
-    case WowClientType.Anniversary:
-      return WOW_ANNIVERSARY_FOLDER;
-    case WowClientType.Forever:
-      return WOW_FOREVER_FOLDER;
-    case WowClientType.ClassicTitan:
-      return WOW_CLASSIC_TITAN_FOLDER;
-    case WowClientType.ClassicCnBeta:
-      return WOW_CN_BETA_FOLDER;
-    default:
-      return null;
-  }
+  return wowClient(clientType)?.folder ?? null;
 }

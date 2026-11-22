@@ -38,6 +38,10 @@ export function isWowClientExecutable(name: string): boolean {
   return WOW_EXECUTABLE_NAMES.some(exe => exe.toLowerCase() === name.toLowerCase());
 }
 
+export function isWowLauncherExecutable(name: string): boolean {
+  return WOW_LAUNCHER_EXECUTABLE_NAMES.some(exe => exe.toLowerCase() === name.toLowerCase());
+}
+
 export function isWowLaunchExecutable(name: string): boolean {
-  return isWowClientExecutable(name) || WOW_LAUNCHER_EXECUTABLE_NAMES.some(exe => exe.toLowerCase() === name.toLowerCase());
+  return isWowClientExecutable(name) || isWowLauncherExecutable(name);
 }

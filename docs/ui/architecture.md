@@ -23,13 +23,18 @@ Rules P1–P9: frontend layout, conventions, the session model, global input and
 | `src/components/*` | Screens and shared components ([§5](components.md#5-shared-components-and-styling-project)) |
 | `src/steamTheme.ts` | Steam's colour and type tokens (S20) |
 | `src/toast.tsx` | `pluginToast`: every toast, with the plugin icon (S17) |
-| `src/addonRow.ts` | Pure text and context-menu actions for My Addons rows (unit-tested) |
+| `src/addonRow.ts` | Pure text, context-menu and Details action rules for My Addons rows (unit-tested) |
 | `src/loadMore.ts` | Pure load-more paging for Get Addons lists (unit-tested) |
-| `src/addonSession.ts` | Module-scope installations and addon list, and the one set of addon actions (`addonActions.ts`, install included); `src/session.ts` wires it to the engine |
+| `src/addonSession.ts` | Module-scope installations and addon list; the one set of addon actions (`addonActions.ts`, install included), run by id where they need no UI, every installation write, and `installElsewhere` for an install another view starts; `src/session.ts` wires it to the engine |
+| `src/resultActions.ts` | The Details view-model's live actions (`DetailsActions`): `resultActions` for a provider result, `installedActions` for an installed addon (unit-tested) |
+| `src/installedDetails.ts` | The installed-addon to Details mapping: what the modal shows for a My Addons row (unit-tested) |
 | `src/shoulderNav.ts` | Raw controller input (LB/RB, D-pad) helpers |
 | `src/sharedStyles.ts` | Tab-pill and markdown CSS only (no Steam class overrides) |
 | `src/browseSessionState.ts` | Module-scope state for the Get Addons tab |
-| `src/services/backend.ts` | Typed `callable` wrappers + backend event subscription |
+| `src/engineLink.ts` | The engine link: `engine.rpc`, `engine.bridge` and the one event router stores register with; `connectEngine` |
+| `src/engineChanges.ts` | Change counts (`useEngineChange`) for views that reload engine data no store keeps |
+| `src/services/backend.ts` | Decky's engine adapter (`deckyEngineLink`), connected only by `index.tsx` at plugin load |
+| `src/testSupport/fakeEngine.ts` | The typed fake engine tests connect: immediate or held answers, `emit` for events |
 | `src/types.ts` | Frontend mirrors of wire types |
 
 Screens: QAM tabs My Addons (`InstalledView`, with `AddonDetailsModal`), Get
@@ -42,8 +47,13 @@ and Get Addons), `AddonPortabilityModal`, `WtfBackupModal`,
 
 ## 4.2 Conventions to keep
 
-**P1 [PROJECT] MUST** keep all backend access in `src/services/backend.ts`.
-Components never call `callable` directly.
+**P1 [PROJECT] MUST** reach the engine through the engine link
+(`src/engineLink.ts`). Only `index.tsx` imports `src/services/backend.ts`, to
+connect Decky's adapter at plugin load. A store takes `engine.rpc` when it is
+built and registers its event handlers on `engine.events` at module scope;
+components read stores and never subscribe to engine events. Tests connect the
+typed fake (`createFakeEngine`) and never stub Decky's `callable`.
+`src/engineBoundary.test.ts` checks all of this.
 
 **P2 [PROJECT] MUST** unit-test new pure UI logic in a `*.test.ts` file
 (`make test` finds it). Width maths for QAM rows is gone with the
@@ -94,6 +104,9 @@ The former `docs/ui-guidelines.md` (removed 2026-10-22) is superseded by
   - `sourcesStore` in `sourcesStore.ts`: the addon sources and their
     categories, shared by Get Addons and Options and kept across that reset
     (reference data, not per installation).
+- Engine events go to their stores from plugin load on (`addonSession` hears
+  `addons.changed`), so a change made while the panel is closed is already in
+  the list when it opens.
 - `Content()` fetches status/installations/addons on every mount, so a modal
   round-trip triggers backend calls again (INFERRED from source, not measured;
   backlog U-6).
@@ -140,7 +153,9 @@ shares an input, decide which layer owns it and encode that explicitly (as
 
 ## 4.5 Async patterns that are working
 
-Stale-response guard (used by the Get Addons tab's search and lists):
+Stale-response guard (used by the Get Addons tab's search and lists). Reads of
+engine data in other components go through a keyed resource (`useResource`,
+rule A1) instead:
 
 ```tsx
 import { useEffect, useRef, useState } from "react";

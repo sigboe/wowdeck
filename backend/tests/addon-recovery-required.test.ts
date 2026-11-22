@@ -12,6 +12,8 @@ import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSyn
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { AddonService } from "../src/wow/addons/AddonService";
+import { addonService } from "./helpers/addon-service";
+import { AddonUpdates } from "../src/wow/addons/AddonUpdates";
 import { FaultInjectingFs } from "../src/wow/fs/StageFs";
 import { createStateStore } from "../src/wow/storage/StateStore";
 import { AddonProvider } from "../src/wow/providers/addon-provider";
@@ -22,11 +24,10 @@ import type { AddonSearchResult, WowInstallation } from "../src/wow/models";
 import { WowClientType, type AddonProviderType } from "../src/wow/types";
 import type { OperationResult } from "../src/api/contracts";
 import { RecoveryRequiredError } from "../src/wow/errors";
-import type { HandlerDeps } from "../src/api/handlers/deps";
-import { register as registerInstallations } from "../src/api/handlers/installations";
-import { register as registerAddons } from "../src/api/handlers/addons";
+import { subset } from "./helpers/subset";
+import { installationsHandlers, type InstallationsDeps } from "../src/api/handlers/installations";
+import { addonsHandlers, type AddonsDeps } from "../src/api/handlers/addons";
 import { JsonlServer } from "../src/bridge/jsonl";
-import { CompanionSyncCoordinator } from "../src/wow/notifications/CompanionSync";
 
 const roots: string[] = [];
 afterEach(() => {
@@ -130,7 +131,7 @@ function fixture(name: string) {
   registry.register(provider);
   const operations: OperationResult[] = [];
   const store = createStateStore(dataDir, fs);
-  const service = new AddonService(store, registry, new DownloadService(network, join(root, "dl")), {
+  const service = addonService(store, registry, new DownloadService(network, join(root, "dl")), {
     addonsChanged: () => {},
     operationResult: (op) => operations.push(op),
   });
@@ -138,9 +139,11 @@ function fixture(name: string) {
   const { addonsPath: _b, ...instB } = b;
   store.setInstallations([instA, instB]);
   store.updateSettings({ keepPreviousVersions: true });
+  const updates = new AddonUpdates(service, registry, store);
   return {
     store,
     service,
+    updates,
     fs,
     provider,
     a: instA,
@@ -152,8 +155,8 @@ function fixture(name: string) {
       service.install({ intent: "install", providerId: "WowUpHub", externalId: "700", installation }),
     async publish(version: string, releaseId: string) {
       provider.release = { version, releaseId };
-      await service.refresh(instA);
-      await service.refresh(instB);
+      await updates.refresh(instA);
+      await updates.refresh(instB);
     },
   };
 }
@@ -255,33 +258,76 @@ describe("the guard in a recovery-required installation", () => {
     };
   }
 
-  test("refuses listing, refreshing, scanning and every addon mutation, changing nothing", async () => {
+  /**
+   * Every mutating addon entry point, called on A. Keyed by the
+   * AddonService method it calls, so the completeness test below finds an
+   * entry point that is in neither this table nor ALLOWED.
+   */
+  function mutatingEntryPoints(f: Fixture, id: string): Record<string, () => Promise<unknown>> {
+    return {
+      listAddons: () => f.service.listAddons(f.a),
+      scanInstallation: () => f.service.scanInstallation(f.a),
+      refreshMetadata: () => f.service.refreshMetadata(f.a),
+      install: () => f.install(f.a),
+      updateAddon: () => f.service.updateAddon(id),
+      reinstall: () => f.service.reinstall(id),
+      setChannel: () => f.service.setChannel(id, 1),
+      changeSource: () => f.service.changeSource(id, "WowUpHub", "701"),
+      rollback: () => f.service.rollback(id),
+      removeAddon: () => f.service.removeAddon(id),
+      removeUnmanagedFolder: () => f.service.removeUnmanagedFolder(f.a, "Loose"),
+      removeEach: () => f.service.removeEach(f.a, () => true, () => {}),
+      adopt: () => f.service.adopt(f.a, "Loose", "WowUpHub", "700"),
+      setIgnored: () => f.service.setIgnored(id, true),
+      setAutoUpdatePaused: () => f.service.setAutoUpdatePaused(id, true),
+      removeInstallation: () => f.service.installations.remove(f.a.id),
+    };
+  }
+
+  /**
+   * The entry points the guard leaves alone, and why: each is tested on a
+   * recovery-required installation elsewhere in this file, or changes
+   * nothing.
+   */
+  const ALLOWED: Record<string, string> = {
+    addonList: "the read-only list (#107 tests)",
+    clearRollback: "skips the installation (its own test)",
+    importAddonList: "installs through install, skips its follow-up (its own test)",
+    updateIfStill: "a refusal is a failed result (Update all test)",
+    retryRecovery: "the way out of recovery required",
+    verifyRecovery: "the way out of recovery required",
+    addonsFor: "reads records",
+    addonFolders: "reads folders",
+    addonsPathFor: "a path",
+    inspectArchive: "reads an archive outside the installation",
+    sourceRequestForAddon: "reads folders",
+    sourceRequestForFolder: "reads folders",
+    lookup: "asks a provider",
+    canChangeChannel: "reads a record",
+    canReinstall: "reads a record",
+    rollbackStatus: "sizes the Roll back cache",
+  };
+
+  test("refuses every mutating addon entry point, changing nothing", async () => {
     const f = fixture("refusals");
     const { id } = await recoveryRequiredInA(f);
     mkdirSync(join(f.addonsA, "Loose"));
     writeFileSync(join(f.addonsA, "Loose", "Loose.toc"), "## Title: Loose\n");
     const before = snapshot(f);
 
-    const refused: [string, () => Promise<unknown>][] = [
-      ["list", () => f.service.listAddons(f.a)],
-      ["refresh", () => f.service.refresh(f.a)],
-      ["scan", () => f.service.scanInstallation(f.a)],
-      ["install", () => f.install(f.a)],
-      ["update", () => f.service.updateAddon(id)],
-      ["reinstall", () => f.service.reinstall(id)],
-      ["change channel", () => f.service.setChannel(id, 1)],
-      ["change source", () => f.service.changeSource(id, "WowUpHub", "701")],
-      ["rollback", () => f.service.rollback(id)],
-      ["remove", () => f.service.removeAddon(id)],
-      ["remove unmanaged", () => f.service.removeUnmanagedFolder(f.a, "Loose")],
-      ["adopt", () => f.service.adopt(f.a, "Loose", "WowUpHub", "700")],
-      ["ignore", () => f.service.setIgnored(id, true)],
-      ["pause", () => f.service.setAutoUpdatePaused(id, true)],
-    ];
-    for (const [what, call] of refused) {
+    for (const [what, call] of Object.entries(mutatingEntryPoints(f, id))) {
       await expect(call(), what).rejects.toThrow(RecoveryRequiredError);
     }
+    expect(f.store.installations.map((i) => i.id)).toEqual([f.a.id, f.b.id]);
     expect(snapshot(f)).toEqual(before);
+  });
+
+  test("every addon entry point is either refused above or allowed for a stated reason", () => {
+    const f = fixture("entry-points");
+    const methods = Object.getOwnPropertyNames(AddonService.prototype).filter((name) => name !== "constructor");
+    const classified = new Set([...Object.keys(mutatingEntryPoints(f, "x")), ...Object.keys(ALLOWED)]);
+
+    expect(methods.filter((name) => !classified.has(name))).toEqual([]);
   });
 
   test("Update all and automatic updates leave it alone", async () => {
@@ -291,9 +337,9 @@ describe("the guard in a recovery-required installation", () => {
     await f.publish("3.0", "r3").catch(() => {}); // A's refresh is refused
     const before = snapshot(f);
 
-    const operations = await f.service.updateAll(f.a);
+    const operations = await f.updates.updateAll(f.a);
     expect(operations).toEqual([expect.objectContaining({ addonId: id, status: "failed", recoveryRequired: true })]);
-    const auto = await f.service.autoUpdate(async () => "not_running");
+    const auto = await f.updates.autoUpdate(async () => "not_running");
     expect(auto?.failed).toEqual([]);
     expect(auto?.updated).toEqual(["Suite"]); // B's
 
@@ -375,7 +421,7 @@ describe("the guard in a recovery-required installation", () => {
     }
     const before = tree(f.addonsA);
 
-    await new CompanionSyncCoordinator(f.service).regenerate();
+    await f.updates.companion.regenerate();
 
     expect(tree(f.addonsA)).toEqual(before);
     expect(existsSync(join(f.addonsB, "wowup_data_addon"))).toBe(true);
@@ -387,7 +433,7 @@ describe("the guard in a recovery-required installation", () => {
     const id = f.store.addons.forInstallation(f.b.id)[0]!.id;
 
     expect((await f.service.listAddons(f.b)).length).toBeGreaterThan(0);
-    await f.service.scanInstallation(f.b);
+    await f.updates.refresh(f.b);
     expect((await f.service.updateAddon(id)).operation.status).toBe("updated");
     expect((await f.service.rollback(id)).operation.status).toBe("installed");
     expect((await f.service.removeAddon(id)).status).toBe("removed");
@@ -403,12 +449,12 @@ describe("the typed contracts", () => {
     f.store.updateSettings({ selectedInstallationId: f.a.id });
     const lines: string[] = [];
     const server = new JsonlServer((l) => lines.push(l));
-    const deps = { service: f.service, installationService: f.service.installations } as unknown as HandlerDeps;
-    registerInstallations(server, deps);
-    registerAddons(server, deps);
+    const deps = subset<AddonsDeps & InstallationsDeps>({ service: f.service, addonUpdates: f.updates, installationService: f.service.installations });
+    server.handle(installationsHandlers(deps));
+    server.handle(addonsHandlers(deps));
 
     await server.handleLine(JSON.stringify({ id: 1, method: "installations.recoveryStatus", params: {} }));
-    await server.handleLine(JSON.stringify({ id: 2, method: "addons.list", params: {} }));
+    await server.handleLine(JSON.stringify({ id: 2, method: "addons.list", params: { installationId: f.a.id } }));
     await server.handleLine(JSON.stringify({ id: 3, method: "installations.remove", params: { installationId: f.a.id } }));
 
     const [status, list, remove] = lines.map((l) => JSON.parse(l) as Record<string, unknown>);
@@ -431,9 +477,9 @@ describe("the typed contracts", () => {
 function rpcFor(f: Fixture) {
   const lines: string[] = [];
   const server = new JsonlServer((l) => lines.push(l));
-  const deps = { service: f.service, installationService: f.service.installations } as unknown as HandlerDeps;
-  registerInstallations(server, deps);
-  registerAddons(server, deps);
+  const deps = subset<AddonsDeps & InstallationsDeps>({ service: f.service, addonUpdates: f.updates, installationService: f.service.installations });
+  server.handle(installationsHandlers(deps));
+  server.handle(addonsHandlers(deps));
   let id = 0;
   return async (method: string, params: Record<string, unknown> = {}) => {
     await server.handleLine(JSON.stringify({ id: ++id, method, params }));
@@ -452,7 +498,7 @@ describe("stored addon information in a recovery-required installation (#107)", 
     const records = f.store.addons.forInstallation(f.a.id);
     const rpc = rpcFor(f);
 
-    const { result } = await rpc("addons.list");
+    const { result } = await rpc("addons.list", { installationId: f.a.id });
 
     expect(result?.unverified).toBe(true);
     // The record as stored: still 1.0, though 2.0's files are live.
@@ -466,7 +512,7 @@ describe("stored addon information in a recovery-required installation (#107)", 
     await recoveryRequiredInA(f);
     f.store.updateSettings({ selectedInstallationId: f.b.id });
 
-    const { result } = await rpcFor(f)("addons.list");
+    const { result } = await rpcFor(f)("addons.list", { installationId: f.b.id });
 
     expect(result?.unverified).toBeUndefined();
     expect(result?.addons).toEqual([expect.objectContaining({ name: "Suite", version: "1.0" })]);

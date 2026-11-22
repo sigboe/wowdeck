@@ -1,0 +1,9 @@
+fbe53d749f47d477493d2040fe7e0aba3290bacadbd8a0d3bf0e470be48256f7  /home/deck/homebrew/plugins/wowdeck/main.py
+eae7377798adeec8a7d7d43da099101f946520e5a83a072f3e44da6ef33f5fda  /home/deck/homebrew/plugins/wowdeck/dist/index.js
+    PID %CPU COMMAND
+ 212372  100 ps
+ 212164 91.3 systemd-coredum
+ 212179 66.3 steamwebhelper
+ 212334 30.7 wowdeck-x86_64
+ 181862 12.3 python3
+ 211099  2.8 wowdeck-x86_64

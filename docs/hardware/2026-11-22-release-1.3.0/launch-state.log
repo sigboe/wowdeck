@@ -1,0 +1,7 @@
+rpc launch.state {"appId":4221385996} → {"state":{"clients":[{"kind":"battlenet","id":"battlenet","name":"Battle.net","shortName":"Battle.net"},{"kind":"wow","id":"classic","name":"World of Warcraft Classic","shortName":"Classic"},{"kind":"wow","id":"5e80311f078e","name":"World of Warcraft: Forever","shortName":"Forever"}],"target":{"kind":"wow","id":"5e80311f078e","name":"World of Warcraft: Forever","shortName":"Forever"},"entryRunning":false,"gameRunning":"not_running","busy":false}}
+open → tree="QuickAccess-NA" focus="GET ADDONS" tab="Get Addons"
+seek Get Addons --exact → found "Get Addons" (jump)
+key left → focus="MY ADDONS" tab="My Addons"
+probe tab → tab="My Addons"
+diagnose → {"ui":{"tree":"QuickAccess-NA","focus":"MY ADDONS","route":"/routes/library/app/4221385996","plugin":"WoWDeck","tab":"My Addons"},"panel":{"tab":"My Addons","busy":0,"alerts":[]},"engine":{"backendVersion":"1.3.0","protocolVersion":1,"pid":9917},"installations":{"count":3,"active":[{"id":"5e80311f078e","gameType":"forever"}]},"errors":[]}
+close → tree="GamepadUI_Full_Root" focus="Play Forever" tab=null

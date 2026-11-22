@@ -3,10 +3,8 @@ import { useEffect, useSyncExternalStore } from "react";
 import { Field, PanelSection, PanelSectionRow } from "@decky/ui";
 import { FaSearchLocation } from "react-icons/fa";
 import type { Installation } from "../../types";
-import * as api from "../../services/backend";
 import { descriptionStyle } from "../../steamTheme";
 import { pluginToast, toastError } from "../../toast";
-import { addonSession } from "../../session";
 import { confirmRemoveInstallation } from "../confirmRemove";
 import { openInstallationDetails } from "../InstallationDetailsModal";
 import { QAM_DROPDOWN_VALUE } from "../dropdownValue";
@@ -20,17 +18,30 @@ import {
   installationJump,
   subscribeInstallationJump,
 } from "../../optionsJump";
+import type { AddonSession } from "../../addonSession";
+
+/** What the section writes and reads: the addon session owns the installation writes. */
+export type InstallationsSession = Pick<
+  AddonSession,
+  | "get"
+  | "subscribe"
+  | "findWow"
+  | "selectInstallation"
+  | "addInstallation"
+  | "updateInstallation"
+  | "removeInstallation"
+  | "rescanInstallation"
+>;
 
 interface Props {
   installations: Installation[];
   selectedId: string | null;
-  /** Reload installations + addons after structural changes. */
-  onChanged: () => Promise<void>;
+  session: InstallationsSession;
 }
 
 /** The active installation (its details on the Options button), detection and Add WoW folder. */
-export function InstallationsSection({ installations, selectedId, onChanged }: Props) {
-  const { findingWow: detecting } = useSyncExternalStore(addonSession.subscribe, addonSession.get);
+export function InstallationsSection({ installations, selectedId, session }: Props) {
+  const { findingWow: detecting } = useSyncExternalStore(session.subscribe, session.get);
   const jump = useSyncExternalStore(subscribeInstallationJump, installationJump);
   useEffect(() => clearInstallationJump, []);
   const selected = installations.find((i) => i.id === selectedId) ?? null;
@@ -38,36 +49,27 @@ export function InstallationsSection({ installations, selectedId, onChanged }: P
   // The module store holds the selected installation's addons (G4); read
   // when the dialog opens, so the counts are current.
   const addonCounts = () => {
-    const { addons } = addonSession.get();
+    const { addons } = session.get();
     return { installed: addons.length, managed: addons.filter((a) => a.providerId).length };
   };
 
   const openDetails = () =>
     selected &&
     openInstallationDetails(selected, addonCounts(), {
-      onUpdate: async (changes) => {
-        const { installation } = await api.rpc("installations.update", {
-          installationId: selected.id,
-          ...changes,
-        });
-        await onChanged();
-        return installation;
-      },
+      onUpdate: (changes) => session.updateInstallation(selected.id, changes),
       onRescan: () => void rescan(),
       onRemove: removeSelected,
-      recoveryRequired: !!addonSession.get().recoveryRequired[selected.id],
+      recoveryRequired: !!session.get().recoveryRequired[selected.id],
     });
 
   const rescan = async () => {
     if (!selected) {
       return;
     }
-    try {
-      await api.rpc("addons.refresh", { installationId: selected.id });
-      await onChanged();
+    const outcome = await session.rescanInstallation(selected.id);
+    // Recovery required: the recovery state shows; nothing was rescanned.
+    if (outcome === "refreshed") {
       pluginToast("Addons rescanned", selected.displayName);
-    } catch (e) {
-      toastError("Couldn't rescan addons", e);
     }
   };
 
@@ -77,9 +79,8 @@ export function InstallationsSection({ installations, selectedId, onChanged }: P
     }
     confirmRemoveInstallation(selected.displayName, async () => {
       try {
-        await api.rpc("installations.remove", { installationId: selected.id });
+        await session.removeInstallation(selected.id);
         pluginToast("Installation removed", "WoW files weren't touched");
-        await onChanged();
       } catch (e) {
         toastError("Couldn't remove installation", e);
       }
@@ -88,7 +89,7 @@ export function InstallationsSection({ installations, selectedId, onChanged }: P
 
   const detect = async () => {
     clearInstallationJump();
-    await addonSession.findWow();
+    await session.findWow();
   };
 
   return (
@@ -107,7 +108,7 @@ export function InstallationsSection({ installations, selectedId, onChanged }: P
           }
         >
           <InstallationSelect
-            session={addonSession}
+            session={session}
             showHidden
             label="Active installation"
             description={
@@ -158,7 +159,7 @@ export function InstallationsSection({ installations, selectedId, onChanged }: P
               The World of Warcraft folder, or a version folder such as _retail_
             </span>
           }
-          onClick={() => void runAddWowFolder(VIEW, "addWowFolder", installations, onChanged)}
+          onClick={() => void runAddWowFolder(VIEW, "addWowFolder", installations, session)}
           onOKActionDescription="Choose folder"
         >
           <RowChevron />

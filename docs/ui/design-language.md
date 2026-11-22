@@ -562,9 +562,11 @@ page audit clean.
 
 **S34 [PROJECT] MUST** keep anything we add to Steam's own pages invisible
 when it cannot be added safely, and never take Steam's focus. What: the
-"WoW addons" band on the linked game's page (BEYOND-05) sits between the
-hero and the Play block, starts unfocused (Play keeps the page's first
-focus; Up reaches our buttons) and shows only on the game picked in Options.
+"WoW addons" band (BEYOND-05) sits between the hero and the Play block and
+starts unfocused (Play keeps the page's first focus; Up reaches our
+buttons). The band, the tile badge and our Play button show only on linked
+games (GLOSSARY: Linked game) and only while Show in Steam is on. Until the
+settings and the linked games have both loaded, they show nothing.
 Why: it lives on Steam's React internals; a Steam update can move them
 (protondb-decky, which used the same patch, is archived). How:
 `steamGamePage.tsx` patches `/library/app/:appid` like protondb-decky and
@@ -572,7 +574,10 @@ game-glance (renderFunc → `createReactTreePatcher` → splice into
 `appDetailsClasses.InnerContainer` at index 1), every step in a guard that
 logs once and leaves the page as Steam drew it, keyed so a re-render never
 adds a second band. State it needs comes from module scope (the QAM is
-closed there). DEVICE (2026-10-16, after restarts): band on WoW's page only,
+closed there). The engine decides which games are linked
+(`linkedGames.get`). `linkedGames.ts` holds its answer, and the engine's
+`linkedGames.changed` event keeps it current. Nothing in `src/` works this
+out from installations or settings; Steam's pages ask `shownLinkedGames`. DEVICE (2026-10-16, after restarts): band on WoW's page only,
 one copy after navigating away and back, focus on Play at open, Up → Update
 all, Check toasts its result in under a second, Open lands on My Addons, the
 link survives a restart. Spike S8: `appStore.allApps` lists the shortcuts
@@ -585,8 +590,10 @@ while checking, pinned to the top-right of the element framing the tile
 image (`steamDom/homeBadge.ts`; DOM, because no Decky plugin patches home tiles;
 `pointer-events: none`, never focusable). The band and the badge share one
 summary (`steamUpdates.ts`); appearing shows the last counts and, with
-"Check for updates when shown" on, checks in the background at most every
-15 minutes. "Show a badge on its tile" is also the kill switch. DEVICE (2026-10-16,
+"Check for updates" on, checks in the background at most every
+15 minutes. "Tile badge" is the badge's kill switch and turns off
+only the badge, so a tile appearing still starts that check. Show in
+Steam turns off the band, the badge, Play and those checks together. DEVICE (2026-10-16,
 after a restart): badge on the Recent-row tile at boot, followed the tile
 when it shrank; the boot check ran (state written 30 s after boot, the
 toast gate had last run the day before); the game page within 15 min

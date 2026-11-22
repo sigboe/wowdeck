@@ -1,0 +1,7 @@
+nix develop -c make lint typecheck test build
+Exit 0
+Lint and formatting passed. Frontend/backend typechecks passed.
+Frontend/tools: 1300 pass, 0 fail.
+Backend: 1723 pass, 4 skip, 0 fail.
+Python suites: 33/17/27/6, all OK.
+Rollup build completed.

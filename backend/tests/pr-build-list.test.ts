@@ -1,23 +1,21 @@
 /**
  * The PR builds list, engine side: system.listPrBuilds / PrBuildList. A fake
- * net stands in for NetworkClient.getJson and answers with a recorded
- * index.json, in the shape tools/pr-build.ts documents, so no test touches
- * the network (deterministic tests, AGENTS.md).
+ * net stands in for NetworkClient.getJson and answers with the list the PR
+ * build tool itself planned (fixtures/pr-builds/list.ts runs the tool), so
+ * no test touches the network (deterministic tests, AGENTS.md) and the
+ * reader always meets the writer's output.
  */
 
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-import type { HandlerDeps } from "../src/api/handlers/deps";
-import { register } from "../src/api/handlers/system";
+import { subset } from "./helpers/subset";
+import { systemHandlers } from "../src/api/handlers/system";
 import { JsonlServer } from "../src/bridge/jsonl";
 import { NetworkError } from "../src/wow/net/network";
 import { PrBuildList } from "../src/wow/plugin/PrBuildList";
+import { planPublish, PR_BUILD_LABEL, type PrBuildIndex, type PrState, type PublishedPrBuild } from "../../tools/pr-build";
+import { LISTED } from "./fixtures/pr-builds/list";
 
 const INDEX_URL = "https://sigboe.github.io/wowdeck/index.json";
-const RECORDED = JSON.parse(readFileSync(join(import.meta.dir, "fixtures/pr-builds/index.json"), "utf8")) as {
-  builds: Record<string, unknown>[];
-};
 
 function makeList(answer: unknown) {
   const asked: string[] = [];
@@ -33,7 +31,7 @@ function makeList(answer: unknown) {
 
 describe("PR builds list (system.listPrBuilds)", () => {
   test("lists the published builds, newest PR first, as published", async () => {
-    const { list, asked } = makeList(RECORDED);
+    const { list, asked } = makeList(LISTED);
 
     const builds = await list.list();
 
@@ -87,8 +85,8 @@ describe("PR builds list (system.listPrBuilds)", () => {
     expect(await list.list()).toBeNull();
   });
 
-  /** The recorded #117 entry with some fields replaced. */
-  const entry117 = (over: Record<string, unknown>) => ({ ...RECORDED.builds[1], ...over });
+  /** The planned #117 entry with some fields replaced. */
+  const entry117 = (over: Record<string, unknown>) => ({ ...LISTED.builds[1], ...over });
 
   test.each([
     ["a fractional PR number", { number: 117.5 }],
@@ -109,19 +107,19 @@ describe("PR builds list (system.listPrBuilds)", () => {
     ["a zip on another host", { zipUrl: "https://evil.example/pr/117/WoWDeck.zip" }],
     ["a zip URL that is not a URL", { zipUrl: "pr/117/WoWDeck.zip" }],
   ])("an entry with %s is left out; the rest still list", async (_name, over) => {
-    const { list } = makeList({ builds: [RECORDED.builds[0], entry117(over)] });
+    const { list } = makeList({ builds: [LISTED.builds[0], entry117(over)] });
 
     expect((await list.list())!.map((b) => b.number)).toEqual([171]);
   });
 
   test("an entry that is not an object is left out", async () => {
-    const { list } = makeList({ builds: [null, "117", RECORDED.builds[1]] });
+    const { list } = makeList({ builds: [null, "117", LISTED.builds[1]] });
 
     expect((await list.list())!.map((b) => b.number)).toEqual([117]);
   });
 
   test("a PR listed twice lists once, as first published", async () => {
-    const { list } = makeList({ builds: [RECORDED.builds[1], entry117({ title: "Second copy" })] });
+    const { list } = makeList({ builds: [LISTED.builds[1], entry117({ title: "Second copy" })] });
 
     expect((await list.list())!.map((b) => b.title)).toEqual(["Add PR builds to the channel picker"]);
   });
@@ -141,19 +139,52 @@ describe("PR builds list (system.listPrBuilds)", () => {
   });
 });
 
+describe("the writer's plan, read by the engine", () => {
+  /** Every listed PR, open and still at the head its build was made from. */
+  const openAtTheirHeads = (index: PrBuildIndex): PrState[] =>
+    index.builds.map((b) => ({ number: b.number, state: "open", labels: [PR_BUILD_LABEL], headSha: b.headSha }));
+
+  test("every build the PR build tool plans to publish comes back through the parser", async () => {
+    const fresh: PublishedPrBuild = {
+      number: 210,
+      title: "Fresh PR",
+      author: "octocat",
+      version: "1.1.2-pr.210",
+      headSha: "9f3c1d2e4b5a69788796a5b4c3d2e1f0a9b8c7d6",
+      builtAt: "2026-11-10T07:30:00Z",
+      zipSize: 73000000,
+      sha256: "ab".repeat(32),
+      zipUrl: "https://sigboe.github.io/wowdeck/pr/210/WoWDeck.zip",
+    };
+    const plan = planPublish(LISTED, {
+      pr: 210,
+      action: "build",
+      build: fresh,
+      prs: [...openAtTheirHeads(LISTED), { number: 210, state: "open", labels: [PR_BUILD_LABEL], headSha: fresh.headSha }],
+    });
+    // What the workflow writes to Pages: the plan's index, as JSON.
+    const { list } = makeList(JSON.parse(JSON.stringify(plan.index)));
+
+    const builds = await list.list();
+
+    expect(builds?.map((b) => b.number)).toEqual([210, 171, 117]);
+    expect(builds?.find((b) => b.number === 210)).toEqual(fresh);
+  });
+});
+
 describe("system.listPrBuilds over the RPC", () => {
   async function callWith(answer: unknown) {
     let response: { result?: unknown; error?: unknown } = {};
     const rpc = new JsonlServer((line) => {
       response = JSON.parse(line);
     });
-    register(rpc, { prBuilds: makeList(answer).list } as unknown as HandlerDeps);
+    rpc.handle(systemHandlers(subset({ prBuilds: makeList(answer).list })));
     await rpc.handleLine(JSON.stringify({ id: 1, method: "system.listPrBuilds" }));
     return response;
   }
 
   test("answers what the modal shows; the zip and its checksum stay in the engine", async () => {
-    const response = await callWith(RECORDED);
+    const response = await callWith(LISTED);
 
     expect(response.result).toEqual({
       builds: [

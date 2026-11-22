@@ -1,6 +1,8 @@
+import type { LinkedGames } from "../backend/src/api/contracts";
+
 /**
  * The Steam library entry that launches WoW (BEYOND-05), and what the
- * game-page section and the Options picker need from Steam.
+ * game-page section and the Add a game picker need from Steam.
  *
  * Steam keeps every library entry in the ambient `appStore.allApps`; a
  * non-Steam shortcut is app_type 0x40000000 (1073741824). Read on the Deck
@@ -15,45 +17,25 @@ export interface SteamGame {
   name: string;
 }
 
-/** Automatic links require engine evidence; the Options picker remains an explicit override. */
-export function linkedSteamGames(
-  installations: { steamGames?: SteamGame[] }[],
-  manual: SteamGame | null,
-  automatic = true,
-): SteamGame[] {
-  const games = new Map<number, SteamGame>();
-  if (automatic) {
-    for (const installation of installations) {
-      for (const game of installation.steamGames ?? []) games.set(game.appId, game);
-    }
-  }
-  if (manual) games.set(manual.appId, manual);
-  return [...games.values()].sort((a, b) => a.appId - b.appId);
+/** An Add a game row: a shortcut that isn't linked; `removed` marks a found game the player removed. */
+export interface PickerGame extends SteamGame {
+  removed: boolean;
 }
-
-/** What the Options picker knows about links when it opens. */
-export interface PickerLinks {
-  /** The entry the player linked by hand; Unlink removes it. */
-  manual: SteamGame | null;
-  /** Entries the engine attached to installations from detected shortcuts. */
-  detected: SteamGame[];
-  /** Whether "Link detected Steam games" is on. */
-  autoLinkOn: boolean;
-}
-
-/** A picker row's link marker, shown after its app id. */
-export type PickerMarker = "Currently linked" | "Linked automatically";
 
 /**
- * A picker row's link marker: the manual link wins, since that is the link
- * Unlink removes; a detected link counts only while automatic linking is on.
+ * Add a game's rows: the shortcuts that aren't linked yet, removed games
+ * first (marked), each part in the order given.
  */
-export function pickerRowMarker(game: SteamGame, links: PickerLinks): PickerMarker | null {
-  if (game.appId === links.manual?.appId) return "Currently linked";
-  if (links.autoLinkOn && links.detected.some((d) => d.appId === game.appId)) {
-    return "Linked automatically";
-  }
-  return null;
+export function pickerGames(
+  shortcuts: SteamGame[],
+  linked: Pick<LinkedGames, "games" | "removed">,
+): PickerGame[] {
+  const isLinked = new Set(linked.games.map((game) => game.appId));
+  const isRemoved = new Set(linked.removed.map((game) => game.appId));
+  const rows = shortcuts
+    .filter((game) => !isLinked.has(game.appId))
+    .map((game) => ({ ...game, removed: isRemoved.has(game.appId) }));
+  return [...rows.filter((row) => row.removed), ...rows.filter((row) => !row.removed)];
 }
 
 const SHORTCUT_APP_TYPE = 1073741824;
@@ -132,7 +114,7 @@ export function steamShortcutIcon(appId: number): string | undefined {
  * Picker filter: case-insensitive on the name; "wow" also finds "World of
  * Warcraft" by its initials, the name people call it by. Blank keeps all.
  */
-export function filterSteamGames(games: SteamGame[], query: string): SteamGame[] {
+export function filterSteamGames<T extends SteamGame>(games: T[], query: string): T[] {
   const q = query.trim().toLocaleLowerCase();
   if (!q) {
     return games;

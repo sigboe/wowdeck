@@ -92,7 +92,7 @@ afterAll(() => {
 describe("engine selection persistence", () => {
   test("install with an empty store fails before provider lookup or download", async () => {
     expect((await send("installations.list")).result.installations).toEqual([]);
-    const response = await send("addons.install", { providerId: "WowUpHub", externalId: "111" });
+    const response = await send("addons.install", { installationId: "gone", providerId: "WowUpHub", externalId: "111" });
     expect(response.error).toMatchObject({
       code: "not_found",
       message: "That WoW installation isn't available. Check Options",
@@ -134,8 +134,8 @@ describe("engine selection persistence", () => {
     expect(installs).toHaveLength(2);
     expect(installs.find((i: any) => i.gameType === "classic_era").selected).toBe(true);
 
-    // addon queries target the persisted selection
-    const addons = await send("addons.list");
+    const era = installs.find((i: any) => i.gameType === "classic_era");
+    const addons = await send("addons.list", { installationId: era.id });
     expect(addons.result.addons).toEqual([]);
   });
 

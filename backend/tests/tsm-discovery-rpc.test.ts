@@ -1,5 +1,5 @@
-import { register as registerAddons } from "../src/api/handlers/addons";
-import { AddonService } from "../src/wow/addons/AddonService";
+import { addonsHandlers } from "../src/api/handlers/addons";
+import { addonService } from "./helpers/addon-service";
 import { DownloadService } from "../src/wow/downloads/DownloadService";
 import { NetworkClient } from "../src/wow/net/network";
 import { existsSync } from "node:fs";
@@ -8,12 +8,13 @@ import { mkdtempSync, mkdirSync, writeFileSync, utimesSync, rmSync } from "node:
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { JsonlServer } from "../src/bridge/jsonl";
-import { register } from "../src/api/handlers/providers";
+import { providersHandlers } from "../src/api/handlers/providers";
 import { ProviderRegistry } from "../src/wow/providers/provider-registry";
 import { createStateStore } from "../src/wow/storage/StateStore";
+import { InstallationService } from "../src/wow/installation/InstallationService";
 import { TradeSkillMasterAuth, TradeSkillMasterProvider } from "../src/wow/tsm/TradeSkillMasterAuth";
 import { TradeSkillMasterData } from "../src/wow/tsm/TradeSkillMasterData";
-import type { HandlerDeps } from "../src/api/handlers/deps";
+import { subset } from "./helpers/subset";
 
 test("discovery follows across flavors in recent order, stops at refusal and preserves choices", async () => {
   const dir = mkdtempSync(join(tmpdir(), "tsm-discovery-"));
@@ -53,7 +54,7 @@ test("discovery follows across flavors in recent order, stops at refusal and pre
   const auth = new TradeSkillMasterAuth(dir, "1", registry, { authorize: base, token: base, revoke: base, realms: base + "/realms", regions: base + "/regions", gameVersions: base + "/versions", userRealms: base + "/follows" }, {
     now: () => 1000000, setTimeout(fn, ms) { callbacks.set(++timer, { fn, ms }); return timer; }, clearTimeout(id) { callbacks.delete(id as number); },
   });
-  const provider = new TradeSkillMasterProvider(auth); registry.register(provider); registry.attachStore(store); registry.setEnabled("TradeSkillMaster", true);
+  const provider = new TradeSkillMasterProvider(auth); registry.register(provider); registry.attachStore(store); registry.get("TradeSkillMaster")!.enabled = true;
   const installations = folders.map((folder, n) => ({ id: String(n), location: join(dir, String(n), folder), clientType: n ? 2 : 0, label: "fixture", displayName: "fixture", selected: !n, defaultAddonChannelType: 0, source: "detected" as const }));
   store.setInstallations(installations);
   const write = (path: string, content: string) => { mkdirSync(join(path, ".."), { recursive: true }); writeFileSync(path, content); };
@@ -69,15 +70,15 @@ test("discovery follows across flavors in recent order, stops at refusal and pre
     }
   }
   rmSync(join(installations[6]!.location, "WTF/Account/TEST/SavedVariables/TradeSkillMaster_AppHelper.lua"));
-  const data = new TradeSkillMasterData(auth, provider, store, dir, () => {});
+  const data = new TradeSkillMasterData(auth, provider, new InstallationService(store, async () => {}), dir, () => {});
   let response: any; const rpc = new JsonlServer((line) => { response = JSON.parse(line); });
-  register(rpc, { store, registry, tsmAuth: auth, tsmData: data, installationService: { require: (id = "0") => installations[Number(id)] } } as unknown as HandlerDeps);
-  const service = new AddonService(store, registry,
+  rpc.handle(providersHandlers(subset({ store, registry, tsmAuth: auth, tsmData: data, installationService: { require: (id = "0") => installations[Number(id)] } })));
+  const service = addonService(store, registry,
     new DownloadService(new NetworkClient(), join(dir, "downloads")),
     { addonsChanged() {}, operationResult() {} });
-  registerAddons(rpc, { service, tsmData: data,
+  rpc.handle(addonsHandlers(subset({ service, tsmData: data,
     installationService: { require: (id = "0") => installations[Number(id)] }
-  } as unknown as HandlerDeps);
+  })));
   const call = async (method: string, params: object = {}) => { await rpc.handleLine(JSON.stringify({ id: 1, method: "tradeskillmaster." + method, params })); expect(response.error).toBeUndefined(); return response.result; };
   const scan = async () => { for (const [id, cb] of [...callbacks]) if (cb.ms === 30000) { callbacks.delete(id); await cb.fn(); } };
   try {
@@ -141,7 +142,7 @@ test("discovery follows across flavors in recent order, stops at refusal and pre
     failAfterDelete = true;
     expect((await call("unfollow", { realmId: 1, auctionHouseType: "ALL" })).followedCount).toBe(1);
     failReads = false; failAfterDelete = false;
-    await auth.signOut(); registry.setEnabled("TradeSkillMaster", true); limit = 20;
+    await auth.signOut(); registry.get("TradeSkillMaster")!.enabled = true; limit = 20;
     write(join(dir, "tsm-refresh-token"), "fixture"); await auth.restore(); await data.ready;
     expect(posts.slice(3)).toEqual([3, 4, 5, 6]);
     expect((await call("destination", { installationId: "6" })).realms).toEqual([]);

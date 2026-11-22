@@ -5,11 +5,11 @@
  *
  * Each check keeps **its own** persisted timestamp and interval — they are
  * independent features, and one must never silence the other — but they share
- * the rule ("is this check due?") and the concurrency guard ("callers that
- * arrive mid-check join the run already in flight").
+ * the rule ("is this check due?"). Callers that arrive mid-check join the
+ * run already in flight through SingleFlight.
  *
- * Deliberately small and dependency-free: arithmetic plus one promise, so it
- * is testable without a clock, a store or a network, and so a future third
+ * Deliberately small and dependency-free: arithmetic only, so it is
+ * testable without a clock, a store or a network, and so a future third
  * check reuses the behaviour instead of re-inventing it.
  */
 
@@ -50,37 +50,4 @@ export function isDue(lastAt: number | null | undefined, now: number, intervalMs
   }
   const age = now - lastAt;
   return age < 0 || age >= intervalMs;
-}
-
-/**
- * Collapses concurrent callers onto one in-flight run: a second caller that
- * arrives while the check is running gets the same promise instead of
- * starting a duplicate network call. Once it settles, the next caller starts
- * a new run (subject to its own due check).
- */
-export class SingleFlight<T> {
-  #pending: Promise<T> | null = null;
-
-  run(start: () => Promise<T>): Promise<T> {
-    if (this.#pending === null) {
-      this.#pending = start().finally(() => {
-        this.#pending = null;
-      });
-    }
-    return this.#pending;
-  }
-
-  /**
-   * A run of its own, never joined to the one in flight: waits that one out
-   * first. For a caller whose inputs changed since the pending run started
-   * (an update channel switch).
-   */
-  async runAfterPending(start: () => Promise<T>): Promise<T> {
-    // Re-checked after every wait: another caller may have started a run
-    // while this one waited. The check and run() share a synchronous step.
-    while (this.#pending !== null) {
-      await this.#pending.catch(() => undefined);
-    }
-    return this.run(start);
-  }
 }

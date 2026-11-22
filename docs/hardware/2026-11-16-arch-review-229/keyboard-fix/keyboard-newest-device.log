@@ -1,0 +1,3 @@
+{"channel":"stable","offered":"0.2.0","pass":true}
+{"channel":"beta","offered":"0.2.1-beta.12","pass":true}
+{"channel":"beta","offered":"0.3.0","stableBeatsBeta":true,"pass":true}

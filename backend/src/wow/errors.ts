@@ -114,3 +114,15 @@ export class RecoveryRequiredError extends Error {
     this.name = "RecoveryRequiredError";
   }
 }
+
+/**
+ * Refused because DroidDeck starts this machine's Battle.net games, so
+ * WoWDeck has no launch target to save (PlayOwner "droiddeck"). Wire code
+ * `play_left_to_droiddeck`. The player's wording lives in the frontend.
+ */
+export class PlayLeftToDroidDeckError extends Error {
+  constructor() {
+    super("launch targets are off: DroidDeck owns Play on this machine");
+    this.name = "PlayLeftToDroidDeckError";
+  }
+}

@@ -1,0 +1,4 @@
+target: deck
+ssh: deck@10.10.1.39
+tunnel: reusing owned tunnel to deck@10.10.1.39
+up: deployed index.js · backup /home/deck/homebrew/data/wowdeck/test-backups/2026-11-16-213302-1932082 · reloaded 1.2.1, engine pid 4981→5245

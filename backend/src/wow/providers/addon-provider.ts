@@ -93,6 +93,18 @@ export abstract class AddonProvider {
   public allowEdit = true;
   public authRequired = false;
 
+  /**
+   * Runs before the registry turns this provider on, on every path that
+   * does (the Sources toggle, a sign-in). Rejecting refuses: the provider
+   * stays off and the choice is not stored.
+   */
+  public onEnable(): Promise<void> {
+    return Promise.resolve();
+  }
+
+  /** Runs when the registry turns this provider off, on every path that does. */
+  public onDisable(): void {}
+
   /*
    * Capabilities: a provider has one when it implements the method behind
    * it. The flags below are read from the methods, never set, so a

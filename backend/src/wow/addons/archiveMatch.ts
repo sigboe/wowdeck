@@ -10,8 +10,9 @@
  * that is an update, whose install keeps the replaced files for Roll back.
  *
  * One rule for the preview (`addons.inspectArchive`, the card's Install
- * label) and the install itself (AddonService#installUnlocked), so what the
- * card promised is what Install does.
+ * label) and the install itself (AddonService#installUnlocked), both read
+ * through the archive they hold (ReleaseArchive.target), so what the card
+ * promised is what Install does.
  */
 
 import { PROVIDER_ID } from "../../api/providers";
@@ -29,6 +30,11 @@ export async function archiveHash(path: string): Promise<string> {
     hasher.update(chunk);
   }
   return hasher.digest("hex");
+}
+
+/** Whether `record`'s installed archive is the one hashed `hash`: the same content, so a reinstall. */
+export function sameArchive(record: AddonRecord, hash: string | undefined): boolean {
+  return hash !== undefined && record.installedArchiveHash === hash;
 }
 
 /**
@@ -57,7 +63,7 @@ export function archiveTarget(
   hash: string | undefined,
 ): ArchiveTarget {
   const into = (record: AddonRecord): ArchiveTarget =>
-    hash !== undefined && record.installedArchiveHash === hash ? { kind: "reinstall", record } : { kind: "update", record };
+    sameArchive(record, hash) ? { kind: "reinstall", record } : { kind: "update", record };
   // A reused path or URL can now ship other addons: folder ownership wins.
   const same = records.find((r) => r.providerName === providerId && r.externalId === externalId);
   const wanted = new Set(folders);

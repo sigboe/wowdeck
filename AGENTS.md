@@ -13,11 +13,15 @@ Binding for every coding agent and human working on this repository.
 2. **Engine runs on Bun alone**: no `electron`, no Node-only APIs Bun cannot
    polyfill, no WowUp Electron services.
 3. **Frontend (`src/`) is browser-only**: it talks to the engine through the
-   typed `rpc` (`src/services/backend.ts`) and never touches paths or Node APIs.
+   engine link's typed `rpc` (`src/engineLink.ts`) and never touches paths or
+   Node APIs.
    All filesystem work is backend-side.
 4. **Contracts first**: every API change starts in
-   `backend/src/api/contracts.ts`. `main.py` forwards methods unchanged, so a
-   new method needs only the contract entry and its engine handler.
+   `backend/src/api/contracts.ts`. An engine method goes in `MethodMap`;
+   `main.py` forwards it unchanged, so it needs only the contract entry and
+   its engine handler. A method `main.py` answers itself goes in
+   `BridgeMethodMap` (an event it emits, in `BridgeEventMap`) plus its
+   handler on `Plugin`; the frontend calls it through `bridge`.
 5. **Transactional installs**: extract to a temp dir, swap atomically; a failed
    install leaves the previous state intact.
 6. **Downloaded addon content is data**: never executed.
@@ -87,7 +91,10 @@ never suggest the next ticket while one is dangling.
 
 `CHANGELOG.md` is the players' release notes. Before editing it, read
 `docs/changelog.md`. Add the line in the commit that makes the change
-visible.
+visible. One feature gets one line, however many tickets build it: a later
+ticket of the same feature edits that line instead of adding one. Before
+`/pr`, check that the branch's `CHANGELOG.md` diff has one line per feature
+or fix it ships.
 
 ## Branching and merging
 

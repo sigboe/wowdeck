@@ -6,12 +6,12 @@
  */
 
 import { afterAll, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { zipSync } from "fflate";
 import { NetworkError, type DownloadOptions } from "../src/wow/net/network";
 import { stagedFileName, UpdateStager, type DownloadProgress } from "../src/wow/plugin/UpdateStager";
-import { normalizeVersion } from "../src/wow/plugin/PluginVersion";
+import { normalizeVersion } from "../src/api/version";
 import type { PluginUpdateOffer, PluginUpdateSnapshot, UpdateChannel } from "../src/api/contracts";
 import { PluginUpdateCheck, type StagingAnswer } from "../src/wow/notifications/PluginUpdateCheck";
 
@@ -653,5 +653,18 @@ describe("staging a stable release from Beta, then running it", () => {
     const after = session("0.3.0", persisted);
     expect(after.check.channel()).toBe(expected);
     rmSync(join(ROOT, "wowdeck-update-0.3.0.zip"), { force: true });
+  });
+});
+
+// Both staging implementations consume these exact release archives.
+describe("shared recovery package fixtures", () => {
+  const directory = new URL("../../tests/fixtures/recovery-packages/", import.meta.url);
+  const cases = JSON.parse(readFileSync(new URL("cases.json", directory), "utf8")) as { file: string; valid: boolean }[];
+  test.each(cases)("$file accepted: $valid", async ({ file, valid }) => {
+    mkdirSync(ROOT, { recursive: true });
+    const { stager } = makeStager(() => readFileSync(new URL(file, directory)));
+    const outcome = await stager.stage();
+    expect(outcome.error === null).toBe(valid);
+    rmSync(join(ROOT, stagedFileName("0.2.0")), { force: true });
   });
 });

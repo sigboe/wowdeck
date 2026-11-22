@@ -10,14 +10,14 @@
  * Tags arrive one per line on stdin. Problems go to stderr, one per line,
  * and fail the run; a releasable tree prints nothing and exits 0.
  */
+import { parseVersion } from "../backend/src/api/version";
 import { sectionNotes } from "./release-notes";
-
-const STABLE = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
+import { stdinLines } from "./stdin-lines";
 
 /** Every reason `version` cannot be released from this changelog; empty when it can. */
 export function releaseProblems(version: string, changelog: string, tags: string[]): string[] {
   const problems: string[] = [];
-  if (!STABLE.test(version)) {
+  if (parseVersion(version)?.form !== "stable") {
     problems.push(`version ${version} is not X.Y.Z; run make version-set VERSION=X.Y.Z on next`);
   }
   if (tags.includes(`v${version}`)) {
@@ -40,10 +40,7 @@ async function main(argv: string[]): Promise<number> {
     console.error("usage: release-check.ts <X.Y.Z> [CHANGELOG.md]  (tags on stdin)");
     return 1;
   }
-  const tags = (await Bun.stdin.text())
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean);
+  const tags = await stdinLines();
   const problems = releaseProblems(version, await Bun.file(path).text(), tags);
   for (const problem of problems) console.error(problem);
   return problems.length === 0 ? 0 : 1;

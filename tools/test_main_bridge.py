@@ -12,8 +12,10 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import importlib.util
+import inspect
 import logging
 import os
+import re
 import stat
 import sys
 import tempfile
@@ -144,6 +146,42 @@ class RpcForwarderTests(unittest.TestCase):
         out = asyncio.run(plugin_with(backend).rpc(42, {}))  # type: ignore[arg-type]
         self.assertEqual(out["__error"]["code"], "invalid_request")
         self.assertEqual(backend.calls, [])
+
+
+_CONTRACTS = Path(__file__).resolve().parent.parent / "backend" / "src" / "api" / "contracts.ts"
+
+
+def contract_keys(interface: str) -> set[str]:
+    """The top-level keys of an `export interface` in contracts.ts."""
+    source = _CONTRACTS.read_text(encoding="utf-8")
+    body = source.split(f"export interface {interface} {{\n", 1)[1].split("\n}\n", 1)[0]
+    return set(re.findall(r"^  (\w+):", body, re.M))
+
+
+class BridgeContractTests(unittest.TestCase):
+    """The contract declares main.py's own methods and events; main.py
+    must answer and emit exactly those."""
+
+    def test_every_declared_bridge_method_has_a_handler(self) -> None:
+        declared = contract_keys("BridgeMethodMap")
+        self.assertIn("get_status", declared)
+        for name in declared:
+            with self.subTest(name):
+                self.assertTrue(inspect.iscoroutinefunction(getattr(main.Plugin, name, None)))
+
+    def test_every_public_handler_is_declared(self) -> None:
+        handlers = {
+            name
+            for name, fn in inspect.getmembers(main.Plugin, inspect.iscoroutinefunction)
+            if not name.startswith("_")
+        }
+        # `rpc` is the engine's transport, typed by MethodMap.
+        self.assertEqual(handlers - {"rpc"}, contract_keys("BridgeMethodMap"))
+
+    def test_every_emitted_event_is_declared(self) -> None:
+        source = (_CONTRACTS.parent.parent.parent.parent / "main.py").read_text(encoding="utf-8")
+        emitted = set(re.findall(r"decky\.emit\(\s*\"(\w+)\"", source))
+        self.assertEqual(emitted, contract_keys("BridgeEventMap"))
 
 
 class EngineSelectionTests(unittest.TestCase):

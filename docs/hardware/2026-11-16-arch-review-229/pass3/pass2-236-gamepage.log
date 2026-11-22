@@ -1,0 +1,12 @@
+toast-start → observer on notificationtoasts (limit 50; 0 notice(s) displayed)
+target SharedJSContext → target=SharedJSContext
+nav /library/app/4221385996 → focus="Play" route="/routes/library/app/4221385996"
+target Steam Big Picture → target=Steam
+wait text ~ WoW addons --t=8000 → text="scrollTop=[0,0,0,0,0,0,0,0,0,0,0,0,0,0] 19:01 WOW ADDONS 1 addon update in Forever Update all Check for updates Open Play LAST PLAYED Today PLAY TIME 1,378.8 hours World of Warcraft ACTIVITY YOUR STUFF COMMUNITY GAME INFO SCROLL TO TOP"
+eval --active --file=.scratch/arch-review-229/live… → {"text":"19:01\nWOW ADDONS\n1 addon update in Forever\nUpdate all\nCheck for updates\nOpen\nPlay\nLAST PLAYED\nToday\nPLAY TIME\n1,378.8 hours\nWorld of Warcraft\nACTIVITY\nYOUR STUFF\nCOMMUNITY\nGAME INFO\nSCROLL TO TOP\nMENU\nSELECT\nBACK","buttons":["Update all","Check for updates","Open"]}
+seek Check for updates --enter → pressed Enter on "Check for updates" (jump) → focus="Check for updates"
+wait text !~ Checking --t=60000 → text="scrollTop=[0,0,0,0,0,0,0,0,0,0,0,0,0,0] 19:01 WOW ADDONS 1 addon update in Forever Update all Check for updates Open Play LAST PLAYED Today PLAY TIME 1,378.8 hours World of Warcraft F6 ACTIVITY YOUR STUFF COMMUNITY GAME INFO F7 SCROLL TO TOP"
+eval --active --file=.scratch/arch-review-229/live… → {"text":"19:01\nWOW ADDONS\n1 addon update in Forever\nUpdate all\nCheck for updates\nOpen\nPlay\nLAST PLAYED\nToday\nPLAY TIME\n1,378.8 hours\nWorld of Warcraft\nF6\nACTIVITY\nYOUR STUFF\nCOMMUNITY\nGAME INFO\nF7\nSCROLL TO TOP\nShift\n+\nTab\nMENU\nEnter\nSELECT\nEsc\nBACK","buttons":["Update all","Check for updates","Open"]}
+toast-read → 1 notice(s) ["Checked for addon updates 1 addon update in Forever"]
+toast cleanup → 1 notice(s) ["Checked for addon updates 1 addon update in Forever"]
+toast cleanup: observer removed

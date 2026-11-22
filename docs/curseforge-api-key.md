@@ -110,7 +110,7 @@ silently keep shipping.
 spawns the engine binary and injects it as the
 `WOWDECK_BUNDLED_CURSEFORGE_API_KEY` environment variable — the same
 pattern already used for every other piece of engine runtime config
-(`WOWDECK_DATA_DIR`, etc.). The engine (`backend/src/main.ts`) reads
+(`WOWDECK_DATA_DIR`, etc.). The engine (`configFromEnv` in `backend/src/engine.ts`) reads
 that env var once at startup to construct `CurseForgeAuthService`
 (`backend/src/wow/providers/curseforge/CurseForgeKeyAuth.ts`), which
 owns the bundled-vs-user selection logic described below. A build with

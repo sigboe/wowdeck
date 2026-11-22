@@ -56,7 +56,7 @@ import type { WowInstallation } from "../models";
 import type { FsStage, StageFs } from "../fs/StageFs";
 import { joinWithin } from "../fs/safe-fs";
 import { getAddonsPath } from "../installation/InstallationDetector";
-import { InstallError, plainSystemError } from "../errors";
+import { InstallError, plainSystemError, RecoveryRequiredError } from "../errors";
 import { markerId, markerOwner, type AddonOperation, type AddonRecord, type AddonRecordChange, type AddonRecords } from "./AddonRecords";
 import { folderEvidence, type FolderEvidence } from "./FolderEvidence";
 
@@ -236,7 +236,15 @@ export class AddonTransactions {
 
   constructor(private fs: StageFs) {}
 
+  /**
+   * Refused (RecoveryRequiredError) before anything is touched in a
+   * recovery-required installation: a step later in a gate turn (a
+   * dependency, a library) may follow one whose undo stopped.
+   */
   async run<T>(records: AddonRecords, plan: AddonTransactionPlan<T>): Promise<CommittedTransaction<T>> {
+    if (this.unresolved(records, plan.installation.id).length > 0) {
+      throw new RecoveryRequiredError(plan.installation.id, plan.installation.displayName);
+    }
     // Leftovers of earlier committed operations here are disposable.
     await this.cleanUpCommitted(records, plan.installation);
     const transactionId = crypto.randomUUID();

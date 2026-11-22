@@ -1,13 +1,17 @@
 /**
  * TradeSkillMaster's folder rules (project-owned): which folders it owns,
- * which are developer addons, and how its scan match takes over another
- * source's record. The addon service asks at its own checks and does every
- * record and filesystem change itself; these functions only decide.
+ * which are developer addons, how its scan match takes over another
+ * source's record, and what removing its addons may take. The addon service
+ * asks at its own checks and does every record and filesystem change
+ * itself; these functions only decide.
  * Whether the source is usable (on and signed in) is the provider
  * registry's answer, passed in.
  */
 import { PROVIDER_ID } from "../../api/providers";
-import type { AddonFolder } from "../models";
+import type { OperationResult } from "../../api/contracts";
+import type { AddonService } from "../addons/AddonService";
+import { ValidationError } from "../errors";
+import type { AddonFolder, WowInstallation } from "../models";
 import type { ScanMatch } from "../providers/addon-provider";
 
 /** The folders TradeSkillMaster owns. */
@@ -53,6 +57,32 @@ export function isDeveloperAddon(folder: AddonFolder): boolean {
  */
 export function blocksTradeSkillMasterRemoval(folder: AddonFolder): boolean {
   return folder.ignoreReason === "git_repo" || isTradeSkillMasterDevelopmentVersion(folder);
+}
+
+/**
+ * Remove TradeSkillMaster's addons (tradeskillmaster.removeAddons): each
+ * listed addon whose main folder is one of tradeSkillMasterFolders, in one
+ * turn of the addon gate (AddonService.removeEach), so the checks below and
+ * the removals see the same folders. Grouped consent names exactly these
+ * folders: an addon that also owns another folder, or that would take a
+ * developer copy, is refused as a failed result and left in place.
+ */
+export function removeTradeSkillMasterAddons(
+  addons: Pick<AddonService, "removeEach">,
+  installation: WowInstallation,
+): Promise<OperationResult[]> {
+  return addons.removeEach(
+    installation,
+    (folderName) => tradeSkillMasterFolders.includes(folderName),
+    (owned, onDisk) => {
+      if (onDisk.some(blocksTradeSkillMasterRemoval)) {
+        throw new ValidationError("Cannot remove a developer addon");
+      }
+      if (owned.some((name) => !tradeSkillMasterFolders.includes(name))) {
+        throw new ValidationError("This addon also owns folders not named in the confirmation. Remove it from My Addons.");
+      }
+    },
+  );
 }
 
 /**

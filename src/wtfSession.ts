@@ -1,7 +1,10 @@
-import { useCallback, useSyncExternalStore } from "react";
-import * as api from "./services/backend";
+import { useSyncExternalStore } from "react";
+import { engine } from "./engineLink";
+import { pluginToast } from "./toast";
+import { wtfCompletedToast } from "./wtfOutcome";
 import { systemClock } from "./clock";
-import type { KeyedResource, ResourceSnapshot } from "./keyedResource";
+import type { ResourceSnapshot } from "./keyedResource";
+import { useResource } from "./useResource";
 import { addonSession } from "./session";
 import { settingsStore } from "./settings";
 import type { WtfCopySourcesResult, WtfListResult } from "./types";
@@ -9,10 +12,23 @@ import { createWtfLifecycle, type WtfOperationSnapshot } from "./wtfLifecycle";
 
 /** The one Settings backup lifecycle (wtfLifecycle.ts), wired to the engine. */
 export const wtfLifecycle = createWtfLifecycle({
-  rpc: api.rpc,
+  rpc: engine.rpc,
   clock: systemClock,
   writeSettings: settingsStore.write,
   readSettings: settingsStore.load,
+});
+
+// WTF backup and restore jobs run in the engine and outlive any panel or
+// modal: their progress and outcome reach the lifecycle at module scope.
+engine.events.on("wtf.progress", (params) =>
+  wtfLifecycle.handleEvent({ event: "wtf.progress", params }),
+);
+engine.events.on("wtf.completed", (params) => {
+  wtfLifecycle.handleEvent({ event: "wtf.completed", params });
+  const toast = wtfCompletedToast(params);
+  if (toast) {
+    pluginToast(toast.title, toast.body);
+  }
 });
 
 // An installation that is gone keeps no lists, and late answers can't refill them.
@@ -24,23 +40,6 @@ addonSession.subscribe(() => {
     wtfLifecycle.retainInstallations(next.map((i) => i.id));
   }
 });
-
-/** One installation's view of a resource: mounting makes the view a viewer. */
-function useResource<T>(
-  resource: KeyedResource<T>,
-  installationId: string | null,
-): ResourceSnapshot<T> & { refresh: () => Promise<void> } {
-  const subscribe = useCallback(
-    (listener: () => void) => resource.subscribe(installationId, listener),
-    [resource, installationId],
-  );
-  const snapshot = useSyncExternalStore(subscribe, () => resource.get(installationId));
-  const refresh = useCallback(
-    () => (installationId ? resource.refresh(installationId) : Promise.resolve()),
-    [resource, installationId],
-  );
-  return { ...snapshot, refresh };
-}
 
 /**
  * One installation's backup list, for a view. Mounting makes the view a

@@ -5,9 +5,10 @@
  * API for the PR, the releases and whether the newest beta contains the
  * merge. One
  * fake net stands in for NetworkClient.getJson and answers with recorded
- * fixtures (the list as tools/pr-build.ts publishes it, GitHub's PR,
- * releases and compare answers trimmed to the fields read), so no test
- * touches the network (deterministic tests, AGENTS.md).
+ * fixtures (the list as tools/pr-build.ts publishes it, built by that tool
+ * in fixtures/pr-builds/list.ts, plus GitHub's PR, releases and compare
+ * answers trimmed to the fields read), so no test touches the network
+ * (deterministic tests, AGENTS.md).
  */
 
 import { describe, expect, test } from "bun:test";
@@ -16,6 +17,7 @@ import { join } from "node:path";
 import { NetworkError } from "../src/wow/net/network";
 import { PrBuildFollow } from "../src/wow/plugin/PrBuildFollow";
 import { PrBuildList } from "../src/wow/plugin/PrBuildList";
+import { LISTED, WITHOUT_117 } from "./fixtures/pr-builds/list";
 
 const INDEX_URL = "https://sigboe.github.io/wowdeck/index.json";
 const REPO_API = "https://api.github.com/repos/sigboe/wowdeck";
@@ -26,11 +28,6 @@ const compareTo = (tag: string) => `${REPO_API}/compare/${MERGE_SHA}...${tag}`;
 
 const fixture = (name: string): unknown =>
   JSON.parse(readFileSync(join(import.meta.dir, "fixtures/pr-builds", name), "utf8"));
-
-/** The recorded list: #171 at 1.1.2-pr.171, #117 at its second build, 1.1.2-pr.117.2. */
-const LISTED = fixture("index.json");
-/** The list after #117 left it. */
-const WITHOUT_117 = { builds: (LISTED as { builds: { number: number }[] }).builds.filter((b) => b.number !== 117) };
 /** #117 merged 2026-11-10T12:00:00Z as commit fedcba98…. */
 const MERGED = fixture("pull-117-merged.json");
 /** #117 closed without merging. */

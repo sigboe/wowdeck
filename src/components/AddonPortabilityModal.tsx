@@ -19,8 +19,14 @@ import {
   showModal,
 } from "@decky/ui";
 import { FileSelectionType, openFilePicker } from "@decky/api";
-import type { Installation, ImportComparison, ImportSummary, OperationResult } from "../types";
-import * as api from "../services/backend";
+import type { Installation, ImportComparison, OperationResult } from "../types";
+import { engine } from "../engineLink";
+import {
+  forgetImportPreview,
+  importPreviewKey,
+  refreshImportPreview,
+  useImportPreview,
+} from "../importPreview";
 import { addonSession } from "../session";
 import { copyText } from "../services/clipboard";
 import { errorText } from "../errors";
@@ -53,7 +59,6 @@ interface ModalProps {
   mode: Mode;
   installations: Installation[];
   selectedInstallationId: string | null;
-  onInstalled: () => void;
   closeModal?: () => void;
 }
 
@@ -97,7 +102,6 @@ function AddonPortabilityModal({
   mode,
   installations,
   selectedInstallationId,
-  onInstalled,
   closeModal,
 }: ModalProps) {
   const [installationId, setInstallationId] = useState(
@@ -117,16 +121,24 @@ function AddonPortabilityModal({
 
   const [importText, setImportText] = useState("");
   const [loadingFile, setLoadingFile] = useState(false);
-  const [previewing, setPreviewing] = useState(false);
-  const [summary, setSummary] = useState<ImportSummary | null>(null);
-  const [previewError, setPreviewError] = useState<string | null>(null);
+  // The text being previewed; null while the text is being edited.
+  const [previewTarget, setPreviewTarget] = useState<string | null>(null);
+  const preview = useImportPreview(previewTarget);
+  const previewing = preview.loading;
+  const summary = preview.data?.summary ?? null;
+  const previewError = preview.error ?? preview.data?.error?.message ?? null;
   const [applying, setApplying] = useState(false);
   const [applyResults, setApplyResults] = useState<OperationResult[] | null>(null);
-  // Newest preview wins (guide A1): paste-debounce and file-load can overlap.
-  const previewRequestRef = useRef(0);
   const previewDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const installation = installations.find((i) => i.id === installationId);
+
+  useEffect(() => {
+    if (!previewTarget) {
+      return;
+    }
+    return () => forgetImportPreview(previewTarget);
+  }, [previewTarget]);
 
   useEffect(() => {
     return () => {
@@ -142,8 +154,8 @@ function AddonPortabilityModal({
     setExportPayload(null);
     setExportMeta(null);
     try {
-      const result = await api.rpc("addons.export", {
-        installationId: installationId || undefined,
+      const result = await engine.rpc("addons.export", {
+        installationId,
       });
       setExportPayload(result.payload);
       setExportMeta({
@@ -192,7 +204,8 @@ function AddonPortabilityModal({
     }
     setSaving(true);
     try {
-      const { ok, path, message } = await api.saveTextFile(
+      const { ok, path, message } = await engine.bridge(
+        "save_text_file",
         folder.path,
         defaultExportFilename(installation),
         exportPayload,
@@ -227,7 +240,7 @@ function AddonPortabilityModal({
     }
     setLoadingFile(true);
     try {
-      const { ok, content, message } = await api.readTextFile(picked.path);
+      const { ok, content, message } = await engine.bridge("read_text_file", picked.path);
       if (ok && content != null) {
         setImportText(content);
         // Preview immediately rather than waiting for a separate click —
@@ -237,7 +250,7 @@ function AddonPortabilityModal({
         // the extra step. runPreviewFor takes the text directly instead
         // of reading `importText` state, which setImportText above
         // hasn't actually applied yet within this same function.
-        await runPreviewFor(content);
+        runPreviewFor(content);
       } else {
         pluginToast("Couldn't read file", message || "");
       }
@@ -248,37 +261,10 @@ function AddonPortabilityModal({
     }
   };
 
-  const runPreviewFor = async (text: string, preserveResults = false) => {
-    const trimmed = text.trim();
-    if (!trimmed) {
-      return;
-    }
-    const requestId = ++previewRequestRef.current;
-    setPreviewing(true);
-    setPreviewError(null);
-    setSummary(null);
-    if (!preserveResults) setApplyResults(null);
-    try {
-      const { summary: result, error } = await api.rpc("addons.previewImport", {
-        importString: trimmed,
-        installationId: installationId || undefined,
-      });
-      if (requestId !== previewRequestRef.current) {
-        return;
-      }
-      if (error) {
-        setPreviewError(error.message);
-      } else {
-        setSummary(result);
-      }
-    } catch (e) {
-      if (requestId === previewRequestRef.current) {
-        setPreviewError(errorText(e));
-      }
-    } finally {
-      if (requestId === previewRequestRef.current) {
-        setPreviewing(false);
-      }
+  const runPreviewFor = (text: string) => {
+    if (text.trim()) {
+      setApplyResults(null);
+      setPreviewTarget(importPreviewKey(installationId, text));
     }
   };
 
@@ -293,14 +279,13 @@ function AddonPortabilityModal({
    */
   const onImportTextChange = (value: string) => {
     setImportText(value);
-    setSummary(null);
+    setPreviewTarget(null);
     setApplyResults(null);
-    setPreviewError(null);
     if (previewDebounce.current) {
       clearTimeout(previewDebounce.current);
     }
     previewDebounce.current = setTimeout(() => {
-      void runPreviewFor(value);
+      runPreviewFor(value);
     }, 500);
   };
 
@@ -311,10 +296,15 @@ function AddonPortabilityModal({
     }
     setApplying(true);
     try {
-      const { operations, error } = await api.rpc("addons.importAddonList", {
-        importString: trimmed,
-        installationId: installationId || undefined,
-      });
+      // The addon session owns an install it didn't start: it holds
+      // installation switching while the import runs and reads the shown
+      // list again when it settles.
+      const { operations, error } = await addonSession.installElsewhere(installationId, () =>
+        engine.rpc("addons.importAddonList", {
+          importString: trimmed,
+          installationId,
+        }),
+      );
       if (error) {
         pluginToast("Couldn't import", error.message);
         return;
@@ -335,13 +325,12 @@ function AddonPortabilityModal({
           .filter(Boolean)
           .join(" "),
       );
-      if (installed > 0) {
-        onInstalled();
-      }
       // Re-preview so the list reflects what's now actually installed
       // (new -> no_change) instead of a stale "new" row for an addon
       // that was just installed.
-      await runPreviewFor(trimmed, true);
+      const key = importPreviewKey(installationId, trimmed);
+      setPreviewTarget(key);
+      await refreshImportPreview(key);
     } catch (e) {
       toastError("Couldn't import", e);
     } finally {
@@ -353,7 +342,7 @@ function AddonPortabilityModal({
     setInstallationId(id);
     setExportPayload(null);
     setExportMeta(null);
-    setSummary(null);
+    setPreviewTarget(null);
     setApplyResults(null);
   };
 
@@ -549,14 +538,12 @@ export interface OpenAddonPortabilityModalProps {
   mode: Mode;
   installations: Installation[];
   selectedInstallationId: string | null;
-  onInstalled: () => void;
 }
 
 export function openAddonPortabilityModal({
   mode,
   installations,
   selectedInstallationId,
-  onInstalled,
 }: OpenAddonPortabilityModalProps): void {
   const close = () => modalResult.Close();
   const element = (
@@ -564,7 +551,6 @@ export function openAddonPortabilityModal({
       mode={mode}
       installations={installations}
       selectedInstallationId={selectedInstallationId}
-      onInstalled={onInstalled}
       closeModal={close}
     />
   );

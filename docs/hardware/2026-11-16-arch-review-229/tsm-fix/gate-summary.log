@@ -1,0 +1,33 @@
+Command: nix develop -c make lint typecheck test build
+Exit status: 0
+Selected gate output:
+bash -c 'set -euo pipefail; pnpm run lint && pnpm run format:check'
+$ eslint src
+$ prettier --check src
+All matched files use Prettier code style!
+bash -c 'set -euo pipefail; pnpm run typecheck && (cd backend && bun run typecheck)'
+$ tsc --noEmit
+$ tsc --noEmit
+bash -c 'set -euo pipefail; cd backend && bun run build'
+$ bun run build:binaries
+$ mkdir -p out && bun build --compile --target=bun-linux-x64 src/main.ts --outfile out/wowdeck-x86_64 && bun build --compile --target=bun-linux-arm64 src/main.ts --outfile out/wowdeck-aarch64
+bash -c 'set -euo pipefail; pnpm test && (cd backend && bun test) && python3 tools/test_package.py && python3 tools/test_version.py && python3 tools/test_main_bridge.py && python3 tools/test_recovery_updater.py'
+$ bun test --isolate ./src ./tools
+ 1294 pass
+ 0 fail
+Ran 1294 tests across 99 files. [93.31s]
+ 1723 pass
+ 4 skip
+ 0 fail
+Ran 1727 tests across 101 files. [35.01s]
+Ran 33 tests in 0.020s
+OK
+Ran 17 tests in 0.122s
+OK
+Ran 27 tests in 0.024s
+OK
+Ran 6 tests in 1.341s
+OK
+bash -c 'set -euo pipefail; pnpm run build'
+$ rollup -c
+created dist in 14.3s

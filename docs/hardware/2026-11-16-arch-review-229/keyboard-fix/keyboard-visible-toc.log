@@ -1,0 +1,3 @@
+press rb → no change
+eval --active --file=.scratch/arch-review-229/keyb… → [{"text":"Relationships","x":133.39584350585938,"y":179.33334350585938,"w":587.1979370117188,"h":36,"visible":true},{"text":"Required","x":133.39584350585938,"y":251.33334350585938,"w":587.1979370117188,"h":19,"visible":true},{"text":"Review229Missing","x":177.39584350585938,"y":308.8333435058594,"w":459.84375,"h":19,"visible":true}]
+probe focus → focus="Review229 dependencies WhatTheWhisper 2.0 CURSEFOR"

@@ -1,0 +1,20 @@
+$ eslint src
+All matched files use Prettier code style!
+$ tsc --noEmit
+$ tsc --noEmit
+ 1301 pass
+ 0 fail
+Ran 1301 tests across 99 files. [97.29s]
+ 1723 pass
+ 4 skip
+ 0 fail
+Ran 1727 tests across 101 files. [39.14s]
+Ran 33 tests in 0.023s
+OK
+Ran 17 tests in 0.123s
+OK
+Ran 27 tests in 0.023s
+OK
+Ran 6 tests in 1.082s
+OK
+created dist in 11.3s

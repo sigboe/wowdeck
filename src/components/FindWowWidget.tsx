@@ -1,6 +1,7 @@
 import { DialogButton, PanelSection, PanelSectionRow, Spinner } from "@decky/ui";
 import { descriptionStyle } from "../steamTheme";
 import { QAM_VIEW } from "../qamState";
+import type { AddonSession } from "../addonSession";
 import type { AddWowFolderDeps } from "../addWowFolder";
 import { focusTarget, useRestoreFocus } from "./FocusSlot";
 import { runAddWowFolder } from "./addWowFolderUi";
@@ -10,8 +11,8 @@ interface Props {
   detecting: boolean;
   result: string | null;
   onDetect: () => void;
-  /** Reload the installation list and active installation after Add WoW folder. */
-  onAdded: () => Promise<void>;
+  /** Adds the picked folder's installations and reads the lists again. */
+  session: Pick<AddonSession, "addInstallation">;
   restoreRows?: boolean;
   /** Swaps Add WoW folder's collaborators (tests). */
   addFolderDeps?: Partial<AddWowFolderDeps>;
@@ -23,7 +24,7 @@ export function FindWowWidget({
   detecting,
   result,
   onDetect,
-  onAdded,
+  session,
   restoreRows = true,
   addFolderDeps,
 }: Props) {
@@ -65,7 +66,7 @@ export function FindWowWidget({
       <PanelSectionRow>
         <DialogButton
           onClick={() =>
-            void runAddWowFolder(QAM_VIEW.installed, "addWowFolder", [], onAdded, addFolderDeps)
+            void runAddWowFolder(QAM_VIEW.installed, "addWowFolder", [], session, addFolderDeps)
           }
           {...focusTarget(QAM_VIEW.installed, "addWowFolder")}
         >

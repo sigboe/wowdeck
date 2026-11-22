@@ -1,11 +1,11 @@
 /**
  * Runs WTF backup/restore as background jobs (project-owned).
  *
- * The JSONL server handles requests strictly one at a time and the Python
- * bridge times a request out after 120 s, so a backup or restore can never
- * be a single long RPC. `start*` validates, kicks the work off WITHOUT
- * awaiting it and returns a job id; progress and the final outcome are
- * pushed as events (`wtf.progress`, `wtf.completed`). `current()` lets a
+ * The JSONL server handles requests concurrently (see JsonlServer.run), and
+ * the Python bridge times a request out after 120 s, so a backup or restore
+ * can never be a single long RPC. `start*` validates, kicks the work off
+ * WITHOUT awaiting it and returns a job id; progress and the final outcome
+ * are pushed as events (`wtf.progress`, `wtf.completed`). `current()` lets a
  * reopened UI re-attach to a job that is still running.
  */
 

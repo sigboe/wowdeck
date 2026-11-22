@@ -12,9 +12,10 @@ import { join } from "node:path";
 import type { PluginUpdateBackoff, PluginUpdateSnapshot, UpdateChannel } from "../src/api/contracts";
 import { NetworkError } from "../src/wow/net/network";
 import { DAY_MS, HOUR_MS } from "../src/wow/notifications/CheckCadence";
-import { compareVersions, PluginUpdateCheck } from "../src/wow/notifications/PluginUpdateCheck";
+import { PluginUpdateCheck } from "../src/wow/notifications/PluginUpdateCheck";
 import { PrBuildFollow } from "../src/wow/plugin/PrBuildFollow";
 import { PrBuildList } from "../src/wow/plugin/PrBuildList";
+import { LISTED, WITHOUT_117 } from "./fixtures/pr-builds/list";
 
 const NOW = 1_800_000_000_000;
 const RELEASES = "https://github.com/sigboe/wowdeck/releases";
@@ -165,96 +166,6 @@ function makeCheck(options: {
     },
   };
 }
-
-describe("compareVersions", () => {
-  test("orders dotted numbers", () => {
-    expect(compareVersions("0.2.0", "0.1.1")).toBe(1);
-    expect(compareVersions("0.1.1", "0.1.1")).toBe(0);
-    expect(compareVersions("1.0.0", "0.1.1")).toBe(1);
-    expect(compareVersions("0.1.1", "0.10.0")).toBe(-1);
-    expect(compareVersions("0.9.0", "0.10.0")).toBe(-1);
-  });
-
-  test("tolerates a leading v and short versions", () => {
-    expect(compareVersions("v1.0.0", "0.1.1")).toBe(1);
-    expect(compareVersions("v0.1", "0.1.0")).toBe(0);
-  });
-
-  test("null when either side is not a dotted number", () => {
-    expect(compareVersions("banana", "0.1.1")).toBeNull();
-    expect(compareVersions("1.2.3.4", "0.1.1")).toBeNull();
-    expect(compareVersions("", "0.1.1")).toBeNull();
-  });
-
-  test("a beta sorts below its release, betas by N, above the previous release", () => {
-    const ordered = ["0.2.0", "0.3.0-beta.12", "0.3.0-beta.40", "0.3.0", "0.3.1-beta.1"];
-    for (let i = 0; i < ordered.length - 1; i++) {
-      expect(compareVersions(ordered[i]!, ordered[i + 1]!)).toBe(-1);
-      expect(compareVersions(ordered[i + 1]!, ordered[i]!)).toBe(1);
-    }
-    expect(compareVersions("v0.3.0-beta.12", "0.3.0-beta.12")).toBe(0);
-    expect(compareVersions("0.3.0-beta.9", "0.3.0-beta.10")).toBe(-1);
-  });
-
-  test("a test build sorts above every beta of its release, below the release itself, tests by N", () => {
-    const ordered = [
-      "0.2.0",
-      "0.3.0-beta.12",
-      "0.3.0-beta.40",
-      "0.3.0-test.3",
-      "0.3.0-test.114",
-      "0.3.0",
-      "0.3.1-beta.1",
-    ];
-    for (let i = 0; i < ordered.length - 1; i++) {
-      expect(compareVersions(ordered[i]!, ordered[i + 1]!)).toBe(-1);
-      expect(compareVersions(ordered[i + 1]!, ordered[i]!)).toBe(1);
-    }
-    expect(compareVersions("0.3.0-test.9", "0.3.0-test.10")).toBe(-1);
-    expect(compareVersions("0.3.0-test.114", "0.3.0-beta.400")).toBe(1);
-  });
-
-  test("a pr build sorts like a test build: above every beta, below the release, by N", () => {
-    const ordered = ["0.3.0-beta.40", "0.3.0-pr.9", "0.3.0-pr.117", "0.3.0"];
-    for (let i = 0; i < ordered.length - 1; i++) {
-      expect(compareVersions(ordered[i]!, ordered[i + 1]!)).toBe(-1);
-      expect(compareVersions(ordered[i + 1]!, ordered[i]!)).toBe(1);
-    }
-    expect(compareVersions("0.3.0-pr.9", "0.3.0-pr.10")).toBe(-1);
-    expect(compareVersions("0.3.0-pr.117", "0.3.0-pr.117")).toBe(0);
-    expect(compareVersions("0.3.0-pr.117", "0.3.0-beta.400")).toBe(1);
-  });
-
-  test("a pr build's rebuild (-pr.N.K) sorts after -pr.N and by K, still below the release", () => {
-    const ordered = [
-      "0.3.0-beta.40",
-      "0.3.0-pr.117",
-      "0.3.0-pr.117.2",
-      "0.3.0-pr.117.10",
-      "0.3.0-pr.118",
-      "0.3.0",
-    ];
-    for (let i = 0; i < ordered.length - 1; i++) {
-      expect(compareVersions(ordered[i]!, ordered[i + 1]!)).toBe(-1);
-      expect(compareVersions(ordered[i + 1]!, ordered[i]!)).toBe(1);
-    }
-    expect(compareVersions("0.3.0-pr.117.2", "0.3.0-pr.117.2")).toBe(0);
-  });
-
-  test("null for pre-releases other than -beta.N, -test.N, -pr.N and -pr.N.K", () => {
-    expect(compareVersions("1.2.3-beta.1.2", "0.1.1")).toBeNull();
-    expect(compareVersions("1.2.3-test.1.2", "0.1.1")).toBeNull();
-    expect(compareVersions("1.2.3-pr.1.2.3", "0.1.1")).toBeNull();
-    expect(compareVersions("1.2.3-pr.1.x", "0.1.1")).toBeNull();
-    expect(compareVersions("1.2.3-rc.1", "0.1.1")).toBeNull();
-    expect(compareVersions("1.2.3-beta", "0.1.1")).toBeNull();
-    expect(compareVersions("1.2.3-beta.x", "0.1.1")).toBeNull();
-    expect(compareVersions("1.2.3-test", "0.1.1")).toBeNull();
-    expect(compareVersions("1.2.3-alpha.1", "0.1.1")).toBeNull();
-    expect(compareVersions("1.2.3-pr", "0.1.1")).toBeNull();
-    expect(compareVersions("1.2.3-pr.x", "0.1.1")).toBeNull();
-  });
-});
 
 describe("PluginUpdateCheck", () => {
   test("newer release: available, tag's v stripped, release page and zip linked", async () => {
@@ -1554,17 +1465,14 @@ describe("a test build checks like any other, and always has the way out (establ
 /**
  * The PR channel (GLOSSARY: PR channel): a running PR build follows its
  * own PR, answered from the PR builds list under the same cadence, backoff
- * and toast rule as Stable and Beta. The list and GitHub's answers are the
- * recorded fixtures in fixtures/pr-builds.
+ * and toast rule as Stable and Beta. The list is what tools/pr-build.ts
+ * publishes, built by that tool (fixtures/pr-builds/list.ts); GitHub's
+ * answers are the recorded fixtures in fixtures/pr-builds.
  */
 describe("the PR channel: a PR build follows its own PR", () => {
   const prFixture = (name: string): unknown =>
     JSON.parse(readFileSync(join(import.meta.dir, "fixtures/pr-builds", name), "utf8"));
-  /** #171 at 1.1.2-pr.171; #117 at its second build, 1.1.2-pr.117.2. */
-  const LISTED = prFixture("index.json");
-  const WITHOUT_117 = {
-    builds: (LISTED as { builds: { number: number }[] }).builds.filter((b) => b.number !== 117),
-  };
+
   const PULL_117 = `${REPO_API}/pulls/117`;
   const TITLE = "Add PR builds to the channel picker";
   const BETA = [withZip("v1.1.2-beta.42")];

@@ -11,16 +11,28 @@ export interface SteamShortcut {
   launchOptions: string;
 }
 
+/** The product named by a Battle.net --exec launch command, if present. */
+export function shortcutExecProduct(launchOptions: string): string | undefined {
+  return /--exec(?:=|\s+)(?:["'])?launch\s+([^\s"']+)/i.exec(launchOptions)?.[1];
+}
+
 /** A shared Battle.net prefix must not attach a Diablo/Overwatch-specific shortcut. */
 export function isWowShortcut(shortcut: SteamShortcut): boolean {
   const exe = shortcut.exe.trim().replace(/^"(.*)"$/, "$1").replaceAll("\\", "/");
-  const product = /--exec(?:=|\s+)(?:["'])?launch\s+([^\s"']+)/i.exec(shortcut.launchOptions)?.[1]
+  const product = shortcutExecProduct(shortcut.launchOptions)
     ?? /battlenet:\/\/([^\s/"'?]+)/i.exec(shortcut.launchOptions)?.[1];
   return product ? /^wow/i.test(product) : isWowLaunchExecutable(basename(exe));
 }
 
-/** Literal leading environment assignments only; never interpret shell expressions. */
+/**
+ * Literal leading environment assignments only; never interpret shell expressions.
+ * Steam runs a Windows executable through Proton, which sets WINEPREFIX to
+ * `$STEAM_COMPAT_DATA_PATH/pfx` itself. Some installers still write a
+ * WINEPREFIX into such a shortcut's launch options; Proton ignores it, and
+ * so does this. A native wrapper such as umu-run does read it.
+ */
 export function shortcutPrefixOverrides(shortcut: SteamShortcut): string[] {
+  const proton = /\.exe$/i.test(shortcut.exe.trim().replace(/^"(.*)"$/, "$1"));
   const prefixes = new Set<string>();
   const tokens: string[] = [];
   let token = "";
@@ -61,7 +73,7 @@ export function shortcutPrefixOverrides(shortcut: SteamShortcut): string[] {
       const [, name, path] = match;
       if (!path || !isAbsolute(path) || /[$`]/.test(path)) continue;
       if (name === "STEAM_COMPAT_DATA_PATH") prefixes.add(join(path, "pfx"));
-      if (name === "WINEPREFIX") prefixes.add(path);
+      if (name === "WINEPREFIX" && !proton) prefixes.add(path);
     }
   }
   return [...prefixes];

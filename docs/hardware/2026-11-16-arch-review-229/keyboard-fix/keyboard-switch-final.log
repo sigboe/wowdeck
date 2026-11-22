@@ -1,0 +1,23 @@
+eval --full --file=.scratch/arch-review-229/keyboa… → GET ADDONS
+Classic Era
+Search
+Latest
+Popular
+Manual Install
+TradeSkillMaster
+TradeSkillMaster
+Signed in as Review229 shared account
+3 of 10 realms followed
+Manage
+Install TradeSkillMaster
+Refresh auction data
+Updated 5 hours ago
+Missing a realm or region?
+To discover a realm or region, create a character there (or use an existing one), log in, then log out to save WoW settings. For Classic, enable TradeSkillMaster and AppHelper before logging in and out. This list uses locally saved settings, not live character information from Blizzard.
+Review229 current Classic answer · Horde
+Updated 5 hours ago
+Followed
+Forever-EU region data
+Updated 21 hours ago
+eval@SharedJSContext --file=.scratch/arch-review-2… → {"traceLen":399,"last":[{"method":"tradeskillmaster.status","time":918.272,"installationId":null},{"method":"tradeskillmaster.status","time":919.272,"installationId":null},{"method":"tradeskillmaster.status","time":920.272,"installationId":null}]}
+rpc installations.list --pick=installations[].id,i… → {"installations[].id":["351cab445486","032c354a655f","5e80311f078e"],"installations[].selected":[false,true,false]}

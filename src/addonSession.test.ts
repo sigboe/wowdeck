@@ -1,6 +1,12 @@
 /// <reference types="bun-types" />
 import { describe, expect, test } from "bun:test";
 import type { Addon, Installation, SearchResult, UpdateAllProgress } from "./types";
+import type {
+  AddonOperation,
+  MethodMap,
+  MethodName,
+  OperationResult,
+} from "../backend/src/api/contracts";
 import {
   catalogueResult,
   createAddonSession,
@@ -14,6 +20,8 @@ import {
   type AddonSessionDeps,
 } from "./addonSession";
 import { searchDestination } from "./browseDestinations";
+import { createFakeEngine, engineFailure, settle, type Answers } from "./testSupport/fakeEngine";
+import type { SessionActionId } from "./addonRow";
 
 const addon = (overrides: Partial<Addon> = {}): Addon =>
   ({
@@ -27,25 +35,46 @@ const addon = (overrides: Partial<Addon> = {}): Addon =>
     ...overrides,
   }) as Addon;
 
+const op = (status: OperationResult["status"], addonId = "a1"): OperationResult => ({
+  operationId: "op",
+  addonId,
+  status,
+  error: null,
+});
+
 const installation = (id: string, selected = false) => ({ id, selected }) as Installation;
 
-/** A session over a stubbed engine: `answers` maps a method to its result (or an Error to throw). */
-function harness(answers: Record<string, unknown>) {
+/**
+ * A session over the typed fake engine: `answers` answers each method at once
+ * (an Error is a failed call); a method without one waits. It starts with
+ * installation `active` selected (read before the log begins), or with none
+ * when that is null. The log holds the engine calls and the toasts, in order.
+ */
+async function harness(answers: Answers, active: string | null = "i1") {
   const log: string[] = [];
+  const fake = createFakeEngine(
+    active === null
+      ? answers
+      : {
+          "installations.list": { installations: [installation(active, true)] },
+          "installations.recoveryStatus": engineFailure("not_ready"),
+        },
+    {},
+    log,
+  );
   const deps: AddonSessionDeps = {
-    rpc: (async (method: string, params?: unknown) => {
-      log.push(params === undefined ? method : `${method} ${JSON.stringify(params)}`);
-      const answer = answers[method];
-      if (answer instanceof Error) {
-        throw answer;
-      }
-      return typeof answer === "function" ? answer() : answer;
-    }) as AddonSessionDeps["rpc"],
+    rpc: fake.rpc,
     toast: (title, body = "") => log.push(body ? `toast ${title} | ${body}` : `toast ${title}`),
     toastError: (title, e) => log.push(`error ${title} | ${e instanceof Error ? e.message : e}`),
     autoUpdateOn: () => false,
   };
-  return { session: createAddonSession(deps), log };
+  const session = createAddonSession(deps);
+  if (active !== null) {
+    await session.reloadInstallations();
+    log.length = 0;
+    fake.answers = answers;
+  }
+  return { session, log, fake };
 }
 
 describe("addon session: installations", () => {
@@ -54,12 +83,12 @@ describe("addon session: installations", () => {
     expect(resultInstallLabel(null, 1)).toBe("Install");
   });
   test("an empty Find WoW scan reports the result and can be retried after a failure", async () => {
-    const answers: Record<string, unknown> = {
+    const answers: Answers = {
       "installations.detect": new Error("scan failed"),
       "installations.list": { installations: [] },
       "addons.list": { addons: [] },
     };
-    const { session } = harness(answers);
+    const { session } = await harness(answers);
     await session.findWow();
     expect(session.get().findingWow).toBe(false);
     expect(session.get().findWowResult).toContain("Couldn't find WoW");
@@ -73,7 +102,7 @@ describe("addon session: installations", () => {
     const pending = new Promise<{ installations: Installation[] }>((resolve) => {
       finish = resolve;
     });
-    const { session, log } = harness({
+    const { session, log } = await harness({
       "installations.detect": () => pending,
       "installations.list": { installations: [] },
       "addons.list": { addons: [] },
@@ -91,7 +120,7 @@ describe("addon session: installations", () => {
   });
 
   test("Find WoW detects installations and loads their addons", async () => {
-    const { session, log } = harness({
+    const { session, log } = await harness({
       "installations.detect": { installations: [installation("i1", true)] },
       "installations.list": { installations: [installation("i1", true)] },
       "addons.list": { addons: [addon()] },
@@ -105,7 +134,7 @@ describe("addon session: installations", () => {
   });
 
   test("the engine says which installation is active, not the list order", async () => {
-    const { session } = harness({
+    const { session } = await harness({
       "installations.list": { installations: [installation("i1"), installation("i2", true)] },
       "addons.list": { addons: [addon()] },
     });
@@ -114,9 +143,28 @@ describe("addon session: installations", () => {
     expect(session.get().addons.map((a) => a.id)).toEqual(["a1"]);
   });
 
+  test("the list and the provider check name the active installation", async () => {
+    const { session, log } = await harness({
+      "installations.list": { installations: [installation("i1"), installation("i2", true)] },
+      "addons.list": { addons: [addon()] },
+      "addons.refresh": { addons: [addon()], updated: 0, failed: 0 },
+    });
+    await session.reloadAll();
+    await session.refreshFromProviders();
+    expect(log).toContain('addons.list {"installationId":"i2"}');
+    expect(log).toContain('addons.refresh {"installationId":"i2"}');
+  });
+
+  test("with no installation the list is empty and the engine isn't asked for it", async () => {
+    const { session, log } = await harness({ "installations.list": { installations: [] } }, null);
+    await session.reloadAll();
+    expect(session.get().addons).toEqual([]);
+    expect(log.filter((l) => l.startsWith("addons.") || l.startsWith("error"))).toEqual([]);
+  });
+
   test("switching selects in the engine first, then resets the list and Get Addons", async () => {
-    const { session, log } = harness({
-      "installations.select": {},
+    const { session, log } = await harness({
+      "installations.select": { installation: null },
       "addons.list": { addons: [addon({ id: "b1" })] },
     });
     searchDestination.patch({ query: "details", results: [] });
@@ -128,7 +176,10 @@ describe("addon session: installations", () => {
     });
     await session.selectInstallation("i2");
     off();
-    expect(log).toEqual(['installations.select {"installationId":"i2"}', "addons.list"]);
+    expect(log).toEqual([
+      'installations.select {"installationId":"i2"}',
+      'addons.list {"installationId":"i2"}',
+    ]);
     expect(listDuringReload!).toEqual([]);
     expect(session.get().selectedId).toBe("i2");
     expect(session.get().addons.map((a) => a.id)).toEqual(["b1"]);
@@ -137,13 +188,14 @@ describe("addon session: installations", () => {
 
   test("a failed switch keeps the list and re-reads the installations", async () => {
     let selectFails = false;
-    const { session, log } = harness({
+    const { session, log } = await harness({
       "installations.list": { installations: [installation("i1", true)] },
       "addons.list": { addons: [addon()] },
       "installations.select": () => {
         if (selectFails) {
           throw new Error("no such installation");
         }
+        return { installation: null };
       },
     });
     await session.reloadAll();
@@ -162,10 +214,173 @@ describe("addon session: installations", () => {
   });
 });
 
+describe("addon session: installation writes", () => {
+  test("updateInstallation sends the changes, reads the installations again and answers with it", async () => {
+    const { session, log } = await harness({
+      "installations.update": { installation: installation("i1", true) },
+      "installations.list": { installations: [installation("i1", true)] },
+      "installations.recoveryStatus": { installations: [], stateFile: { status: "readable" } },
+    });
+    const changed = await session.updateInstallation("i1", { hidden: true });
+    expect(changed.id).toBe("i1");
+    expect(log).toContain('installations.update {"installationId":"i1","hidden":true}');
+    expect(log).toContain("installations.list");
+  });
+
+  test("removeInstallation removes, then reads the installations again", async () => {
+    const { session, log } = await harness({
+      "installations.remove": { installationId: "i1" },
+      "installations.list": { installations: [] },
+      "installations.recoveryStatus": { installations: [], stateFile: { status: "readable" } },
+    });
+    await session.removeInstallation("i1");
+    expect(log).toEqual([
+      'installations.remove {"installationId":"i1"}',
+      "installations.recoveryStatus",
+      "installations.list",
+    ]);
+    expect(session.get().selectedId).toBeNull();
+  });
+
+  test("addInstallation adds, reads both lists again and answers with the folder's installations", async () => {
+    const { session, log } = await harness({
+      "installations.add": { installations: [installation("i2")] },
+      "installations.list": { installations: [installation("i1", true), installation("i2")] },
+      "addons.list": { addons: [addon()] },
+      "installations.recoveryStatus": { installations: [], stateFile: { status: "readable" } },
+    });
+    const added = await session.addInstallation({ path: "/games/wow" });
+    expect(added.map((i) => i.id)).toEqual(["i2"]);
+    expect(log).toContain('installations.add {"path":"/games/wow"}');
+    expect(session.get().installations.map((i) => i.id)).toEqual(["i1", "i2"]);
+    expect(log).toContain('addons.list {"installationId":"i1"}');
+  });
+
+  test("rescanInstallation refreshes that installation and toasts what it couldn't check", async () => {
+    const { session, log } = await harness({
+      "addons.refresh": { addons: [addon({ version: "2" })], updated: 1, failed: 2 },
+    });
+    const outcome = await session.rescanInstallation("i1");
+    expect(outcome).toBe("refreshed");
+    expect(log).toContain('addons.refresh {"installationId":"i1"}');
+    expect(session.get().addons[0]!.version).toBe("2");
+    expect(log).toContain("toast Couldn't check 2 addons for updates | Try again later");
+  });
+
+  test("rescanning a recovery-required installation shows the recovery state, not an error", async () => {
+    const { session, log } = await harness({
+      "installations.list": { installations: [installation("i1", true)] },
+      "installations.recoveryStatus": {
+        installations: [{ installationId: "i1", status: "recoveryRequired" }],
+        stateFile: { status: "readable" },
+      },
+      "addons.list": { addons: [addon()], unverified: true },
+    });
+    await session.reloadAll();
+    expect(recoveryNeededFor(session.get())?.id).toBe("i1");
+    log.length = 0;
+    const outcome = await session.rescanInstallation("i1");
+    expect(outcome).toBe("recovery");
+    // No provider refresh was attempted and no error toasted: the engine
+    // refuses it there; the recovery state is what shows.
+    expect(log.filter((l) => l.startsWith("addons.refresh"))).toEqual([]);
+    expect(log.filter((l) => l.startsWith("error"))).toEqual([]);
+    expect(recoveryNeededFor(session.get())?.id).toBe("i1");
+  });
+
+  test("rescanning another installation refreshes it without replacing the shown list", async () => {
+    const { session, log } = await harness({
+      "installations.list": { installations: [installation("i1", true), installation("i2")] },
+      "addons.list": { addons: [addon()] },
+      "addons.refresh": { addons: [addon({ id: "b1" })], updated: 0, failed: 0 },
+    });
+    await session.reloadAll();
+    log.length = 0;
+    await session.rescanInstallation("i2");
+    expect(log).toContain('addons.refresh {"installationId":"i2"}');
+    expect(session.get().addons.map((a) => a.id)).toEqual(["a1"]);
+  });
+});
+
+describe("addon session: installs started elsewhere", () => {
+  test("holds installation switching while it runs, then reads the list again", async () => {
+    const { session, log } = await harness({
+      "addons.list": { addons: [addon({ id: "new" })] },
+    });
+    let finish!: () => void;
+    const running = new Promise<void>((resolve) => (finish = resolve));
+    let settled = false;
+    const call = session
+      .installElsewhere("i1", () => running)
+      .then(() => {
+        settled = true;
+      });
+    expect(installationSwitchBlocked(session.get())).toBe("Wait for addon installs to finish.");
+    finish();
+    await call;
+    expect(settled).toBe(true);
+    expect(installationSwitchBlocked(session.get())).toBeNull();
+    expect(log).toContain('addons.list {"installationId":"i1"}');
+    expect(session.get().addons.map((a) => a.id)).toEqual(["new"]);
+  });
+
+  test("reads the recovery state again when the install's answer says recovery required", async () => {
+    const { session, log } = await harness({
+      "installations.recoveryStatus": {
+        installations: [{ installationId: "i1", status: "recoveryRequired" }],
+        stateFile: { status: "readable" },
+      },
+      "addons.list": { addons: [] },
+    });
+    const operation = { ...op("failed"), recoveryRequired: true };
+    await session.installElsewhere("i1", () => Promise.resolve({ operation }));
+    expect(log).toContain("installations.recoveryStatus");
+    expect(recoveryNeededFor(session.get())?.id).toBe("i1");
+  });
+
+  test("an install the engine refuses for recovery rethrows and reads the recovery state", async () => {
+    const { session, log } = await harness({
+      "installations.recoveryStatus": { installations: [], stateFile: { status: "readable" } },
+      "addons.list": { addons: [] },
+    });
+    let refused: unknown = null;
+    try {
+      await session.installElsewhere("i1", () => Promise.reject({ code: "recovery_required" }));
+    } catch (e) {
+      refused = e;
+    }
+    expect((refused as { code?: string }).code).toBe("recovery_required");
+    expect(log).toContain("installations.recoveryStatus");
+    expect(installationSwitchBlocked(session.get())).toBeNull();
+  });
+
+  test("a rejected install rethrows, releases the switch and still reads the list", async () => {
+    const { session, log } = await harness({
+      "addons.list": { addons: [] },
+    });
+    const boom = new Error("engine down");
+    await expect(session.installElsewhere("i1", () => Promise.reject(boom))).rejects.toBe(boom);
+    expect(installationSwitchBlocked(session.get())).toBeNull();
+    expect(log.filter((l) => l.startsWith("error"))).toEqual([]);
+    expect(log).toContain('addons.list {"installationId":"i1"}');
+  });
+
+  test("an install into another installation doesn't re-read the shown list", async () => {
+    const { session, log } = await harness({
+      "installations.list": { installations: [installation("i1", true), installation("i2")] },
+      "addons.list": { addons: [addon()] },
+    });
+    await session.reloadAll();
+    log.length = 0;
+    await session.installElsewhere("i2", () => Promise.resolve(null));
+    expect(log).toEqual([]);
+  });
+});
+
 describe("addon session: list reads", () => {
   test("a failed reload keeps the last list and says so", async () => {
     let fail = false;
-    const { session, log } = harness({
+    const { session, log } = await harness({
       "addons.list": () => {
         if (fail) {
           throw new Error("engine down");
@@ -182,7 +397,9 @@ describe("addon session: list reads", () => {
   });
 
   test("a provider refresh replaces the list and counts addons it couldn't check", async () => {
-    const { session, log } = harness({ "addons.refresh": { addons: [addon()], failed: 2 } });
+    const { session, log } = await harness({
+      "addons.refresh": { addons: [addon()], updated: 0, failed: 2 },
+    });
     await session.refreshFromProviders();
     expect(session.get().addons).toHaveLength(1);
     expect(log).toContain("toast Couldn't check 2 addons for updates | Try again later");
@@ -191,7 +408,7 @@ describe("addon session: list reads", () => {
   test("an update shows busy while it runs, then the list's Updated row", async () => {
     let release!: () => void;
     let reads = 0;
-    const h = harness({
+    const h = await harness({
       // Each read says which it was, so the list shows how often it was read.
       "addons.list": () => {
         reads++;
@@ -200,7 +417,7 @@ describe("addon session: list reads", () => {
       "addons.update": () =>
         new Promise((r) => {
           h.session.addonsChanged(["a1"]);
-          release = () => r({ addon: addon(), operation: { status: "updated" } });
+          release = () => r({ addon: addon(), operation: op("updated") });
         }),
     });
     const { session } = h;
@@ -226,12 +443,12 @@ describe("addon session: list reads", () => {
 
   test("an install resolves once the list shows it; Update all's bar stays until then", async () => {
     let reads = 0;
-    const h = harness({
+    const h = await harness({
       "addons.list": () => {
         reads++;
         return { addons: reads > 0 ? [addon({ id: "new" })] : [] };
       },
-      "addons.install": { addon: addon({ id: "new" }), operation: { status: "installed" } },
+      "addons.install": { addon: addon({ id: "new" }), operation: op("installed") },
       "addons.updateAll": { operations: [] },
     });
     const { session } = h;
@@ -261,7 +478,7 @@ describe("addon session: list reads", () => {
       addonName,
     });
     let finish!: (value: { operations: [] }) => void;
-    const { session } = harness({
+    const { session } = await harness({
       "addons.list": { addons: [] },
       "addons.updateAll": () => new Promise((resolve) => (finish = resolve)),
     });
@@ -288,12 +505,10 @@ describe("addon session: list reads", () => {
 
   test("a row stays busy while another action on it runs, past an earlier read", async () => {
     const releases: (() => void)[] = [];
-    const h = harness({
+    const h = await harness({
       "addons.list": { addons: [addon()] },
       "addons.reinstall": () =>
-        new Promise((r) =>
-          releases.push(() => r({ addon: addon(), operation: { status: "installed" } })),
-        ),
+        new Promise((r) => releases.push(() => r({ addon: addon(), operation: op("installed") }))),
     });
     const { session } = h;
     await session.reloadAddons();
@@ -310,7 +525,7 @@ describe("addon session: list reads", () => {
   test("actions running together, and what the engine reports meanwhile, read the list once", async () => {
     let reads = 0;
     const releases: (() => void)[] = [];
-    const h = harness({
+    const h = await harness({
       "addons.list": () => {
         reads++;
         return { addons: [addon({ version: `read ${reads}` })] };
@@ -319,14 +534,12 @@ describe("addon session: list reads", () => {
         new Promise((r) => {
           // A new addon and its library: ids no row has yet.
           h.session.addonsChanged(["new", "lib"]);
-          releases.push(() =>
-            r({ addon: addon({ id: "new" }), operation: { status: "installed" } }),
-          );
+          releases.push(() => r({ addon: addon({ id: "new" }), operation: op("installed") }));
         }),
       "addons.remove": () =>
         new Promise((r) => {
           h.session.addonsChanged(["a1"]);
-          releases.push(() => r({}));
+          releases.push(() => r({ addonId: "a1", operation: op("removed") }));
         }),
     });
     const { session } = h;
@@ -347,7 +560,7 @@ describe("addon session: list reads", () => {
   test("a list read started before an Ignore doesn't bring the row back", async () => {
     let land!: () => void;
     let reads = 0;
-    const h = harness({
+    const h = await harness({
       "addons.list": () => {
         reads++;
         if (reads === 1) {
@@ -368,7 +581,7 @@ describe("addon session: list reads", () => {
   });
 
   test("an addon the engine returns that the list doesn't show yet reads the list", async () => {
-    const { session } = harness({
+    const { session } = await harness({
       "addons.list": { addons: [addon({ id: "b1" })] },
       "addons.setIgnored": { addon: addon({ id: "b1", ignored: true }) },
     });
@@ -378,21 +591,29 @@ describe("addon session: list reads", () => {
   });
 
   test("a change the engine reports outside any action re-reads the list", async () => {
-    const { session } = harness({ "addons.list": { addons: [addon({ version: "2.0" })] } });
+    const { session } = await harness({ "addons.list": { addons: [addon({ version: "2.0" })] } });
     session.addonsChanged(["a1"]);
-    await Promise.resolve();
-    await Promise.resolve();
+    await settle();
     expect(session.get().addons.map((a) => a.version)).toEqual(["2.0"]);
   });
 
-  test("the folder's dependencies stay on screen; the engine's addon carries none", async () => {
+  test("an action's answer is the row as the engine lists it, taking its place whole", async () => {
     // The list stub would wipe the change, so a re-read would show.
-    const h = harness({
-      "addons.list": { addons: [addon({ neededBy: ["Plater"], dependencies: ["Lib"] })] },
+    const h = await harness({
+      "addons.list": {
+        addons: [addon({ neededBy: ["Plater"], dependencies: ["Lib"], gameVersion: "11.0.2" })],
+      },
       "addons.setIgnored": () => {
         // The engine announces the change before it answers.
         h.session.addonsChanged(["a1"]);
-        return { addon: addon({ ignored: true, neededBy: [], dependencies: [] }) };
+        return {
+          addon: addon({
+            ignored: true,
+            neededBy: [],
+            dependencies: ["OtherLib"],
+            gameVersion: "11.0.7",
+          }),
+        };
       },
     });
     const { session } = h;
@@ -400,17 +621,61 @@ describe("addon session: list reads", () => {
     await session.actions.setIgnored(session.get().addons[0]!, true);
     await Promise.resolve();
     expect(session.get().addons).toEqual([
-      addon({ ignored: true, neededBy: ["Plater"], dependencies: ["Lib"] }),
+      addon({ ignored: true, neededBy: [], dependencies: ["OtherLib"], gameVersion: "11.0.7" }),
     ]);
   });
 
-  test("the filter is trimmed; Show ignored is kept", () => {
-    const { session } = harness({});
+  test("the filter is trimmed; Show ignored is kept", async () => {
+    const { session } = await harness({});
     session.setFilter("  dbm ");
     session.setShowIgnored(true);
     expect(session.get().filter).toBe("dbm");
     expect(session.get().showIgnored).toBe(true);
   });
+});
+
+describe("addon session: row actions by id", () => {
+  /**
+   * What each UI-free action id must send: the engine call the row's action
+   * stands for. Wiring the dispatch wrong (say "resume auto-update" to the
+   * ignore call) fails here, where the view's old switch passed every test.
+   */
+  const expected: [SessionActionId, string][] = [
+    ["update", 'addons.update {"addonId":"a1"}'],
+    ["reinstall", 'addons.reinstall {"addonId":"a1"}'],
+    ["rollback", 'addons.rollback {"addonId":"a1"}'],
+    ["pauseAuto", 'addons.setAutoUpdatePaused {"addonId":"a1","paused":true}'],
+    ["resumeAuto", 'addons.setAutoUpdatePaused {"addonId":"a1","paused":false}'],
+    ["ignore", 'addons.setIgnored {"addonId":"a1","ignored":true}'],
+    ["unignore", 'addons.setIgnored {"addonId":"a1","ignored":false}'],
+  ];
+
+  /** Waits until no action runs and no list read is under way. */
+  const idle = async (session: ReturnType<typeof createAddonSession>) => {
+    for (let i = 0; i < 50; i++) {
+      const { loads, busy } = session.get();
+      if (loads === 0 && Object.keys(busy).length === 0) {
+        return;
+      }
+      await settle();
+    }
+  };
+
+  for (const [action, call] of expected) {
+    test(`"${action}" sends ${call.slice(0, call.indexOf(" "))}`, async () => {
+      const { session, log } = await harness({
+        "addons.list": { addons: [addon()] },
+        "addons.update": { addon: addon(), operation: op("updated") },
+        "addons.reinstall": { addon: addon(), operation: op("installed") },
+        "addons.rollback": { addon: addon(), operation: op("installed") },
+        "addons.setAutoUpdatePaused": { addon: addon() },
+        "addons.setIgnored": { addon: addon() },
+      });
+      session.run(addon(), action);
+      await idle(session);
+      expect(log[0]).toBe(call);
+    });
+  }
 });
 
 describe("Get Addons results against My Addons' list", () => {
@@ -469,12 +734,13 @@ describe("addon session: recovery required (#107)", () => {
   const status = (required: string[]) => ({
     installations: ["A", "B"].map((id) => ({
       installationId: id,
-      status: required.includes(id) ? "recoveryRequired" : "ready",
+      status: required.includes(id) ? ("recoveryRequired" as const) : ("ready" as const),
     })),
+    stateFile: { status: "readable" as const },
   });
 
   test("the engine's recovery status names the active installation for every subscriber", async () => {
-    const { session } = harness({
+    const { session } = await harness({
       "installations.list": { installations: [a, b] },
       "installations.recoveryStatus": status(["A"]),
       "addons.list": { addons: [addon()], unverified: true },
@@ -490,25 +756,25 @@ describe("addon session: recovery required (#107)", () => {
   });
 
   test("a new session over the same engine (a plugin reload) shows it again", async () => {
-    const answers = {
+    const answers: Answers = {
       "installations.list": { installations: [a, b] },
       "installations.recoveryStatus": status(["A"]),
       "addons.list": { addons: [], unverified: true },
     };
-    await harness(answers).session.reloadAll();
-    const { session } = harness(answers);
+    await (await harness(answers)).session.reloadAll();
+    const { session } = await harness(answers);
     await session.reloadAll();
     expect(recoveryNeededFor(session.get())?.id).toBe("A");
   });
 
   test("switching to an unaffected installation shows none, with a verified list", async () => {
-    const answers: Record<string, unknown> = {
+    const answers: Answers = {
       "installations.list": { installations: [a, b] },
       "installations.recoveryStatus": status(["A"]),
       "addons.list": { addons: [], unverified: true },
-      "installations.select": {},
+      "installations.select": { installation: null },
     };
-    const { session } = harness(answers);
+    const { session } = await harness(answers);
     await session.reloadAll();
     answers["addons.list"] = { addons: [addon()] };
     await session.selectInstallation("B");
@@ -518,11 +784,11 @@ describe("addon session: recovery required (#107)", () => {
 
   test("an unreadable state file shows for every subscriber with no installation listed", async () => {
     const stateFile = {
-      status: "unreadable",
+      status: "unreadable" as const,
       reason: "WoWDeck Addon Manager can't read its saved state file",
       nextStep: "Repair or restore state.json, then restart Steam",
     };
-    const { session } = harness({
+    const { session } = await harness({
       "installations.list": { installations: [] },
       "installations.recoveryStatus": { installations: [], stateFile },
       "addons.list": { addons: [] },
@@ -542,7 +808,7 @@ describe("addon session: recovery required (#107)", () => {
   });
 
   test("a readable state file (or an older engine that doesn't say) shows none", async () => {
-    const { session } = harness({
+    const { session } = await harness({
       "installations.list": { installations: [a, b] },
       "installations.recoveryStatus": status([]),
       "addons.list": { addons: [] },
@@ -552,7 +818,7 @@ describe("addon session: recovery required (#107)", () => {
   });
 
   test("an unverified list marks its installation even before the status is read again", async () => {
-    const { session } = harness({
+    const { session } = await harness({
       "installations.list": { installations: [a, b] },
       "installations.recoveryStatus": status([]),
       "addons.list": { addons: [], unverified: true },
@@ -562,20 +828,20 @@ describe("addon session: recovery required (#107)", () => {
   });
 
   test("an operation that leaves recovery required reads the status again", async () => {
-    const answers: Record<string, unknown> = {
+    const answers: Answers = {
       "installations.list": { installations: [a, b] },
       "installations.recoveryStatus": status([]),
       "addons.list": { addons: [addon()] },
       "addons.update": {
         addon: addon(),
         operation: {
-          status: "failed",
+          ...op("failed"),
           error: "Couldn't put the addon's files back",
           recoveryRequired: true,
         },
       },
     };
-    const { session } = harness(answers);
+    const { session } = await harness(answers);
     await session.reloadAll();
     expect(recoveryNeededFor(session.get())).toBeNull();
     answers["installations.recoveryStatus"] = status(["A"]);
@@ -584,20 +850,19 @@ describe("addon session: recovery required (#107)", () => {
   });
 
   test("a removal whose orphaned library left recovery required reads the status again (#110)", async () => {
-    const answers: Record<string, unknown> = {
+    const answers: Answers = {
       "installations.list": { installations: [a, b] },
       "installations.recoveryStatus": status([]),
       "addons.list": { addons: [addon()] },
       "addons.remove": {
         addonId: addon().id,
         operation: {
-          status: "removed",
-          error: null,
-          followUps: [{ status: "failed", error: "stopped", recoveryRequired: true }],
+          ...op("removed"),
+          followUps: [{ ...op("failed"), error: "stopped", recoveryRequired: true }],
         },
       },
     };
-    const { session } = harness(answers);
+    const { session } = await harness(answers);
     await session.reloadAll();
     answers["installations.recoveryStatus"] = status(["A"]);
     await session.actions.remove(addon(), false);
@@ -608,13 +873,13 @@ describe("addon session: recovery required (#107)", () => {
     const refused = Object.assign(new Error("Retail needs recovery first"), {
       code: "recovery_required",
     });
-    const answers: Record<string, unknown> = {
+    const answers: Answers = {
       "installations.list": { installations: [a, b] },
       "installations.recoveryStatus": status([]),
       "addons.list": { addons: [addon()] },
       "addons.setIgnored": refused,
     };
-    const { session } = harness(answers);
+    const { session } = await harness(answers);
     await session.reloadAll();
     answers["installations.recoveryStatus"] = status(["A"]);
     await session.actions.setIgnored(addon(), true);
@@ -622,7 +887,7 @@ describe("addon session: recovery required (#107)", () => {
   });
 
   test("checking for updates there reads the stored list instead of asking providers", async () => {
-    const { session, log } = harness({
+    const { session, log } = await harness({
       "installations.list": { installations: [a, b] },
       "installations.recoveryStatus": status(["A"]),
       "addons.list": { addons: [addon()], unverified: true },
@@ -630,16 +895,18 @@ describe("addon session: recovery required (#107)", () => {
     await session.reloadAll();
     log.length = 0;
     await session.refreshFromProviders();
-    expect(log).toEqual(["addons.list"]);
+    // The stored list, plus the recovery state read again so the notice
+    // is current; no provider call.
+    expect(log).toEqual(['addons.list {"installationId":"A"}', "installations.recoveryStatus"]);
   });
 
   test("a status that can't be read keeps the last one", async () => {
-    const answers: Record<string, unknown> = {
+    const answers: Answers = {
       "installations.list": { installations: [a, b] },
       "installations.recoveryStatus": status(["A"]),
       "addons.list": { addons: [] },
     };
-    const { session } = harness(answers);
+    const { session } = await harness(answers);
     await session.reloadInstallations();
     answers["installations.recoveryStatus"] = new Error("engine busy");
     await session.reloadInstallations();
@@ -651,12 +918,16 @@ describe("addon session: Retry recovery (#108)", () => {
   const a = { ...installation("A", true), displayName: "Retail" } as Installation;
   const status = (required: string[]) => ({
     installations: [
-      { installationId: "A", status: required.includes("A") ? "recoveryRequired" : "ready" },
+      {
+        installationId: "A",
+        status: required.includes("A") ? ("recoveryRequired" as const) : ("ready" as const),
+      },
     ],
+    stateFile: { status: "readable" as const },
   });
 
   test("a recovered installation drops the notice for every subscriber and reads a verified list", async () => {
-    const answers: Record<string, unknown> = {
+    const answers: Answers = {
       "installations.list": { installations: [a] },
       "installations.recoveryStatus": status(["A"]),
       "addons.list": { addons: [addon()], unverified: true },
@@ -666,7 +937,7 @@ describe("addon session: Retry recovery (#108)", () => {
         restored: ["Suite"],
       },
     };
-    const { session, log } = harness(answers);
+    const { session, log } = await harness(answers);
     await session.reloadAll();
     expect(recoveryNeededFor(session.get())?.id).toBe("A");
     const seen: (string | null)[] = [];
@@ -688,7 +959,7 @@ describe("addon session: Retry recovery (#108)", () => {
   test("a refused retry keeps the notice and returns the engine's explanation", async () => {
     const refused = {
       installationId: "A",
-      status: "refused",
+      status: "refused" as const,
       restored: [],
       reason: "Files changed since the addon change stopped",
       nextStep: "Put the files listed here back as they were, then try again",
@@ -696,7 +967,7 @@ describe("addon session: Retry recovery (#108)", () => {
         { location: "AddOns/Suite", reason: "Its files changed since the addon change stopped." },
       ],
     };
-    const { session, log } = harness({
+    const { session, log } = await harness({
       "installations.list": { installations: [a] },
       "installations.recoveryStatus": status(["A"]),
       "addons.list": { addons: [], unverified: true },
@@ -710,7 +981,7 @@ describe("addon session: Retry recovery (#108)", () => {
   });
 
   test("a retry the engine can't answer says so and returns nothing", async () => {
-    const { session, log } = harness({
+    const { session, log } = await harness({
       "installations.list": { installations: [a] },
       "installations.recoveryStatus": status(["A"]),
       "addons.list": { addons: [] },
@@ -727,12 +998,16 @@ describe("addon session: Verify recovery (#109)", () => {
   const a = { ...installation("A", true), displayName: "Retail" } as Installation;
   const status = (required: string[]) => ({
     installations: [
-      { installationId: "A", status: required.includes("A") ? "recoveryRequired" : "ready" },
+      {
+        installationId: "A",
+        status: required.includes("A") ? ("recoveryRequired" as const) : ("ready" as const),
+      },
     ],
+    stateFile: { status: "readable" as const },
   });
 
   test("a verified installation drops the notice and reads a verified list", async () => {
-    const answers: Record<string, unknown> = {
+    const answers: Answers = {
       "installations.list": { installations: [a] },
       "installations.recoveryStatus": status(["A"]),
       "addons.list": { addons: [addon()], unverified: true },
@@ -742,7 +1017,7 @@ describe("addon session: Verify recovery (#109)", () => {
         verified: ["Suite"],
       },
     };
-    const { session, log } = harness(answers);
+    const { session, log } = await harness(answers);
     await session.reloadAll();
     answers["installations.recoveryStatus"] = status([]);
     answers["addons.list"] = { addons: [addon()] };
@@ -762,13 +1037,13 @@ describe("addon session: Verify recovery (#109)", () => {
   test("a refused verification keeps the notice and returns what still differs", async () => {
     const refused = {
       installationId: "A",
-      status: "refused",
+      status: "refused" as const,
       verified: [],
       reason: "The original files aren't all back yet",
       nextStep: "Put the original files back, then verify again",
       conflicts: [{ location: "AddOns/Suite", reason: "Its files differ from the original." }],
     };
-    const { session, log } = harness({
+    const { session, log } = await harness({
       "installations.list": { installations: [a] },
       "installations.recoveryStatus": status(["A"]),
       "addons.list": { addons: [], unverified: true },
@@ -782,7 +1057,7 @@ describe("addon session: Verify recovery (#109)", () => {
   });
 
   test("a verification the engine can't answer says so and returns nothing", async () => {
-    const { session, log } = harness({
+    const { session, log } = await harness({
       "installations.list": { installations: [a] },
       "installations.recoveryStatus": status(["A"]),
       "addons.list": { addons: [] },
@@ -816,27 +1091,27 @@ describe("addon session: pending catalogue installs", () => {
   const installs = (log: string[]) => log.filter((line) => line.startsWith("addons.install"));
 
   /** A session whose install and list RPCs answer only when the test says. */
-  function deferredHarness() {
-    const installAnswers: ReturnType<typeof deferred<unknown>>[] = [];
-    const listAnswers: ReturnType<typeof deferred<unknown>>[] = [];
-    const h = harness({
+  async function deferredHarness() {
+    const installAnswers: ReturnType<typeof deferred<AddonOperation>>[] = [];
+    const listAnswers: ReturnType<typeof deferred<{ addons: Addon[] }>>[] = [];
+    const h = await harness({
       "addons.install": () => {
-        const d = deferred<unknown>();
+        const d = deferred<AddonOperation>();
         installAnswers.push(d);
         return d.promise;
       },
       "addons.list": () => {
-        const d = deferred<unknown>();
+        const d = deferred<{ addons: Addon[] }>();
         listAnswers.push(d);
         return d.promise;
       },
     });
     return { ...h, installAnswers, listAnswers };
   }
-  const ok = { addon: addon(), operation: { status: "installed" } };
+  const ok = { addon: addon(), operation: op("installed") };
 
   test("pending from before the RPC, across subscribers, until the list read lands", async () => {
-    const { session, log, installAnswers, listAnswers } = deferredHarness();
+    const { session, log, installAnswers, listAnswers } = await deferredHarness();
     const r = result("1");
     const running = session.actions.install(r, "beta");
     expect(installs(log)).toHaveLength(1);
@@ -866,12 +1141,14 @@ describe("addon session: pending catalogue installs", () => {
   });
 
   test("the same addon again, from any view or channel, sends nothing and queues nothing", async () => {
-    const { session, log, installAnswers, listAnswers } = deferredHarness();
+    const { session, log, installAnswers, listAnswers } = await deferredHarness();
     const r = result("1");
     const first = session.actions.install(r);
     await session.actions.install({ ...r }, "beta");
     await session.actions.install(r, "alpha");
-    expect(installs(log)).toEqual(['addons.install {"providerId":"Curse","externalId":"1"}']);
+    expect(installs(log)).toEqual([
+      'addons.install {"installationId":"i1","providerId":"Curse","externalId":"1"}',
+    ]);
     installAnswers[0]!.resolve(ok);
     await flush();
     listAnswers[0]!.resolve({ addons: [installed(r)] });
@@ -882,13 +1159,13 @@ describe("addon session: pending catalogue installs", () => {
   });
 
   test("two addons pending at once settle independently", async () => {
-    const { session, log, installAnswers, listAnswers } = deferredHarness();
+    const { session, log, installAnswers, listAnswers } = await deferredHarness();
     const a = result("1");
     const b = result("2");
     const first = session.actions.install(a);
     const second = session.actions.install(b);
     expect(installs(log)).toHaveLength(2);
-    installAnswers[0]!.resolve({ addon: addon(), operation: { status: "failed", error: "nope" } });
+    installAnswers[0]!.resolve({ addon: addon(), operation: { ...op("failed"), error: "nope" } });
     await first;
     expect(isInstallPending(session.get(), a)).toBe(false);
     expect(isInstallPending(session.get(), b)).toBe(true);
@@ -900,7 +1177,7 @@ describe("addon session: pending catalogue installs", () => {
   });
 
   test("one install succeeding first leaves the other pending until both settle", async () => {
-    const { session, log, installAnswers, listAnswers } = deferredHarness();
+    const { session, log, installAnswers, listAnswers } = await deferredHarness();
     const a = result("1");
     const b = result("2");
     const first = session.actions.install(a);
@@ -926,10 +1203,10 @@ describe("addon session: pending catalogue installs", () => {
   });
 
   test("a reported failure says so, clears pending and allows a retry", async () => {
-    const { session, log, installAnswers } = deferredHarness();
+    const { session, log, installAnswers } = await deferredHarness();
     const r = result("1", "Plater");
     const first = session.actions.install(r);
-    installAnswers[0]!.resolve({ addon: addon(), operation: { status: "failed", error: "nope" } });
+    installAnswers[0]!.resolve({ addon: addon(), operation: { ...op("failed"), error: "nope" } });
     await first;
     expect(log).toContain("error Couldn't install Plater | nope");
     expect(isInstallPending(session.get(), r)).toBe(false);
@@ -938,7 +1215,7 @@ describe("addon session: pending catalogue installs", () => {
   });
 
   test("a rejected RPC stays pending through the list read, then allows a retry", async () => {
-    const { session, log, installAnswers, listAnswers } = deferredHarness();
+    const { session, log, installAnswers, listAnswers } = await deferredHarness();
     const r = result("1", "Plater");
     const first = session.actions.install(r);
     installAnswers[0]!.reject(new Error("engine down"));
@@ -953,7 +1230,7 @@ describe("addon session: pending catalogue installs", () => {
   });
 
   test("a failed list read after an install keeps the last list and still clears pending", async () => {
-    const { session, log, installAnswers, listAnswers } = deferredHarness();
+    const { session, log, installAnswers, listAnswers } = await deferredHarness();
     const before = session.reloadAddons();
     listAnswers[0]!.resolve({ addons: [addon()] });
     await before;
@@ -970,7 +1247,7 @@ describe("addon session: pending catalogue installs", () => {
 
   test("an installed addon's row shows busy on its result while it updates", async () => {
     const r = result("61284");
-    const { session } = harness({
+    const { session } = await harness({
       "addons.list": { addons: [addon({ canReinstall: true })] },
       "addons.update": () => new Promise(() => {}),
     });
@@ -988,17 +1265,19 @@ describe("addon session: installation switching against catalogue installs", () 
   const result = (externalId: string) =>
     ({ providerId: "Curse", externalId, name: `Addon ${externalId}` }) as SearchResult;
   const sent = (log: string[], prefix: string) => log.filter((line) => line.startsWith(prefix));
-  const ok = { addon: addon(), operation: { status: "installed" } };
+  const ok = { addon: addon(), operation: op("installed") };
 
   /** Every engine call the switch and installs make answers only when the test says. */
-  function deferredHarness() {
+  async function deferredHarness() {
     const answers: Record<string, ReturnType<typeof deferred<unknown>>[]> = {};
-    const later = (method: string) => () => {
-      const d = deferred<unknown>();
-      (answers[method] ??= []).push(d);
-      return d.promise;
-    };
-    const h = harness({
+    const later =
+      <K extends MethodName>(method: K) =>
+      () => {
+        const d = deferred<unknown>();
+        (answers[method] ??= []).push(d);
+        return d.promise as Promise<MethodMap[K]["result"]>;
+      };
+    const h = await harness({
       "addons.install": later("addons.install"),
       "addons.list": later("addons.list"),
       "installations.select": later("installations.select"),
@@ -1009,14 +1288,14 @@ describe("addon session: installation switching against catalogue installs", () 
   }
 
   test("a pending install blocks switching; a stale selector callback sends nothing", async () => {
-    const { session, log, answer } = deferredHarness();
+    const { session, log, answer } = await deferredHarness();
     expect(installationSwitchBlocked(session.get())).toBeNull();
     const running = session.actions.install(result("1"));
     expect(installationSwitchBlocked(session.get())).toBe("Wait for addon installs to finish.");
     // A selector opened before the install started, picked now.
     await session.selectInstallation("i2");
     expect(sent(log, "installations.select")).toEqual([]);
-    expect(session.get().selectedId).toBeNull();
+    expect(session.get().selectedId).toBe("i1");
     answer("addons.install").resolve(ok);
     await flush();
     answer("addons.list").resolve({ addons: [] });
@@ -1025,7 +1304,7 @@ describe("addon session: installation switching against catalogue installs", () 
   });
 
   test("an install during a switch sends nothing; after it settles a fresh install goes out", async () => {
-    const { session, log, answer } = deferredHarness();
+    const { session, log, answer } = await deferredHarness();
     const switching = session.selectInstallation("i2");
     // A Results X or channel-menu pick from before the switch.
     await session.actions.install(result("1"), "beta");
@@ -1044,16 +1323,17 @@ describe("addon session: installation switching against catalogue installs", () 
     expect(sent(log, "addons.install")).toEqual([]);
     void session.actions.install(result("1"));
     expect(sent(log, "addons.install")).toEqual([
-      'addons.install {"providerId":"Curse","externalId":"1"}',
+      'addons.install {"installationId":"i2","providerId":"Curse","externalId":"1"}',
     ]);
   });
 
   test("a failed selection RPC or a failed list load ends the switch", async () => {
-    const { session, log, answer } = deferredHarness();
+    const { session, log, answer } = await deferredHarness();
     const refused = session.selectInstallation("i2");
     answer("installations.select").reject(new Error("no such installation"));
     await flush();
-    answer("installations.list").resolve({ installations: [] });
+    // The engine kept the installation that was active.
+    answer("installations.list").resolve({ installations: [installation("i1", true)] });
     await refused;
     expect(log).toContain("error Couldn't switch installation | no such installation");
     void session.actions.install(result("1"));
@@ -1074,7 +1354,7 @@ describe("addon session: installation switching against catalogue installs", () 
   });
 
   test("a failed selection keeps the switch going until its installation reload has settled", async () => {
-    const { session, log, answer } = deferredHarness();
+    const { session, log, answer } = await deferredHarness();
     const refused = session.selectInstallation("i2");
     answer("installations.select").reject(new Error("no such installation"));
     await flush();
@@ -1093,13 +1373,13 @@ describe("addon session: installation switching against catalogue installs", () 
   });
 
   test("switching returns once the last install settles: success, failure, rejection, failed read", async () => {
-    const { session, log, answer } = deferredHarness();
+    const { session, log, answer } = await deferredHarness();
     const success = session.actions.install(result("1"));
     const failure = session.actions.install(result("2"));
     const rejection = session.actions.install(result("3"));
     answer("addons.install", 1).resolve({
       addon: addon(),
-      operation: { status: "failed", error: "nope" },
+      operation: { ...op("failed"), error: "nope" },
     });
     await failure;
     expect(installationSwitchBlocked(session.get())).not.toBeNull();
@@ -1121,4 +1401,43 @@ describe("addon session: installation switching against catalogue installs", () 
     await switching;
     expect(session.get().selectedId).toBe("i2");
   });
+});
+
+test("external install holds switching until its final list lands", async () => {
+  const { session, fake } = await harness({});
+  const install = session.installElsewhere("i1", async () => null);
+  await settle();
+  expect(installationSwitchBlocked(session.get())).toBe("Wait for addon installs to finish.");
+  await fake.next("addons.list").resolve({ addons: [addon({ id: "new" })] });
+  await install;
+  expect(installationSwitchBlocked(session.get())).toBeNull();
+});
+
+test("a list from the previous selection cannot replace the selected installation", async () => {
+  const { session, fake } = await harness({});
+  const old = session.reloadAddons();
+  const oldRead = fake.next("addons.list");
+  fake.answers["installations.list"] = { installations: [installation("i2", true)] };
+  await session.reloadInstallations();
+  const current = session.reloadAddons();
+  await fake.pending("addons.list")[1]!.resolve({ addons: [addon({ id: "current" })] });
+  await current;
+  await oldRead.resolve({ addons: [addon({ id: "old" })] });
+  await old;
+  expect(session.get().addons.map((a) => a.id)).toEqual(["current"]);
+});
+
+test("a newly discovered recovery refusal reloads recovery without an error toast", async () => {
+  const { session, log } = await harness({
+    "addons.refresh": engineFailure("recovery_required"),
+    "addons.list": { addons: [addon()], unverified: true },
+    "installations.recoveryStatus": {
+      stateFile: { status: "readable" },
+      installations: [{ installationId: "i1", status: "recoveryRequired" }],
+    },
+  });
+  expect(await session.rescanInstallation("i1")).toBe("recovery");
+  expect(recoveryNeededFor(session.get())?.id).toBe("i1");
+  expect(session.get().addonsUnverified).toBe(true);
+  expect(log.some((line) => line.startsWith("error "))).toBe(false);
 });

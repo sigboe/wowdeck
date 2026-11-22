@@ -1,0 +1,18 @@
+make lint typecheck test build: exit 0
+All matched files use Prettier code style!
+ 1383 pass
+ 0 fail
+Ran 1383 tests across 111 files. [93.75s]
+ 1825 pass
+ 4 skip
+ 0 fail
+Ran 1829 tests across 110 files. [35.98s]
+Ran 33 tests in 0.016s
+OK
+Ran 17 tests in 0.093s
+OK
+Ran 27 tests in 0.014s
+OK
+Ran 6 tests in 0.889s
+OK
+created dist in 11.6s

@@ -19,8 +19,10 @@ describe("StateStore with a state file from an older build", () => {
     const { store } = loadFixtureStore();
     const state = store.load();
 
-    const { ignoredAddons: _ignored, ...settings } = raw.settings;
+    const { ignoredAddons: _ignored, steamGame, ...settings } = raw.settings;
     expect(state.settings).toMatchObject(settings);
+    // The hand-made link no installation found becomes an added game.
+    expect(state.settings.steamAddedGames).toEqual([steamGame]);
     expect(state.installations).toEqual(raw.installations);
     expect(state.addons).toHaveLength(raw.addons.length);
     raw.addons.forEach((addon: Record<string, unknown>, i: number) => {
@@ -34,6 +36,7 @@ describe("StateStore with a state file from an older build", () => {
     const { store, path } = loadFixtureStore();
     const state = store.load();
     expect(state.settings).not.toHaveProperty("ignoredAddons");
+    expect(state.settings).not.toHaveProperty("steamGame");
     for (const addon of state.addons) {
       expect(addon).not.toHaveProperty("autoUpdateEnabled");
     }
@@ -42,6 +45,35 @@ describe("StateStore with a state file from an older build", () => {
     const saved = readFileSync(path, "utf-8");
     expect(saved).not.toContain("ignoredAddons");
     expect(saved).not.toContain("autoUpdateEnabled");
+    expect(saved).not.toContain("steamGame\"");
+  });
+});
+
+describe("StateStore migrates the old Steam settings once", () => {
+  test("the load that migrates writes the result, so the old keys are gone from the file", () => {
+    const { store, path } = loadFixtureStore();
+    const migrated = store.load().settings;
+
+    const saved = JSON.parse(readFileSync(path, "utf-8"));
+    expect(saved.settings).not.toHaveProperty("steamGame");
+    expect(saved.settings).not.toHaveProperty("steamAutoLink");
+    expect(saved.settings.steamAddedGames).toEqual(migrated.steamAddedGames);
+    expect(new StateStore(path).load().settings).toEqual(migrated);
+  });
+
+  test("Show in Steam off from Link detected Steam games off is kept on disk", () => {
+    const path = join(mkdtempSync(join(tmpdir(), "state-store-")), "state.json");
+    writeFileSync(path, JSON.stringify({ settings: { steamAutoLink: false } }));
+    expect(new StateStore(path).load().settings.steamEnabled).toBe(false);
+    expect(JSON.parse(readFileSync(path, "utf-8")).settings).toMatchObject({ steamEnabled: false });
+  });
+
+  test("a file without the old keys isn't written on load", () => {
+    const path = join(mkdtempSync(join(tmpdir(), "state-store-")), "state.json");
+    const text = JSON.stringify({ settings: { steamEnabled: true } });
+    writeFileSync(path, text);
+    new StateStore(path).load();
+    expect(readFileSync(path, "utf-8")).toBe(text);
   });
 });
 
@@ -138,6 +170,16 @@ describe("StateStore normalizes stored settings (RF-07)", () => {
       selectedInstallationId: "retail-0",
     });
     expect(settings).not.toHaveProperty("somethingOld");
+  });
+
+  test("Choose the WoW version from Play starts on, and only a stored true keeps it on", () => {
+    const path = join(mkdtempSync(join(tmpdir(), "state-store-")), "state.json");
+    writeFileSync(path, JSON.stringify({ settings: {} }));
+    expect(new StateStore(path).load().settings.steamLaunchMenu).toBe(true);
+    for (const stored of ["true", 1, null]) {
+      writeFileSync(path, JSON.stringify({ settings: { steamLaunchMenu: stored } }));
+      expect(new StateStore(path).load().settings.steamLaunchMenu).toBe(false);
+    }
   });
 
   test("the stored release-check answer survives a reload; a broken one costs one extra check, not a wrong answer", () => {

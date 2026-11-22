@@ -10,6 +10,8 @@ import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSyn
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { AddonService } from "../../src/wow/addons/AddonService";
+import { addonService } from "./addon-service";
+import { AddonUpdates } from "../../src/wow/addons/AddonUpdates";
 import { FaultInjectingFs } from "../../src/wow/fs/StageFs";
 import { createStateStore } from "../../src/wow/storage/StateStore";
 import { AddonProvider } from "../../src/wow/providers/addon-provider";
@@ -116,11 +118,11 @@ export function fixture(name: string) {
   registry.register(provider);
   const open = () => {
     const store = createStateStore(dataDir, fs);
-    const service = new AddonService(store, registry, new DownloadService(network, join(root, "dl")), {
+    const service = addonService(store, registry, new DownloadService(network, join(root, "dl")), {
       addonsChanged: () => {},
       operationResult: () => {},
     });
-    return { store, service };
+    return { store, service, updates: new AddonUpdates(service, registry, store) };
   };
   const first = open();
   first.store.setInstallations([a, b]);
@@ -135,11 +137,12 @@ export function fixture(name: string) {
     restart: open,
     install: (service: AddonService, installation: WowInstallation) =>
       service.install({ intent: "install", providerId: "WowUpHub", externalId: "700", installation }),
-    async publish(service: AddonService, version: string) {
+    /** Publish a release and check every ready installation, as `engine` (the fixture or a restart) runs it. */
+    async publish(engine: { service: AddonService; updates: AddonUpdates }, version: string) {
       provider.release = { version, releaseId: `r-${version}` };
       for (const i of [a, b]) {
-        if (service.recovery.status(i.id).status === "ready") {
-          await service.refresh(i);
+        if (engine.service.recovery.status(i.id).status === "ready") {
+          await engine.updates.refresh(i);
         }
       }
     },
@@ -187,7 +190,7 @@ export const workFolders = (i: WowInstallation) =>
 export async function stoppedUpdateInA(f: Fixture, restores?: number) {
   const { addon } = await f.install(f.service, f.a);
   await f.install(f.service, f.b);
-  await f.publish(f.service, "2.0");
+  await f.publish(f, "2.0");
   const original = { files: live(f.a), record: f.store.addons.get(addon.id) };
   f.fs.failAt("state.write").failAt("folder.restore", { after: restores ?? 0 });
   const { operation } = await f.service.updateAddon(addon.id);
@@ -230,7 +233,7 @@ export const SHAPES: [string, number, Stop][] = [
     5,
     async (f, restores) => {
       const { addon } = await f.install(f.service, f.a);
-      await f.publish(f.service, "2.0");
+      await f.publish(f, "2.0");
       const original = snapshot(f, addon.id);
       f.fs.failAt("state.write").failAt("folder.restore", { after: restores });
       expect((await f.service.updateAddon(addon.id)).operation.recoveryRequired).toBe(true);
@@ -255,7 +258,7 @@ export const SHAPES: [string, number, Stop][] = [
     6,
     async (f, restores) => {
       const { addon } = await f.install(f.service, f.a);
-      await f.publish(f.service, "2.0");
+      await f.publish(f, "2.0");
       await f.service.updateAddon(addon.id);
       const original = snapshot(f, addon.id);
       f.fs.failAt("state.write").failAt("folder.restore", { after: restores });

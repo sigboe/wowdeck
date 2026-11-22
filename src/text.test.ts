@@ -3,6 +3,8 @@ import { describe, expect, test } from "bun:test";
 import {
   dayAndTime,
   dayMonth,
+  formatBytes,
+  formatWhen,
   importResultLine,
   lastAutoUpdateLine,
   plural,
@@ -28,6 +30,25 @@ describe("copy helpers (C02, C10)", () => {
     expect(dayAndTime(new Date(2026, 9, 16, 14, 32).getTime(), now)).toBe("today at 14:32");
     expect(dayAndTime(new Date(2026, 9, 15, 9, 5).getTime(), now)).toBe("yesterday at 09:05");
     expect(dayAndTime(new Date(2026, 9, 1, 8, 0).getTime(), now)).toBe("1 Oct at 08:00");
+  });
+  test("formatBytes", () => {
+    expect(formatBytes(0)).toBe("0 B");
+    expect(formatBytes(999)).toBe("999 B");
+    expect(formatBytes(1500)).toBe("1.5 KB");
+    expect(formatBytes(38_000_000)).toBe("38 MB");
+    expect(formatBytes(1_460_000)).toBe("1.5 MB");
+    expect(formatBytes(2_000_000_000)).toBe("2 GB");
+    expect(formatBytes(-1)).toBe("—");
+  });
+  test("formatWhen", () => {
+    const now = Date.UTC(2026, 9, 14, 12, 0, 0);
+    expect(formatWhen(now - 10_000, now)).toBe("just now");
+    expect(formatWhen(now - 5 * 60_000, now)).toBe("5 minutes ago");
+    expect(formatWhen(now - 3 * 3600_000, now)).toBe("3 hours ago");
+    expect(formatWhen(now - 30 * 3600_000, now)).toBe("yesterday");
+    expect(formatWhen(now - 4 * 86400_000, now)).toBe("4 days ago");
+    expect(formatWhen(now - 20 * 86400_000, now)).toBe("24 Sep");
+    expect(formatWhen(now + 3_600_000, now)).toBe("14 Oct"); // clock skew: never "-1 hours ago"
   });
 });
 

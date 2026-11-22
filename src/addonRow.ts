@@ -216,6 +216,16 @@ export function addonActions(addon: Addon, busy: boolean, autoUpdate = false): A
   return actions;
 }
 
+/**
+ * The row actions that need no UI: the addon session runs them by id
+ * (`run`). The rest open something first — Details, Folders, the channel
+ * menu, Find source, Remove's confirmation — so the view keeps them.
+ */
+export type SessionActionId = Exclude<
+  AddonActionId,
+  "details" | "folders" | "channel" | "findSource" | "changeSource" | "remove"
+>;
+
 /** Where the addon's files are (WF-20): read-only, so never disabled while busy. */
 const FOLDERS_ACTION: AddonAction = { id: "folders", label: "Folders…" };
 
@@ -236,6 +246,22 @@ export function rowQuickAction(addon: Addon): { id: AddonActionId; label: string
     return { id: "findSource", label: "Find online source" };
   }
   return null;
+}
+
+/**
+ * What an installed addon's Details view offers (My Addons): Update when one
+ * is on offer, the channel menu when it can follow another release — neither
+ * while the installation is locked (recovery required), the same rule the
+ * row's own actions carry (`addonActions` disables every one of them then).
+ */
+export function installedDetailOffers(
+  addon: Addon,
+  locked: boolean,
+): { installLabel: "Update" | null; channelMenu: boolean } {
+  return {
+    installLabel: !locked && canQuickUpdate(addon) ? "Update" : null,
+    channelMenu: !locked && addon.canChangeChannel,
+  };
 }
 
 /**

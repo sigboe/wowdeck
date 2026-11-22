@@ -1,7 +1,7 @@
 /**
  * The PR builds modal (Options › Updates › WoWDeck › channel picker ›
  * "PR builds…"), rendered in a DOM and fed through the production typed
- * RPC over a transport the test answers (createDeferredRpc), so no test
+ * RPC over a transport the test answers (createFakeEngine), so no test
  * reaches the engine or the network.
  */
 import { afterAll, afterEach, beforeAll, describe, expect, jest, mock, test } from "bun:test";
@@ -9,7 +9,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { JSDOM } from "jsdom";
 import { deckyUiStub } from "./deckyUiStub";
-import { createDeferredRpc, type DeferredRpc } from "./testSupport/deferredRpc";
+import { createFakeEngine, type FakeEngine } from "./testSupport/fakeEngine";
 import type { PrBuild } from "./types";
 import type { StagedUpdate } from "./pluginUpdate";
 
@@ -69,7 +69,7 @@ const PR_117: PrBuild = {
  * engine; Decky's installer records what it was handed and answers once
  * `installer.release()` is called (at once unless `installer.hold()`).
  */
-function storeOver(engine: DeferredRpc, handed: StagedUpdate[] = [], toasts: string[] = []) {
+function storeOver(engine: FakeEngine, handed: StagedUpdate[] = [], toasts: string[] = []) {
   let gate: Promise<void> | null = null;
   let release = () => {};
   const selfUpdate = createSelfUpdateStore({
@@ -94,8 +94,8 @@ function storeOver(engine: DeferredRpc, handed: StagedUpdate[] = [], toasts: str
 }
 
 /** Open the modal over a fresh engine; it has not answered yet. */
-async function open(): Promise<DeferredRpc> {
-  const engine = createDeferredRpc();
+async function open(): Promise<FakeEngine> {
+  const engine = createFakeEngine();
   root = createRoot(dom.window.document.getElementById("root")!);
   await act(async () =>
     root!.render(
@@ -204,7 +204,7 @@ describe("PR builds modal", () => {
 describe("installing a PR build", () => {
   /** Open the modal listing #117, with a Decky installer that records what it was handed. */
   async function openListed() {
-    const engine = createDeferredRpc();
+    const engine = createFakeEngine();
     const handed: StagedUpdate[] = [];
     const happened: string[] = [];
     const toasts: string[] = [];
@@ -312,7 +312,7 @@ describe("installing a PR build", () => {
 describe("a PR build's download", () => {
   /** Open the list, pick #117 and press Install; the engine is downloading. */
   async function installing() {
-    const engine = createDeferredRpc();
+    const engine = createFakeEngine();
     const handed: StagedUpdate[] = [];
     const happened: string[] = [];
     const toasts: string[] = [];
@@ -414,7 +414,7 @@ describe("updating to a newer build of the running PR (the update panel's button
   const NEWER: PrBuild = { ...PR_117, version: "1.1.2-pr.117.3" };
 
   async function openConfirming() {
-    const engine = createDeferredRpc();
+    const engine = createFakeEngine();
     const handed: StagedUpdate[] = [];
     const happened: string[] = [];
     const { selfUpdate } = storeOver(engine, handed);

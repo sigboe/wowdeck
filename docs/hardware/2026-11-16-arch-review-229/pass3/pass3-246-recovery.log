@@ -1,0 +1,10 @@
+target SharedJSContext → target=SharedJSContext
+eval --file=.scratch/arch-review-229/pass2-ctl-rec… → {"n":53}
+target QuickAccess → target=QuickAccess
+reload-frontend → frontend reloaded in memory; backend unchanged; tree="ModalDialogOverlay_Modal_17" focus="Review229 pass2 WhatTheWhisper 2.0 CURSEFORGEFOREV" route="/routes/library/app/4221385996" plugin=null tab=null
+close → no change
+open → tree="QuickAccess-NA" focus="" plugin="WoWDeck" tab="My Addons"
+seek Review229 pass2 --enter → pressed Enter on "Review229 pass2CurseForge · 1.0 → 2.0" (jump) → tree="ModalDialogOverlay_Modal_18" focus="Review229 pass2 WhatTheWhisper 2.0 CURSEFORGEFOREV" tab=null
+eval --active --file=.scratch/arch-review-229/pass… → {"modal":"Review229 pass2\nWhatTheWhisper\n2.0\nCURSEFORGEFOREVER\nDescription\nWHAT ","actions":[{"onOptionsActionDescription":"View on CurseForge","onOptionsButton":"function"},{"onOptionsActionDescription":"View on CurseForge","onOptionsButton":"function"},{"onOptionsActionDescription":"View on CurseForge","onOptionsButton":"function"},{"onOptionsActionDescription":"View on CurseForge","onOptionsButton":"function"}]}
+press menu → no change
+probe tree items → tree="ModalDialogOverlay_Modal_18" items="Review229 pass2 WhatTheWhisper 2.0 CURSE"

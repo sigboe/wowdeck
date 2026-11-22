@@ -1,0 +1,18 @@
+Repeated before evidence commit: nix develop -c make lint typecheck test build
+Exit status 0. Lint, prettier, both typechecks and builds passed.
+ 1300 pass
+ 0 fail
+Ran 1300 tests across 99 files. [91.48s]
+ 1723 pass
+ 4 skip
+ 0 fail
+Ran 1727 tests across 101 files. [34.69s]
+Ran 33 tests in 0.016s
+OK
+Ran 17 tests in 0.082s
+OK
+Ran 27 tests in 0.014s
+OK
+Ran 6 tests in 0.904s
+OK
+created dist in 10.6s

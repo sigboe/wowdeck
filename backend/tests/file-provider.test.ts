@@ -13,7 +13,8 @@ import { join } from "node:path";
 import { FileProvider } from "../src/wow/providers/file/FileProvider";
 import { AddonProvider } from "../src/wow/providers/addon-provider";
 import type { AddonProviderType } from "../src/wow/types";
-import { AddonService } from "../src/wow/addons/AddonService";
+import { addonService } from "./helpers/addon-service";
+import { AddonUpdates } from "../src/wow/addons/AddonUpdates";
 import { ProviderRegistry } from "../src/wow/providers/provider-registry";
 import { DownloadService } from "../src/wow/downloads/DownloadService";
 import type { NetworkClient } from "../src/wow/net/network";
@@ -100,7 +101,7 @@ function fixture(dir: string, files: Record<string, Uint8Array>) {
       throw new Error(`unexpected network download ${url}`);
     },
   } as unknown as NetworkClient;
-  const service = new AddonService(
+  const service = addonService(
     store,
     registry,
     new DownloadService(net, join(root, "dl")),
@@ -108,16 +109,18 @@ function fixture(dir: string, files: Record<string, Uint8Array>) {
       addonsChanged: () => {},
       operationResult: () => {},
     },
-    undefined,
     join(root, "inspect"),
   );
   return {
     service,
+    updates: new AddonUpdates(service, registry, store),
     store,
     registry,
     installation,
     archivePath: (name: string) => realpathSync(join(archives, name)),
     inspectRoot: join(root, "inspect"),
+    /** What archives left on disk: the downloads folder and the inspection root. */
+    leftovers: () => [join(root, "dl"), join(root, "inspect")].flatMap((d) => (existsSync(d) ? readdirSync(d) : [])),
     addonsPath: join(location, "Interface", "AddOns"),
   };
 }
@@ -301,10 +304,10 @@ describe("installing a local archive", () => {
       externalId: f.archivePath("Foo-1.2.zip"),
       installation: f.installation,
     });
-    await f.service.refresh(f.installation);
+    await f.updates.refresh(f.installation);
     const [listed] = await f.service.listAddons(f.installation);
     expect(listed!.problem).toBeNull();
-    expect(f.service.eligibleUpdatesFor(f.installation)).toEqual([]);
+    expect(f.updates.eligibleFor(f.installation)).toEqual([]);
   });
 
   test("a file deleted after the preview fails with a clear error and installs nothing", async () => {
@@ -600,7 +603,7 @@ describe("a newer file updates the addon it matches", () => {
     await installFile(f, "Foo-1.0.zip");
     const { addon } = await installFile(f, "Foo-2.0.zip");
     await f.service.rollback(addon.id);
-    expect(f.service.eligibleUpdatesFor(f.installation)).toEqual([]);
+    expect(f.updates.eligibleFor(f.installation)).toEqual([]);
     const [listed] = await f.service.listAddons(f.installation);
     expect(listed).toMatchObject({ version: "1.0", previousVersion: "2.0", updateAvailable: false });
   });
@@ -639,7 +642,7 @@ describe("a newer file updates the addon it matches", () => {
       installedExternalReleaseId: f.archivePath("Foo-1.0.zip"),
       externalLatestReleaseId: f.archivePath("Foo-1.0.zip"),
     });
-    expect(f.service.eligibleUpdatesFor(f.installation)).toEqual([]);
+    expect(f.updates.eligibleFor(f.installation)).toEqual([]);
     const newer = await f.service.inspectArchive(f.archivePath("Foo-2.0.zip"), f.installation);
     expect(newer.match).toEqual({ kind: "update", addonId: addon.id, name: "Foo Addon" });
   });
@@ -746,7 +749,7 @@ describe("a file that takes over a catalogue addon", () => {
 
   test("installing it makes the addon from a file, keeps its name and stops its update checks", async () => {
     const f = withCurseRecord("takeover-install", { "Foo-1.3.zip": fooRelease("1.3") });
-    expect(f.service.eligibleUpdatesFor(f.installation).map((a) => a.id)).toEqual(["curse-foo"]);
+    expect(f.updates.eligibleFor(f.installation).map((a) => a.id)).toEqual(["curse-foo"]);
 
     const { operation } = await f.service.install({
       intent: "install",
@@ -764,7 +767,7 @@ describe("a file that takes over a catalogue addon", () => {
       externalId: f.archivePath("Foo-1.3.zip"),
       installedVersion: "1.3",
     });
-    expect(f.service.eligibleUpdatesFor(f.installation)).toEqual([]);
+    expect(f.updates.eligibleFor(f.installation)).toEqual([]);
   });
 
   test("Roll back returns the addon to its catalogue source, and forward to the file again", async () => {
@@ -794,7 +797,7 @@ describe("a file that takes over a catalogue addon", () => {
       installedExternalReleaseId: f.archivePath("Foo-1.3.zip"),
       externalLatestReleaseId: f.archivePath("Foo-1.3.zip"),
     });
-    expect(f.service.eligibleUpdatesFor(f.installation)).toEqual([]);
+    expect(f.updates.eligibleFor(f.installation)).toEqual([]);
     const same = await f.service.inspectArchive(f.archivePath("Foo-1.3.zip"), f.installation);
     expect(same.match).toEqual({ kind: "reinstall", addonId: "curse-foo", name: "Foo Addon" });
   });
@@ -904,5 +907,101 @@ describe("a file that matches several addons", () => {
     await f.service.removeAddon(bar.id);
     const preview = await f.service.inspectArchive(f.archivePath("Both.zip"), f.installation);
     expect(preview.match).toEqual({ kind: "update", addonId: foo.id, name: "Foo Addon" });
+  });
+});
+
+/**
+ * What an install of the file did to the records, in the preview's terms:
+ * a new record, an update of one (the replaced files kept for Roll back),
+ * a reinstall (the kept version left alone), or a refusal.
+ */
+async function installedAs(f: ReturnType<typeof fixture>, name: string) {
+  const before = structuredClone(f.store.addons.all());
+  let addon;
+  try {
+    ({ addon } = await installFile(f, name));
+  } catch (err) {
+    return { kind: "refused", message: (err as Error).message };
+  }
+  const prior = before.find((r) => r.id === addon.id);
+  if (!prior) {
+    return { kind: "new" };
+  }
+  const kept = f.store.addons.require(addon.id).rollbackVersion;
+  return { kind: kept === prior.installedVersion ? "update" : "reinstall", addonId: addon.id, name: addon.name };
+}
+
+describe("the preview's match is what the install does", () => {
+  const scenarios: { label: string; installed: string[]; picked: string; expected: string }[] = [
+    { label: "nothing installed yet", installed: [], picked: "Foo-1.2.zip", expected: "new" },
+    { label: "an older release installed", installed: ["Foo-1.2.zip"], picked: "Foo-1.3.zip", expected: "update" },
+    { label: "the same archive installed", installed: ["Foo-1.1.zip", "Foo-1.2.zip"], picked: "Foo-1.2 (1).zip", expected: "reinstall" },
+    { label: "its folders owned by two addons", installed: ["Foo-1.2.zip", "Bar-3.0.zip"], picked: "Both.zip", expected: "refused" },
+  ];
+  for (const { label, installed, picked, expected } of scenarios) {
+    test(label, async () => {
+      const f = fixture(`agree-${expected}`, {
+        "Foo-1.1.zip": fooRelease("1.1"),
+        "Foo-1.2.zip": fooRelease("1.2"),
+        "Foo-1.2 (1).zip": fooRelease("1.2"),
+        "Foo-1.3.zip": fooRelease("1.3"),
+        "Bar-3.0.zip": bundleZip,
+        "Both.zip": fooRelease("2.0", { folders: ["Foo", "BarLib"] }),
+      });
+      for (const name of installed) {
+        await installFile(f, name);
+      }
+      const { match } = await f.service.inspectArchive(f.archivePath(picked), f.installation);
+      const outcome = await installedAs(f, picked);
+      expect(outcome.kind).toBe(expected);
+      if (match.kind === "conflict") {
+        expect(outcome).toEqual({ kind: "refused", message: expect.stringContaining(`This file matches ${match.records.length} installed addons`) });
+      } else {
+        expect(outcome).toEqual(match);
+      }
+    });
+  }
+});
+
+describe("a release archive is disposed of on every path", () => {
+  test("a preview, and a preview that fails", async () => {
+    const f = fixture("dispose-preview", { "Foo-1.2.zip": fooZip, "None.zip": noAddonZip });
+    await f.service.inspectArchive(f.archivePath("Foo-1.2.zip"), f.installation);
+    await expect(f.service.inspectArchive(f.archivePath("None.zip"), f.installation)).rejects.toThrow();
+    expect(f.leftovers()).toEqual([]);
+  });
+
+  test("an install, an update and a reinstall", async () => {
+    const f = fixture("dispose-install", { "Foo-1.2.zip": fooRelease("1.2"), "Foo-1.3.zip": fooRelease("1.3") });
+    await installFile(f, "Foo-1.2.zip");
+    await installFile(f, "Foo-1.3.zip");
+    await installFile(f, "Foo-1.3.zip");
+    expect(f.leftovers()).toEqual([]);
+  });
+
+  test("an install that fails, and one refused for a conflict", async () => {
+    const f = fixture("dispose-failed", {
+      "Broken.zip": new TextEncoder().encode("PK\x03\x04garbage"),
+      "Foo-1.2.zip": fooRelease("1.2"),
+      "Bar-3.0.zip": bundleZip,
+      "Both.zip": fooRelease("2.0", { folders: ["Foo", "BarLib"] }),
+    });
+    const { operation } = await installFile(f, "Broken.zip");
+    expect(operation.status).toBe("failed");
+    await installFile(f, "Foo-1.2.zip");
+    await installFile(f, "Bar-3.0.zip");
+    await expect(installFile(f, "Both.zip")).rejects.toThrow("This file matches 2 installed addons");
+    expect(f.leftovers()).toEqual([]);
+  });
+
+  test("a preview while an install runs reads its own copy", async () => {
+    const f = fixture("dispose-concurrent", { "Foo-1.2.zip": fooRelease("1.2"), "Bar-3.0.zip": bundleZip });
+    const [installed, preview] = await Promise.all([
+      installFile(f, "Foo-1.2.zip"),
+      f.service.inspectArchive(f.archivePath("Bar-3.0.zip"), f.installation),
+    ]);
+    expect(installed.operation.status).toBe("installed");
+    expect(preview.folders).toEqual(["Bar", "BarLib"]);
+    expect(f.leftovers()).toEqual([]);
   });
 });

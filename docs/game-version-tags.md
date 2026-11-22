@@ -4,8 +4,8 @@ The Details header paints each game version as a tag. A tag has two colors:
 `primary` fills the background and `secondary` is the text drawn on it.
 
 The source of truth is `GAME_VERSION_TAGS` and `GAME_VERSION_CLIENT_TAGS` in
-`backend/src/wow/utils/client-display-names.ts`, next to the other hand-edited
-client-name tables. This page records where the colors came from and how to
+`backend/src/wow/utils/client-display-names.ts`. Client names live in the
+client table, `backend/src/wow/clients.ts`. This page records where the colors came from and how to
 add one. The colors themselves stay in that file so a player-facing change is
 a one-file edit.
 

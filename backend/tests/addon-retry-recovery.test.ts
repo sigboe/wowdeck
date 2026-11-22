@@ -25,8 +25,8 @@ import {
   type Fixture,
 } from "./helpers/recovery-fixture";
 import { NotFoundError } from "../src/wow/errors";
-import type { HandlerDeps } from "../src/api/handlers/deps";
-import { register as registerInstallations } from "../src/api/handlers/installations";
+import { subset } from "./helpers/subset";
+import { installationsHandlers } from "../src/api/handlers/installations";
 import { JsonlServer } from "../src/bridge/jsonl";
 
 describe("Retry recovery with matching evidence (scenario 5)", () => {
@@ -352,7 +352,7 @@ describe("the typed contracts", () => {
     await stoppedUpdateInA(f);
     const lines: string[] = [];
     const server = new JsonlServer((l) => lines.push(l));
-    registerInstallations(server, { service: f.service, installationService: f.service.installations } as unknown as HandlerDeps);
+    server.handle(installationsHandlers(subset({ service: f.service, installationService: f.service.installations })));
     const call = async (method: string, params: Record<string, unknown>) => {
       await server.handleLine(JSON.stringify({ id: lines.length + 1, method, params }));
       return JSON.parse(lines.at(-1)!) as { result?: Record<string, unknown>; error?: { code: string } };

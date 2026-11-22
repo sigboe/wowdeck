@@ -8,12 +8,14 @@ import { afterAll, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { AddonService } from "../src/wow/addons/AddonService";
+import { addonService } from "./helpers/addon-service";
 import { AddonProvider, type GetAllResult } from "../src/wow/providers/addon-provider";
 import { ProviderRegistry } from "../src/wow/providers/provider-registry";
 import { createStateStore, type StateStore } from "../src/wow/storage/StateStore";
 import { DownloadService } from "../src/wow/downloads/DownloadService";
 import { NetworkClient } from "../src/wow/net/network";
-import { CompanionSyncCoordinator } from "../src/wow/notifications/CompanionSync";
+import type { CompanionSyncCoordinator } from "../src/wow/notifications/CompanionSync";
+import { AddonUpdates } from "../src/wow/addons/AddonUpdates";
 import { companionDataPath } from "../src/wow/notifications/CompanionWriter";
 import type { AddonProviderType } from "../src/wow/types";
 import type { WowAddon, WowInstallation } from "../src/wow/models";
@@ -76,18 +78,19 @@ function makeAddon(overrides: Partial<WowAddon> & { id: string; name: string; in
   };
 }
 
-function setup(): { service: AddonService; store: StateStore; registry: ProviderRegistry; provider: FakeProvider } {
+function setup(): { service: AddonService; companion: CompanionSyncCoordinator; store: StateStore; registry: ProviderRegistry; provider: FakeProvider } {
   const dataDir = join(ROOT, "data");
   const store = createStateStore(dataDir);
   const registry = new ProviderRegistry();
   const provider = new FakeProvider();
   registry.register(provider);
   registry.attachStore(store);
-  const service = new AddonService(store, registry, new DownloadService(new NetworkClient(), join(dataDir, "dl")), {
+  const service = addonService(store, registry, new DownloadService(new NetworkClient(), join(dataDir, "dl")), {
     addonsChanged: () => {},
     operationResult: () => {},
   });
-  return { service, store, registry, provider };
+  // The companion data as the engine builds it: eligibility comes from the addon updates module.
+  return { service, companion: new AddonUpdates(service, registry, store).companion, store, registry, provider };
 }
 
 function readDataLua(installation: WowInstallation): string {
@@ -105,7 +108,7 @@ afterAll(() => {
 
 describe("CompanionSyncCoordinator.regenerate", () => {
   test("writes an eligible update and a correct Interface line when the companion is present", async () => {
-    const { service, store } = setup();
+    const { service, companion, store } = setup();
     const retail = makeInstallation("retail", WowClientType.Retail, "11.0.2");
     installCompanion(retail);
     store.setInstallations([retail]);
@@ -121,7 +124,7 @@ describe("CompanionSyncCoordinator.regenerate", () => {
       }),
     );
 
-    const coordinator = new CompanionSyncCoordinator(service);
+    const coordinator = companion;
     await coordinator.regenerate();
 
     const lua = readDataLua(retail);
@@ -135,7 +138,7 @@ describe("CompanionSyncCoordinator.regenerate", () => {
   });
 
   test("never creates the data folder when the companion addon isn't installed", async () => {
-    const { service, store } = setup();
+    const { service, companion, store } = setup();
     const retail = makeInstallation("retail", WowClientType.Retail, "11.0.2");
     // no installCompanion() call — "WowUp" folder absent
     store.setInstallations([retail]);
@@ -151,14 +154,14 @@ describe("CompanionSyncCoordinator.regenerate", () => {
       }),
     );
 
-    const coordinator = new CompanionSyncCoordinator(service);
+    const coordinator = companion;
     await coordinator.regenerate();
 
     expect(existsSync(companionDataPath(service.addonsPathFor(retail)))).toBe(false);
   });
 
   test("excludes an ignored addon", async () => {
-    const { service, store } = setup();
+    const { companion, store } = setup();
     const retail = makeInstallation("retail", WowClientType.Retail, "11.0.2");
     installCompanion(retail);
     store.setInstallations([retail]);
@@ -175,12 +178,12 @@ describe("CompanionSyncCoordinator.regenerate", () => {
       }),
     );
 
-    await new CompanionSyncCoordinator(service).regenerate();
+    await companion.regenerate();
     expect(readDataLua(retail)).not.toContain("Bagnon");
   });
 
   test("excludes an addon whose provider is currently disabled, even with stale latestVersion still stored", async () => {
-    const { service, store, registry } = setup();
+    const { companion, store, registry } = setup();
     const retail = makeInstallation("retail", WowClientType.Retail, "11.0.2");
     installCompanion(retail);
     store.setInstallations([retail]);
@@ -195,14 +198,14 @@ describe("CompanionSyncCoordinator.regenerate", () => {
         latestVersion: "1.1.0",
       }),
     );
-    registry.setEnabled("TukUI", false);
+    await registry.setEnabled("TukUI", false);
 
-    await new CompanionSyncCoordinator(service).regenerate();
+    await companion.regenerate();
     expect(readDataLua(retail)).not.toContain("Bagnon");
   });
 
   test("excludes an addon whose installed and available versions already match", async () => {
-    const { service, store } = setup();
+    const { companion, store } = setup();
     const retail = makeInstallation("retail", WowClientType.Retail, "11.0.2");
     installCompanion(retail);
     store.setInstallations([retail]);
@@ -218,12 +221,12 @@ describe("CompanionSyncCoordinator.regenerate", () => {
       }),
     );
 
-    await new CompanionSyncCoordinator(service).regenerate();
+    await companion.regenerate();
     expect(readDataLua(retail)).not.toContain("Bagnon");
   });
 
   test("an addon with no installed version is treated as no update, not a crash", async () => {
-    const { service, store } = setup();
+    const { companion, store } = setup();
     const retail = makeInstallation("retail", WowClientType.Retail, "11.0.2");
     installCompanion(retail);
     store.setInstallations([retail]);
@@ -238,12 +241,12 @@ describe("CompanionSyncCoordinator.regenerate", () => {
       }),
     );
 
-    await new CompanionSyncCoordinator(service).regenerate();
+    await companion.regenerate();
     expect(readDataLua(retail)).not.toContain("Mystery");
   });
 
   test("escapes addon names with quotes/backslashes end-to-end", async () => {
-    const { service, store } = setup();
+    const { companion, store } = setup();
     const retail = makeInstallation("retail", WowClientType.Retail, "11.0.2");
     installCompanion(retail);
     store.setInstallations([retail]);
@@ -259,12 +262,12 @@ describe("CompanionSyncCoordinator.regenerate", () => {
       }),
     );
 
-    await new CompanionSyncCoordinator(service).regenerate();
+    await companion.regenerate();
     expect(readDataLua(retail)).toContain('["Weird \\"Addon\\"\\\\Name"] = {"1.0", "2.0"}');
   });
 
   test("two installations with the same addon name but different versions never leak into each other", async () => {
-    const { service, store } = setup();
+    const { service, companion, store } = setup();
     const retail = makeInstallation("retail", WowClientType.Retail, "11.0.2");
     const era = makeInstallation("era", WowClientType.ClassicEra, "1.15.7");
     installCompanion(retail);
@@ -293,7 +296,7 @@ describe("CompanionSyncCoordinator.regenerate", () => {
       }),
     );
 
-    await new CompanionSyncCoordinator(service).regenerate();
+    await companion.regenerate();
 
     const retailLua = readDataLua(retail);
     const eraLua = readDataLua(era);
@@ -307,7 +310,7 @@ describe("CompanionSyncCoordinator.regenerate", () => {
   });
 
   test("an installation with no eligible updates gets an empty, not stale, list", async () => {
-    const { service, store } = setup();
+    const { companion, store } = setup();
     const retail = makeInstallation("retail", WowClientType.Retail, "11.0.2");
     installCompanion(retail);
     store.setInstallations([retail]);
@@ -323,13 +326,13 @@ describe("CompanionSyncCoordinator.regenerate", () => {
       }),
     );
 
-    await new CompanionSyncCoordinator(service).regenerate();
+    await companion.regenerate();
     expect(readDataLua(retail)).toContain("WOWUP_DATA.updateAddonsList = {");
     expect(readDataLua(retail)).not.toContain("UpToDate");
   });
 
   test("skips an installation whose WoW version can't be parsed into an Interface number, without crashing", async () => {
-    const { service, store } = setup();
+    const { service, companion, store } = setup();
     const broken = makeInstallation("broken", WowClientType.Retail, undefined);
     installCompanion(broken);
     store.setInstallations([broken]);
@@ -345,17 +348,17 @@ describe("CompanionSyncCoordinator.regenerate", () => {
       }),
     );
 
-    await expect(new CompanionSyncCoordinator(service).regenerate()).resolves.toBeUndefined();
+    await expect(companion.regenerate()).resolves.toBeUndefined();
     expect(existsSync(companionDataPath(service.addonsPathFor(broken)))).toBe(false);
   });
 
   test("a removed installation never receives a write at a stale path", async () => {
-    const { service, store } = setup();
+    const { service, companion, store } = setup();
     const retail = makeInstallation("retail", WowClientType.Retail, "11.0.2");
     installCompanion(retail);
     store.setInstallations([retail]);
 
-    const coordinator = new CompanionSyncCoordinator(service);
+    const coordinator = companion;
     // installation removed from the store entirely (service.removeInstallation
     // semantics) before a regenerate aimed at its old id ever runs
     store.setInstallations([]);

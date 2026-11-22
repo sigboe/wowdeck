@@ -1,0 +1,2 @@
+eval --t=16000 --file=.scratch/arch-review-229/key… → [{"at":0,"installingElsewhere":0,"switching":false,"text":"OPTIONS\nWOW INSTALLATIONS\nActive installation\nVersion 1.15.9\nDetected automatically\nClassic Era\nFind WoW installations\nLooks in Steam, Lutris and other game folders\nAdd WoW folder\n"}]
+eval --file=.scratch/arch-review-229/keyboard-lock… → {"selected":"032c354a655f","installingElsewhere":0,"selectors":[{"selected":"032c354a655f","disabled":false},{"selected":"032c354a655f","disabled":false},{"selected":"032c354a655f","disabled":false}]}

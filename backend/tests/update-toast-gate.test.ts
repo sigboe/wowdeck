@@ -8,13 +8,13 @@ import { beforeEach, afterAll, describe, expect, test } from "bun:test";
 import { mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { AddonService } from "../src/wow/addons/AddonService";
+import { addonService } from "./helpers/addon-service";
 import { AddonProvider, type GetAllResult } from "../src/wow/providers/addon-provider";
 import { ProviderRegistry } from "../src/wow/providers/provider-registry";
 import { createStateStore, type StateStore } from "../src/wow/storage/StateStore";
 import { DownloadService } from "../src/wow/downloads/DownloadService";
 import { NetworkClient } from "../src/wow/net/network";
-import { CompanionSyncCoordinator } from "../src/wow/notifications/CompanionSync";
-import { UpdateCheck } from "../src/wow/notifications/UpdateCheck";
+import { AddonUpdates } from "../src/wow/addons/AddonUpdates";
 import { UpdateToastGate } from "../src/wow/notifications/UpdateToastGate";
 import type { AddonProviderType } from "../src/wow/types";
 import type { WowAddon, WowInstallation } from "../src/wow/models";
@@ -70,11 +70,11 @@ function setup(): { service: AddonService; store: StateStore; gate: UpdateToastG
   const provider = new FakeProvider();
   registry.register(provider);
   registry.attachStore(store);
-  const service = new AddonService(store, registry, new DownloadService(new NetworkClient(), join(dataDir, "dl")), {
+  const service = addonService(store, registry, new DownloadService(new NetworkClient(), join(dataDir, "dl")), {
     addonsChanged: () => {},
     operationResult: () => {},
   });
-  const gate = new UpdateToastGate(service, store, new UpdateCheck(service, new CompanionSyncCoordinator(service)));
+  const gate = new UpdateToastGate(store, new AddonUpdates(service, registry, store));
   return { service, store, gate, provider };
 }
 

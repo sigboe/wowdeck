@@ -1,0 +1,11 @@
+reload-frontend → frontend reloaded in memory; backend unchanged; tree="QuickAccess-NA" focus="Steam library On · World of Warcraft" route="/routes/settings/system" plugin="WoWDeck" tab="Options"
+seek Options --exact → found "Options" (jump) → focus="OPTIONS"
+key left → focus="GET ADDONS" tab="Get Addons"
+wait tab = Get Addons → tab="Get Addons"
+seek Search --exact → found "Search" (jump) → focus="Search"
+shot /tmp/wowdeck-release-reload-browse.png → /tmp/wowdeck-release-reload-browse.png 800x717
+nav /library/app/4221385996 → tree="GamepadUI_Full_Root" focus="Play Forever" route="/routes/library/app/4221385996" tab=null
+probe route text → route="/routes/library/app/4221385996" text="scrollTop=[0,0,0,0,0,0,0,0,0,0,0,0,0,0] 19:36 WOW ADDONS Checking for updates… Check for updates Open Play Forever LAST PLAYED Yesterday PLAY TIME 1,387 hours World of Warcraft F6 ACTIVITY YOUR STUFF COMMUNITY GAME INFO F7 SCROLL TO TOP"
+target SharedJSContext → target=SharedJSContext
+eval document.body.innerText.slice(-2500)
+diagnose → {"ui":{"tree":"GamepadUI_Full_Root","focus":"Play Forever","route":"/routes/library/app/4221385996","plugin":"WoWDeck","tab":null},"panel":{"tab":null,"busy":null,"alerts":[]},"engine":{"backendVersion":"1.3.0","protocolVersion":1,"pid":9917},"installations":{"count":3,"active":[{"id":"5e80311f078e","gameType":"forever"}]},"errors":[]}

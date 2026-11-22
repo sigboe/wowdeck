@@ -9,19 +9,15 @@ import { SettingsRow } from "./common";
 interface Props {
   installations: Installation[];
   selectedId: string | null;
-  onChanged: () => Promise<void>;
 }
 
 /** Export and import of the addon list (WowUp's format). */
-export function AddonListSection({ installations, selectedId, onChanged }: Props) {
+export function AddonListSection({ installations, selectedId }: Props) {
   const openPortability = (mode: "export" | "import") =>
     openAddonPortabilityModal({
       mode,
       installations,
       selectedInstallationId: selectedId,
-      onInstalled: () => {
-        void onChanged();
-      },
     });
 
   return (

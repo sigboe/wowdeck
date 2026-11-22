@@ -1,0 +1,122 @@
+bun test v1.4.2 (744846f84)
+
+src/curseForgeKeyModal.test.tsx:
+(pass) the CurseForge key modal > shows the key status first, then the key field and every key action that applies [121.94ms]
+(pass) the CurseForge key modal > a late initial status cannot undo a successful built-in recheck [30.82ms]
+(pass) the CurseForge key modal > a late initial status cannot restore a cleared key [29.45ms]
+(pass) the CurseForge key modal > with a key saved it offers Replace key and Clear key [15.34ms]
+(pass) the CurseForge key modal > Try built-in access again only while built-in access is rejected [9.53ms]
+(pass) the CurseForge key modal > Save key stays off until a key is typed [14.76ms]
+277 |     );
+278 |     expect(sourcesStore.get().providers?.[0]).toMatchObject({ enabled: true, configured: true });
+279 |     expect(toasts).toContain("CurseForge key saved and verified");
+280 |     expect(changed).toBe(1);
+281 |     expect(closed).toBe(1);
+282 |     expect(hidden).toBe(1);
+                         ^
+error: expect(received).toBe(expected)
+
+Expected: 1
+Received: 0
+
+      at <anonymous> (/home/sigurdb/project/wowdeck/src/curseForgeKeyModal.test.tsx:282:20)
+(fail) the CurseForge key modal > a working key is checked, saved, turns CurseForge on and closes the modal [16.28ms]
+(pass) the CurseForge key modal > a key CurseForge rejects is not saved, nothing turns on and the modal stays [25.94ms]
+299 |     await press("Save key");
+300 |     expect(methods()).toContain("settings.set");
+301 |     expect(methods()).toContain("providers.setEnabled");
+302 |     expect(toasts).toContain("CurseForge key saved");
+303 |     expect(closed).toBe(1);
+304 |     expect(hidden).toBe(1);
+                         ^
+error: expect(received).toBe(expected)
+
+Expected: 1
+Received: 0
+
+      at <anonymous> (/home/sigurdb/project/wowdeck/src/curseForgeKeyModal.test.tsx:304:20)
+(fail) the CurseForge key modal > a key that couldn't be checked just now is saved anyway and turns CurseForge on [23.57ms]
+(pass) the CurseForge key modal > Clear key removes the saved key, shows the new status and stays open [18.79ms]
+(pass) the CurseForge key modal > Try built-in access again asks the engine and shows its answer [13.92ms]
+(pass) the CurseForge key modal > Get a CurseForge API key opens the CurseForge console [9.36ms]
+336 | 
+337 | test("closing key entry dismisses the keyboard before unmount", async () => {
+338 |   await show(rejected);
+339 |   await act(async () => [...doc.querySelectorAll("button")].find(b => b.textContent === "Close")!.click());
+340 |   expect(closed).toBe(1);
+341 |   expect(hidden).toBe(1);
+                       ^
+error: expect(received).toBe(expected)
+
+Expected: 1
+Received: 0
+
+      at <anonymous> (/home/sigurdb/project/wowdeck/src/curseForgeKeyModal.test.tsx:341:18)
+(fail) closing key entry dismisses the keyboard before unmount [12.61ms]
+341 |   expect(hidden).toBe(1);
+342 | });
+343 | test("unmounting key entry dismisses the keyboard", async () => {
+344 |   await show(rejected);
+345 |   await act(async () => root.render(null));
+346 |   expect(hidden).toBe(1);
+                       ^
+error: expect(received).toBe(expected)
+
+Expected: 1
+Received: 0
+
+      at <anonymous> (/home/sigurdb/project/wowdeck/src/curseForgeKeyModal.test.tsx:346:18)
+(fail) unmounting key entry dismisses the keyboard [9.39ms]
+
+src/tsmSignIn.test.ts:
+(pass) sign-in opens the authorize URL and closes the browser once signed in [1.17ms]
+(pass) a cancelled sign-in leaves the browser alone [0.19ms]
+(pass) sign-in keeps the shared poll alive after its panel leaves [0.32ms]
+(pass) sign-in supersedes a stalled pre-login read and cancellation ignores its late answer [0.89ms]
+126 |     const h = harness(["signingIn", state]);
+127 |     await startTsmSignIn(h.rpc, h.browser, h.status);
+128 |     await h.step();
+129 |     expect(hidden).toBe(0);
+130 |     await h.step();
+131 |     expect(hidden).toBe(1);
+                         ^
+error: expect(received).toBe(expected)
+
+Expected: 1
+Received: 0
+
+      at <anonymous> (/home/sigurdb/project/wowdeck/src/tsmSignIn.test.ts:131:20)
+(fail) sign-in dismisses the keyboard when polling finishes with signedIn [0.27ms]
+126 |     const h = harness(["signingIn", state]);
+127 |     await startTsmSignIn(h.rpc, h.browser, h.status);
+128 |     await h.step();
+129 |     expect(hidden).toBe(0);
+130 |     await h.step();
+131 |     expect(hidden).toBe(1);
+                         ^
+error: expect(received).toBe(expected)
+
+Expected: 1
+Received: 0
+
+      at <anonymous> (/home/sigurdb/project/wowdeck/src/tsmSignIn.test.ts:131:20)
+(fail) sign-in dismisses the keyboard when polling finishes with off [0.18ms]
+126 |     const h = harness(["signingIn", state]);
+127 |     await startTsmSignIn(h.rpc, h.browser, h.status);
+128 |     await h.step();
+129 |     expect(hidden).toBe(0);
+130 |     await h.step();
+131 |     expect(hidden).toBe(1);
+                         ^
+error: expect(received).toBe(expected)
+
+Expected: 1
+Received: 0
+
+      at <anonymous> (/home/sigurdb/project/wowdeck/src/tsmSignIn.test.ts:131:20)
+(fail) sign-in dismisses the keyboard when polling finishes with signedOut [0.14ms]
+
+ 14 pass
+ 7 fail
+ 77 expect() calls
+Ran 21 tests across 2 files. [961.00ms]

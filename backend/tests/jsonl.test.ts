@@ -148,3 +148,27 @@ describe("settle", () => {
     });
   });
 });
+
+describe("JsonlServer.call (in-process)", () => {
+  test("answers what the wire would, an undefined result included", async () => {
+    const { server, lines } = makeServer();
+    server.on("tradeskillmaster.refresh", async () => {});
+    server.on("system.getStatus", async () => ({ backendVersion: "test", protocolVersion: 1, pid: 1, homeDir: "/h" }));
+
+    expect(await server.call("tradeskillmaster.refresh", { installationId: "a" })).toBeNull();
+    expect(await server.call("system.getStatus", {})).toEqual({ backendVersion: "test", protocolVersion: 1, pid: 1, homeDir: "/h" });
+    expect(lines).toEqual([]);
+  });
+
+  test("an error answer throws an EngineError carrying its code", async () => {
+    const { server } = makeServer();
+    server.on("addons.list", async () => {
+      throw new ValidationError("installationId is required");
+    });
+
+    const failed = server.call("addons.list", { installationId: "" });
+    await expect(failed).rejects.toBeInstanceOf(EngineError);
+    await expect(failed).rejects.toMatchObject({ code: "invalid_request", message: "installationId is required" });
+    await expect(server.call("addons.lookup", { installationId: "a", providerId: "x", externalIds: [] })).rejects.toMatchObject({ code: "method_not_found" });
+  });
+});

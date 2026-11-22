@@ -1,0 +1,4 @@
+target: deck
+ssh: deck@10.10.1.39 (woke by Wake-on-LAN)
+tunnel: opened pid 1905856 to deck@10.10.1.39 on 18080, 9222
+up: deployed main.py · backup /home/deck/homebrew/data/wowdeck/test-backups/2026-11-16-204132-1905722 · reloaded 1.2.1, engine pid 209160→210460

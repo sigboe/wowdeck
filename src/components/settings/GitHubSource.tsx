@@ -15,7 +15,7 @@ import {
   showModal,
 } from "@decky/ui";
 
-import * as api from "../../services/backend";
+import { engine } from "../../engineLink";
 import { STEAM } from "../../steamTheme";
 import { wowupModalStyleCss } from "../../sharedStyles";
 import { pluginToast } from "../../toast";
@@ -75,7 +75,7 @@ function GitHubTokenModal({ closeModal }: { closeModal?: () => void }) {
     setBusy(true);
     setError(null);
     try {
-      const test = await api.rpc("providers.testApiKey", {
+      const test = await engine.rpc("providers.testApiKey", {
         providerId: PROVIDER_ID.GitHub,
         apiKey: candidate,
       });

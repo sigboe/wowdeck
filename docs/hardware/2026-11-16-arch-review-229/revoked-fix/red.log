@@ -1,0 +1,28 @@
+bun test v1.4.2 (744846f84)
+
+src/curseForgeSourceRow.test.tsx:
+(pass) CurseForge's source row > with no usable key it is a > row, not a toggle, and points nowhere else [95.69ms]
+(pass) CurseForge's source row > the > row opens the key modal [155.51ms]
+(pass) CurseForge's source row > with the player's own key it is a toggle whose Options button opens the key modal [49.45ms]
+(pass) CurseForge's source row > with working built-in access it is a plain toggle [6.69ms]
+(pass) CurseForge's source row > saving a key turns CurseForge on and focus lands back on its row, now a toggle [64.39ms]
+(pass) CurseForge's source row > closing the modal without saving puts focus back on the > row [48.22ms]
+312 |   auth = builtIn;
+313 |   engineProviders = [{ ...hub, id: "TradeSkillMaster", enabled: false }];
+314 |   await sourcesStore.load();
+315 |   await act(async () => root.render(<Sources />));
+316 |   expect(doc.body.textContent).toContain("Sign in");
+317 |   expect(doc.body.textContent).not.toContain("stays signed in");
+                                         ^
+error: expect(received).not.toContain(expected)
+
+Expected to not contain: "stays signed in"
+Received: "Addon sourcesTradeSkillMasterYour account stays signed in while off. X signs out.Sign inGitHub"
+
+      at <anonymous> (/home/sigurdb/project/wowdeck/src/curseForgeSourceRow.test.tsx:317:36)
+(fail) revoked TSM account offers sign-in without claiming it stays signed in [10.27ms]
+
+ 6 pass
+ 1 fail
+ 21 expect() calls
+Ran 7 tests across 1 file. [1095.00ms]

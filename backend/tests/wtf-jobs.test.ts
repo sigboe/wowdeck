@@ -5,13 +5,15 @@ import { rename as fsRename } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import type { EventMap } from "../src/api/contracts";
-import type { HandlerDeps } from "../src/api/handlers/deps";
-import { register as registerWtf } from "../src/api/handlers/wtf";
+import { subset } from "./helpers/subset";
+import { wtfHandlers } from "../src/api/handlers/wtf";
 import { JsonlServer } from "../src/bridge/jsonl";
 import { WtfBackupError } from "../src/wow/wtf/errors";
 import { WtfBackupService } from "../src/wow/wtf/WtfBackupService";
 import { WtfJobRunner, type WtfJobTarget } from "../src/wow/wtf/WtfJobRunner";
 import { flavorKeyFor, validateBackupDir } from "../src/wow/wtf/WtfPaths";
+import type { WowInstallation } from "../src/wow/models";
+import { WowClientType } from "../src/wow/types";
 
 let tmp: string;
 let wtf: string;
@@ -260,6 +262,20 @@ describe("jobs over the JSONL server", () => {
   });
 });
 
+/** An installation the wtf handlers list; only its id reaches wtfJobTarget here. */
+function installation(id: string): WowInstallation {
+  return {
+    id,
+    clientType: WowClientType.Retail,
+    location: join(tmp, "game", id),
+    label: id,
+    displayName: id,
+    selected: false,
+    defaultAddonChannelType: 0,
+    source: "detected",
+  };
+}
+
 describe("wtf handlers: keepCurrentConfig omitted", () => {
   /** The real wtf.* handlers over a JSONL server; "ptr" is a second installation to copy from. */
   function serve() {
@@ -272,9 +288,9 @@ describe("wtf handlers: keepCurrentConfig omitted", () => {
       wtfService: service,
       wtfJobs: runner,
       wtfJobTarget: (id?: string) => (id === "ptr" ? ptr : target),
-      installationService: { list: () => [{ id: "inst1" }, { id: "ptr" }] },
+      installationService: { list: () => [installation("inst1"), installation("ptr")] },
     };
-    registerWtf(server, deps as unknown as HandlerDeps);
+    server.handle(wtfHandlers(subset(deps)));
     const call = (method: string, params: Record<string, unknown>) => server.handleLine(JSON.stringify({ id: 1, method, params }));
     return { service, ptr, call, done };
   }

@@ -1,3 +1,4 @@
+import { backendErrorMessage } from "../errors";
 import { TsmIcon } from "../icons/TsmIcon";
 import { useEffect, useState } from "react";
 import {
@@ -14,7 +15,8 @@ import {
   showModal,
 } from "@decky/ui";
 import type { TradeSkillMasterAccount } from "../../backend/src/api/contracts";
-import { rpc, onBackendEvent } from "../services/backend";
+import { engine } from "../engineLink";
+import { putTsmAccount, useTsmAccount } from "../tsmReads";
 import { browseFocusView, holdBrowseSessionForModal } from "../browseSessionState";
 import { FocusRow, FocusSlot } from "./FocusSlot";
 import { STEAM } from "../steamTheme";
@@ -37,7 +39,8 @@ function ManageFollows({
   initial: TradeSkillMasterAccount;
   closeModal: () => void;
 }) {
-  const [account, setAccount] = useState(initial);
+  const { data, error: refreshError, loading, refresh } = useTsmAccount();
+  const account = data ?? initial;
   const [selected, setSelected] = useState<TradeSkillMasterAccount["follows"][number]>();
   const [busy, setBusy] = useState(false);
   const [lastRealm, setLastRealm] = useState<string>();
@@ -59,6 +62,15 @@ function ManageFollows({
         <Focusable key={selected ? "confirmation" : "follows"}>
           {/* Steam's settings: a count is body text, the follows are rows. */}
           <DialogBodyText>{allowanceText(account)}</DialogBodyText>
+          {loading && <DialogBodyText>Loading followed realms…</DialogBodyText>}
+          {refreshError && (
+            <>
+              <DialogBodyText style={{ color: STEAM.danger }}>{refreshError}</DialogBodyText>
+              <ButtonItem disabled={loading} onClick={() => void refresh()}>
+                Retry
+              </ButtonItem>
+            </>
+          )}
           {error && <DialogBodyText style={{ color: STEAM.danger }}>{error}</DialogBodyText>}
           {selected ? (
             <Field
@@ -105,15 +117,19 @@ function ManageFollows({
               onClick={() => {
                 setBusy(true);
                 setError(undefined);
-                void rpc("tradeskillmaster.unfollow", {
-                  realmId: selected.realmId,
-                  auctionHouseType: selected.auctionHouseType,
-                })
+                void engine
+                  .rpc("tradeskillmaster.unfollow", {
+                    realmId: selected.realmId,
+                    auctionHouseType: selected.auctionHouseType,
+                  })
                   .then((result) => {
-                    setAccount(result);
+                    putTsmAccount(result);
                     setSelected(undefined);
                   })
-                  .catch(() => setError("Could not unfollow this realm. Try again."))
+                  .catch((error) => {
+                    backendErrorMessage(error);
+                    setError("Couldn't unfollow this realm. Try again.");
+                  })
                   .finally(() => setBusy(false));
               }}
             >
@@ -148,31 +164,7 @@ function ManageFollows({
 }
 
 export function TsmAccount() {
-  const [account, setAccount] = useState<TradeSkillMasterAccount>();
-  const [error, setError] = useState<string>();
-  useEffect(() => {
-    let active = true;
-    const load = () => {
-      void rpc("tradeskillmaster.account", {})
-        .then((result) => {
-          if (active) {
-            setAccount(result);
-            setError(undefined);
-          }
-        })
-        .catch(() => {
-          if (active) setError("Could not load followed realms");
-        });
-    };
-    load();
-    const off = onBackendEvent((event) => {
-      if (event.event === "tradeskillmaster.changed") load();
-    });
-    return () => {
-      active = false;
-      off();
-    };
-  }, []);
+  const { data: account, error } = useTsmAccount();
   return (
     <>
       <h2>

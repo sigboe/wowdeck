@@ -1,17 +1,20 @@
 /**
  * Depends on: the Quick Access Menu renderers (`QuickAccessMenuBrowserView`,
  * `QuickAccessMenuEmbedded`, found by their names the way Decky's TabsHook
- * finds them) and the QAM CSS module (`ViewPlaceholder`, `Expanded`, found by
- * its readable keys).
+ * finds them: exported on the webpack Steam client, in module scope on the
+ * Vite one) and the QAM CSS module (`ViewPlaceholder`, `Expanded`: found by
+ * its readable keys on webpack, from Decky 4's `quickAccessMenuClasses` on
+ * Vite). Both lookups: `steamLookup.ts`.
  * Fails as: either missing -> `init` false, `live` stays false and Get Addons
  * keeps its collapsed layout (qamWidening), one console warning. Never throws.
  * Kill switch: the automatic fallback above; there is no user setting.
  */
 
 import { cloneElement, useLayoutEffect, useSyncExternalStore, type ReactElement } from "react";
-import { afterPatch, findClassModule, findModuleByExport, getReactRoot } from "@decky/ui";
+import { flushSync } from "react-dom";
+import { afterPatch, getReactRoot } from "@decky/ui";
+import { steamLookup } from "../steamLookup";
 import {
-  isQamViewClasses,
   sharedQamExpandState,
   type QamExpandState,
   withExpanded,
@@ -48,10 +51,13 @@ export class QamExpandHook {
   /** Patch the QAM renderers. True when the mechanism was found. */
   init(): boolean {
     try {
-      const classes = findClassModule(isQamViewClasses) as QamViewClasses | undefined;
-      const qamModule = findModuleByExport((e: unknown) => isRenderer(e, BROWSER_VIEW));
+      const classes: QamViewClasses | undefined = steamLookup.findClasses(
+        QAM_CLASS_KEYS,
+        "quickAccessMenuClasses",
+      );
+      const qamModule = steamLookup.findModuleWith((e: unknown) => isRenderer(e, BROWSER_VIEW));
       const renderers = qamModule
-        ? Object.values(qamModule as Record<string, unknown>).filter(
+        ? Object.values(qamModule).filter(
             (e): e is Renderer => isRenderer(e, BROWSER_VIEW) || isRenderer(e, EMBEDDED),
           )
         : [];
@@ -80,7 +86,10 @@ export class QamExpandHook {
           return ret;
         }),
       );
-      this.repointMountedQam();
+      const mounted = this.repointMountedQam();
+      if (mounted && !state.live) {
+        refreshQamRenderer(mounted);
+      }
       return true;
     } catch (err) {
       warn("init failed", err);
@@ -115,12 +124,13 @@ export class QamExpandHook {
   /**
    * A mounted QAM keeps rendering the type it was created with. Point it at
    * the current one, as TabsHook does: `elementType` is the memo, `type` the
-   * (mobx-wrapped) function it renders. Takes effect on its next render.
+   * (mobx-wrapped) function it renders. Return the open renderer, if any.
    */
-  private repointMountedQam(): void {
+  private repointMountedQam(): Fiber | undefined {
     const rootEl = document.getElementById("root");
     const root = rootEl ? (getReactRoot(rootEl) as Fiber | undefined) : undefined;
-    const stack: (Fiber | null | undefined)[] = [root];
+    const stack: (Fiber | null | undefined)[] = [root?.stateNode?.current ?? root];
+    let active: Fiber | undefined;
     while (stack.length > 0) {
       const fiber = stack.pop();
       if (!fiber) {
@@ -132,10 +142,77 @@ export class QamExpandHook {
         if (fiber.alternate) {
           fiber.alternate.type = renderer.type;
         }
+        if (fiber.memoizedProps?.active === true) {
+          active = fiber;
+        }
       }
       stack.push(fiber.sibling, fiber.child);
     }
+    return active;
   }
+}
+
+/**
+ * Repointing alone leaves an unchanged, open QAM memoized. Schedule one
+ * render with an identity state update. Temporarily hide the eager reducer
+ * during dispatch and mark the previous props to bypass React's two bailouts.
+ * No Steam state value or incoming prop changes. See the UI guide under QAM widening measurements.
+ */
+function refreshQamRenderer(fiber: Fiber): void {
+  const props = fiber.memoizedProps;
+  if (!props || typeof flushSync !== "function") return;
+
+  let hook = fiber.memoizedState;
+  while (hook) {
+    const queue = hook.queue;
+    const reducer = queue?.lastRenderedReducer;
+    const dispatch = queue?.dispatch;
+    if (
+      queue &&
+      typeof dispatch === "function" &&
+      typeof reducer === "function" &&
+      isBasicStateReducer(reducer)
+    ) {
+      const previousProps = { ...props, __wowdeckRefresh: true };
+      try {
+        flushSync(() => {
+          fiber.memoizedProps = previousProps;
+          queue.lastRenderedReducer = null;
+          try {
+            dispatch((value) => value);
+          } finally {
+            queue.lastRenderedReducer = reducer;
+          }
+        });
+      } catch (err) {
+        warn("could not refresh the open QAM", err);
+      } finally {
+        if (fiber.memoizedProps === previousProps) {
+          fiber.memoizedProps = props;
+        }
+      }
+      return;
+    }
+    hook = hook.next;
+  }
+}
+
+/** A useReducer queue could interpret the identity function as an action. */
+function isBasicStateReducer(reducer: (state: unknown, action: unknown) => unknown): boolean {
+  const source = Function.prototype.toString.call(reducer);
+  const signature = /^function\s+[\w$]+\(\s*([\w$]+)\s*,\s*([\w$]+)\s*\)/.exec(source);
+  if (!signature) return false;
+  const [, state, action] = signature;
+  const body = source
+    .slice(signature[0].length)
+    .replace(/\s/g, "")
+    .replace(/['`]/g, '"')
+    .replace(/===/g, "==")
+    .replace(/;}/g, "}");
+  return (
+    body === `{returntypeof${action}=="function"?${action}(${state}):${action}}` ||
+    body === `{return"function"==typeof${action}?${action}(${state}):${action}}`
+  );
 }
 
 /** A Steam renderer: a memo (`{ type }`) whose source names it. */
@@ -149,9 +226,21 @@ interface Fiber {
   alternate: Fiber | null;
   child: Fiber | null;
   sibling: Fiber | null;
+  stateNode?: { current?: Fiber };
+  memoizedProps?: { active?: boolean };
+  memoizedState?: FiberHook | null;
+}
+
+interface FiberHook {
+  queue?: {
+    dispatch?: (update: (value: unknown) => unknown) => void;
+    lastRenderedReducer?: ((state: unknown, action: unknown) => unknown) | null;
+  };
+  next?: FiberHook | null;
 }
 
 const BROWSER_VIEW = "QuickAccessMenuBrowserView";
+const QAM_CLASS_KEYS = ["ViewPlaceholder", "Expanded"] as const;
 const EMBEDDED = "QuickAccessMenuEmbedded";
 
 function isRenderer(e: unknown, name: string): e is Renderer {

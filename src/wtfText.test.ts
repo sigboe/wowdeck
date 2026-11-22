@@ -1,11 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import {
   deleteConfirmation,
-  errorCodeOf,
-  friendlyWtfCallError,
-  friendlyWtfError,
-  importNotice,
-  wtfCompletedToast,
+  backupKindLabel,
+  backupOrigin,
   jobPercent,
   jobProgressText,
   keepCurrentConfigFor,
@@ -18,51 +15,10 @@ import {
   currentSettingsSource,
   copyGameRunningNotice,
   okActionLabel,
-  unknownOutcome,
-  outcomeOf,
   restoreBlockedReason,
   restoreDialogText,
 } from "./wtfText";
-import { backupKindLabel, backupOrigin, formatBytes, formatWhen } from "./wtfFormat";
 import type { WtfBackupInfo, WtfJobSnapshot } from "./types";
-
-const CODES = [
-  "wtf_missing",
-  "wtf_too_large",
-  "backup_dir_unavailable",
-  "backup_dir_invalid",
-  "insufficient_space",
-  "game_running",
-  "job_in_progress",
-  "backup_invalid",
-  "flavor_mismatch",
-  "flavor_unknown_needs_confirm",
-  "verify_failed",
-  "too_late_to_cancel",
-  "cancelled",
-  "not_found",
-  "internal_error",
-];
-
-describe("friendlyWtfError", () => {
-  test("every engine code has plain-language text that is never a Python/exception string", () => {
-    for (const code of CODES) {
-      const text = friendlyWtfError(code, "Traceback: boom");
-      expect(text.length).toBeGreaterThan(10);
-      expect(text).not.toMatch(/Python|Traceback|Exception|undefined/);
-    }
-  });
-  test("unknown code falls back to the sanitized engine message", () => {
-    expect(friendlyWtfError("weird", "main.BackendError: disk exploded")).toBe("disk exploded");
-    expect(friendlyWtfError(undefined, undefined)).toBe("Something went wrong.");
-  });
-  test("reads the code off a rejected backend call", () => {
-    const e = Object.assign(new Error("x"), { code: "game_running" });
-    expect(errorCodeOf(e)).toBe("game_running");
-    expect(friendlyWtfCallError(e)).toContain("Close World of Warcraft");
-    expect(errorCodeOf(new Error("plain"))).toBeUndefined();
-  });
-});
 
 describe("job progress text", () => {
   const job = (over: Partial<WtfJobSnapshot>): WtfJobSnapshot => ({
@@ -163,26 +119,7 @@ describe("delete confirmation", () => {
   });
 });
 
-describe("formatting", () => {
-  test("bytes", () => {
-    expect(formatBytes(0)).toBe("0 B");
-    expect(formatBytes(999)).toBe("999 B");
-    expect(formatBytes(1500)).toBe("1.5 KB");
-    expect(formatBytes(38_000_000)).toBe("38 MB");
-    expect(formatBytes(1_460_000)).toBe("1.5 MB");
-    expect(formatBytes(2_000_000_000)).toBe("2 GB");
-    expect(formatBytes(-1)).toBe("—");
-  });
-  test("relative time", () => {
-    const now = Date.UTC(2026, 9, 14, 12, 0, 0);
-    expect(formatWhen(now - 10_000, now)).toBe("just now");
-    expect(formatWhen(now - 5 * 60_000, now)).toBe("5 minutes ago");
-    expect(formatWhen(now - 3 * 3600_000, now)).toBe("3 hours ago");
-    expect(formatWhen(now - 30 * 3600_000, now)).toBe("yesterday");
-    expect(formatWhen(now - 4 * 86400_000, now)).toBe("4 days ago");
-    expect(formatWhen(now - 20 * 86400_000, now)).toBe("24 Sep");
-    expect(formatWhen(now + 3_600_000, now)).toBe("14 Oct"); // clock skew: never "-1 hours ago"
-  });
+describe("backup row labels", () => {
   test("origin: green for this device, red for another computer or WowUp, none for a damaged backup", () => {
     expect(backupOrigin({ fromThisDevice: true, flavor: "_retail_", valid: true })).toEqual({
       text: "From this device",
@@ -206,64 +143,6 @@ describe("formatting", () => {
     );
     expect(backupKindLabel({ kind: "auto", flavor: "_retail_", valid: true })).toBe("Automatic");
     expect(backupKindLabel({ kind: "unknown", flavor: null, valid: false })).toBe("Damaged");
-  });
-});
-
-describe("wtfCompletedToast", () => {
-  const done = {
-    jobId: "j",
-    installationId: "i",
-    fileName: "wtf_1.zip",
-    snapshotFileName: null,
-    sourceName: null,
-    error: null,
-  };
-  test("says what happened", () => {
-    expect(wtfCompletedToast({ ...done, kind: "create" })).toEqual({
-      title: "Backup created",
-      body: "",
-    });
-    expect(wtfCompletedToast({ ...done, kind: "restore", snapshotFileName: "wtf_0.zip" })).toEqual({
-      title: "Settings restored",
-      body: "Your previous settings were saved as a safety backup.",
-    });
-  });
-  test("a copy names the version the settings came from", () => {
-    expect(
-      wtfCompletedToast({
-        ...done,
-        kind: "copy",
-        snapshotFileName: "wtf_0.zip",
-        sourceName: "Forever Beta",
-      }),
-    ).toEqual({
-      title: "Settings copied from Forever Beta",
-      body: "Your previous settings were saved as a safety backup.",
-    });
-    expect(
-      wtfCompletedToast({
-        ...done,
-        kind: "copy",
-        sourceName: "Forever Beta",
-        error: { code: "game_running", message: "x" },
-      }),
-    ).toEqual({
-      title: "Couldn't copy settings",
-      body: "Close World of Warcraft first. It rewrites these files when you log out.",
-    });
-  });
-
-  test("a failure gets plain text; a cancel gets nothing", () => {
-    expect(
-      wtfCompletedToast({
-        ...done,
-        kind: "create",
-        error: { code: "insufficient_space", message: "x" },
-      }),
-    ).toEqual({ title: "Couldn't back up settings", body: "Not enough free space." });
-    expect(
-      wtfCompletedToast({ ...done, kind: "restore", error: { code: "cancelled", message: "x" } }),
-    ).toBeNull();
   });
 });
 
@@ -372,22 +251,6 @@ describe("Settings copy text", () => {
       "Anniversary (not installed)",
     );
     expect(copySourceOption({ displayName: "Forever Beta", installed: true })).toBe("Forever Beta");
-  });
-
-  test("the inline outcome names the source version", () => {
-    expect(
-      outcomeOf({
-        jobId: "j",
-        kind: "copy",
-        installationId: "i",
-        fileName: "wtf_1.zip",
-        snapshotFileName: "wtf_0.zip",
-        sourceName: "Forever Beta",
-        error: null,
-      }).text,
-    ).toBe(
-      "Settings copied from Forever Beta. Your previous settings were saved as a safety backup.",
-    );
   });
 
   test("progress says Copying", () => {
@@ -508,50 +371,6 @@ describe("Settings copy of current settings", () => {
     expect(jobProgressText({ ...job, phase: "scan" })).toBe("Looking at the settings to copy…");
     expect(jobProgressText({ ...job, phase: "compress" })).toBe(
       "Backing up the settings to copy… 25%",
-    );
-  });
-});
-
-describe("import notice", () => {
-  test("another version's zip: names the version (display name) and points at Copy settings", () => {
-    const otherVersion = { flavor: "_classic_beta_", displayName: "Forever Beta" };
-    expect(importNotice({ alreadyPresent: false, otherVersion })).toBe(
-      "Added to Forever Beta's backups. To use it here, choose Copy settings from another version.",
-    );
-    expect(importNotice({ alreadyPresent: true, otherVersion })).toBe(
-      "That backup is already in Forever Beta's backups. To use it here, choose Copy settings from another version.",
-    );
-  });
-
-  test("this version's zip, or one that records no version: as before", () => {
-    expect(importNotice({ alreadyPresent: false, otherVersion: null })).toBe(
-      "Backup added to the list.",
-    );
-    expect(importNotice({ alreadyPresent: true, otherVersion: null })).toBe(
-      "That backup is already in the list.",
-    );
-  });
-});
-
-describe("unknown result", () => {
-  test("says the result can't be told and what to check, per job and request kind; neither success nor failure", () => {
-    expect(unknownOutcome("create", "i1")).toEqual({
-      kind: "create",
-      installationId: "i1",
-      ok: null,
-      text: "Couldn't tell whether the backup finished. Check the backup list before trying again.",
-    });
-    expect(unknownOutcome("restore", "i1").text).toBe(
-      "Couldn't tell whether the restore finished. Check your settings in game before trying again.",
-    );
-    expect(unknownOutcome("copy", "i1").text).toBe(
-      "Couldn't tell whether the Settings copy finished. Check your settings in game before trying again.",
-    );
-    expect(unknownOutcome("import", "i1").text).toBe(
-      "Couldn't tell whether the import finished. Check the backup list before trying again.",
-    );
-    expect(unknownOutcome("delete", "i1").text).toBe(
-      "Couldn't tell whether the backup was deleted. Check the backup list before trying again.",
     );
   });
 });

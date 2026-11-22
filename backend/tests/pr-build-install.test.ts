@@ -11,9 +11,9 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { zipSync } from "fflate";
-import type { HandlerDeps } from "../src/api/handlers/deps";
+import { subset } from "./helpers/subset";
 import type { EventMap, MethodMap, PluginUpdateOffer } from "../src/api/contracts";
-import { register } from "../src/api/handlers/system";
+import { systemHandlers, type SystemDeps } from "../src/api/handlers/system";
 import { JsonlServer } from "../src/bridge/jsonl";
 import { NetworkError, type DownloadOptions } from "../src/wow/net/network";
 import { PrBuildList } from "../src/wow/plugin/PrBuildList";
@@ -144,22 +144,23 @@ function engine({
       recorded.push(version);
     },
   };
-  const pluginUpdate = {
-    setChannel: async (channel: string) => {
+  const pluginUpdate = subset<SystemDeps["pluginUpdate"]>({
+    setChannel: async (channel) => {
       channelWrites.push(channel);
+      throw new Error("installing a PR build never switches the channel itself");
     },
-  };
-  const deps = {
+  });
+  const deps = subset<SystemDeps>({
     prBuilds: new PrBuildList(net, INDEX_URL),
     updateStager: new UpdateStager(net, check, token ? () => token : undefined, ROOT, (p) => progress.push(p), new PrBuildList(net, INDEX_URL)),
     pluginUpdate,
-  } as unknown as HandlerDeps;
+  });
   const call = async (method: string, params: unknown) => {
     let response: { result?: unknown; error?: unknown } = {};
     const rpc = new JsonlServer((line) => {
       response = JSON.parse(line);
     });
-    register(rpc, deps);
+    rpc.handle(systemHandlers(deps));
     await rpc.handleLine(JSON.stringify({ id: 1, method, params }));
     return response;
   };

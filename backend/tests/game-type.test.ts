@@ -4,7 +4,7 @@ import { getClientTypeForGameType, getGameTypeForClientType } from "../src/wow/u
 
 // The wire GameType of every client, exactly as main.ts's gameTypeWire table
 // had it before RF-05. WTF flavor keys are derived from these values
-// (main.ts wtfJobTarget, flavorKeyFor), so none may change.
+// (engine.ts wtfJobTarget, flavorKeyFor), so none may change.
 const WIRE: Array<[WowClientType, string]> = [
   [WowClientType.Retail, "retail"],
   [WowClientType.Classic, "classic"],

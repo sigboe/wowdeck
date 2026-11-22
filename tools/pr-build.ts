@@ -40,10 +40,22 @@
  * The engine reads only `builds`. `published` is the workflow's memory, so
  * a PR that is unlabeled or stripped and later labeled again never gets a
  * version it already had: one version string always means one build.
+ *
+ * One entry's shape is the engine's own PublishedPrBuild type
+ * (backend/src/wow/plugin/PublishedPrBuild.ts), imported above: the tool that
+ * writes the list and the parser that reads it share one definition, and
+ * the engine's tests read this tool's output, so the two cannot drift.
  */
 
 import { existsSync } from "node:fs";
+import { compareReleases, parseVersion, type Version } from "../backend/src/api/version";
+import type { PublishedPrBuild } from "../backend/src/wow/plugin/PublishedPrBuild";
 import { nextPatchBase } from "./beta-release";
+import { stdinLines } from "./stdin-lines";
+
+// The list entry's shape is the engine's own type: the tool that writes
+// index.json and the parser the engine reads it with cannot drift apart.
+export type { PublishedPrBuild };
 
 /** The label a maintainer puts on a pull request to publish a PR build of it. */
 export const PR_BUILD_LABEL = "pr-build";
@@ -97,22 +109,9 @@ export function decideAction(facts: PrEventFacts): PrBuildAction {
   return "skip";
 }
 
-/** One PR build in `index.json`; see the file's header for the shape. */
-export interface PrBuildEntry {
-  number: number;
-  title: string;
-  author: string;
-  version: string;
-  headSha: string;
-  builtAt: string;
-  zipSize: number;
-  sha256: string;
-  zipUrl: string;
-}
-
 /** `index.json`: every listed PR build. */
 export interface PrBuildIndex {
-  builds: PrBuildEntry[];
+  builds: PublishedPrBuild[];
   /**
    * The newest version ever published for each PR, by PR number, kept after
    * the PR leaves the list so a relabel counts on instead of reusing a
@@ -121,25 +120,15 @@ export interface PrBuildIndex {
   published?: Record<string, string>;
 }
 
-// Semver numbers: no leading zeros, as tools/version.py's.
-const N = String.raw`(0|[1-9]\d*)`;
-const PR_VERSION = new RegExp(`^${N}\\.${N}\\.${N}-pr\\.${N}(?:\\.${N})?$`);
-
-/** X.Y.Z and K (1 when absent) of a build of `pr`; null for anything else. */
-function prBuildOf(version: string, pr: number): { base: number[]; k: number } | null {
-  const m = PR_VERSION.exec(version);
-  if (!m || Number(m[4]) !== pr) return null;
-  return { base: [m[1], m[2], m[3]].map(Number), k: m[5] === undefined ? 1 : Number(m[5]) };
-}
-
-function compareBase(a: number[], b: number[]): number {
-  for (let i = 0; i < 3; i++) if (a[i] !== b[i]) return a[i] - b[i];
-  return 0;
+/** A build of `pr`; null for anything else. */
+function prBuildOf(version: string, pr: number): Version | null {
+  const v = parseVersion(version);
+  return v?.form === "pr" && v.n === pr ? v : null;
 }
 
 /** Version order between two builds of one PR: X.Y.Z, then K. */
-function comparePrBuilds(a: { base: number[]; k: number }, b: { base: number[]; k: number }) {
-  return compareBase(a.base, b.base) || a.k - b.k;
+function comparePrBuilds(a: Version, b: Version): number {
+  return compareReleases(a, b) || Math.sign(a.k! - b.k!);
 }
 
 /**
@@ -150,20 +139,20 @@ function comparePrBuilds(a: { base: number[]; k: number }, b: { base: number[]; 
  * that build's. So a rebuild always gets a strictly higher version.
  */
 export function nextPrBuildVersion(tags: string[], pr: number, index: PrBuildIndex): string {
-  const base = nextPatchBase(tags).split(".").map(Number);
+  const base = parseVersion(nextPatchBase(tags))!;
   const priors = [index.builds.find((b) => b.number === pr)?.version, index.published?.[pr]]
     .map((v) => (v === undefined ? null : prBuildOf(v, pr)))
     .filter((p) => p !== null);
-  if (priors.length === 0) return `${base.join(".")}-pr.${pr}`;
+  if (priors.length === 0) return `${base.text}-pr.${pr}`;
   const last = priors.reduce((a, b) => (comparePrBuilds(a, b) >= 0 ? a : b));
-  const next = compareBase(base, last.base) >= 0 ? base : last.base;
-  return `${next.join(".")}-pr.${pr}.${last.k + 1}`;
+  const next = compareReleases(base, last) >= 0 ? base : last;
+  return `${next.release.join(".")}-pr.${pr}.${last.k! + 1}`;
 }
 
 /** `published` with each build remembered, keeping the newest version per PR. */
 function remember(
   published: Record<string, string> | undefined,
-  builds: PrBuildEntry[],
+  builds: PublishedPrBuild[],
 ): Record<string, string> {
   const next = { ...published };
   for (const { number, version } of builds) {
@@ -184,7 +173,7 @@ export type NextIndex = { ok: true; index: PrBuildIndex } | { ok: false; refused
  * first. Refuses a build that would list an 11th PR, with the reason to post
  * on the PR.
  */
-export function withBuild(index: PrBuildIndex, build: PrBuildEntry): NextIndex {
+export function withBuild(index: PrBuildIndex, build: PublishedPrBuild): NextIndex {
   const others = index.builds.filter((b) => b.number !== build.number);
   if (others.length >= PR_BUILDS_CAP) {
     return {
@@ -216,7 +205,7 @@ export interface PublishFacts {
   /** What `decideAction` chose for the run's event. */
   action: PrBuildAction;
   /** The build to list, when the action is `build`. */
-  build?: PrBuildEntry;
+  build?: PublishedPrBuild;
   /** The current state of the run's PR and of every listed PR. */
   prs: PrState[];
 }
@@ -243,7 +232,7 @@ function megabytes(bytes: number): string {
   return `${(bytes / 1_000_000).toFixed(1)} MB`;
 }
 
-function builtComment(build: PrBuildEntry): string {
+function builtComment(build: PublishedPrBuild): string {
   return [
     COMMENT_MARKER,
     `**PR build** \`${build.version}\` of ${build.headSha}`,
@@ -255,7 +244,7 @@ function builtComment(build: PrBuildEntry): string {
 }
 
 /** A listed build is current while its PR is open, labeled and at the built commit. */
-function isCurrent(build: PrBuildEntry, prs: PrState[]): boolean {
+function isCurrent(build: PublishedPrBuild, prs: PrState[]): boolean {
   const state = prs.find((p) => p.number === build.number);
   return (
     state !== undefined &&
@@ -309,7 +298,7 @@ function planBuilds(index: PrBuildIndex, facts: PublishFacts): PublishPlan {
   return { index: current, upload: false, comment: null };
 }
 
-const ENTRY_FIELDS: Record<keyof PrBuildEntry, "number" | "string"> = {
+const ENTRY_FIELDS: Record<keyof PublishedPrBuild, "number" | "string"> = {
   number: "number",
   title: "string",
   author: "string",
@@ -321,7 +310,7 @@ const ENTRY_FIELDS: Record<keyof PrBuildEntry, "number" | "string"> = {
   zipUrl: "string",
 };
 
-function isEntry(value: unknown): value is PrBuildEntry {
+function isEntry(value: unknown): value is PublishedPrBuild {
   if (typeof value !== "object" || value === null) return false;
   const record = value as Record<string, unknown>;
   return Object.entries(ENTRY_FIELDS).every(([field, type]) => typeof record[field] === type);
@@ -397,10 +386,7 @@ async function main(argv: string[]): Promise<number> {
     }
     process.stdout.write(decideAction(f as PrEventFacts) + "\n");
   } else if (command === "next-version" && args.length === 2 && PR_NUMBER.test(args[0])) {
-    const tags = (await Bun.stdin.text())
-      .split("\n")
-      .map((line) => line.trim())
-      .filter(Boolean);
+    const tags = await stdinLines();
     process.stdout.write(
       nextPrBuildVersion(tags, Number(args[0]), await readIndex(args[1])) + "\n",
     );

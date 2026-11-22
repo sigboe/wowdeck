@@ -3,16 +3,14 @@ import { useEffect, useRef, useSyncExternalStore } from "react";
 import { openFilePicker } from "@decky/api";
 import { DialogButton, Field, Focusable, PanelSectionRow, Spinner, TextField } from "@decky/ui";
 import type { ArchivePreview, Installation, ProviderInfo, SearchResult } from "../types";
-import * as api from "../services/backend";
+import { engine } from "../engineLink";
 import { installationLabel, searchHelperText } from "../search";
 import { browseFocusView, popupOpening } from "../browseSessionState";
 import { sourceOffNotice, zeroCapabilityScreen } from "../sourceAccess";
 import {
   type ListDestinationId,
+  browseRequests,
   listDestination,
-  loadMore,
-  resolveUrl,
-  runSearch,
   searchDestination,
   setUrl,
   urlDestination,
@@ -35,9 +33,9 @@ import { toastError } from "../toast";
 import { Warning, WarningLine } from "./Warning";
 import { browseArchive } from "../archivePicker";
 import { hasMore } from "../loadMore";
-import { addonSession } from "../session";
+import { activeInstallationId, addonSession } from "../session";
 import { resultActions, type ResultActionsDeps } from "../resultActions";
-import { resultKey, recoveryNeededFor, type AddonSessionState } from "../addonSession";
+import { resultKey, recoveryNeededFor } from "../addonSession";
 import { STEAM, descriptionStyle } from "../steamTheme";
 import { AddonResultRow } from "./AddonResultRow";
 import { ZeroCapabilityScreen } from "./ZeroCapabilityScreen";
@@ -97,9 +95,8 @@ const resultDeps = (onFindInstallations: () => void): ResultActionsDeps => ({
 
 /** Details for a result, following the session's state while it is open. */
 const openResultDetails = (r: SearchResult, onFindInstallations: () => void) => {
-  const live = (state: AddonSessionState) =>
-    resultActions(state, r, resultDeps(onFindInstallations));
-  openAddonDetailsModal({ ...resultDetails(r), ...live(addonSession.get()), live });
+  const deps = resultDeps(onFindInstallations);
+  openAddonDetailsModal({ ...resultDetails(r), live: (state) => resultActions(state, r, deps) });
 };
 
 /**
@@ -169,7 +166,7 @@ export function SearchTab({
   // the results it would cover show.
   const doSearch = () => {
     hideOnScreenKeyboard();
-    return runSearch(api.rpc);
+    return browseRequests.runSearch(activeInstallationId());
   };
   const helper = searchHelperText(sources.providers, installationLabel(installation));
 
@@ -257,7 +254,7 @@ export function ListTab({
     }
   }, [loading]);
 
-  const fetchMore = () => void loadMore(destination, api.rpc);
+  const fetchMore = () => void browseRequests.loadMore(activeInstallationId(), destination);
 
   const onLoadMore = () => {
     if (loading) {
@@ -331,7 +328,7 @@ export function ManualInstallTab({ sources }: { sources: SourceControls }) {
   );
   const resolve = () => {
     hideOnScreenKeyboard();
-    return resolveUrl(api.rpc);
+    return browseRequests.resolveUrl(activeInstallationId());
   };
   const view = browseFocusView("url");
 
@@ -420,7 +417,12 @@ function FileImportSection({
   const pickFailed = file.phase === "error" && !file.preview;
 
   const browse = () => {
-    void browseArchive(openFilePicker, (path) => api.rpc("addons.inspectArchive", { path }), view);
+    void browseArchive(
+      openFilePicker,
+      (path) =>
+        engine.rpc("addons.inspectArchive", { installationId: activeInstallationId(), path }),
+      view,
+    );
   };
 
   const install = () => {
@@ -428,8 +430,14 @@ function FileImportSection({
     if (!preview) {
       return;
     }
+    const installationId = activeInstallationId();
     void installArchive(
-      (pair) => api.rpc("addons.install", pair),
+      // The addon session owns an install it didn't start: switching waits
+      // for it, and the shown list is read again when it settles.
+      (pair) =>
+        addonSession.installElsewhere(installationId, () =>
+          engine.rpc("addons.install", { installationId, ...pair }),
+        ),
       () => requireInstallation(onFindInstallations),
     );
   };
@@ -458,7 +466,8 @@ function FileImportSection({
     const recheck = (remove: () => Promise<void>, name: string) =>
       void removeConflicting(
         remove,
-        (path) => api.rpc("addons.inspectArchive", { path }),
+        (path) =>
+          engine.rpc("addons.inspectArchive", { installationId: activeInstallationId(), path }),
         (key) => requestFocus(view, key),
       ).catch((e) => toastError(`Couldn't remove ${name}`, e));
     const find = () => addonSession.get().addons.find((a) => a.id === addonId);

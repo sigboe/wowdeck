@@ -1,3 +1,4 @@
+import type { AddonSession } from "./addonSession";
 import type { Rpc } from "./services/envelope";
 import type { Diagnostics, OperationResult } from "./types";
 
@@ -38,12 +39,16 @@ export function companionStatus(
 
 export interface CompanionInstallDeps {
   rpc: Rpc;
+  /**
+   * The addon session's entry point for installs it didn't start: it holds
+   * installation switching while the install runs and reads My Addons again
+   * when it settles (the companion is a managed addon there).
+   */
+  installElsewhere: AddonSession["installElsewhere"];
   /** Whether the WowUp Hub source is on, read when the player confirms. Never turned on here. */
   hubEnabled: () => boolean;
   /** Read the companion status again so the row stops offering the install. */
   reloadDiagnostics: () => Promise<void>;
-  /** Read My Addons again: the companion is a managed addon there. */
-  reloadAddons: () => Promise<void>;
 }
 
 export type CompanionInstallResult =
@@ -60,15 +65,17 @@ export async function installCompanion(
     return { status: "hubOff" };
   }
   try {
-    const { operation } = await deps.rpc("addons.install", {
-      providerId: COMPANION_PROVIDER_ID,
-      externalId: COMPANION_EXTERNAL_ID,
-      installationId,
-    });
+    const { operation } = await deps.installElsewhere(installationId, () =>
+      deps.rpc("addons.install", {
+        providerId: COMPANION_PROVIDER_ID,
+        externalId: COMPANION_EXTERNAL_ID,
+        installationId,
+      }),
+    );
     if (operation.status === "failed") {
       return { status: "failed", error: operation.error ?? "" };
     }
-    await Promise.all([deps.reloadDiagnostics(), deps.reloadAddons()]);
+    await deps.reloadDiagnostics();
     return { status: "installed", operation };
   } catch (e) {
     return { status: "failed", error: e };

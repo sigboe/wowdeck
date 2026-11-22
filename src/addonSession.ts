@@ -1,6 +1,8 @@
 import type {
   Addon,
+  GameType,
   Installation,
+  InstallationPreferences,
   RecoveryRetryResult,
   RecoveryVerifyResult,
   StateFileRecoveryStatus,
@@ -15,7 +17,7 @@ import {
   type AddonActions,
   type ListChange,
 } from "./addonActions";
-import { canQuickUpdate } from "./addonRow";
+import { canQuickUpdate, type SessionActionId } from "./addonRow";
 import { resetBrowseSessionState } from "./browseSessionState";
 import { plural } from "./text";
 import { retryRecoveredToast, verifiedToast } from "./recovery";
@@ -49,6 +51,13 @@ export interface AddonSessionState {
    * shows it pending, and a second install of it is refused.
    */
   installing: Readonly<Record<string, true>>;
+  /**
+   * Installs started outside the session's own actions, running now
+   * (count): the TradeSkillMaster panel, From a file, an imported addon
+   * list, the companion offer. Installation switching waits for them like
+   * it waits for a catalogue install.
+   */
+  installingElsewhere: number;
   /**
    * An installation switch is underway: from before its selection call until
    * its list read has settled. Catalogue installs are refused meanwhile, so
@@ -108,6 +117,13 @@ export interface AddonSession extends Pick<Store<AddonSessionState>, "get" | "su
    */
   actions: AddonActions;
   /**
+   * Run a row action that needs no UI, by id: the engine call, its toast
+   * and the row's busy flag. The actions that open something first —
+   * Details, Folders, the channel menu, Find source, Remove's confirmation —
+   * stay with the view, which sends everything else here.
+   */
+  run(addon: Addon, action: SessionActionId): void;
+  /**
    * The engine's "addons changed" event. A change an action is making is left
    * to that action (the engine announces it before it answers); any other
    * change reads the list again, after the running actions end.
@@ -121,10 +137,48 @@ export interface AddonSession extends Pick<Store<AddonSessionState>, "get" | "su
   reloadInstallations(): Promise<void>;
   /** Re-read the active installation's addons (no provider calls). */
   reloadAddons(): Promise<void>;
-  /** Re-scan folders and ask the providers for new releases. */
-  refreshFromProviders(): Promise<void>;
+  /** Re-scan folders and ask the providers for new releases (the selected installation; see rescanInstallation). */
+  refreshFromProviders(): Promise<"refreshed" | "recovery">;
   reloadAll(): Promise<void>;
   findWow(): Promise<void>;
+  /**
+   * Change one installation's preferences — Auto updates, Hide and Unhide
+   * (`installations.update`). Reads the installations again, so every
+   * picker shows the engine's answer; the caller gets it back to show.
+   */
+  updateInstallation(
+    installationId: string,
+    changes: InstallationPreferences,
+  ): Promise<Installation>;
+  /** Remove one installation (`installations.remove`; its files stay). Reads both lists again. */
+  removeInstallation(installationId: string): Promise<void>;
+  /**
+   * Add a picked folder's installations (`installations.add`, Add WoW
+   * folder and its Add installation modal). Reads both lists again and
+   * answers with every installation the folder holds, as the engine does.
+   */
+  addInstallation(params: {
+    path: string;
+    displayName?: string;
+    clientType?: GameType;
+  }): Promise<Installation[]>;
+  /**
+   * Re-scan one installation: folders and providers, the same path as the
+   * My Addons refresh. A recovery-required installation is not asked — the
+   * engine refuses it there — and answers "recovery" instead: the recovery
+   * state is what shows, never a refusal toasted as an error.
+   */
+  rescanInstallation(installationId: string): Promise<"refreshed" | "recovery">;
+  /**
+   * An install the session's own actions didn't start (the
+   * TradeSkillMaster panel, From a file, an imported addon list, the
+   * companion offer): the caller's call runs under the session, which
+   * holds installation switching for it, reads the recovery state again
+   * when the answer says recovery, and reads the shown list again once it
+   * settles. `install` makes the engine call; its result handling and
+   * toasts stay with the caller.
+   */
+  installElsewhere<T>(installationId: string, install: () => Promise<T>): Promise<T>;
   /**
    * Make another installation the active one. The kept addon list and the
    * Get Addons results belong to the previous one, so both are reset.
@@ -156,6 +210,7 @@ export function createAddonSession(deps: AddonSessionDeps): AddonSession {
     findWowResult: null,
     busy: {},
     installing: {},
+    installingElsewhere: 0,
     switching: false,
     updatingAll: null,
     showIgnored: false,
@@ -200,24 +255,33 @@ export function createAddonSession(deps: AddonSessionDeps): AddonSession {
    * the list's refresh button.
    */
   const readAddons = async (release: readonly string[] = []) => {
+    const installationId = store.get().selectedId;
+    if (!installationId) {
+      // No installation, no addons: nothing to ask the engine.
+      store.patch({ addons: [], busy: idle(release), addonsUnverified: false });
+      return;
+    }
     try {
       const started = ++clock;
-      const list = () => rpc("addons.list");
+      const list = () => rpc("addons.list", { installationId });
       const { addons: read, unverified } = await (release.length ? list() : trackLoad(list));
+      if (store.get().selectedId !== installationId) return;
       const shown = new Map(store.get().addons.map((a) => [a.id, a]));
       const addons = read.map((a) =>
         (appliedAt.get(a.id) ?? 0) > started ? (shown.get(a.id) ?? a) : a,
       );
-      const { selectedId, recoveryRequired } = store.get();
+      const { recoveryRequired } = store.get();
       store.patch({
         addons,
         busy: idle(release),
         addonsUnverified: unverified === true,
-        // The list answers for the active installation: unverified means recovery required there.
-        ...(unverified &&
-          selectedId && { recoveryRequired: { ...recoveryRequired, [selectedId]: true as const } }),
+        // The list answers for the installation it named: unverified means recovery required there.
+        ...(unverified && {
+          recoveryRequired: { ...recoveryRequired, [installationId]: true as const },
+        }),
       });
     } catch (e) {
+      if (store.get().selectedId !== installationId) return;
       store.patch({ busy: idle(release) });
       // The last list stays on screen; the toast says it may be stale.
       toastError("Couldn't load addons", e);
@@ -294,7 +358,7 @@ export function createAddonSession(deps: AddonSessionDeps): AddonSession {
     } else if (change !== "reload" && addons.some((a) => a.id === change.id)) {
       appliedAt.set(change.id, ++clock);
       store.patch({
-        addons: addons.map((a) => (a.id === change.id ? keepListFields(a, change) : a)),
+        addons: addons.map((a) => (a.id === change.id ? change : a)),
         busy: idle(ended),
       });
     } else {
@@ -334,6 +398,8 @@ export function createAddonSession(deps: AddonSessionDeps): AddonSession {
   const shared = createAddonActions({
     ...deps,
     rpc: watchedRpc,
+    // None: the engine refuses the call, and the action says it couldn't.
+    installationId: () => store.get().selectedId ?? "",
     setUpdatingAll: (scope) => store.patch({ updatingAll: scope && { scope, progress: null } }),
     begin,
     settled: settle,
@@ -373,10 +439,76 @@ export function createAddonSession(deps: AddonSessionDeps): AddonSession {
     },
   };
 
+  // addons.list only re-reads persisted records and scans for unmanaged
+  // folders; only addons.refresh asks the providers, so only it can find a
+  // new update. A recovery-required installation is not asked: the engine
+  // refuses refreshes there, and the stored list is what there is.
+  const rescanInstallation = async (installationId: string): Promise<"refreshed" | "recovery"> => {
+    if (!installationId) {
+      return "refreshed";
+    }
+    if (store.get().recoveryRequired[installationId]) {
+      // The recovery state is what shows (its notice sits above every
+      // tab), never a refusal toasted as an error.
+      if (installationId === store.get().selectedId) {
+        await readAddons();
+      }
+      await reloadRecovery();
+      return "recovery";
+    }
+    try {
+      const { addons, failed } = await trackLoad(() => rpc("addons.refresh", { installationId }));
+      if (installationId === store.get().selectedId) {
+        store.patch({ addons });
+      }
+      if (failed > 0) {
+        toast(`Couldn't check ${plural(failed, "addon")} for updates`, "Try again later");
+      }
+    } catch (e) {
+      if ((e as { code?: unknown } | null)?.code === "recovery_required") {
+        await reloadRecovery();
+        if (installationId === store.get().selectedId) await readAddons();
+        return "recovery";
+      }
+      toastError("Couldn't check for updates", e);
+    }
+    return "refreshed";
+  };
+
+  const reloadAll = async () => {
+    await reloadInstallations();
+    await reloadAddons();
+  };
+
   return {
     get: store.get,
     subscribe: store.subscribe,
     actions,
+    run(addon, action) {
+      switch (action) {
+        case "update":
+          void actions.update(addon);
+          return;
+        case "reinstall":
+          void actions.reinstall(addon);
+          return;
+        case "rollback":
+          void actions.rollback(addon);
+          return;
+        case "pauseAuto":
+          void actions.setAutoUpdatePaused(addon, true);
+          return;
+        case "resumeAuto":
+          void actions.setAutoUpdatePaused(addon, false);
+          return;
+        case "ignore":
+          void actions.setIgnored(addon, true);
+          return;
+        case "unignore":
+          void actions.setIgnored(addon, false);
+          return;
+      }
+    },
     setFilter: (filter) => store.patch({ filter: filter.trim() }),
     setShowIgnored: (showIgnored) => store.patch({ showIgnored }),
     reloadInstallations,
@@ -399,22 +531,46 @@ export function createAddonSession(deps: AddonSessionDeps): AddonSession {
         void reloadAddons();
       }
     },
-    // addons.list only re-reads persisted records and scans for unmanaged
-    // folders; only addons.refresh asks the providers, so only it can find a
-    // new update.
-    async refreshFromProviders() {
-      // Recovery required: the engine refuses refreshes there; the stored list is what there is.
-      if (recoveryNeededFor(store.get())) {
-        return reloadAddons();
-      }
+    refreshFromProviders: () => rescanInstallation(store.get().selectedId ?? ""),
+    async updateInstallation(installationId, changes) {
+      const { installation } = await rpc("installations.update", {
+        installationId,
+        ...changes,
+      });
+      await reloadInstallations();
+      return installation;
+    },
+    async removeInstallation(installationId) {
+      await rpc("installations.remove", { installationId });
+      // The engine picks the next active installation when this one was it.
+      await reloadAll();
+    },
+    async addInstallation(params) {
+      const { installations } = await rpc("installations.add", params);
+      await reloadAll();
+      return installations;
+    },
+    rescanInstallation,
+    async installElsewhere(installationId, install) {
+      store.patch({ installingElsewhere: store.get().installingElsewhere + 1 });
       try {
-        const { addons, failed } = await trackLoad(() => rpc("addons.refresh"));
-        store.patch({ addons });
-        if (failed > 0) {
-          toast(`Couldn't check ${plural(failed, "addon")} for updates`, "Try again later");
+        const result = await install();
+        if (mentionsRecovery(result)) {
+          await reloadRecovery();
         }
+        return result;
       } catch (e) {
-        toastError("Couldn't check for updates", e);
+        if ((e as { code?: unknown } | null)?.code === "recovery_required") {
+          await reloadRecovery();
+        }
+        throw e;
+      } finally {
+        // The shown list is read again once the install has settled,
+        // whether its own addons.changed event landed mid-install or not.
+        if (installationId === store.get().selectedId) {
+          await readAddons();
+        }
+        store.patch({ installingElsewhere: store.get().installingElsewhere - 1 });
       }
     },
     async findWow() {
@@ -438,10 +594,7 @@ export function createAddonSession(deps: AddonSessionDeps): AddonSession {
         store.patch({ findingWow: false });
       }
     },
-    async reloadAll() {
-      await reloadInstallations();
-      await reloadAddons();
-    },
+    reloadAll,
     async retryRecovery(installationId) {
       let result: RecoveryRetryResult;
       try {
@@ -527,24 +680,6 @@ function mentionsRecovery(result: unknown): boolean {
   return [operation, ...(Array.isArray(operations) ? operations : [])].some(required);
 }
 
-/**
- * An addon the engine returned for one action, in place of its row. Only the
- * list reads the TOC on disk and who needs whom; the single addon carries
- * those empty, so the row keeps its own.
- */
-function keepListFields(row: Addon, returned: Addon): Addon {
-  return {
-    ...returned,
-    interfaceVersion: row.interfaceVersion,
-    dependencies: row.dependencies,
-    optionalDependencies: row.optionalDependencies,
-    missingDependencies: row.missingDependencies,
-    neededBy: row.neededBy,
-    leavesUnneeded: row.leavesUnneeded,
-    gameVersion: row.gameVersion,
-  };
-}
-
 /** A catalogue result's identity: provider and external addon ID. */
 export interface ResultRef {
   providerId: string;
@@ -562,13 +697,17 @@ export function resultKey(result: ResultRef): string {
 /**
  * Why installation selectors are off right now, or null when switching is
  * allowed. A pending catalogue install settles on the installation whose list
- * the session shows, so switching waits for every one to settle. Derived from
- * the installs alone: it never lifts any other restriction.
+ * the session shows, and so does an install started elsewhere (the
+ * TradeSkillMaster panel, a file, an imported list, the companion), so
+ * switching waits for every one to settle. Derived from the installs alone:
+ * it never lifts any other restriction.
  */
 export function installationSwitchBlocked(
-  state: Pick<AddonSessionState, "installing">,
+  state: Pick<AddonSessionState, "installing" | "installingElsewhere">,
 ): string | null {
-  return Object.keys(state.installing).length > 0 ? "Wait for addon installs to finish." : null;
+  return Object.keys(state.installing).length > 0 || state.installingElsewhere > 0
+    ? "Wait for addon installs to finish."
+    : null;
 }
 
 /** The result is being installed (from any view). */

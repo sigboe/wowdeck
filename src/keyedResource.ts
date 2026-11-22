@@ -17,6 +17,8 @@ export interface ResourceSnapshot<T> {
  * Freshness rules every caller goes through, mounted or not:
  * - newest request wins; an older answer never replaces a newer one;
  * - `forget` drops a key's state, and answers already on their way are ignored;
+ * - `put` records an answer the caller already holds (a write's reply) as the
+ *   newest one, so reads still on their way are ignored;
  * - each key with viewers has one poll loop, however many viewers; the loop
  *   stops when the last viewer leaves, and the next first viewer revalidates;
  * - `invalidate` reads only viewed keys; the rest wait, stale, for a viewer;
@@ -35,6 +37,10 @@ export interface KeyedResource<T> {
    * unviewed key is marked stale and read only once someone views it.
    */
   invalidate(affects?: (key: string) => boolean): void;
+  /** Record `data` as the key's newest answer; reads still on their way are ignored. */
+  put(key: string, data: T): void;
+  /** Drop a key's state. A viewer that is still there starts again empty. */
+  forget(key: string): void;
   /** Drop every key not in `keys` (an installation went away). */
   retainOnly(keys: readonly string[]): void;
 }
@@ -44,7 +50,8 @@ export interface KeyedResourceOptions<T> {
   /** Viewer-facing text for a failed read. */
   errorText(error: unknown): string;
   clock: Clock;
-  pollMs: number;
+  /** How often a viewed key reads again; without it a key reads on first view and on `refresh` or `invalidate` only. */
+  pollMs?: number;
   /** Taken when a read is sent and handed to `onData` with its answer, to order it against other state. */
   stamp?(): number;
   /** Called with each answer that is applied (stale answers are not), with the read's `stamp`. */
@@ -57,7 +64,7 @@ interface Entry<T> {
   snapshot: ResourceSnapshot<T>;
   /** Id of the newest request; answers carrying another id are stale. */
   latest: number;
-  inFlight: number;
+  inFlight: Set<number>;
   /** Explicit requests still running; `loading` is true while any is. */
   explicit: Set<number>;
   /** Invalidated with no read since: a read still in flight answers too old. */
@@ -76,7 +83,7 @@ export function createKeyedResource<T>(options: KeyedResourceOptions<T>): KeyedR
       entry = {
         snapshot: EMPTY,
         latest: 0,
-        inFlight: 0,
+        inFlight: new Set(),
         explicit: new Set(),
         stale: false,
         listeners: new Set(),
@@ -102,7 +109,7 @@ export function createKeyedResource<T>(options: KeyedResourceOptions<T>): KeyedR
     const id = nextRequest++;
     entry.latest = id;
     entry.stale = false;
-    entry.inFlight++;
+    entry.inFlight.add(id);
     if (explicit) {
       entry.explicit.add(id);
       update(entry, { loading: true }); // the error stays until a read succeeds
@@ -120,7 +127,7 @@ export function createKeyedResource<T>(options: KeyedResourceOptions<T>): KeyedR
         update(entry, { error: options.errorText(e) });
       }
     } finally {
-      entry.inFlight--;
+      entry.inFlight.delete(id);
       // Whoever superseded this request, it no longer holds `loading` up.
       if (entry.explicit.delete(id)) {
         update(entry, { loading: entry.explicit.size > 0 });
@@ -129,11 +136,26 @@ export function createKeyedResource<T>(options: KeyedResourceOptions<T>): KeyedR
   };
 
   /** No read is out, or the ones out started before an invalidation. */
-  const needsRead = (entry: Entry<T>) => entry.inFlight === 0 || entry.stale;
+  const needsRead = (entry: Entry<T>) => !entry.inFlight.has(entry.latest) || entry.stale;
 
   const poll = (key: string) => {
     if (needsRead(entryFor(key))) {
       void read(key, false);
+    }
+  };
+
+  const forget = (key: string) => {
+    const entry = entries.get(key);
+    if (!entry) {
+      return;
+    }
+    entries.delete(key);
+    if (entry.listeners.size > 0) {
+      // Still viewed: start again empty, keeping its viewers and poll loop.
+      const fresh = entryFor(key);
+      fresh.listeners = entry.listeners;
+      fresh.timer = entry.timer;
+      entry.listeners.forEach((l) => l());
     }
   };
 
@@ -146,7 +168,9 @@ export function createKeyedResource<T>(options: KeyedResourceOptions<T>): KeyedR
       const entry = entryFor(key);
       entry.listeners.add(listener);
       if (entry.listeners.size === 1) {
-        entry.timer = options.clock.setInterval(() => poll(key), options.pollMs);
+        if (options.pollMs) {
+          entry.timer = options.clock.setInterval(() => poll(key), options.pollMs);
+        }
         // Returning to a key revalidates it; the first load shows as loading.
         if (needsRead(entry)) {
           void read(key, entry.snapshot.data === null);
@@ -176,18 +200,20 @@ export function createKeyedResource<T>(options: KeyedResourceOptions<T>): KeyedR
         }
       }
     },
+    put(key, data) {
+      const entry = entryFor(key);
+      entry.latest = nextRequest++;
+      entry.stale = false;
+      // A write supersedes reads, including their loading state. Their eventual
+      // completion must neither block polling nor keep the action looking busy.
+      entry.explicit.clear();
+      update(entry, { data, error: null, loading: false });
+    },
+    forget,
     retainOnly(keys) {
-      for (const [key, entry] of [...entries]) {
-        if (keys.includes(key)) {
-          continue;
-        }
-        entries.delete(key);
-        if (entry.listeners.size > 0) {
-          // Still viewed: start again empty, keeping its viewers and poll loop.
-          const fresh = entryFor(key);
-          fresh.listeners = entry.listeners;
-          fresh.timer = entry.timer;
-          entry.listeners.forEach((l) => l());
+      for (const key of [...entries.keys()]) {
+        if (!keys.includes(key)) {
+          forget(key);
         }
       }
     },

@@ -9,7 +9,8 @@ import { zipSync } from "fflate";
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
-import { AddonService } from "../src/wow/addons/AddonService";
+import { addonService } from "./helpers/addon-service";
+import { AddonUpdates } from "../src/wow/addons/AddonUpdates";
 import { AddonTransactions, classifyTransaction } from "../src/wow/addons/AddonTransaction";
 import { FaultInjectingFs, type FsStage } from "../src/wow/fs/StageFs";
 import { createStateStore } from "../src/wow/storage/StateStore";
@@ -117,13 +118,11 @@ function fixture(name: string) {
   const operations: OperationResult[] = [];
   const open = () => {
     const store = createStateStore(dataDir, fs);
-    return {
-      store,
-      service: new AddonService(store, registry, new DownloadService(network, join(root, "dl")), {
-        addonsChanged: () => {},
-        operationResult: (op) => operations.push(op),
-      }),
-    };
+    const service = addonService(store, registry, new DownloadService(network, join(root, "dl")), {
+      addonsChanged: () => {},
+      operationResult: (op) => operations.push(op),
+    });
+    return { store, service, updates: new AddonUpdates(service, registry, store) };
   };
   const first = open();
   first.store.setInstallations([installation]);
@@ -177,7 +176,7 @@ async function installedWithUpdate(f: Fixture, folders?: string[]): Promise<stri
   const { addon, operation } = await f.install();
   expect(operation.status).toBe("installed");
   f.publish("2.0", "r2", folders);
-  await f.service.refresh(f.installation);
+  await f.updates.refresh(f.installation);
   return addon.id;
 }
 
@@ -218,7 +217,7 @@ describe("a completed install or update (scenario 1)", () => {
     ]);
 
     f.publish("2.0", "r2");
-    await f.service.refresh(f.installation);
+    await f.updates.refresh(f.installation);
     const { operation } = await f.service.updateAddon(addon.id);
     expect(operation.status).toBe("updated");
 
@@ -252,7 +251,7 @@ describe("a folder move that fails before commit (scenario 2)", () => {
       const id = await installedWithUpdate(f);
       await f.service.updateAddon(id); // 2.0, with 1.0 kept for Roll back
       f.publish("3.0", "r3");
-      await f.service.refresh(f.installation);
+      await f.updates.refresh(f.installation);
       const before = tree(f.addonsPath);
       const record = storedRecord(f, id);
 
@@ -383,7 +382,7 @@ describe("keeping the previous version for Roll back (scenario 8, update)", () =
       const id = await installedWithUpdate(f);
       await f.service.updateAddon(id); // 2.0, 1.0 kept
       f.publish("3.0", "r3");
-      await f.service.refresh(f.installation);
+      await f.updates.refresh(f.installation);
       const kept = tree(join(f.addonsPath, ".wowdeck", "rollback"));
 
       f.fs.failAt(stage);
@@ -403,7 +402,7 @@ describe("keeping the previous version for Roll back (scenario 8, update)", () =
     const id = await installedWithUpdate(f);
     await f.service.updateAddon(id); // 2.0, 1.0 kept
     f.publish("3.0", "r3");
-    await f.service.refresh(f.installation);
+    await f.updates.refresh(f.installation);
     const before = tree(f.addonsPath);
 
     f.fs.failAt("state.write");
@@ -699,7 +698,7 @@ describe("a committed operation whose cleanup fails (scenario 7)", () => {
 
     const engine = f.reopen();
     f.publish("3.0", "r3");
-    await engine.service.refresh(f.installation);
+    await engine.updates.refresh(f.installation);
     const { operation } = await engine.service.updateAddon(id);
 
     expect(operation.status).toBe("updated");
@@ -719,7 +718,7 @@ describe("a committed operation whose cleanup fails (scenario 7)", () => {
     await f.service.updateAddon(id);
     // ...and one unresolved operation whose undo stopped.
     f.publish("3.0", "r3");
-    await f.service.refresh(f.installation);
+    await f.updates.refresh(f.installation);
     f.fs.failAt("state.write").failAt("folder.restore");
     expect((await f.service.updateAddon(id)).operation.status).toBe("failed");
     f.fs.clear();

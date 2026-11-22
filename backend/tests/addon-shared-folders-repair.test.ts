@@ -9,7 +9,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
-import { AddonService } from "../src/wow/addons/AddonService";
+import { addonService } from "./helpers/addon-service";
 import { ProviderRegistry } from "../src/wow/providers/provider-registry";
 import { createStateStore } from "../src/wow/storage/StateStore";
 import { NetworkClient } from "../src/wow/net/network";
@@ -79,7 +79,7 @@ function fixture(name: string, seed: (addonsPath: string, installationId: string
   store.setInstallations([installation]);
   store.addons.createMany(seed(addonsPath, installation.id));
   const offline = { downloadToFile: async () => { throw new Error("no network in tests"); } } as unknown as NetworkClient;
-  const service = new AddonService(
+  const service = addonService(
     store,
     new ProviderRegistry(),
     new DownloadService(offline, join(root, "dl")),

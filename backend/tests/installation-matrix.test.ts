@@ -12,7 +12,8 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { zipSync } from "fflate";
-import { AddonService } from "../src/wow/addons/AddonService";
+import { addonService } from "./helpers/addon-service";
+import { AddonUpdates } from "../src/wow/addons/AddonUpdates";
 import { Catalogue } from "../src/wow/catalogue/Catalogue";
 import { needsUpdate } from "../src/wow/addons/addonStatus";
 import { AddonProvider } from "../src/wow/providers/addon-provider";
@@ -108,7 +109,7 @@ function makeStack(dataDir: string, provider: ScopedFakeProvider) {
   const registry = new ProviderRegistry();
   registry.register(provider);
   registry.attachStore(store);
-  const service = new AddonService(
+  const service = addonService(
     store,
     registry,
     new DownloadService(
@@ -126,7 +127,7 @@ function makeStack(dataDir: string, provider: ScopedFakeProvider) {
     ),
     { addonsChanged: () => {}, operationResult: () => {} },
   );
-  return { store, service, catalogue: new Catalogue(registry) };
+  return { store, service, updates: new AddonUpdates(service, registry, store), catalogue: new Catalogue(registry) };
 }
 
 function writeExe(dir: string, exe: string): void {
@@ -196,12 +197,12 @@ describe("installation matrix", () => {
 
     for (const target of [retail, era, beta]) {
       stack.service.installations.select(target.id);
-      expect(stack.service.installations.require().id).toBe(target.id);
+      expect(stack.service.installations.selectedId()).toBe(target.id);
       const addons = await stack.service.listAddons(target);
       expect(addons.every((a) => a.installationId === target.id)).toBe(true);
-      await stack.catalogue.search("matrix", stack.service.installations.require());
+      await stack.catalogue.search("matrix", stack.service.installations.require(target.id));
     }
-    // every search was scoped to the installation active at call time
+    // every search was scoped to the installation it named
     expect(provider.searchInstallations).toEqual([retail.id, era.id, beta.id]);
   });
 
@@ -215,7 +216,7 @@ describe("installation matrix", () => {
     provider.catalog[0]!.version = "1.1.0";
     provider.catalog[0]!.releaseId = "r2";
     versions["111"] = "1.1.0";
-    await stack.service.refresh(retail);
+    await stack.updates.refresh(retail);
     const listed = await stack.service.listAddons(retail);
     const record = listed.find((a) => a.id === addon.id)!;
     expect(record.updateAvailable).toBe(true);

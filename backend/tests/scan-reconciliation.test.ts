@@ -1,7 +1,8 @@
 /**
  * Regression coverage for the "managed/unmanaged addon state
  * corruption" matrix — duplicate scan, re-scan, and the same addon
- * being claimable by more than one provider. AddonService.scanInstallation
+ * being claimable by more than one provider, through the check My
+ * Addons' refresh runs (AddonUpdates). AddonService.scanInstallation
  * runs providers in its SCAN_ORDER and hands each one only the folders no
  * earlier provider matched, so the first provider to claim a folder wins
  * whatever order providers were registered in. reconcileRecords then
@@ -12,10 +13,12 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { AddonService } from "../src/wow/addons/AddonService";
+import { addonService } from "./helpers/addon-service";
+import { AddonUpdates } from "../src/wow/addons/AddonUpdates";
+import type { AddonRecord } from "../src/wow/addons/AddonRecords";
 import { AddonProvider, type ScanMatch } from "../src/wow/providers/addon-provider";
 import { ProviderRegistry } from "../src/wow/providers/provider-registry";
-import { createStateStore } from "../src/wow/storage/StateStore";
+import { createStateStore, type StateStore } from "../src/wow/storage/StateStore";
 import { NetworkClient } from "../src/wow/net/network";
 import { DownloadService } from "../src/wow/downloads/DownloadService";
 import type { AddonFolder, WowInstallation } from "../src/wow/models";
@@ -74,17 +77,28 @@ function writeFolder(name: string, title: string, version: string): void {
   writeFileSync(join(dir, `${name}.toc`), `## Title: ${title}\n## Version: ${version}\n## Interface: 110005\n`);
 }
 
-function makeService(claimOrder: Array<["WowUpHub" | "TukUI", Record<string, string>]>): AddonService {
+/** A service, and the check My Addons' refresh runs (AddonUpdates), answering the installation's records after it. */
+function stackOf(store: StateStore, registry: ProviderRegistry, downloads: string) {
+  const service = addonService(store, registry, new DownloadService(new NetworkClient(), join(ROOT, downloads)), {
+    addonsChanged: () => {},
+    operationResult: () => {},
+  });
+  const updates = new AddonUpdates(service, registry, store);
+  const check = async (install: WowInstallation): Promise<AddonRecord[]> => {
+    await updates.refresh(install);
+    return service.addonsFor(install.id);
+  };
+  return { service, check };
+}
+
+function makeService(claimOrder: Array<["WowUpHub" | "TukUI", Record<string, string>]>) {
   const registry = new ProviderRegistry();
   for (const [name, claims] of claimOrder) {
     registry.register(new ClaimingProvider(name, claims));
   }
   const store = createStateStore(join(ROOT, "data"));
   store.setInstallations([installation]);
-  return new AddonService(store, registry, new DownloadService(new NetworkClient(), join(ROOT, "dl")), {
-    addonsChanged: () => {},
-    operationResult: () => {},
-  });
+  return stackOf(store, registry, "dl");
 }
 
 beforeAll(() => {
@@ -111,13 +125,13 @@ afterAll(() => {
 describe("scan reconciliation", () => {
   test("re-scanning is idempotent: no duplicate records", async () => {
     writeFolder("SoloAddon", "SoloAddon", "1.0.0");
-    const service = makeService([["WowUpHub", { SoloAddon: "solo-1" }]]);
+    const { check } = makeService([["WowUpHub", { SoloAddon: "solo-1" }]]);
 
-    const first = await service.scanInstallation(installation);
+    const first = await check(installation);
     expect(first).toHaveLength(1);
     const firstId = first[0]!.id;
 
-    const second = await service.scanInstallation(installation);
+    const second = await check(installation);
     expect(second).toHaveLength(1);
     expect(second[0]!.id).toBe(firstId); // same record, not a duplicate
   });
@@ -143,12 +157,9 @@ describe("scan reconciliation", () => {
     }
     const store = createStateStore(join(ROOT, `data-contention-${order[0]}`));
     store.setInstallations([contentionInstall]);
-    const service = new AddonService(store, registry, new DownloadService(new NetworkClient(), join(ROOT, "dl-contention")), {
-      addonsChanged: () => {},
-      operationResult: () => {},
-    });
+    const { check } = stackOf(store, registry, "dl-contention");
 
-    const addons = await service.scanInstallation(contentionInstall);
+    const addons = await check(contentionInstall);
     expect(addons).toHaveLength(1);
     expect(addons[0]!.providerName).toBe("WowUpHub");
     expect(addons[0]!.externalId).toBe("hub-wins");
@@ -172,21 +183,18 @@ describe("scan reconciliation", () => {
       return { ...installation, id, location: root };
     }
 
-    function serviceFor(install: WowInstallation): AddonService {
+    function serviceFor(install: WowInstallation) {
       const registry = new ProviderRegistry();
       registry.register(new ClaimingProvider("WowUpHub", claimAll));
       const store = createStateStore(join(ROOT, `data-${install.id}`));
       store.setInstallations([install]);
-      return new AddonService(store, registry, new DownloadService(new NetworkClient(), join(ROOT, "dl-rio")), {
-        addonsChanged: () => {},
-        operationResult: () => {},
-      });
+      return stackOf(store, registry, "dl-rio");
     }
 
     test("its folders are never matched, and are listed as ignored with the reason", async () => {
       const install = raiderIoInstall("rio-client", true);
-      const service = serviceFor(install);
-      const records = await service.scanInstallation(install);
+      const { service, check } = serviceFor(install);
+      const records = await check(install);
       expect(records.map((r) => r.externalId)).toEqual(["details"]);
       const listed = await service.listAddons(install);
       const rio = listed.filter((a) => a.ignoreReason === "raiderio_client").map((a) => a.folderName).sort();
@@ -198,7 +206,7 @@ describe("scan reconciliation", () => {
 
     test("a RaiderIO from an addon site (no client TOC fields) is matched like any addon", async () => {
       const install = raiderIoInstall("rio-site", false);
-      const records = await serviceFor(install).scanInstallation(install);
+      const records = await serviceFor(install).check(install);
       expect(records.map((r) => r.externalId).sort()).toEqual(["details", "rio", "rio-db"]);
     });
   });
@@ -223,12 +231,9 @@ describe("scan reconciliation", () => {
     );
     const store = createStateStore(join(ROOT, "data-modules"));
     store.setInstallations([install]);
-    const service = new AddonService(store, registry, new DownloadService(new NetworkClient(), join(ROOT, "dl-modules")), {
-      addonsChanged: () => {},
-      operationResult: () => {},
-    });
+    const { service, check } = stackOf(store, registry, "dl-modules");
 
-    const records = await service.scanInstallation(install);
+    const records = await check(install);
     const main = records.find((r) => r.externalId === "main")!;
     expect(main.installedFolderList).toEqual(["Main", "Main_DB"]);
     expect(records.find((r) => r.externalId === "other")!.installedFolderList).toEqual(["Other"]);
@@ -250,28 +255,25 @@ describe("scan reconciliation", () => {
     const make = (claims: Record<string, string>, modules: Record<string, string[]> = {}) => {
       const registry = new ProviderRegistry();
       registry.register(new ClaimingProvider("WowUpHub", claims, modules));
-      return new AddonService(store, registry, new DownloadService(new NetworkClient(), join(ROOT, "dl-owned")), {
-        addonsChanged: () => {},
-        operationResult: () => {},
-      });
+      return stackOf(store, registry, "dl-owned");
     };
-    await make({ Lib: "lib" }).scanInstallation(install); // Lib's own record
+    await make({ Lib: "lib" }).check(install); // Lib's own record
     // Lib's provider no longer matches it, and Main's release also ships Lib.
-    const records = await make({ Main: "main" }, { Main: ["Lib"] }).scanInstallation(install);
+    const records = await make({ Main: "main" }, { Main: ["Lib"] }).check(install);
     expect(records.find((r) => r.externalId === "main")!.installedFolderList).toEqual(["Main"]);
     expect(records.find((r) => r.externalId === "lib")!.installedFolderList).toEqual(["Lib"]);
   });
 
   test("unmanaged folders stay unmanaged across a re-scan (no silent promotion without evidence)", async () => {
     writeFolder("NoEvidenceAddon", "NoEvidenceAddon", "1.0.0");
-    const service = makeService([["WowUpHub", {}]]); // claims nothing
+    const { service, check } = makeService([["WowUpHub", {}]]); // claims nothing
 
-    await service.scanInstallation(installation);
+    await check(installation);
     const addons = await service.listAddons(installation);
     const unmanaged = addons.find((a) => a.name === "NoEvidenceAddon");
     expect(unmanaged?.providerId).toBeNull();
 
-    await service.scanInstallation(installation);
+    await check(installation);
     const again = await service.listAddons(installation);
     expect(again.find((a) => a.name === "NoEvidenceAddon")?.providerId).toBeNull();
   });

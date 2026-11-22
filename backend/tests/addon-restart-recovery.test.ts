@@ -14,6 +14,8 @@ import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSyn
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { AddonService } from "../src/wow/addons/AddonService";
+import { addonService } from "./helpers/addon-service";
+import { AddonUpdates } from "../src/wow/addons/AddonUpdates";
 import { AddonTransactions } from "../src/wow/addons/AddonTransaction";
 import { FaultInjectingFs } from "../src/wow/fs/StageFs";
 import { createStateStore } from "../src/wow/storage/StateStore";
@@ -24,8 +26,8 @@ import { DownloadService } from "../src/wow/downloads/DownloadService";
 import type { AddonSearchResult, WowInstallation } from "../src/wow/models";
 import { WowClientType, type AddonProviderType } from "../src/wow/types";
 import { RecoveryRequiredError } from "../src/wow/errors";
-import type { HandlerDeps } from "../src/api/handlers/deps";
-import { register as registerInstallations } from "../src/api/handlers/installations";
+import { subset } from "./helpers/subset";
+import { installationsHandlers } from "../src/api/handlers/installations";
 import { JsonlServer } from "../src/bridge/jsonl";
 
 const roots: string[] = [];
@@ -125,11 +127,11 @@ function fixture(name: string) {
   registry.register(provider);
   const open = () => {
     const store = createStateStore(dataDir, fs);
-    const service = new AddonService(store, registry, new DownloadService(network, join(root, "dl")), {
+    const service = addonService(store, registry, new DownloadService(network, join(root, "dl")), {
       addonsChanged: () => {},
       operationResult: () => {},
     });
-    return { store, service };
+    return { store, service, updates: new AddonUpdates(service, registry, store) };
   };
   const first = open();
   first.store.setInstallations([a, b]);
@@ -144,11 +146,12 @@ function fixture(name: string) {
     restart: open,
     install: (service: AddonService, installation: WowInstallation) =>
       service.install({ intent: "install", providerId: "WowUpHub", externalId: "700", installation }),
-    async publish(service: AddonService, version: string) {
+    /** Publish a release and check every ready installation, as `engine` (the fixture or a restart) runs it. */
+    async publish(engine: { service: AddonService; updates: AddonUpdates }, version: string) {
       provider.release = { version, releaseId: `r-${version}` };
       for (const i of [a, b]) {
-        if (service.recovery.status(i.id).status === "ready") {
-          await service.refresh(i);
+        if (engine.service.recovery.status(i.id).status === "ready") {
+          await engine.updates.refresh(i);
         }
       }
     },
@@ -183,7 +186,7 @@ function tree(dir: string): Record<string, string> {
 async function installedInBoth(f: Fixture): Promise<string> {
   const { addon } = await f.install(f.service, f.a);
   await f.install(f.service, f.b);
-  await f.publish(f.service, "2.0");
+  await f.publish(f, "2.0");
   return addon.id;
 }
 
@@ -343,7 +346,7 @@ describe("a state file that can't be read", () => {
     const engine = f.restart();
     const lines: string[] = [];
     const server = new JsonlServer((l) => lines.push(l));
-    registerInstallations(server, { service: engine.service, installationService: engine.service.installations } as unknown as HandlerDeps);
+    server.handle(installationsHandlers(subset({ service: engine.service, installationService: engine.service.installations })));
 
     await server.handleLine(JSON.stringify({ id: 1, method: "installations.recoveryStatus", params: {} }));
 
@@ -364,7 +367,7 @@ describe("a state file that can't be read", () => {
     const f = fixture("readable-state-rpc");
     const lines: string[] = [];
     const server = new JsonlServer((l) => lines.push(l));
-    registerInstallations(server, { service: f.service, installationService: f.service.installations } as unknown as HandlerDeps);
+    server.handle(installationsHandlers(subset({ service: f.service, installationService: f.service.installations })));
 
     await server.handleLine(JSON.stringify({ id: 1, method: "installations.recoveryStatus", params: {} }));
 
@@ -407,9 +410,9 @@ describe("an unfinished operation after a restart (scenario 4)", () => {
     const engine = f.restart();
     expect(status(engine.service, f.a)).toBe("recoveryRequired");
     expect(engine.store.addons.markers()).toEqual(markers);
-    await expect(engine.service.scanInstallation(f.a)).rejects.toThrow(RecoveryRequiredError);
+    await expect(engine.updates.refresh(f.a)).rejects.toThrow(RecoveryRequiredError);
     await expect(engine.service.updateAddon(id)).rejects.toThrow(RecoveryRequiredError);
-    expect((await engine.service.updateAll(f.a))[0]).toMatchObject({ status: "failed", recoveryRequired: true });
+    expect((await engine.updates.updateAll(f.a))[0]).toMatchObject({ status: "failed", recoveryRequired: true });
 
     expect(tree(addonsOf(f.a))).toEqual(files);
     expect(f.restart().store.addons.markers()).toEqual(markers);
@@ -426,7 +429,7 @@ describe("an unfinished operation after a restart (scenario 4)", () => {
 
     const engine = f.restart();
     expect(status(engine.service, f.a)).toBe("recoveryRequired");
-    await expect(engine.service.scanInstallation(f.a)).rejects.toThrow(RecoveryRequiredError);
+    await expect(engine.updates.refresh(f.a)).rejects.toThrow(RecoveryRequiredError);
     await expect(f.install(engine.service, f.a)).rejects.toThrow(RecoveryRequiredError);
     expect(existsSync(f.a.location)).toBe(false);
 

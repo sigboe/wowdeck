@@ -18,7 +18,7 @@ import { readFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { writeFileAtomic } from "../wow/fs/safe-fs";
 import { isHostTrusted, type NetworkClient, ResponseTooLargeError } from "../wow/net/network";
-import { SingleFlight } from "../wow/notifications/CheckCadence";
+import { SingleFlight } from "../wow/utils/SingleFlight";
 
 /** The raw files' base: the `next` branch of sigboe/wowdeck. ADR-0005: these paths must never move. */
 export const RAW_BASE_URL = "https://raw.githubusercontent.com/sigboe/wowdeck/next";

@@ -1,5 +1,5 @@
 import { DialogControlsSection, Field } from "@decky/ui";
-import * as api from "../../services/backend";
+import { engine } from "../../engineLink";
 import { copyText } from "../../services/clipboard";
 import { pluginToast, toastError } from "../../toast";
 import { diagnosticsText } from "../../diagnostics";
@@ -15,7 +15,7 @@ import { openAboutModal } from "../AboutModal";
 export async function openDiagnosticsModal(title: string): Promise<void> {
   let text: string;
   try {
-    const diagnostics = await api.rpc("system.diagnostics");
+    const diagnostics = await engine.rpc("system.diagnostics");
     diagnosticsStore.set({ diagnostics });
     text = diagnosticsText(diagnostics);
   } catch (e) {

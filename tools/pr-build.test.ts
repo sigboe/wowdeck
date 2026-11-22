@@ -7,12 +7,12 @@ import {
   isMaintainerRole,
   nextPrBuildVersion,
   planPublish,
-  type PrBuildEntry,
   type PrState,
+  type PublishedPrBuild,
   withBuild,
 } from "./pr-build";
 
-function entry(number: number, version: string): PrBuildEntry {
+function entry(number: number, version: string): PublishedPrBuild {
   return {
     number,
     title: `PR ${number}`,
@@ -379,7 +379,7 @@ describe("command line", () => {
     return { out, code: await proc.exited };
   }
 
-  async function indexFile(builds: PrBuildEntry[]): Promise<string> {
+  async function indexFile(builds: PublishedPrBuild[]): Promise<string> {
     const path = join(dir, "index.json");
     await Bun.write(path, JSON.stringify({ builds }));
     return path;
@@ -442,5 +442,62 @@ describe("command line", () => {
 
   test("rejects a PR number that is not a positive integer", async () => {
     expect((await run(["next-version", "abc", join(dir, "index.json")], "v1.1.1\n")).code).toBe(1);
+  });
+});
+
+describe("the workflow's trusted jobs", () => {
+  // decide and publish check out only the default branch's paths listed in
+  // `sparse-checkout`, then run `bun tools/pr-build.ts`. Every file that
+  // script loads at runtime must be inside those paths, or every PR build
+  // fails before it starts (as it did after e8ff736 moved the version helpers
+  // into backend/src/api).
+  const runtimeImports = (source: string): string[] =>
+    [
+      ...source.matchAll(
+        /^(?:import|export)\s+(?!type\b)(?:[^;]*?\s+from\s+)?["'](\.{1,2}\/[^"']+)["']/gms,
+      ),
+    ].map((m) => m[1]!);
+
+  async function loadedFiles(entryPath: string): Promise<string[]> {
+    const { dirname, resolve, relative } = await import("node:path");
+    const { existsSync } = await import("node:fs");
+    const root = resolve(import.meta.dir, "..");
+    const seen = new Set<string>();
+    const queue = [resolve(root, entryPath)];
+    while (queue.length > 0) {
+      const file = queue.pop()!;
+      if (seen.has(file)) continue;
+      seen.add(file);
+      for (const spec of runtimeImports(await Bun.file(file).text())) {
+        const base = resolve(dirname(file), spec);
+        const found = [base, `${base}.ts`, `${base}/index.ts`].find(
+          (p) => existsSync(p) && !p.endsWith("/") && Bun.file(p).size > 0,
+        );
+        if (found) queue.push(found);
+      }
+    }
+    return [...seen].map((f) => relative(root, f)).sort();
+  }
+
+  test("every sparse checkout holds every file tools/pr-build.ts loads", async () => {
+    const { resolve } = await import("node:path");
+    const workflow = await Bun.file(
+      resolve(import.meta.dir, "../.github/workflows/pr-build.yml"),
+    ).text();
+    const checkouts = [
+      ...workflow.matchAll(/sparse-checkout:\s*\|?\n?((?:\s+[^\s:]+\n)+|[^\n]+)/g),
+    ].map((m) =>
+      m[1]!
+        .split(/\s+/)
+        .map((p) => p.trim().replace(/\/$/, ""))
+        .filter(Boolean),
+    );
+    expect(checkouts.length).toBeGreaterThan(0);
+    const files = await loadedFiles("tools/pr-build.ts");
+    expect(files).toContain("backend/src/api/version.ts");
+    for (const paths of checkouts) {
+      const missing = files.filter((f) => !paths.some((p) => f === p || f.startsWith(`${p}/`)));
+      expect(missing).toEqual([]);
+    }
   });
 });

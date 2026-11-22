@@ -12,9 +12,6 @@ import { deckyUiStub } from "./deckyUiStub";
 
 let pickResult: { path: string } | "cancel" = "cancel";
 mock.module("@decky/api", () => ({
-  callable: () => async () => ({}),
-  addEventListener: () => {},
-  removeEventListener: () => {},
   toaster: { toast: () => {} },
   openFilePicker: async () => {
     if (pickResult === "cancel") throw new Error("cancelled");

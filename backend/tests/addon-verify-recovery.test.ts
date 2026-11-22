@@ -12,8 +12,8 @@ import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, r
 import { join } from "node:path";
 import type { AddonService } from "../src/wow/addons/AddonService";
 import { NotFoundError } from "../src/wow/errors";
-import type { HandlerDeps } from "../src/api/handlers/deps";
-import { register as registerInstallations } from "../src/api/handlers/installations";
+import { subset } from "./helpers/subset";
+import { installationsHandlers } from "../src/api/handlers/installations";
 import { JsonlServer } from "../src/bridge/jsonl";
 import {
   addonsOf,
@@ -367,7 +367,7 @@ describe("the typed contracts", () => {
     const { id } = await stoppedUpdateInA(f);
     const lines: string[] = [];
     const server = new JsonlServer((l) => lines.push(l));
-    registerInstallations(server, { service: f.service, installationService: f.service.installations } as unknown as HandlerDeps);
+    server.handle(installationsHandlers(subset({ service: f.service, installationService: f.service.installations })));
     const call = async (method: string, params: Record<string, unknown>) => {
       await server.handleLine(JSON.stringify({ id: lines.length + 1, method, params }));
       return JSON.parse(lines.at(-1)!) as { result?: Record<string, unknown>; error?: { code: string } };

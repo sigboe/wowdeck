@@ -44,7 +44,7 @@ import type { EventMap } from "../../api/contracts";
 import type { DownloadOptions, NetworkClient } from "../net/network";
 import type { PluginUpdateCheck, StagingAnswer } from "../notifications/PluginUpdateCheck";
 import type { PrBuildList, PublishedPrBuild } from "./PrBuildList";
-import { prNumber } from "./PluginVersion";
+import { prNumber } from "../../api/version";
 import { NetworkError } from "../net/network";
 import { InstallError } from "../errors";
 

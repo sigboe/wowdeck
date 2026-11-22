@@ -144,6 +144,14 @@ and any local `.env`. It lists stashes but never drops them.
 after the merge. One version lives in `package.json`, `plugin.json` and
 `backend/package.json`, written and checked by `tools/version.py`.
 
+A version is `X.Y.Z`, `X.Y.Z-beta.N`, `X.Y.Z-test.N`, `X.Y.Z-pr.N` or
+`X.Y.Z-pr.N.K`, with no leading zeros. Counters start at 1, and a rebuild
+counter at 2. `backend/src/api/version.ts` holds these rules for the engine,
+the frontend and the release tools. `backend/src/api/version-table.json`
+lists valid and invalid versions. The TypeScript module and
+`tools/version.py` both test against it, so add a row there when a rule
+changes.
+
 Prepare the release on a `release/X.Y.Z` branch off `next`, and push it
 once it has a commit. Never keep release prep in a stash. A stash stays
 on one machine and nobody else sees it, and the 1.2.0 version bump once
@@ -341,16 +349,27 @@ A new client folder goes into the script's `CLIENTS` list too; the test
 
 1. Declare it in `backend/src/api/contracts.ts` (`MethodMap`: `params` and
    `result`; an engine-pushed event goes in `EventMap`).
-2. Handle it with `server.on("area.method", …)` in the matching
-   `backend/src/api/handlers/<area>.ts`; a new service goes into
-   `HandlerDeps` (`handlers/deps.ts`) and is built in `main.ts`. The
+2. Add its handler to the table the matching
+   `backend/src/api/handlers/<area>.ts` returns (`"area.method": async
+   (params) => …`); a new service goes into
+   `HandlerDeps` (`handlers/deps.ts`) and the area's own deps type
+   (`AddonsDeps`, `SystemDeps`, …), and is built in `engine.ts`. The
    handler only forwards: the engine module returns the contract type
    itself, and a method that never throws for an expected failure answers
-   through `settle()` (`bridge/jsonl.ts`). The integration test "every
-   declared method has a handler" fails until it is.
-3. Call it from the UI with `rpc("area.method", params)`
-   (`src/services/backend.ts`), typed from `MethodMap`. `main.py` forwards
-   every method unchanged; it needs no edit.
+   through `settle()` (`bridge/jsonl.ts`). `make typecheck` fails until
+   the method has a handler: `handlers/index.ts` types the merged table
+   as complete. The engine binary's `--methods` prints the table's keys.
+3. Call it from the UI through a store built with `engine.rpc`
+   (`src/engineLink.ts`), typed from `MethodMap`. `main.py` forwards every
+   method unchanged; it needs no edit. Its tests answer it through the typed
+   fake (`createFakeEngine` in `src/testSupport/fakeEngine.ts`).
+
+A method `main.py` answers itself, without the engine, goes in
+`BridgeMethodMap` instead: `args` lists its positional arguments in order,
+and `result` is what it returns. Write it as an `async def` on `Plugin` in
+`main.py` and call it with `engine.bridge("method_name", ...args)`. An event
+`main.py` emits goes in `BridgeEventMap`. `tools/test_main_bridge.py` fails
+until the contract and `main.py` agree.
 
 ### Add a setting
 
@@ -370,7 +389,7 @@ A new client folder goes into the script's `CLIENTS` list too; the test
    provenance header and an entry in `docs/wowup-provenance.md`.
 2. Add its id to `AddonProviderType` (`wow/types.ts`) if new, and to
    `PROVIDER_ID` and the display names in `backend/src/api/providers.ts`.
-3. Register it in `backend/src/main.ts` (`registry.register(…)`).
+3. Register it in `backend/src/engine.ts` (`registry.register(…)`).
 4. Give it a scenario in `backend/tests/providers/scenarios.ts`: its
    capabilities, a search text or link, a known id and a missing one. Record
    its cassette with `make record-provider-fixtures PROVIDERS=<name>`; the

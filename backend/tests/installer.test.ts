@@ -9,6 +9,7 @@ import type { WowAddon, WowInstallation, AddonSearchResult } from "../src/wow/mo
 import { WowClientType } from "../src/wow/types";
 import { NetworkClient } from "../src/wow/net/network";
 import { DownloadService } from "../src/wow/downloads/DownloadService";
+import { ReleaseArchives } from "../src/wow/archives/ReleaseArchive";
 import { AddonProvider } from "../src/wow/providers/addon-provider";
 import { needsUpdate } from "../src/wow/addons/addonStatus";
 import { unzipSync } from "fflate";
@@ -33,6 +34,10 @@ const ROOT = "/tmp/opencode/wowdeck-tests/install";
  * fresh store of its own, creating the record, so a test reads the patch.
  */
 class AddonInstaller extends CommittingInstaller {
+  constructor(downloads: DownloadService) {
+    super(new ReleaseArchives(downloads));
+  }
+
   override install(opts: Omit<InstallOptions, "records" | "recordChange">) {
     const records = createStateStore(mkdtempSync(join(tmpdir(), "wowdeck-installer-"))).addons;
     return super.install({ ...opts, records, recordChange: (patch) => ({ create: [{ ...opts.addon, ...patch }] }) });

@@ -1,0 +1,5 @@
+seek My Addons --exact → found "My Addons" (jump) → focus="MY ADDONS"
+key right → focus="GET ADDONS" tab="Get Addons"
+key right → focus="OPTIONS" tab="Options"
+seek TradeSkillMaster --list → - TradeSkillMaster Signed in as <account>
+probe items → items="OPTIONS | Forever | Find WoW installations Looks in Steam, L | Add WoW folder The World of Warcraft fol | Export addon list Share it with WowUp or | Import addon list From another computer  | WoW Settings Backup Last backup 4 days a | Manage backups Restore, delete or import | GitHub | Previous versions On · 1.2 GB for 45 add | Update channel | World of Warcraft in Steam World of Warc | Updates inside WoW Shown in game when th | Third-party notices What WoWDeck is buil | Diagnostics Versions and recent errors t | Support WoWDeck Scan a code with your ph"

@@ -10,6 +10,10 @@ import { join } from "node:path";
 import type { TradeSkillMasterAuthStatus } from "../../api/contracts";
 import type { ProviderRegistry } from "../providers/provider-registry";
 
+/** The registry entry of the TradeSkillMaster source, which sign-in and sign-out turn on and off. */
+type Source = Pick<ProviderRegistry, "get" | "setEnabled">;
+import { NetworkClient, type NetworkResponse } from "../net/network";
+
 export interface TradeSkillMasterEndpoints {
   authorize: string;
   token: string;
@@ -20,6 +24,8 @@ export interface TradeSkillMasterEndpoints {
   gameVersions?: string;
   userRealms?: string;
 }
+/** Token and revoke answers are small JSON objects. */
+const tokenResponseLimit = 1024 * 1024;
 const issuer = "https://id.tradeskillmaster.com/realms/app/protocol/openid-connect";
 export const tradeSkillMasterEndpoints: TradeSkillMasterEndpoints = {
   realms: "https://realm-api.tradeskillmaster.com/v2/realms",
@@ -72,10 +78,13 @@ export class TradeSkillMasterAuth {
   constructor(
     private dir: string,
     private version: string,
-    private registry: ProviderRegistry,
+    private registry: Source,
     private endpoints = tradeSkillMasterEndpoints,
     private time: AuthClock = clock,
+    private network: NetworkClient = new NetworkClient(),
   ) {}
+  /** The one client every TradeSkillMaster request goes through. */
+  get net(): NetworkClient { return this.network; }
   status(): TradeSkillMasterAuthStatus {
     return {
       state: this.#attempt
@@ -132,7 +141,7 @@ export class TradeSkillMasterAuth {
     }
   }
   /**
-   * Turning the source off: the session stops (no refresh, no socket) but the
+   * The source's off hook: the session stops (no refresh, no socket) but the
    * account is remembered; resume() continues it without a browser sign-in.
    */
   pause(): TradeSkillMasterAuthStatus {
@@ -141,18 +150,16 @@ export class TradeSkillMasterAuth {
     this.time.clearTimeout(this.#timer);
     this.#access = null;
     this.notifySession();
-    this.registry.setEnabled("TradeSkillMaster", false);
     if (!this.#refresh && !this.storedToken()) this.#account = null;
     return this.status();
   }
-  /** Turning the source back on with a remembered account; false when there is none. */
+  /** The source's on hook with a remembered account; false when there is none. */
   async resume(): Promise<boolean> {
     if (this.#signingOut) return false;
     const token = this.#refresh ?? this.storedToken();
     if (!token) return false;
     this.#refresh = token;
     this.#revoked = false;
-    this.registry.setEnabled("TradeSkillMaster", true);
     await this.refresh();
     return true;
   }
@@ -207,7 +214,7 @@ export class TradeSkillMasterAuth {
         { grant_type: "refresh_token", refresh_token: this.#refresh },
         abort.signal,
       );
-      const tokens = await response.json() as { access_token: string; refresh_token?: string; expires_in?: number; error?: string };
+      const tokens = response.json<{ access_token: string; refresh_token?: string; expires_in?: number; error?: string }>();
       if (generation !== this.#generation) return;
       if (!response.ok) {
         if (tokens.error === "invalid_grant") {
@@ -245,7 +252,7 @@ export class TradeSkillMasterAuth {
     this.#revoked = false;
     this.#access = null;
     this.notifySession();
-    this.registry.setEnabled("TradeSkillMaster", false);
+    void this.registry.setEnabled("TradeSkillMaster", false);
     const state = randomBytes(32).toString("base64url");
     const verifier = randomBytes(32).toString("base64url");
     const listener = Bun.serve({
@@ -280,16 +287,18 @@ export class TradeSkillMasterAuth {
     endpoint: string,
     body: Record<string, string>,
     signal: AbortSignal,
-  ): Promise<Response> {
-    return fetch(endpoint, {
-      method: "POST",
+  ): Promise<NetworkResponse> {
+    return this.network.send("POST", endpoint, {
       headers: {
         "User-Agent": `WoWDeck/${this.version}`,
         "Content-Type": "application/x-www-form-urlencoded",
       },
-      body: new URLSearchParams({ client_id: "desktop-app", ...body }),
+      body: new URLSearchParams({ client_id: "desktop-app", ...body }).toString(),
       signal,
       redirect: "error",
+      retries: 0,
+      timeoutMs: 15000,
+      maxBytes: tokenResponseLimit,
     });
   }
   private async callback(req: Request): Promise<Response> {
@@ -321,14 +330,14 @@ export class TradeSkillMasterAuth {
         a.abort.signal,
       );
       if (!response.ok) throw new Error("Token exchange failed");
-      const tokens = (await response.json()) as { access_token?: string; refresh_token?: string };
+      const tokens = response.json<{ access_token?: string; refresh_token?: string }>();
       if (!tokens.access_token || !tokens.refresh_token || this.#attempt !== a)
         throw new Error("Sign-in ended");
       this.accept({ ...tokens, access_token: tokens.access_token });
       this.#attempt = undefined;
       this.time.clearTimeout(a.timer);
       void a.listener.stop();
-      this.registry.setEnabled("TradeSkillMaster", true);
+      await this.registry.setEnabled("TradeSkillMaster", true);
       return new Response("Signed in to WoWDeck. You can close this page.");
     } catch {
       if (this.#attempt === a) this.cancel();
@@ -342,7 +351,7 @@ export class TradeSkillMasterAuth {
     this.#revoked = false;
     this.#access = null;
     this.notifySession();
-    this.registry.setEnabled("TradeSkillMaster", false);
+    void this.registry.setEnabled("TradeSkillMaster", false);
     let token = this.#refresh;
     if (!token) {
       try {

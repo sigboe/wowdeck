@@ -1,4 +1,4 @@
-import { CLIENT_FULL_NAMES } from "../src/wow/utils/client-display-names";
+import { WOW_CLIENTS } from "../src/wow/clients";
 import { describe, expect, test } from "bun:test";
 import { getClientFullName, getClientTypeLabel, isLegacyAutoDisplayName } from "../src/wow/utils/gametype";
 import { WowClientType } from "../src/wow/types";
@@ -23,9 +23,8 @@ describe("client display names", () => {
     expect(isLegacyAutoDisplayName("Forever", WowClientType.Retail)).toBe(false);
   });
   test("every full name is still recognised as an old auto-generated name", () => {
-    for (const [client, name] of Object.entries(CLIENT_FULL_NAMES)) {
-      expect(isLegacyAutoDisplayName(name, WowClientType[client as keyof typeof WowClientType])).toBe(true);
+    for (const { clientType, fullName } of WOW_CLIENTS) {
+      expect(isLegacyAutoDisplayName(fullName, clientType)).toBe(true);
     }
-    expect(Object.keys(CLIENT_FULL_NAMES)).toHaveLength(12);
   });
 });

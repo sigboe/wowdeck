@@ -1,6 +1,6 @@
 /// <reference types="bun-types" />
 import { describe, expect, test } from "bun:test";
-import { rpcVia, unwrapBackendResult } from "./envelope";
+import { bridgeVia, rpcVia, unwrapBackendResult } from "./envelope";
 
 describe("unwrapBackendResult", () => {
   test("passes normal results through, including null and arrays", () => {
@@ -33,10 +33,10 @@ describe("rpcVia", () => {
     const sent: unknown[] = [];
     const rpc = rpcVia(async (method, params) => {
       sent.push([method, params]);
-      return { addons: [] };
+      return { providers: [] };
     });
-    await rpc("addons.list");
-    expect(sent).toEqual([["addons.list", undefined]]);
+    await rpc("providers.list");
+    expect(sent).toEqual([["providers.list", undefined]]);
   });
   test("throws the engine's message and code for an error envelope", async () => {
     const rpc = rpcVia(async () => ({
@@ -46,5 +46,26 @@ describe("rpcVia", () => {
     expect(err).toBeInstanceOf(Error);
     expect((err as Error).message).toBe("Addon not found");
     expect((err as { code?: string }).code).toBe("not_found");
+  });
+});
+
+describe("bridgeVia", () => {
+  test("sends the method and its arguments in order, and returns the result", async () => {
+    const sent: unknown[] = [];
+    const bridge = bridgeVia(async (method, ...args) => {
+      sent.push([method, ...args]);
+      return { ok: true, path: "/home/deck/list (1).txt", message: "" };
+    });
+    const out = await bridge("save_text_file", "/home/deck", "list.txt", "payload");
+    expect(out).toEqual({ ok: true, path: "/home/deck/list (1).txt", message: "" });
+    expect(sent).toEqual([["save_text_file", "/home/deck", "list.txt", "payload"]]);
+  });
+  test("throws the message and code of an error envelope", async () => {
+    const bridge = bridgeVia(async () => ({
+      __error: { code: "internal_error", message: "boom" },
+    }));
+    const err = await bridge("get_status").catch((e: unknown) => e);
+    expect((err as Error).message).toBe("boom");
+    expect((err as { code?: string }).code).toBe("internal_error");
   });
 });

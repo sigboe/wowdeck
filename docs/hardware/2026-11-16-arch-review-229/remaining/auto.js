@@ -1,0 +1,1 @@
+DeckyBackend.call('loader/call_plugin_method','WoWDeck','rpc','review.control',{"events": [{"event": "addons.autoUpdated", "params": {"result": {"at": 1794860000000, "updated": ["Review229 toast fixture"], "failed": [], "skipped": null}}}]})

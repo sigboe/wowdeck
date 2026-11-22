@@ -7,7 +7,7 @@ import { existsSync, readFileSync, writeFileSync, renameSync } from "node:fs";
 import { join } from "node:path";
 import { gunzipSync } from "fflate";
 import type { TradeSkillMasterDestination } from "../../api/contracts";
-import type { StateStore } from "../storage/StateStore";
+import type { InstallationService } from "../installation/InstallationService";
 import type { TradeSkillMasterAuth } from "./TradeSkillMasterAuth";
 import type { TradeSkillMasterProvider } from "./TradeSkillMasterProvider";
 import { tradeSkillMasterFolders } from "./TradeSkillMasterFolders";
@@ -43,6 +43,9 @@ interface Cache {
   gameVersions: unknown[];
   follows: Follow[];
 }
+/** Account and catalogue answers are JSON lists; an auction blob is a gzipped Lua string. */
+const apiResponseLimit = 16 * 1024 * 1024;
+const blobLimit = 64 * 1024 * 1024;
 class FollowRefused extends Error {}
 
 export class TradeSkillMasterData {
@@ -68,7 +71,8 @@ export class TradeSkillMasterData {
   constructor(
     private auth: TradeSkillMasterAuth,
     private provider: TradeSkillMasterProvider,
-    private store: StateStore,
+    /** The installation module: the only reader of the stored installations. */
+    private installations: Pick<InstallationService, "list">,
     private dir: string,
     public changed: () => void,
     private candidates: (installationId: string) => TsmCandidate[] = () => [],
@@ -126,7 +130,7 @@ export class TradeSkillMasterData {
     this.#transferEpoch++;
     this.#abort.abort();
     this.#abort = new AbortController();
-    const installation = this.store.installations.find((i) => i.id === installationId);
+    const installation = this.installations.list().find((i) => i.id === installationId);
     for (const path of this.paths().filter((p) => installation && p.startsWith(installation.location + "/"))) {
       this.#pending.delete(path);
       this.#forced.set(path, new Set());
@@ -169,7 +173,7 @@ export class TradeSkillMasterData {
   async cleanupPreview(installationId: string) {
     const account = await this.account();
     const local = new Set(this.discovered(installationId).map((f) => this.choiceKey(f)));
-    const others = new Set(this.store.installations.filter((i) => i.id !== installationId)
+    const others = new Set(this.installations.list().filter((i) => i.id !== installationId)
       .flatMap((i) => this.discovered(i.id)).map((f) => this.choiceKey(f)));
     return account.follows.filter((f) => {
       const key = this.choiceKey(f);
@@ -230,12 +234,13 @@ export class TradeSkillMasterData {
     if (followed !== !!follow) {
       if (!followed && !follow?.id) throw new Error("Reload the account list before unfollowing");
       const userId = JSON.parse(Buffer.from(token.split(".")[1]!, "base64url").toString()).sub;
-      const response = await fetch(followed ? endpoint : endpoint + "/" + encodeURIComponent(follow!.id!), {
-        method: followed ? "POST" : "DELETE",
+      const response = await this.auth.net.send(followed ? "POST" : "DELETE", followed ? endpoint : endpoint + "/" + encodeURIComponent(follow!.id!), {
         // DELETE has no body; with a JSON content type the server answers 400.
         headers: { Authorization: "Bearer " + token, "User-Agent": this.auth.userAgent, ...(followed ? { "Content-Type": "application/json" } : {}) },
         body: followed ? JSON.stringify({ realmId, auctionHouseType, userId }) : undefined,
-        signal: AbortSignal.timeout(15000),
+        timeoutMs: 15000,
+        retries: 0,
+        maxBytes: apiResponseLimit,
       });
       if (!response.ok) throw new FollowRefused(followed ? "TradeSkillMaster refused the follow request. Your account may have reached its realm limit." : "TradeSkillMaster could not unfollow this realm");
       if (generation !== this.#generation) throw new Error("TradeSkillMaster session changed; reload the account list");
@@ -255,9 +260,9 @@ export class TradeSkillMasterData {
     this.provider.reconnect();
   }
   private discovered(installationId?: string): TsmCandidate[] {
-    return discoverCharacters(this.store.installations).flatMap((c) => {
+    return discoverCharacters(this.installations.list()).flatMap((c) => {
       if (installationId && c.installationId !== installationId) return [];
-      const installation = this.store.installations.find((i) => i.id === c.installationId)!;
+      const installation = this.installations.list().find((i) => i.id === c.installationId)!;
       return this.#cache.realms.filter((r) => matchesFlavor(installation, r.region.gameVersion) &&
         r.region.regionPrefix.toLowerCase() === c.region && r.localizedName === c.name &&
         r.auctionHouses.some((a) => a.type.toUpperCase() === c.faction))
@@ -294,7 +299,7 @@ export class TradeSkillMasterData {
     }
   }
   private paths(): string[] {
-    return this.store.installations
+    return this.installations.list()
       .filter((i) => Object.keys(realmFolders).some((v) => matchesFlavor(i, v)))
       .flatMap((i) => {
         const root = join(i.location, "Interface/AddOns");
@@ -324,22 +329,26 @@ export class TradeSkillMasterData {
       const values = await Promise.all(
         [endpoints.realms, endpoints.regions, endpoints.gameVersions, followsUrl.href].map(
           async (url) => {
-            const r = await fetch(url, {
+            const r = await this.auth.net.send("GET", url, {
               headers: { Authorization: "Bearer " + token, "User-Agent": this.auth.userAgent },
-              signal: AbortSignal.timeout(15000),
+              timeoutMs: 15000,
+              retries: 0,
+              maxBytes: apiResponseLimit,
             });
             if (!r.ok) throw new Error("Catalogue unavailable");
-            const result = await r.json() as any;
+            const result = r.json<any>();
             if (url === followsUrl.href) {
               for (let page = 2; page <= (result.metadata?.totalPages ?? 1); page++) {
                 const next = new URL(url);
                 next.searchParams.set("page", String(page));
-                const response = await fetch(next, {
+                const response = await this.auth.net.send("GET", next.href, {
                   headers: { Authorization: "Bearer " + token, "User-Agent": this.auth.userAgent },
-                  signal: AbortSignal.timeout(15000),
+                  timeoutMs: 15000,
+                  retries: 0,
+                  maxBytes: apiResponseLimit,
                 });
                 if (!response.ok) throw new Error("Account list unavailable");
-                result.items.push(...(await response.json() as any).items);
+                result.items.push(...response.json<any>().items);
               }
             }
             return result;
@@ -489,7 +498,7 @@ export class TradeSkillMasterData {
     const identity = JSON.stringify([name, p.stringType, keys]);
     const forced = (path: string) => this.#forced.has(path) && !this.#forced.get(path)!.has(identity);
     const version = (realm?.region ?? region)!.gameVersion;
-    const targets = this.paths().filter((path) => this.store.installations.some((i) => path.startsWith(i.location + "/") && matchesFlavor(i, version))).filter((path) => forced(path) ||
+    const targets = this.paths().filter((path) => this.installations.list().some((i) => path.startsWith(i.location + "/") && matchesFlavor(i, version))).filter((path) => forced(path) ||
       keys.some(
         (key) =>
           !this.files.read(path).covers(p.stringType, key, p.lastModified) &&
@@ -506,12 +515,15 @@ export class TradeSkillMasterData {
     let raw: Uint8Array | undefined;
     for (let attempt = 0; attempt < 3 && epoch === this.#transferEpoch && generation === this.#generation && this.provider.enabled; attempt++) {
       try {
-        const r = await fetch(p.url, {
+        const r = await this.auth.net.send("GET", p.url, {
           headers: { "User-Agent": this.auth.userAgent },
-          signal: AbortSignal.any([this.#abort.signal, AbortSignal.timeout(15000)]),
+          signal: this.#abort.signal,
+          timeoutMs: 15000,
+          retries: 0,
+          maxBytes: blobLimit,
         });
         if (r.ok) {
-          raw = new Uint8Array(await r.arrayBuffer());
+          raw = r.bytes;
           break;
         }
       } catch {
@@ -541,7 +553,7 @@ export class TradeSkillMasterData {
   async destination(installationId: string): Promise<TradeSkillMasterDestination> {
     await this.ready;
     while (this.#jobs.size) await Promise.all(this.#jobs);
-    const installation = this.store.installations.find((i) => i.id === installationId);
+    const installation = this.installations.list().find((i) => i.id === installationId);
     const path =
       installation && this.paths().find((p) => p.startsWith(installation.location + "/"));
     const snapshot = path ? this.files.read(path) : undefined;

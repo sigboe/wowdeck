@@ -1,4 +1,9 @@
-import type { MethodMap, MethodName } from "../../backend/src/api/contracts";
+import type {
+  BridgeMethodMap,
+  BridgeMethodName,
+  MethodMap,
+  MethodName,
+} from "../../backend/src/api/contracts";
 
 export interface BackendErrorEnvelope {
   __error: { code: string; message: string };
@@ -45,3 +50,21 @@ export function rpcVia(raw: (method: string, params?: object) => Promise<unknown
       (await raw(method, params)) as MethodMap[K]["result"] | BackendErrorEnvelope,
     );
 }
+
+/**
+ * A typed caller for main.py's own methods in `BridgeMethodMap`, over a raw
+ * `(method, ...args)` transport. Arguments go positionally, as Decky passes
+ * them; an error envelope is thrown as for `rpcVia`.
+ */
+export function bridgeVia(raw: (method: string, ...args: unknown[]) => Promise<unknown>) {
+  return async <K extends BridgeMethodName>(
+    method: K,
+    ...args: BridgeMethodMap[K]["args"]
+  ): Promise<BridgeMethodMap[K]["result"]> =>
+    unwrapBackendResult(
+      (await raw(method, ...args)) as BridgeMethodMap[K]["result"] | BackendErrorEnvelope,
+    );
+}
+
+/** The typed caller `bridgeVia` builds, for main.py's own methods. */
+export type Bridge = ReturnType<typeof bridgeVia>;

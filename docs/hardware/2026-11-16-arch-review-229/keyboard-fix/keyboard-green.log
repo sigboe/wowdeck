@@ -1,0 +1,69 @@
+bun test v1.4.2 (744846f84)
+
+src/curseForgeKeyModal.test.tsx:
+(pass) the CurseForge key modal > shows the key status first, then the key field and every key action that applies [142.44ms]
+(pass) the CurseForge key modal > a late initial status cannot undo a successful built-in recheck [36.54ms]
+(pass) the CurseForge key modal > a late initial status cannot restore a cleared key [31.65ms]
+(pass) the CurseForge key modal > with a key saved it offers Replace key and Clear key [17.93ms]
+(pass) the CurseForge key modal > Try built-in access again only while built-in access is rejected [11.12ms]
+(pass) the CurseForge key modal > Save key stays off until a key is typed [16.99ms]
+(pass) the CurseForge key modal > a working key is checked, saved, turns CurseForge on and closes the modal [20.54ms]
+(pass) the CurseForge key modal > a key CurseForge rejects is not saved, nothing turns on and the modal stays [28.59ms]
+(pass) the CurseForge key modal > a key that couldn't be checked just now is saved anyway and turns CurseForge on [19.21ms]
+(pass) the CurseForge key modal > Clear key removes the saved key, shows the new status and stays open [18.52ms]
+(pass) the CurseForge key modal > Try built-in access again asks the engine and shows its answer [13.62ms]
+(pass) the CurseForge key modal > Get a CurseForge API key opens the CurseForge console [9.34ms]
+(pass) closing key entry dismisses the keyboard before unmount [13.80ms]
+(pass) unmounting key entry dismisses the keyboard [23.31ms]
+
+src/tsmSignIn.test.ts:
+wowdeck: can't close the on-screen keyboard ReferenceError: window is not defined
+      at hideOnScreenKeyboard (/home/sigurdb/project/wowdeck/src/steamDom/virtualKeyboard.ts:27:20)
+      at <anonymous> (/home/sigurdb/project/wowdeck/src/tsmSignIn.ts:48:5)
+      at forEach (1:11)
+      at update (/home/sigurdb/project/wowdeck/src/keyedResource.ts:104:21)
+      at <anonymous> (/home/sigurdb/project/wowdeck/src/keyedResource.ts:122:9)
+
+(pass) sign-in opens the authorize URL and closes the browser once signed in [1.34ms]
+wowdeck: can't close the on-screen keyboard TypeError: undefined is not an object (evaluating 'window.SteamUIStore')
+      at hideOnScreenKeyboard (/home/sigurdb/project/wowdeck/src/steamDom/virtualKeyboard.ts:27:20)
+      at <anonymous> (/home/sigurdb/project/wowdeck/src/tsmSignIn.ts:48:5)
+      at forEach (1:11)
+      at update (/home/sigurdb/project/wowdeck/src/keyedResource.ts:104:21)
+      at <anonymous> (/home/sigurdb/project/wowdeck/src/keyedResource.ts:122:9)
+
+(pass) a cancelled sign-in leaves the browser alone [0.25ms]
+wowdeck: can't close the on-screen keyboard TypeError: undefined is not an object (evaluating 'window.SteamUIStore')
+      at hideOnScreenKeyboard (/home/sigurdb/project/wowdeck/src/steamDom/virtualKeyboard.ts:27:20)
+      at <anonymous> (/home/sigurdb/project/wowdeck/src/tsmSignIn.ts:48:5)
+      at forEach (1:11)
+      at update (/home/sigurdb/project/wowdeck/src/keyedResource.ts:104:21)
+      at <anonymous> (/home/sigurdb/project/wowdeck/src/keyedResource.ts:122:9)
+
+(pass) sign-in keeps the shared poll alive after its panel leaves [0.49ms]
+wowdeck: can't close the on-screen keyboard TypeError: undefined is not an object (evaluating 'window.SteamUIStore')
+      at hideOnScreenKeyboard (/home/sigurdb/project/wowdeck/src/steamDom/virtualKeyboard.ts:27:20)
+      at <anonymous> (/home/sigurdb/project/wowdeck/src/tsmSignIn.ts:48:5)
+      at forEach (1:11)
+      at update (/home/sigurdb/project/wowdeck/src/keyedResource.ts:104:21)
+      at <anonymous> (/home/sigurdb/project/wowdeck/src/keyedResource.ts:122:9)
+
+wowdeck: can't close the on-screen keyboard TypeError: undefined is not an object (evaluating 'window.SteamUIStore')
+      at hideOnScreenKeyboard (/home/sigurdb/project/wowdeck/src/steamDom/virtualKeyboard.ts:27:20)
+      at <anonymous> (/home/sigurdb/project/wowdeck/src/tsmSignIn.ts:48:5)
+      at forEach (1:11)
+      at update (/home/sigurdb/project/wowdeck/src/keyedResource.ts:104:21)
+      at put (/home/sigurdb/project/wowdeck/src/keyedResource.ts:210:7)
+      at cancel (/home/sigurdb/project/wowdeck/src/tsmReads.ts:93:14)
+      at async <anonymous> (/home/sigurdb/project/wowdeck/src/tsmSignIn.test.ts:108:16)
+
+(pass) sign-in supersedes a stalled pre-login read and cancellation ignores its late answer [1.06ms]
+(pass) sign-in dismisses the keyboard when polling finishes with signedIn [0.25ms]
+(pass) sign-in dismisses the keyboard when polling finishes with off [0.08ms]
+(pass) sign-in dismisses the keyboard when polling finishes with signedOut [0.08ms]
+(pass) plugin teardown dismisses the keyboard and releases sign-in polling [0.27ms]
+
+ 22 pass
+ 0 fail
+ 83 expect() calls
+Ran 22 tests across 2 files. [1049.00ms]

@@ -1,0 +1,7 @@
+rpc system.getStatus → {"backendVersion":"1.2.1","protocolVersion":1,"pid":211099,"homeDir":"/home/deck"}
+rpc installations.list --pick=installations[].disp… → {"installations[].displayName":["Forever Beta","Classic Era","Forever"],"installations[].selected":[false,false,true]}
+target QuickAccess → target=QuickAccess
+reload-frontend → frontend reloaded in memory; backend unchanged; tree="ModalDialogOverlay_Modal_20" focus="Review229 dependencies WhatTheWhisper 2.0 CURSEFOR" route="/routes/library/app/4221385996" plugin=null tab=null
+close → no change
+open → tree="QuickAccess-NA" focus="What The Whisper UPDATEDCurseForge · 1.0.0" plugin="WoWDeck" tab="My Addons"
+probe items → items="MY ADDONS | Forever | All up to date"

@@ -1,6 +1,8 @@
 import { describe, expect, mock, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { deckyUiStub } from "./deckyUiStub";
+import { connectEngine } from "./engineLink";
+import { createFakeEngine } from "./testSupport/fakeEngine";
 import type {
   Installation,
   InstallationRecoveryDetails,
@@ -12,9 +14,10 @@ mock.module("@decky/api", () => ({ toaster: { toast: () => {} } }));
 
 // Steam supplies these controls at runtime (the findWow.test.tsx pattern).
 mock.module("@decky/ui", () => deckyUiStub);
-// The engine bridge and module session are Decky's; these renders never call them.
-mock.module("./services/backend", () => ({ rpc: async () => ({}) }));
+// These renders never call the engine; one that never answers stands in.
+connectEngine(createFakeEngine());
 mock.module("./session", () => ({
+  activeInstallationId: () => "",
   addonSession: { subscribe: () => () => {}, get: () => ({}) },
 }));
 

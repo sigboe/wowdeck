@@ -8,6 +8,10 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { assembleEngine, configFromEnv } from "../src/engine";
 import { AddonChannelType, type AddonProviderType } from "../src/wow/types";
 import type { AddonSearchResult, ProviderCategory } from "../src/wow/models";
 import type { DiscoverPage, GetAllResult } from "../src/wow/providers/addon-provider";
@@ -98,13 +102,17 @@ const check: Record<Capability, (answer: unknown, s: ProviderScenario, providerN
   },
 };
 
-// Reads main.ts's source rather than importing it: importing would start the engine.
+// The engine's own registry, assembled but not started: nothing is scanned or fetched.
 test("every registered provider has a scenario", async () => {
-  const main = await Bun.file(`${import.meta.dir}/../src/main.ts`).text();
-  const registered = [...main.matchAll(/registry\.register\(new (\w+)\(/g)].map((m) => m[1]);
-  registered.push(...[...main.matchAll(/const \w+ = new (\w+Provider)\(/g)].map((m) => m[1]));
-  const covered = await Promise.all(scenarios.map(async (s) => (await setUp(s)).provider.constructor.name));
-  expect([...new Set(covered)].sort()).toEqual(registered.sort() as string[]);
+  const dataDir = mkdtempSync(join(tmpdir(), "wowdeck-provider-contract-"));
+  try {
+    const { deps } = assembleEngine(configFromEnv({ HOME: dataDir, WOWDECK_DATA_DIR: dataDir }, "0.0.0"));
+    const registered = deps.registry.all().map((p) => p.constructor.name);
+    const covered = await Promise.all(scenarios.map(async (s) => (await setUp(s)).provider.constructor.name));
+    expect([...new Set(covered)].sort()).toEqual(registered.sort());
+  } finally {
+    rmSync(dataDir, { recursive: true, force: true });
+  }
 });
 
 for (const scenario of scenarios) {

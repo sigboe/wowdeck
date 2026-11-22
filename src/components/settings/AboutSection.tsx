@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { Field, PanelSection } from "@decky/ui";
 
 import type { AboutInfo } from "../../types";
-import * as api from "../../services/backend";
+import { engine } from "../../engineLink";
 import {
   aboutRows,
   lastAboutInfo,
@@ -29,7 +29,7 @@ export function AboutSection() {
   const [info, setInfo] = useState<AboutInfo | null>(lastAboutInfo);
 
   useEffect(() => {
-    api
+    engine
       .rpc("about.get")
       .then((answer) => {
         rememberAboutInfo(answer);

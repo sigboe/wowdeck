@@ -3,14 +3,14 @@ import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { JsonlServer } from "../src/bridge/jsonl";
-import { register } from "../src/api/handlers/providers";
+import { providersHandlers } from "../src/api/handlers/providers";
 import { ProviderRegistry } from "../src/wow/providers/provider-registry";
 import { createStateStore } from "../src/wow/storage/StateStore";
 import {
   TradeSkillMasterAuth,
   TradeSkillMasterProvider,
 } from "../src/wow/tsm/TradeSkillMasterAuth";
-import type { HandlerDeps } from "../src/api/handlers/deps";
+import { subset } from "./helpers/subset";
 
 test("RPC starts disabled and cancellation closes the callback without enabling the source", async () => {
   const dir = mkdtempSync(join(tmpdir(), "tsm-auth-"));
@@ -22,11 +22,10 @@ test("RPC starts disabled and cancellation closes the callback without enabling 
   const rpc = new JsonlServer((line) => {
     response = JSON.parse(line);
   });
-  register(rpc, {
+  rpc.handle(providersHandlers(subset({
     registry,
     tsmAuth: auth,
-    companionCoordinator: { regenerate: async () => {} },
-  } as unknown as HandlerDeps);
+  })));
   const call = async (method: string) => {
     await rpc.handleLine(JSON.stringify({ id: 1, method }));
     return response.result;
@@ -111,12 +110,11 @@ test("local browser redirect exchanges PKCE, keeps only a private refresh token,
   const rpc = new JsonlServer((line) => {
     response = JSON.parse(line);
   });
-  register(rpc, {
+  rpc.handle(providersHandlers(subset({
     registry,
     store,
     tsmAuth: auth,
-    companionCoordinator: { regenerate: async () => {} },
-  } as unknown as HandlerDeps);
+  })));
   const call = async (method: string) => {
     await rpc.handleLine(JSON.stringify({ id: 1, method }));
     expect(response.error).toBeUndefined();
@@ -197,7 +195,7 @@ test("sign out deletes stored credentials and returns after five seconds even wh
   const rpc = new JsonlServer((line) => {
     response = JSON.parse(line);
   });
-  register(rpc, { registry, store, tsmAuth: auth } as unknown as HandlerDeps);
+  rpc.handle(providersHandlers(subset({ registry, store, tsmAuth: auth })));
   try {
     // A token file alone never enables the source or contacts TradeSkillMaster.
     registry.refreshDefaults();
@@ -268,13 +266,13 @@ test("restart restores claims, refreshes early, retries temporary failures and p
   );
   registry.register(new TradeSkillMasterProvider(auth));
   registry.attachStore(createStateStore(dir));
-  registry.setEnabled("TradeSkillMaster", true);
+  registry.get("TradeSkillMaster")!.enabled = true;
   writeFileSync(join(dir, "tsm-refresh-token"), "fixture-offline-refresh");
   let response: any;
   const rpc = new JsonlServer((line) => {
     response = JSON.parse(line);
   });
-  register(rpc, { registry, tsmAuth: auth, companionCoordinator: { regenerate: async () => {} } } as unknown as HandlerDeps);
+  rpc.handle(providersHandlers(subset({ registry, tsmAuth: auth })));
   const status = async () => {
     await rpc.handleLine(JSON.stringify({ id: 1, method: "tradeskillmaster.status" }));
     return response.result;

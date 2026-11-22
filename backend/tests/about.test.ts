@@ -500,7 +500,7 @@ describe("about refresh follows the WoWDeck update check", () => {
     ],
   };
 
-  /** About wired to an update check the way main.ts wires them, over one fake clock. */
+  /** About wired to an update check the way engine.ts wires them, over one fake clock. */
   function wired(
     options: { release?: unknown; supporters?: string | Error; onAskThrows?: boolean } = {},
   ) {

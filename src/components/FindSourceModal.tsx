@@ -11,7 +11,7 @@ import {
   showModal,
 } from "@decky/ui";
 import type { Addon, SearchResult } from "../types";
-import * as api from "../services/backend";
+import { engine } from "../engineLink";
 import { useLazyResource } from "../useLazyResource";
 import { searchOutcome } from "../search";
 import { STEAM } from "../steamTheme";
@@ -48,9 +48,11 @@ function sourceTitle(addon: Addon): string {
  */
 function FindSourceModal({ addon, onPick, closeModal }: Props) {
   const { value, loading, error } = useLazyResource(() =>
-    api.rpc(
+    engine.rpc(
       "addons.findSources",
-      addon.providerId ? { addonId: addon.id } : { folderName: addon.folderName },
+      addon.providerId
+        ? { addonId: addon.id }
+        : { installationId: addon.installationId, folderName: addon.folderName },
     ),
   );
   const outcome = value && searchOutcome(addon.name, value.results.length, value.providerErrors);
@@ -122,8 +124,13 @@ function FindSourceModal({ addon, onPick, closeModal }: Props) {
                   onDetails={() =>
                     openAddonDetailsModal({
                       ...resultDetails(source),
-                      installLabel: USE_LABEL,
-                      onInstall: async () => use(source),
+                      // One action whatever the session says: use this source.
+                      live: () => ({
+                        installLabel: USE_LABEL,
+                        tags: [],
+                        pending: false,
+                        onInstall: async () => use(source),
+                      }),
                     })
                   }
                 />

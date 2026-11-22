@@ -1,0 +1,2 @@
+version 1.3.0 is consistent across package.json, plugin.json, backend/package.json
+{"bridge":["get_status","read_text_file","rpc","save_text_file"],"missingBridge":[],"unknownRpc":[]}

@@ -1,0 +1,5 @@
+diagnose → {"ui":{"tree":"GamepadUI_Full_Root","focus":"","route":"/routes/library/home","plugin":null,"tab":null},"panel":{"tab":null,"busy":null,"alerts":[]},"engine":{"backendVersion":"1.2.1","protocolVersion":1,"pid":212406},"installations":{"count":3,"active":[{"id":"5e80311f078e","gameType":"forever"}]},"errors":[]}
+rpc tradeskillmaster.status --pick=state → signedIn
+rpc tradeskillmaster.cancel --pick=state → signedIn
+FAIL no match for "TradeSkillMaster"
+at: tree="GamepadUI_Full_Root" focus="" route="/routes/library/home" plugin=null tab=null

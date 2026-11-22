@@ -3,6 +3,8 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { JSDOM } from "jsdom";
 import { deckyUiStub } from "./deckyUiStub";
+import { connectEngine } from "./engineLink";
+import { createFakeEngine } from "./testSupport/fakeEngine";
 
 mock.module("@decky/api", () => ({
   FileSelectionType: { FILE: 0, FOLDER: 1 },
@@ -10,11 +12,10 @@ mock.module("@decky/api", () => ({
   openFilePicker: async () => {
     throw new Error("cancel");
   },
-  callable: () => async () => ({}),
-  addEventListener: () => {},
-  removeEventListener: () => {},
 }));
 mock.module("@decky/ui", () => deckyUiStub);
+// The engine never answers: only the rendered names matter here.
+connectEngine(createFakeEngine());
 
 const { UpdatesSection } = await import("./components/settings/UpdatesSection");
 

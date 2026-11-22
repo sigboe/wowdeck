@@ -1,0 +1,50 @@
+[
+  {
+    "file": "good.zip",
+    "valid": true
+  },
+  {
+    "file": "architecture.zip",
+    "valid": true
+  },
+  {
+    "file": "wrong-version.zip",
+    "valid": false
+  },
+  {
+    "file": "wrong-name.zip",
+    "valid": false
+  },
+  {
+    "file": "traversal.zip",
+    "valid": false
+  },
+  {
+    "file": "manifest-json.zip",
+    "valid": false
+  },
+  {
+    "file": "missing-wowdeck-plugin.json.zip",
+    "valid": false
+  },
+  {
+    "file": "missing-wowdeck-package.json.zip",
+    "valid": false
+  },
+  {
+    "file": "missing-wowdeck-main.py.zip",
+    "valid": false
+  },
+  {
+    "file": "missing-wowdeck-dist-index.js.zip",
+    "valid": false
+  },
+  {
+    "file": "missing-wowdeck-bin-wowdeck.zip",
+    "valid": false
+  },
+  {
+    "file": "corrupt.zip",
+    "valid": false
+  }
+]

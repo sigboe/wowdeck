@@ -259,6 +259,21 @@ WoWDeck writes, which is a different addon. Options › Notifications offers to
 install it into the active installation from WowUp Hub.
 _Avoid_: companion data addon (that is `wowup_data_addon`), WowUp addon
 
+**Addon row**:
+One addon as My Addons lists it, with its TOC dependencies, who needs it
+and the game version its installation runs. `addons.list` returns the rows,
+and every addon method returns the row of the addon it changed. The engine's
+Addon view (`AddonView.ts`) builds both.
+_Avoid_: "record", which is the stored addon the row is built from.
+
+**Engine link**:
+The frontend's one way to the engine and to `main.py` (`src/engineLink.ts`):
+the typed `rpc` and `bridge`, and one event router. The plugin connects
+Decky's adapter to it once, at plugin load; tests connect the typed fake
+engine. Stores take its `rpc` when they are built and hear its events from
+plugin load on, so a change reaches them while the panel is closed.
+_Avoid_: backend module, `api`, subscribing to `backend_event` in a component.
+
 ## Get Addons rework
 
 **Title bar**:
@@ -281,6 +296,53 @@ _Avoid_: state restore
 
 ## WoW clients
 
+**Client table**:
+The one record per WoW client in `backend/src/wow/clients.ts` (`WOW_CLIENTS`).
+Each record holds the client's flavor folder, game type, short name, full
+name, former names and Battle.net product code. Every client lookup reads it,
+so adding or renaming a client is an edit to that table alone.
+_Avoid_: client map, launch table, name table
+
+**Product code**:
+The Battle.net code in `--exec="launch <code>"`: `WoW` starts Retail, `WoWF`
+Forever and `WoWC` Classic. `WoWC` covers Mists of Pandaria Classic, Classic
+Era and Anniversary, and has only been seen starting Mists.
+_Avoid_: launch token, game code
+
+**Version UID**:
+The Battle.net ID that selects a game version without starting it, for example
+`wow_classic_era`. The player still presses Play in Battle.net.
+_Avoid_: product code, launch UID
+
+**Linked game**:
+A Steam library game WoWDeck adds addon updates and Play to: the section on
+its game page, the badge on its tile and the WoW version choice on Play.
+WoWDeck either found it automatically or the player added it. The player
+can remove any linked game, and a found game they removed stays removed
+through later scans until they add it again or run Find games. The engine
+keeps the one list, and the UI and the launch code both read it. With Show
+in Steam off, no game counts as linked, but WoWDeck keeps the list.
+_Avoid_: manual link, Steam link, detected link, Steam entry
+
+**Launch target**:
+What Play starts on a linked game that is a Battle.net shortcut: Battle.net
+itself, Retail, Classic or Forever. Each WoW row shows only when Battle.net
+lists its client as installed in the shortcut's prefix. Classic is one row
+for Mists of Pandaria Classic, Classic Era and Anniversary. It is saved per
+Steam shortcut, and Battle.net is the default. Choosing one never changes
+the active installation. On DroidDeck there is none: DroidDeck starts each
+WoW version from its own Steam game, and Steam's own Play button starts the
+version DroidDeck set up for that game. Saved launch targets stay for other
+machines.
+_Avoid_: launch client (for Battle.net), play target
+
+**Play owner**:
+Who starts a linked game when the player presses Play: WoWDeck, or
+DroidDeck when DroidDeck's store launcher is installed. It holds for the
+whole machine, never one game. The engine decides it once at startup and
+reports it in the linked games answer.
+_Avoid_: launch owner, launch mode
+
 **Forever**:
 The live World of Warcraft: Forever client, installed in `_forever_`. It runs
 the Retail game binary; only its folder tells it apart from Retail.
@@ -302,6 +364,12 @@ _Avoid_: migrate, transfer, cross-flavor restore
 A folder containing at least one `.toc` file directly inside it. Its TOC's
 presence alone does not establish compatibility with a particular WoW client.
 
+**Release archive**:
+One addon release's archive file, downloaded or copied in from a picked
+file, held from then until it is disposed of. The preview and the install
+read where it installs from it.
+_Avoid_: "download", which is only one way to get it.
+
 ## Addon recovery
 
 **Previous version**:
@@ -317,3 +385,16 @@ _Avoid_: "kept files", which also describes the previous version.
 The state of a WoW installation whose unfinished addon operation leaves its
 addon state uncertain. Further addon changes pause until recovery resolves it.
 _Avoid_: "broken installation", which suggests WoW itself cannot run.
+
+**Engine**:
+The Bun backend process started by `main.py`. It owns addon work, settings,
+update checks and normal update staging. The frontend calls its typed RPC.
+
+**Recovery screen**:
+The plugin screen for an engine that cannot start. It can offer a replacement
+build without calling the engine. Its update controls are separate work.
+
+**Recovery updater**:
+The Python module shipped beside `main.py` that downloads a supplied release,
+checks its digest and package, and returns a private staged zip. It works
+without the engine and never writes engine settings.

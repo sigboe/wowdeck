@@ -3,74 +3,38 @@
  * Upstream: wowup/wowup-lib/src/utils/wow-client.utils.ts
  * Commit: 89a0981ad00290d40368bf2a9f60209a40198502
  * Modified: yes — client group helpers dropped (unused), display-name
- *   helper added for the plugin.
+ *   helper added for the plugin; the lookups read the client table
+ *   (wow/clients.ts), which now holds WowGameType and upstream's switch.
  * See docs/wowup-provenance.md.
  */
 
 import type { GameType } from "../../api/contracts";
 import { WowClientType } from "../types";
-import { CLIENT_DISPLAY_NAMES, CLIENT_FULL_NAMES, FORMER_CLIENT_NAMES } from "./client-display-names";
+import { WowGameType, wowClient, wowClientForGameType } from "../clients";
 
-export enum WowGameType {
-  Retail = "retail",
-  Classic = "classic",
-  BurningCrusade = "burningCrusade",
-  WOTLK = "wotlk",
-  Cata = "cata",
-  Mists = "mists",
-  Forever = "forever",
-}
+export { WowGameType };
 
+/**
+ * A client's WowUp Hub game type. Forever and Forever Beta share their own
+ * `Forever` game type, as upstream v2.24.1 does; it is what
+ * WowUpHubProvider.ts asks the hub for and what addon-list imports compare.
+ */
 export function getWowGameType(clientType: WowClientType): WowGameType {
-  switch (clientType) {
-    case WowClientType.ClassicEra:
-    case WowClientType.ClassicEraPtr:
-      return WowGameType.Classic;
-    case WowClientType.Classic:
-    case WowClientType.ClassicPtr:
-      return WowGameType.Mists;
-    case WowClientType.Forever:
-    case WowClientType.ClassicBeta:
-    case WowClientType.ClassicCnBeta:
-      return WowGameType.Forever;
-    case WowClientType.ClassicTitan:
-      return WowGameType.WOTLK;
-    case WowClientType.Anniversary:
-      return WowGameType.BurningCrusade;
-    case WowClientType.Retail:
-    case WowClientType.RetailPtr:
-    case WowClientType.RetailXPtr:
-    case WowClientType.Beta:
-    default:
-      return WowGameType.Retail;
-  }
+  return wowClient(clientType)?.wowGameType ?? WowGameType.Retail;
 }
 
 /**
- * Short, CurseForge-style player-facing names — the actual table lives
- * in client-display-names.ts (edit that file, not this function, when a
- * client gets renamed again). `ClassicBeta` -> "Forever Beta" matches
- * WowUp's own rename in v2.24.1.
- *
- * `getWowGameType()` above groups Forever and Forever Beta under their
- * own `Forever` game type, as upstream v2.24.1 does. Until then both sat
- * under `Mists`, because the WowUp Hub had no Forever lists; it has them
- * now, and the game type is what WowUpHubProvider.ts asks the hub for
- * and what addon-list imports compare.
+ * Short, CurseForge-style player-facing names. They live in the client
+ * table (wow/clients.ts): edit the table, not this function, when a client
+ * is renamed.
  */
 export function getClientTypeLabel(clientType: WowClientType): string {
-  return clientEntry(CLIENT_DISPLAY_NAMES, clientType) || "Unknown";
+  return wowClient(clientType)?.shortName ?? "Unknown";
 }
 
-/** WowUp's full player-facing names (see CLIENT_FULL_NAMES). */
+/** WowUp's full player-facing names, from the client table. */
 export function getClientFullName(clientType: WowClientType): string {
-  return clientEntry(CLIENT_FULL_NAMES, clientType) ?? getClientTypeLabel(clientType);
-}
-
-/** A client's entry in one of the client-display-names.ts tables, keyed by its enum name. */
-function clientEntry<T>(table: Record<string, T>, clientType: WowClientType): T | undefined {
-  const key = WowClientType[clientType];
-  return key && Object.prototype.hasOwnProperty.call(table, key) ? table[key] : undefined;
+  return wowClient(clientType)?.fullName ?? getClientTypeLabel(clientType);
 }
 
 /**
@@ -84,10 +48,10 @@ function clientEntry<T>(table: Record<string, T>, clientType: WowClientType): T 
  * (e.g. "Mists of Pandaria Classic") before they were shortened again here;
  * a full name counts for its own client only ("World of Warcraft: Forever"
  * is Forever's, so on Retail the player typed it).
- * Beyond those, a renamed client's former names (FORMER_CLIENT_NAMES)
- * count for that client only. A name matching none of these is either
- * already the current short name or a genuine custom name — leave it
- * alone either way.
+ * Beyond those, a renamed client's former names (the client table's
+ * `formerNames`) count for that client only. A name matching none of these
+ * is either already the current short name or a genuine custom name —
+ * leave it alone either way.
  */
 const LEGACY_SHORT_LABELS = [
   "Retail",
@@ -104,66 +68,20 @@ const LEGACY_SHORT_LABELS = [
 const LEGACY_WRAPPED_NAMES = new Set(LEGACY_SHORT_LABELS.map((l) => `World of Warcraft (${l})`));
 
 export function isLegacyAutoDisplayName(name: string, clientType: WowClientType): boolean {
-  const former = clientEntry(FORMER_CLIENT_NAMES, clientType) ?? [];
-  return LEGACY_WRAPPED_NAMES.has(name) || name === clientEntry(CLIENT_FULL_NAMES, clientType) || former.includes(name);
+  const client = wowClient(clientType);
+  return LEGACY_WRAPPED_NAMES.has(name) || name === client?.fullName || (client?.formerNames.includes(name) ?? false);
 }
 
-/** Map a wire GameType back to a client type (for manual installs). */
 /**
  * A client's wire `GameType`. Several clients share one (the PTRs, Classic
  * Era and Anniversary): the wire type is the addon family, and WTF backup
  * flavor keys are derived from it, so these values must never change.
  */
 export function getGameTypeForClientType(clientType: WowClientType): GameType {
-  switch (clientType) {
-    case WowClientType.Classic:
-    case WowClientType.ClassicPtr:
-      return "classic";
-    case WowClientType.RetailPtr:
-    case WowClientType.RetailXPtr:
-      return "ptr";
-    case WowClientType.Beta:
-      return "beta";
-    case WowClientType.Forever:
-      return "forever";
-    case WowClientType.ClassicBeta:
-      return "classic_beta";
-    case WowClientType.ClassicTitan:
-      return "classic_titan";
-    case WowClientType.ClassicCnBeta:
-      return "cn_beta";
-    case WowClientType.ClassicEra:
-    case WowClientType.ClassicEraPtr:
-    case WowClientType.Anniversary:
-      return "classic_era";
-    case WowClientType.Retail:
-    default:
-      return "retail";
-  }
+  return wowClient(clientType)?.gameType ?? "retail";
 }
 
 /** The client a manually added installation's `GameType` stands for (the reverse of the above). */
 export function getClientTypeForGameType(gameType: string): WowClientType {
-  switch (gameType) {
-    case "retail":
-      return WowClientType.Retail;
-    case "classic":
-      return WowClientType.Classic;
-    case "classic_era":
-      return WowClientType.ClassicEra;
-    case "forever":
-      return WowClientType.Forever;
-    case "classic_beta":
-      return WowClientType.ClassicBeta;
-    case "classic_titan":
-      return WowClientType.ClassicTitan;
-    case "cn_beta":
-      return WowClientType.ClassicCnBeta;
-    case "ptr":
-      return WowClientType.RetailPtr;
-    case "beta":
-      return WowClientType.Beta;
-    default:
-      return WowClientType.None;
-  }
+  return wowClientForGameType(gameType)?.clientType ?? WowClientType.None;
 }

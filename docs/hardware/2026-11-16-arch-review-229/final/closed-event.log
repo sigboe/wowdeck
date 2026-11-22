@@ -1,0 +1,6 @@
+close → tree="GamepadUI_Full_Root" tab=null
+eval@SharedJSContext --file=.scratch/arch-review-2… → {"trace":[{"method":"tradeskillmaster.status","time":529.364,"installationId":null},{"method":"tradeskillmaster.status","time":530.365,"installationId":null},{"method":"tradeskillmaster.status","time":531.364,"installationId":null},{"method":"tradeskillmaster.status","time":532.364,"installationId":null},{"method":"tradeskillmaster.status","time":533.364,"installationId":null},{"method":"tradeskillmaster.status","time":534.364,"installationId":null},{"method":"tradeskillmaster.status","time":535.365,"installationId":null},{"method":"tradeskillmaster.status","time":536.364,"installationId":null}]}
+eval --file=.scratch/arch-review-229/final-session… → {"addons":[{"name":"Review229 dependencies","version":"9.229"}],"panelMounted":false}
+open → tree="QuickAccess-NA" tab="My Addons"
+probe text → text="scrollTop=[0,0,0,0,0,0] WoWDeck Manager MY ADDONS Forever INSTALLED (1) All up to date Review229 dependencies CurseForge · 9.229 · missing Review229Missing"
+eval --file=.scratch/arch-review-229/final-session… → {"addons":[{"name":"Review229 dependencies","version":"9.229"}],"panelMounted":true}

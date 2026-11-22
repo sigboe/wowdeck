@@ -1,0 +1,1 @@
+{"ca_count": 120, "hostname": true, "verify_mode": 2, "valid": {"status": 200}, "invalid": {"error": "URLError", "certificate_rejected": true}}

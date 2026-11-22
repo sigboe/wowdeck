@@ -3,23 +3,24 @@
  * `p.png`) and the element that frames that image, in the window `findSP()`
  * returns.
  * Fails as: no tile found -> no badge; nothing else changes.
- * Kill switch: Options -> Steam library -> "Show a badge on its tile"
- * (settings.steamBadge).
+ * Kill switch: Options -> Steam library -> "Tile badge"
+ * (settings.steamBadge), or Show in Steam (settings.steamEnabled).
  */
 
 import { findSP } from "@decky/ui";
 import { STEAM } from "../steamTheme";
-import { badgeState, linkedSteamGames, type BadgeState } from "../steamLibrary";
-import { addonSession } from "../session";
+import { badgeState, type BadgeState } from "../steamLibrary";
+import { linkedGamesStore, shownLinkedGames } from "../linkedGames";
 import { settingsStore } from "../settings";
-import { getSteamUpdates, onSteamSurfaceShown, subscribeSteamUpdates } from "../steamUpdates";
+import { steamUpdates } from "../steamUpdates";
 
 /**
  * A small badge on the linked game's tile in Steam's library (home screen
  * and grid): green with a download arrow when addon updates are waiting,
  * dark with a check when all are current, blue while checking (BEYOND-05;
  * owner, 2026-10-16: glyphs and colours only). A newly seen tile also starts
- * the throttled background check (steamUpdates.onSteamSurfaceShown).
+ * the throttled background check (steamUpdates.onSurfaceShown), with "Tile
+ * badge" off too; with Show in Steam off no tile is looked for at all.
  *
  * No Decky plugin patches home tiles, so this works on the DOM: a tile is
  * found by its image, `customimages/<appid>.png` (or `p.png`, the portrait
@@ -151,11 +152,15 @@ export function startHomeBadge(): () => void {
       if (!doc) {
         return;
       }
-      const { steamGame, steamAutoLink, steamBadge: badge } = settingsStore.get().settings;
-      const games = linkedSteamGames(addonSession.get().installations, steamGame, steamAutoLink);
-      const tiles = badge ? games.flatMap((game) => findTiles(doc!, game.appId)) : [];
-      const { summary, checking } = getSteamUpdates();
-      const state = tiles.length ? badgeState(summary, checking) : null;
+      // Tiles are looked for with the badge off too: one appearing still
+      // starts the check "Check for updates" promises.
+      const games = shownLinkedGames();
+      const tiles = games.flatMap((game) => findTiles(doc!, game.appId));
+      const { summary, checking } = steamUpdates.get();
+      const state =
+        tiles.length && settingsStore.get().settings.steamBadge
+          ? badgeState(summary, checking)
+          : null;
       for (const old of Array.from(doc.querySelectorAll(`.${BADGE_CLASS}`))) {
         if (!state || !tiles.includes(old.parentElement as HTMLElement)) {
           old.remove();
@@ -172,7 +177,7 @@ export function startHomeBadge(): () => void {
         }
       }
       if (appeared) {
-        onSteamSurfaceShown();
+        steamUpdates.onSurfaceShown();
       }
     } catch (err) {
       warnOnce("render failed", err);
@@ -194,32 +199,29 @@ export function startHomeBadge(): () => void {
   } catch (err) {
     warnOnce("observer failed", err);
   }
-  // A new game or a badge switched on counts its tiles as appearing again;
-  // any other setting leaves them alone.
-  const steamKey = () => {
-    const { steamGame, steamAutoLink, steamBadge } = settingsStore.get().settings;
-    return `${linkedSteamGames(addonSession.get().installations, steamGame, steamAutoLink)
+  // A newly shown game counts its tiles as appearing again. The badge
+  // switching on or off only redraws: the tiles were seen all along.
+  const shownKey = () =>
+    shownLinkedGames()
       .map((g) => g.appId)
-      .join(",")}:${steamBadge}`;
-  };
-  let lastSteamKey = steamKey();
-  const linksChanged = () => {
-    if (steamKey() === lastSteamKey) {
-      return;
+      .join(",");
+  let lastShownKey = shownKey();
+  const changed = () => {
+    if (shownKey() !== lastShownKey) {
+      lastShownKey = shownKey();
+      seen = new WeakSet();
     }
-    lastSteamKey = steamKey();
-    seen = new WeakSet();
     schedule();
   };
-  const offSettings = settingsStore.subscribe(linksChanged);
-  const offInstallations = addonSession.subscribe(linksChanged);
-  const offUpdates = subscribeSteamUpdates(schedule);
+  const offSettings = settingsStore.subscribe(changed);
+  const offLinkedGames = linkedGamesStore.subscribe(changed);
+  const offUpdates = steamUpdates.subscribe(schedule);
   schedule();
 
   return () => {
     observer?.disconnect();
     offSettings();
-    offInstallations();
+    offLinkedGames();
     offUpdates();
     if (timer) {
       clearTimeout(timer);

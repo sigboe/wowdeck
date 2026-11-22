@@ -120,11 +120,13 @@ export async function findFlavorDirs(rootPath: string): Promise<string[]> {
     }
   };
 
-  // case 1: path points directly at a flavor dir
-  const baseName = rootPath.replace(/\\/g, "/").replace(/\/+$/, "").split("/").pop() ?? "";
+  // case 1: path points directly at a flavor dir. Steam stores a shortcut's
+  // start folder with a trailing slash; the flavor's key must not keep it.
+  const flavorPath = rootPath.length > 1 ? rootPath.replace(/\/+$/, "") : rootPath;
+  const baseName = flavorPath.replace(/\\/g, "/").split("/").pop() ?? "";
   if (WOW_FLAVOR_FOLDERS.includes(baseName as never)) {
-    if (await isDirectory(rootPath)) {
-      found.push(rootPath);
+    if (await isDirectory(flavorPath)) {
+      found.push(flavorPath);
       return found;
     }
   }
@@ -367,7 +369,7 @@ export class InstallationDetector {
   private async candidateWoWRoots(): Promise<Array<{ path: string; source: DetectionSource; sources: Set<DetectionSource>; games?: SteamGameLink[] }>> {
     const { homeDir, customPaths = [] } = this.options;
     const roots: Array<{ path: string; source: DetectionSource; sources: Set<DetectionSource>; games?: SteamGameLink[] }> = [];
-    const shortcuts: SteamShortcut[] = [];
+    const shortcuts = this.options.scanSteam === false ? [] : await this.steamShortcuts();
 
     const prefixes = new Set<string>();
 
@@ -405,28 +407,16 @@ export class InstallationDetector {
 
     // Steam proton prefixes
     if (this.options.scanSteam !== false) {
-      for (const root of this.steamHomes()) {
-        for (const user of await listDirectory(join(root, "userdata"))) {
-          if (!user.isDirectory) continue;
-          try {
-            const bytes = await Bun.file(join(user.path, "config/shortcuts.vdf")).bytes();
-            const parsed = readSteamShortcuts(bytes);
-            shortcuts.push(...parsed);
-            for (const shortcut of parsed) {
-              for (const prefix of shortcutPrefixes(shortcut)) prefixes.add(prefix);
-              for (const rawPath of [shortcut.exe, shortcut.startDir]) {
-                const path = rawPath.trim().replace(/^"(.*)"$/, "$1");
-                if (!isAbsolute(path)) continue;
-                addRoot(
-                  isWowLaunchExecutable(basename(path)) ? dirname(path) : path,
-                  "steam-shortcut",
-                  isWowShortcut(shortcut) && shortcut.name ? [{ appId: shortcut.appId, name: shortcut.name }] : [],
-                );
-              }
-            }
-          } catch {
-            // Missing or malformed shortcut files cannot stop other discovery.
-          }
+      for (const shortcut of shortcuts) {
+        for (const prefix of shortcutPrefixes(shortcut)) prefixes.add(prefix);
+        for (const rawPath of [shortcut.exe, shortcut.startDir]) {
+          const path = rawPath.trim().replace(/^"(.*)"$/, "$1");
+          if (!isAbsolute(path)) continue;
+          addRoot(
+            isWowLaunchExecutable(basename(path)) ? dirname(path) : path,
+            "steam-shortcut",
+            isWowShortcut(shortcut) && shortcut.name ? [{ appId: shortcut.appId, name: shortcut.name }] : [],
+          );
         }
       }
       const steamRoots = await this.steamLibraryFolders();
@@ -517,7 +507,41 @@ export class InstallationDetector {
     return [];
   }
 
-  private async steamLibraryFolders(): Promise<string[]> {
+  async steamShortcuts(): Promise<SteamShortcut[]> {
+    return (await this.#readShortcuts()).shortcuts;
+  }
+
+  /**
+   * Every app id in any Steam user's shortcuts, or null when that isn't
+   * known: no shortcuts file was read, or one exists that couldn't be read.
+   * A game missing from a known set was deleted from Steam.
+   */
+  async steamShortcutAppIds(): Promise<ReadonlySet<number> | null> {
+    const { shortcuts, read, unreadable } = await this.#readShortcuts();
+    return read && !unreadable ? new Set(shortcuts.map((shortcut) => shortcut.appId)) : null;
+  }
+
+  async #readShortcuts(): Promise<{ shortcuts: SteamShortcut[]; read: boolean; unreadable: boolean }> {
+    const shortcuts: SteamShortcut[] = [];
+    let read = false;
+    let unreadable = false;
+    for (const root of this.steamHomes()) {
+      for (const user of await listDirectory(join(root, "userdata"))) {
+        if (!user.isDirectory) continue;
+        const file = Bun.file(join(user.path, "config/shortcuts.vdf"));
+        try {
+          shortcuts.push(...readSteamShortcuts(await file.bytes()));
+          read = true;
+        } catch {
+          // Missing or malformed shortcut files cannot stop other discovery.
+          if (await file.exists().catch(() => true)) unreadable = true;
+        }
+      }
+    }
+    return { shortcuts, read, unreadable };
+  }
+
+  async steamLibraryFolders(): Promise<string[]> {
     const libraries = new Set<string>();
     for (const root of this.steamHomes()) {
       if (await isDirectory(root)) libraries.add(root);
@@ -534,7 +558,7 @@ export class InstallationDetector {
     return [...libraries];
   }
 
-  private steamHomes(): string[] {
+  steamHomes(): string[] {
     return [
       join(this.options.homeDir, ".local/share/Steam"),
       join(this.options.homeDir, ".steam/steam"),

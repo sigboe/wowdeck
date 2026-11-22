@@ -7,6 +7,7 @@ import {
   addonRowDescription,
   canQuickUpdate,
   filterAddons,
+  installedDetailOffers,
   isLibrary,
   isNeverTouched,
   isUnneededLibrary,
@@ -391,6 +392,30 @@ describe("roll back (BEYOND-02)", () => {
         false,
       ).find((a) => a.id === "rollback")?.label,
     ).toBe("Roll back to 1.0");
+  });
+});
+
+describe("what an installed addon's Details offers (My Addons)", () => {
+  test("Update when one is on offer and the channel menu when it can follow one", () => {
+    expect(
+      installedDetailOffers(
+        { ...base, updateAvailable: true, availableVersion: "1.1", canChangeChannel: true },
+        false,
+      ),
+    ).toEqual({ installLabel: "Update", channelMenu: true });
+    expect(installedDetailOffers(base, false)).toEqual({
+      installLabel: null,
+      channelMenu: false,
+    });
+  });
+
+  test("a locked installation offers neither, like the row's own actions", () => {
+    expect(
+      installedDetailOffers(
+        { ...base, updateAvailable: true, availableVersion: "1.1", canChangeChannel: true },
+        true,
+      ),
+    ).toEqual({ installLabel: null, channelMenu: false });
   });
 });
 

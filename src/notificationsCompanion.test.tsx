@@ -5,6 +5,8 @@ import { act, type ReactElement, type ReactNode, type Ref } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { deckyUiStub } from "./deckyUiStub";
 import type { Diagnostics, Installation, ProviderInfo } from "./types";
+import { connectEngine } from "./engineLink";
+import { createFakeEngine } from "./testSupport/fakeEngine";
 
 /**
  * Options › Notifications › Updates inside WoW (#208): the row takes D-pad
@@ -13,9 +15,6 @@ import type { Diagnostics, Installation, ProviderInfo } from "./types";
  */
 
 mock.module("@decky/api", () => ({
-  callable: () => async () => ({}),
-  addEventListener: () => {},
-  removeEventListener: () => {},
   toaster: { toast: () => {} },
   openFilePicker: () => {},
   FileSelectionType: { FILE: 0, FOLDER: 1 },
@@ -69,7 +68,9 @@ mock.module("@decky/ui", () => ({
 }));
 
 const { NotificationsSection } = await import("./components/settings/NotificationsSection");
-const { sourcesStore, resetSourcesStore } = await import("./sourcesStore");
+const { sourcesStore } = await import("./sourcesStore");
+const fake = createFakeEngine();
+connectEngine(fake);
 const { rememberedFocus, resetFocusMemory } = await import("./focusMemory");
 const { VIEW } = await import("./components/settings/common");
 
@@ -97,12 +98,12 @@ afterAll(() => {
 beforeEach(() => {
   modal = null;
   resetFocusMemory(() => 0);
-  resetSourcesStore();
+  sourcesStore.reset();
   root = createRoot(doc.getElementById("root")!);
 });
 afterEach(async () => {
   await act(async () => root.unmount());
-  resetSourcesStore();
+  sourcesStore.reset();
 });
 
 const hub = (enabled: boolean) =>
@@ -119,14 +120,11 @@ const diagnostics = (retailHasIt: boolean) =>
   }) as Diagnostics;
 
 async function render(retailHasIt: boolean, hubOn = true) {
-  sourcesStore.patch({ providers: [hub(hubOn)], loaded: true });
+  fake.answers["providers.list"] = { providers: [hub(hubOn)] };
+  await sourcesStore.load();
   await act(async () =>
     root.render(
-      <NotificationsSection
-        diagnostics={diagnostics(retailHasIt)}
-        installation={retail}
-        onChanged={async () => {}}
-      />,
+      <NotificationsSection diagnostics={diagnostics(retailHasIt)} installation={retail} />,
     ),
   );
   return doc.querySelector<HTMLElement>('[aria-label="Updates inside WoW"]')!;

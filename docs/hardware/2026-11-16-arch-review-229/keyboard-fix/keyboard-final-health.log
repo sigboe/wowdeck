@@ -1,0 +1,4 @@
+diagnose → {"ui":{"tree":"GamepadUI_Full_Root","focus":"","route":"/routes/library/home","plugin":"WoWDeck","tab":null},"panel":{"tab":null,"busy":null,"alerts":[]},"engine":{"backendVersion":"1.2.1","protocolVersion":1,"pid":6199},"installations":{"count":3,"active":[{"id":"5e80311f078e","gameType":"forever"}]},"errors":[]}
+rpc curseforge.authStatus → {"activeSource":"bundled","bundledPresent":true,"bundledStatus":"valid","userConfigured":true,"userStatus":"unvalidated"}
+rpc tradeskillmaster.status --pick=state → signedIn
+rpc installations.list --pick=installations[].id,i… → {"installations[].id":["351cab445486","032c354a655f","5e80311f078e"],"installations[].selected":[false,false,true]}

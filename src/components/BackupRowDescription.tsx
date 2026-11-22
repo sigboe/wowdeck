@@ -1,6 +1,6 @@
 import { STEAM } from "../steamTheme";
 import type { WtfBackupInfo } from "../types";
-import { backupKindLabel, backupOrigin } from "../wtfFormat";
+import { backupKindLabel, backupOrigin } from "../wtfText";
 
 /** A backup row's description in Manage backups and the copy modal: kind, file count or damage, origin. */
 export function BackupRowDescription({ backup }: { backup: WtfBackupInfo }) {

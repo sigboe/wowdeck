@@ -11,6 +11,8 @@ import { PassThrough, Writable } from "node:stream";
 
 const realSetTimeout = globalThis.setTimeout;
 let lastTimer;
+let buttonCallback;
+const bindings = new Map();
 let tunnelOpened = !process.env.CEF_TUNNEL;
 globalThis.setTimeout = (callback, delay, ...args) => {
   const timer = realSetTimeout(callback, delay, ...args);
@@ -197,6 +199,8 @@ let focus = process.env.CEF_FOCUS || "Get Addons";
 let tab = "Get Addons";
 const element = (text) => ({
   textContent: text, innerText: text, ownerDocument: document,
+  // The focused element carries .gpfocus; enter-if.mjs guards Enter on a match.
+  matches: (selector) => selector === ".gpfocus",
   querySelectorAll: () => [], scrollHeight: 800, clientHeight: 400, scrollTop: 160,
   getBoundingClientRect: () => ({ x: 0, y: 0, right: 100, bottom: 30, width: 100, height: 30 }),
 });
@@ -204,6 +208,10 @@ const document = {
   // Identifies the document in active-document evaluation tests.
   marker: "quickaccess",
   querySelector: (selector) => element(selector === ".wowdeck-tab-selected" ? tab : focus),
+  querySelectorAll: () => [],
+  getElementById: () => null,
+  addEventListener: () => {}, removeEventListener: () => {},
+  hidden: false, activeElement: null,
   createTreeWalker: (el) => {
     let used = false;
     return {
@@ -230,6 +238,10 @@ const modalTree = { m_ID: "Modal-NA", Root: modalNode, m_Root: modalNode, m_last
 let activeTree = tree;
 const context = vm.createContext({
   document, NodeFilter: { SHOW_TEXT: 4 }, location: { pathname: "/wowdeck" },
+  // A page's window and globals for the scripts that measure or watch them.
+  innerWidth: 1280, innerHeight: 800, screenX: 0, screenY: 0,
+  setInterval: () => 0, clearInterval: () => {},
+  addEventListener: () => {}, removeEventListener: () => {},
   // Switch the active navigation tree: "qam" (default), "modal", or "none".
   __nav: (op) => {
     if (op === "none") { activeTree = null; return "no active tree"; }
@@ -240,7 +252,19 @@ const context = vm.createContext({
   window: {
     DFL: { Navigation: { CloseSideMenus: () => {}, OpenQuickAccessMenu: () => {} }, getFocusNavController: () => ({ GetActiveNavTree: () => activeTree }) },
     DeckyPluginLoader: { plugins: [{ name: "WoWDeck" }], unloadPlugin: () => { if (process.env.CEF_RELOAD_TRACE) console.log("fixture frontend unloaded"); }, deckyState: { setPlugins: () => {}, setActivePlugin: () => {}, _activePlugin: { name: "WoWDeck" } } },
+    // render.mjs reads the panel's React and Decky modules through the opener.
+    opener: { SP_REACT: {}, DFL: {} },
   },
+  // capture.mjs registers for controller input here; CEF_BUTTONS scripts the
+  // owner's presses ("80:0,300:1" presses button 0 at 80 ms, button 1 at 300 ms).
+  SteamClient: { Input: { RegisterForControllerInputMessages: (cb) => {
+    buttonCallback = cb;
+    for (const spec of (process.env.CEF_BUTTONS || "").split(",").filter(Boolean)) {
+      const [ms, code] = spec.split(":").map(Number);
+      realSetTimeout(() => buttonCallback?.("fixture", code, true), ms);
+    }
+    return { unregister: () => {} };
+  } } },
   DeckyBackend: { call: async (_loader, _plugin, _rpc, method, params) => {
     if (process.env.CEF_RELOAD_TRACE) throw new Error("frontend reload must not call the backend");
     if (_loader === "loader/reload_plugin") globalThis.__fixtureReloaded?.();
@@ -282,6 +306,24 @@ globalThis.WebSocket = class extends EventTarget {
     if (method === "Input.dispatchKeyEvent" && params.type === "keyUp" && params.key === "ArrowRight") tab = "Options";
     if (method === "Input.dispatchKeyEvent" && params.type === "keyUp" && params.key === "Enter") {
       console.log("fixture: Enter");
+    }
+    if (method === "Input.dispatchKeyEvent" && params.type === "keyUp" && params.key !== "Enter") {
+      console.log(`fixture: key ${params.key}`);
+    }
+    if (method === "Input.dispatchMouseEvent" && params.type === "mouseWheel") {
+      console.log(`fixture: wheel ${params.deltaY}`);
+    }
+    if (method === "Runtime.addBinding") {
+      // A bound page function arrives as a Runtime.bindingCalled event on every
+      // connection that added the binding (each target is its own page).
+      let holders = bindings.get(params.name);
+      if (!holders) bindings.set(params.name, (holders = new Set()));
+      holders.add(this);
+      context.window[params.name] = (payload) => {
+        for (const ws of bindings.get(params.name) ?? []) {
+          ws.dispatchEvent(new MessageEvent("message", { data: JSON.stringify({ method: "Runtime.bindingCalled", params: { name: params.name, payload } }) }));
+        }
+      };
     }
     let result = {};
     try {

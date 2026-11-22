@@ -858,7 +858,7 @@ describe("CurseForge provider", () => {
     });
   });
 
-  test("registry defaults: unconfigured key keeps Curse disabled", () => {
+  test("registry defaults: unconfigured key keeps Curse disabled", async () => {
     rmSync(join(ROOT, "reg"), { recursive: true, force: true });
     const store = createStateStore(join(ROOT, "reg"));
     const registry = new ProviderRegistry();
@@ -873,7 +873,7 @@ describe("CurseForge provider", () => {
     expect(provider.enabled).toBe(true);
 
     // explicit user choice wins over defaults
-    registry.setEnabled("Curse", false);
+    await registry.setEnabled("Curse", false);
     currentKey = undefined;
     registry.refreshDefaults();
     expect(provider.enabled).toBe(false);

@@ -1,0 +1,4 @@
+target SharedJSContext → target=SharedJSContext
+eval --file=.scratch/arch-review-229/cleanup-fixtu… → {"errors":[null,null,null],"remaining":[{"id":"351cab445486","selected":false},{"id":"032c354a655f","selected":false},{"id":"5e80311f078e","selected":true}]}
+FAIL rpc params are not JSON: {installationId:5e80311f078e}; run quoting: rpc addons.list '{"c":"s"}' (wrap the JSON in single quotes inside the run text)
+at: tree="GamepadUI_Full_Root" focus="Check for updates" route="/routes/library/app/4221385996" plugin="WoWDeck" tab=null

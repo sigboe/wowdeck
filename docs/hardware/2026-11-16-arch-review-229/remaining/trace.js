@@ -1,0 +1,1 @@
+DeckyBackend.call('loader/call_plugin_method','WoWDeck','rpc','review.control',{}).then(r=>({status:r.trace.filter(x=>x.method==='tradeskillmaster.status'),tail:r.trace.slice(-8)}))

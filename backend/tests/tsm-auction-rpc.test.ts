@@ -2,9 +2,10 @@ import { test, expect } from "bun:test";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, utimesSync, existsSync, symlinkSync, lstatSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { register as registerSystem } from "../src/api/handlers/system";
-import { register as registerAddons } from "../src/api/handlers/addons";
-import { AddonService } from "../src/wow/addons/AddonService";
+import { systemHandlers } from "../src/api/handlers/system";
+import { CurseForgeAuthService } from "../src/wow/providers/curseforge/CurseForgeKeyAuth";
+import { addonsHandlers } from "../src/api/handlers/addons";
+import { addonService } from "./helpers/addon-service";
 import { recordFolders } from "../src/wow/addons/AddonRecords";
 import { DownloadService } from "../src/wow/downloads/DownloadService";
 import { NetworkClient } from "../src/wow/net/network";
@@ -12,15 +13,16 @@ import { FileProvider } from "../src/wow/providers/file/FileProvider";
 import { zipSync } from "fflate";
 import { gzipSync } from "fflate";
 import { JsonlServer } from "../src/bridge/jsonl";
-import { register } from "../src/api/handlers/providers";
+import { providersHandlers } from "../src/api/handlers/providers";
 import { ProviderRegistry } from "../src/wow/providers/provider-registry";
 import { createStateStore } from "../src/wow/storage/StateStore";
+import { InstallationService } from "../src/wow/installation/InstallationService";
 import {
   TradeSkillMasterAuth,
   TradeSkillMasterProvider,
 } from "../src/wow/tsm/TradeSkillMasterAuth";
 import { TradeSkillMasterData } from "../src/wow/tsm/TradeSkillMasterData";
-import type { HandlerDeps } from "../src/api/handlers/deps";
+import { subset } from "./helpers/subset";
 
 test("socket auction data reaches all Retail files and destination through RPC", async () => {
   const dir = mkdtempSync(join(tmpdir(), "tsm-data-"));
@@ -157,7 +159,7 @@ test("socket auction data reaches all Retail files and destination through RPC",
   const provider = new TradeSkillMasterProvider(auth);
   registry.register(provider);
   registry.attachStore(store);
-  registry.setEnabled("TradeSkillMaster", true);
+  registry.get("TradeSkillMaster")!.enabled = true;
   const installations = ["active", "inactive", "tsm-only"].map((id) => ({
     id,
     clientType: 0,
@@ -178,25 +180,24 @@ test("socket auction data reaches all Retail files and destination through RPC",
   }
   let changes = 0;
   let candidates: { realmId: number; auctionHouseType: string }[] = [{ realmId: 1, auctionHouseType: "ALL" }, { realmId: 2, auctionHouseType: "ALL" }];
-  const data = new TradeSkillMasterData(auth, provider, store, dir, () => { changes++; }, (id) => id === "classic" ? [{ realmId: 4, auctionHouseType: "HORDE" }] : candidates);
+  const data = new TradeSkillMasterData(auth, provider, new InstallationService(store, async () => {}), dir, () => { changes++; }, (id) => id === "classic" ? [{ realmId: 4, auctionHouseType: "HORDE" }] : candidates);
   let response: any;
   const rpc = new JsonlServer((line) => {
     response = JSON.parse(line);
   });
-  register(rpc, {
+  rpc.handle(providersHandlers(subset({
     store,
     registry,
     tsmAuth: auth,
-    companionCoordinator: { regenerate: async () => {} },
     tsmData: data,
     installationService: { require: (id?: string) => id === "classic" ? { ...installations[0], id: "classic", clientType: 2, location: join(dir, "_classic_era_") } : installations[0] },
-  } as unknown as HandlerDeps);
-  registerSystem(rpc, { store, registry, tsmData: data, service: { installationSummary: () => [] },
-    recentErrors: { list: () => [] }, curseForgeAuth: { snapshot: () => ({}) } } as unknown as HandlerDeps);
+  })));
+  rpc.handle(systemHandlers(subset({ store, registry, tsmData: data, backendVersion: "test", installationService: { summaries: () => [], require: () => installations[0]! },
+    recentErrors: { list: () => [] }, curseForgeAuth: new CurseForgeAuthService(undefined, () => undefined) })));
   registry.register(new FileProvider());
-  const service = new AddonService(store, registry, new DownloadService(new NetworkClient(), join(dir, "downloads")), { addonsChanged() {}, operationResult() {} });
+  const service = addonService(store, registry, new DownloadService(new NetworkClient(), join(dir, "downloads")), { addonsChanged() {}, operationResult() {} });
   service.onFoldersChanged = (id, folders) => data.foldersChanged(id, folders);
-  registerAddons(rpc, { service, installationService: { require: () => installations[0] } } as unknown as HandlerDeps);
+  rpc.handle(addonsHandlers(subset({ service, installationService: { require: () => installations[0] } })));
   const call = async () => {
     await rpc.handleLine(
       JSON.stringify({ id: 1, method: "tradeskillmaster.destination", params: {} }),
@@ -260,9 +261,9 @@ test("socket auction data reaches all Retail files and destination through RPC",
     const archive = join(dir, "helper.zip");
     writeFileSync(archive, zipSync({ "TradeSkillMaster_AppHelper/TradeSkillMaster_AppHelper.toc": new TextEncoder().encode("## Interface: 110200\n## Title: Helper\n## Version: 1\n") }));
     // Temporarily disable ownership for the local-file source transaction.
-    registry.setEnabled("TradeSkillMaster", false);
+    registry.get("TradeSkillMaster")!.enabled = false;
     const transactionJoin = new Promise<void>((resolve) => { joined = resolve; });
-    service.onFoldersChanged = (id, folders) => { registry.setEnabled("TradeSkillMaster", true); data.foldersChanged(id, folders); };
+    service.onFoldersChanged = (id, folders) => { registry.get("TradeSkillMaster")!.enabled = true; data.foldersChanged(id, folders); };
     await rpc.handleLine(JSON.stringify({ id: 31, method: "addons.install", params: { providerId: "File", externalId: archive } }));
     expect(response.error).toBeUndefined();
     expect(response.result.operation.status).toBe("installed");
@@ -271,7 +272,7 @@ test("socket auction data reaches all Retail files and destination through RPC",
     expect(readFileSync(paths[0]!, "utf8")).toContain("{price=124}");
     expect(readFileSync(paths[1]!, "utf8")).toContain("{price=123}");
     for (const operation of ["update", "source"]) {
-      registry.setEnabled("TradeSkillMaster", false);
+      registry.get("TradeSkillMaster")!.enabled = false;
       const nextArchive = operation === "update" ? archive : join(dir, "source.zip");
       writeFileSync(nextArchive, zipSync({ "TradeSkillMaster_AppHelper/TradeSkillMaster_AppHelper.toc": new TextEncoder().encode(`## Interface: 110200\n## Title: Helper\n## Version: ${operation}\n`) }));
       const nextJoin = new Promise<void>((resolve) => { joined = resolve; });
@@ -499,9 +500,9 @@ test("socket auction data reaches all Retail files and destination through RPC",
     expect((await call()).followedCount).toBe(10);
     await auth.signOut();
     const restartedAuth = new TradeSkillMasterAuth(dir, "1", registry, { authorize: base, token: base, revoke: base });
-    const restarted = new TradeSkillMasterData(restartedAuth, new TradeSkillMasterProvider(restartedAuth), store, dir, () => {}, () => candidates);
+    const restarted = new TradeSkillMasterData(restartedAuth, new TradeSkillMasterProvider(restartedAuth), new InstallationService(store, async () => {}), dir, () => {}, () => candidates);
     expect((await restarted.destination("active")).realms[1]).toMatchObject({ declined: true, followed: false });
-    registry.setEnabled("TradeSkillMaster", true);
+    registry.get("TradeSkillMaster")!.enabled = true;
     writeFileSync(join(dir, "tsm-refresh-token"), "fixture");
     await auth.restore();
     await data.ready;
@@ -512,10 +513,10 @@ test("socket auction data reaches all Retail files and destination through RPC",
     await rpc.handleLine(JSON.stringify({ id: 21, method: "tradeskillmaster.setFollow", params: { realmId: 1, auctionHouseType: "ALL", followed: true } }));
     expect(response.result.realms[0]).toMatchObject({ owned: false });
     expect(posts).toBe(beforePosts);
-    registry.setEnabled("TradeSkillMaster", false);
+    registry.get("TradeSkillMaster")!.enabled = false;
     await rpc.handleLine(JSON.stringify({ id: 22, method: "tradeskillmaster.setFollow", params: { realmId: 2, auctionHouseType: "ALL", followed: false } }));
     expect(response.error).toBeDefined();
-    registry.setEnabled("TradeSkillMaster", true);
+    registry.get("TradeSkillMaster")!.enabled = true;
     // Concurrent identical requests must observe the first mutation's refreshed list.
     await rpc.handleLine(JSON.stringify({ id: 23, method: "tradeskillmaster.setFollow", params: { realmId: 2, auctionHouseType: "ALL", followed: false } }));
     const beforeConcurrent = posts;
@@ -588,7 +589,7 @@ test("socket auction data reaches all Retail files and destination through RPC",
     const offline = new TradeSkillMasterData(
       offlineAuth,
       new TradeSkillMasterProvider(offlineAuth),
-      store,
+      new InstallationService(store, async () => {}),
       dir,
       () => {},
       () => candidates,
@@ -685,7 +686,7 @@ test("every committed AppHelper folder change refreshes auction data through RPC
   registry.register(provider);
   registry.register(new FileProvider());
   registry.attachStore(store);
-  registry.setEnabled("TradeSkillMaster", true);
+  registry.get("TradeSkillMaster")!.enabled = true;
   store.updateSettings({ keepPreviousVersions: true });
   const installation = {
     id: "retail", clientType: 0, location: join(dir, "retail"), label: "Retail", displayName: "Retail",
@@ -697,14 +698,14 @@ test("every committed AppHelper folder change refreshes auction data through RPC
   const helperFile = join(addOns, "TradeSkillMaster_AppHelper/AppData.lua");
   mkdirSync(join(addOns, "TradeSkillMaster"), { recursive: true });
   writeFileSync(join(addOns, "TradeSkillMaster/TradeSkillMaster.toc"), "## Interface: 110200\n## Version: v4.15.4\n");
-  const data = new TradeSkillMasterData(auth, provider, store, dir, () => {});
+  const data = new TradeSkillMasterData(auth, provider, new InstallationService(store, async () => {}), dir, () => {});
   let response: any;
   const rpc = new JsonlServer((line) => { response = JSON.parse(line); });
   const deps = { store, registry, tsmAuth: auth, tsmData: data, companionCoordinator: { regenerate: async () => {} }, installationService: { require: () => installation } };
-  register(rpc, deps as unknown as HandlerDeps);
-  const service = new AddonService(store, registry, new DownloadService(new NetworkClient(), join(dir, "downloads")), { addonsChanged() {}, operationResult() {} });
+  rpc.handle(providersHandlers(subset(deps)));
+  const service = addonService(store, registry, new DownloadService(new NetworkClient(), join(dir, "downloads")), { addonsChanged() {}, operationResult() {} });
   service.onFoldersChanged = (id, folders) => data.foldersChanged(id, folders);
-  registerAddons(rpc, { ...deps, service } as unknown as HandlerDeps);
+  rpc.handle(addonsHandlers(subset({ ...deps, service })));
   const call = async (method: string, params: object = {}) => {
     await rpc.handleLine(JSON.stringify({ id: 1, method, params }));
     expect(response.error).toBeUndefined();
@@ -788,18 +789,18 @@ test("every committed AppHelper folder change refreshes auction data through RPC
     expect(text(tsmFile)).toContain("{price=500}");
 
     // With the source off, a File install of AppHelper reconnects nothing.
-    registry.setEnabled("TradeSkillMaster", false);
+    registry.get("TradeSkillMaster")!.enabled = false;
     const archive = join(dir, "helper.zip");
     writeFileSync(archive, zipSync({ "TradeSkillMaster_AppHelper/TradeSkillMaster_AppHelper.toc": new TextEncoder().encode("## Interface: 110200\n## Version: v4.15\n") }));
     expect((await call("addons.install", { providerId: "File", externalId: archive })).operation.status).toBe("installed");
     await ping();
-    registry.setEnabled("TradeSkillMaster", true);
+    registry.get("TradeSkillMaster")!.enabled = true;
 
     // Signed out, a removal reconnects nothing: signing back in is the only new connection.
     await auth.signOut();
     const before = opened;
     expect((await call("addons.remove", { addonId: helper().id })).operation.status).toBe("removed");
-    registry.setEnabled("TradeSkillMaster", true);
+    registry.get("TradeSkillMaster")!.enabled = true;
     writeFileSync(join(dir, "tsm-refresh-token"), "fixture");
     next = reconnected();
     await auth.restore();

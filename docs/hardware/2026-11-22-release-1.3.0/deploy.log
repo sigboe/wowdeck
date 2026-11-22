@@ -1,0 +1,4 @@
+target: deck
+ssh: deck@10.10.1.39
+tunnel: opened pid 848332 to deck@10.10.1.39 on 18080, 9222
+up: deployed index.js engine · backup /home/deck/homebrew/data/wowdeck/test-backups/2026-11-22-183532-848223 · autoUpdate off until `deck.mjs down` · reloaded 1.3.0, engine pid 9289→9917

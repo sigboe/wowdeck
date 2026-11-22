@@ -5,10 +5,9 @@ const args = process.argv.slice(2).filter((a) => a !== "-p");
 const pretty = process.argv.includes("-p");
 const [want, src] = args;
 const expr = fs.existsSync(src) ? fs.readFileSync(src, "utf8") : src;
-import { evalIn, print } from "./cdp.mjs";
+import { evalIn, fail, print } from "./cdp.mjs";
 try {
   print(await evalIn(want, expr), pretty);
 } catch (e) {
-  console.error(`EXC ${e.message.split("\n")[0]}`);
-  process.exitCode = 1;
+  fail(e);
 }

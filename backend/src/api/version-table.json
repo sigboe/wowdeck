@@ -1,0 +1,85 @@
+{
+  "$comment": [
+    "WoWDeck's version conformance table. Every reader and writer of WoWDeck",
+    "versions runs it as a test: backend/src/api/version.ts (engine, frontend",
+    "and the release tools in tools/), tools/version.py (set, stamp, check) and",
+    "the Python recovery updater.",
+    "",
+    "versions: one string each.",
+    "  form   stable | beta | test | pr, or null when it is no WoWDeck version.",
+    "  reads  what a reader makes of it (the canonical text), or null.",
+    "  writes whether a writer may write it as is: only canonical text.",
+    "  why    why the row is here; rows that settle a past disagreement say so.",
+    "order: each list ascends strictly; every pair in it compares that way.",
+    "equal: each pair compares equal.",
+    "offers: the build a channel offers from those candidates, or null."
+  ],
+  "versions": [
+    { "text": "0.0.1", "form": "stable", "reads": "0.0.1", "writes": true, "why": "the first patch, before any release" },
+    { "text": "1.2.3", "form": "stable", "reads": "1.2.3", "writes": true, "why": "a release" },
+    { "text": "10.20.30", "form": "stable", "reads": "10.20.30", "writes": true, "why": "numbers, not digits" },
+    { "text": "0.3.1-beta.57", "form": "beta", "reads": "0.3.1-beta.57", "writes": true, "why": "a beta: next patch plus the beta run number" },
+    { "text": "0.3.1-beta.1", "form": "beta", "reads": "0.3.1-beta.1", "writes": true, "why": "the first run" },
+    { "text": "0.3.1-test.114", "form": "test", "reads": "0.3.1-test.114", "writes": true, "why": "a device-test build, written by version.py set" },
+    { "text": "0.3.1-pr.117", "form": "pr", "reads": "0.3.1-pr.117", "writes": true, "why": "a PR build's first build" },
+    { "text": "0.3.1-pr.117.2", "form": "pr", "reads": "0.3.1-pr.117.2", "writes": true, "why": "a PR build's second build" },
+
+    { "text": "v1.2.3", "form": "stable", "reads": "1.2.3", "writes": false, "why": "lenient reader, intended: release tags carry a leading v" },
+    { "text": "v0.3.1-beta.57", "form": "beta", "reads": "0.3.1-beta.57", "writes": false, "why": "lenient reader, intended: beta tags carry a leading v" },
+    { "text": "v0.3.1-pr.117.2", "form": "pr", "reads": "0.3.1-pr.117.2", "writes": false, "why": "lenient reader, intended: a PR build's tag" },
+    { "text": " 1.2.3\n", "form": "stable", "reads": "1.2.3", "writes": false, "why": "lenient reader, intended: surrounding whitespace from files and stdin is trimmed" },
+
+    { "text": "v0.1", "form": null, "reads": null, "writes": false, "why": "settled: the engine read two-part versions; no tag ever had one" },
+    { "text": "1", "form": null, "reads": null, "writes": false, "why": "settled: the engine read one-part versions" },
+    { "text": "01.2.3", "form": null, "reads": null, "writes": false, "why": "settled: the engine read leading zeros, which every writer rejects" },
+    { "text": "1.2.03", "form": null, "reads": null, "writes": false, "why": "settled: leading zero in the patch" },
+    { "text": "1.2.3-beta.01", "form": null, "reads": null, "writes": false, "why": "settled: leading zero in the counter" },
+    { "text": "1.2.3-beta.0", "form": null, "reads": null, "writes": false, "why": "settled: version.py stamp wrote beta.0; run numbers start at 1" },
+    { "text": "1.2.3-test.0", "form": null, "reads": null, "writes": false, "why": "settled: test counters start at 1" },
+    { "text": "1.2.3-pr.0", "form": null, "reads": null, "writes": false, "why": "settled: pr-build.ts read PR 0, which stamp rejected; PR numbers start at 1" },
+    { "text": "1.2.3-pr.5.0", "form": null, "reads": null, "writes": false, "why": "settled: pr-build.ts read rebuild 0" },
+    { "text": "1.2.3-pr.5.1", "form": null, "reads": null, "writes": false, "why": "settled: stamp wrote rebuild 1, which means the first build, 1.2.3-pr.5; rebuilds start at 2" },
+    { "text": "1.0.0-rc1", "form": null, "reads": null, "writes": false, "why": "settled: version.py set wrote any semver; the engine cannot order it" },
+    { "text": "1.0.0-rc.1", "form": null, "reads": null, "writes": false, "why": "settled: no release candidates" },
+    { "text": "1.0.0+build.5", "form": null, "reads": null, "writes": false, "why": "settled: version.py set wrote build metadata" },
+    { "text": "1.0.0-beta.2+x", "form": null, "reads": null, "writes": false, "why": "settled: build metadata on a beta" },
+    { "text": "V1.2.3", "form": null, "reads": null, "writes": false, "why": "only a lowercase v" },
+    { "text": "vv1.2.3", "form": null, "reads": null, "writes": false, "why": "one v at most" },
+
+    { "text": "", "form": null, "reads": null, "writes": false, "why": "empty" },
+    { "text": "banana", "form": null, "reads": null, "writes": false, "why": "not a version" },
+    { "text": "1.0.x", "form": null, "reads": null, "writes": false, "why": "not a number" },
+    { "text": "1.2.3.4", "form": null, "reads": null, "writes": false, "why": "four parts" },
+    { "text": "1.2.3-beta", "form": null, "reads": null, "writes": false, "why": "beta without its run number" },
+    { "text": "1.2.3-beta.x", "form": null, "reads": null, "writes": false, "why": "beta counter not a number" },
+    { "text": "1.2.3-beta.1.2", "form": null, "reads": null, "writes": false, "why": "only a PR build has a rebuild counter" },
+    { "text": "1.2.3-test", "form": null, "reads": null, "writes": false, "why": "test without its counter" },
+    { "text": "1.2.3-test.1.2", "form": null, "reads": null, "writes": false, "why": "only a PR build has a rebuild counter" },
+    { "text": "1.2.3-pr", "form": null, "reads": null, "writes": false, "why": "pr without its number" },
+    { "text": "1.2.3-pr.x", "form": null, "reads": null, "writes": false, "why": "PR number not a number" },
+    { "text": "1.2.3-pr.1.x", "form": null, "reads": null, "writes": false, "why": "rebuild counter not a number" },
+    { "text": "1.2.3-pr.1.2.3", "form": null, "reads": null, "writes": false, "why": "one rebuild counter at most" },
+    { "text": "1.2.3-alpha.1", "form": null, "reads": null, "writes": false, "why": "no alpha builds" }
+  ],
+  "order": [
+    ["0.9.0", "0.10.0", "1.0.0", "1.0.1", "1.1.0", "2.0.0"],
+    ["1.0.0-beta.1", "1.0.0-beta.2", "1.0.0-beta.10", "1.0.0-test.3", "1.0.0-pr.4", "1.0.0-pr.4.2", "1.0.0-pr.4.10", "1.0.0-pr.5", "1.0.0-test.114", "1.0.0", "1.0.1-beta.1", "1.0.1"],
+    ["1.0.0-beta.400", "1.0.0-test.1"],
+    ["1.0.0-beta.400", "1.0.0-pr.1"],
+    ["1.0.0-pr.117.9", "1.0.0", "1.0.1-pr.117"]
+  ],
+  "equal": [
+    ["v1.0.0", "1.0.0"],
+    ["v0.3.0-beta.12", "0.3.0-beta.12"],
+    ["0.3.0-pr.117.2", "0.3.0-pr.117.2"]
+  ],
+  "offers": [
+    { "channel": "stable", "candidates": ["1.2.0", "1.2.1-beta.5", "1.3.0-test.1", "1.3.0-pr.2"], "offers": "1.2.0", "why": "Stable offers stable releases only" },
+    { "channel": "beta", "candidates": ["1.2.0", "1.2.1-beta.5", "1.3.0-test.1", "1.3.0-pr.2"], "offers": "1.2.1-beta.5", "why": "Beta never offers test or PR builds" },
+    { "channel": "beta", "candidates": ["1.2.1-beta.5", "1.2.1"], "offers": "1.2.1", "why": "Beta offers the newer of stable and beta" },
+    { "channel": "beta", "candidates": ["1.2.1-beta.5", "1.2.1-beta.6", "1.2.0"], "offers": "1.2.1-beta.6", "why": "the newest beta" },
+    { "channel": "stable", "candidates": ["1.2.1-beta.5"], "offers": null, "why": "nothing Stable may offer" },
+    { "channel": "stable", "candidates": ["v1.2.0", "banana", "v1.1.0"], "offers": "1.2.0", "why": "tags are read leniently and offered as canonical text; non-versions are skipped" },
+    { "channel": "beta", "candidates": [], "offers": null, "why": "no candidates" }
+  ]
+}

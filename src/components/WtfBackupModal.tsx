@@ -20,7 +20,7 @@ import { STEAM, descriptionStyle, outcomeColor } from "../steamTheme";
 import type { Installation, WtfBackupInfo } from "../types";
 import { useBackupList, useCopySources, useWtfOperation, wtfLifecycle } from "../wtfSession";
 import { type BackupActionKey, backupActions, loadedBackupFocus } from "../wtfBackupFocus";
-import { formatBytes, formatWhen } from "../wtfFormat";
+import { formatBytes, formatWhen } from "../text";
 import { jobProgressText, okActionLabel, restoreBlockedReason } from "../wtfText";
 import { confirmDeleteBackup, confirmRestoreBackup } from "./confirmWtf";
 import { BackupRowDescription } from "./BackupRowDescription";

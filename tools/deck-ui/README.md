@@ -177,7 +177,9 @@ names with patch markers. It excludes props, hooks and application state.
 Missing React internals produce `supported: false`.
 
 `methods-check` compares literal frontend bridge calls with public Python
-methods and literal `rpc` calls with the engine contract. It needs no device.
+methods and literal `rpc` calls with the methods the built engine serves
+(`backend/out/wowdeck-x86_64 --methods`; run `make build-backend` first). It
+needs no device.
 It does not resolve computed method names or verify runtime handler behavior.
 
 `reload-frontend` imports the local `dist/index.js` bundle into memory, without

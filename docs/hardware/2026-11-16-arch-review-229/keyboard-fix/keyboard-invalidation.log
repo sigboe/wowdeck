@@ -1,0 +1,52 @@
+eval@SharedJSContext --file=.scratch/arch-review-2… → {"last":[{"method":"tradeskillmaster.status","time":694.813,"installationId":null},{"method":"tradeskillmaster.status","time":695.813,"installationId":null},{"method":"tradeskillmaster.status","time":696.813,"installationId":null},{"method":"tradeskillmaster.status","time":697.813,"installationId":null},{"method":"tradeskillmaster.status","time":698.813,"installationId":null},{"method":"tradeskillmaster.status","time":699.813,"installationId":null},{"method":"tradeskillmaster.status","time":700.813,"installationId":null},{"method":"tradeskillmaster.status","time":701.813,"installationId":null}]}
+eval --file=.scratch/arch-review-229/keyboard-tsm-… → F6
+GET ADDONS
+F7
+Forever
+Search
+Latest
+Popular
+Manual Install
+TradeSkillMaster
+TradeSkillMaster
+Signed in as Review229 account invalidated
+3 of 10 realms followed
+Manage
+Uninstall
+Refresh auction data
+Updated 5 hours ago
+Missing a realm or region?
+To discover a realm or region, create a character there (or use an existing one), log in, then log out to save WoW settings. For Classic, enable TradeSkillMaster and AppHelper before logging in and out. This list uses locally saved settings, not live character information from Blizzard.
+Review229 realm invalidated · Horde
+Updated 5 hours ago
+Followed
+Review229 region invalidated region data
+Updated 21 hours ago
+close → tree="GamepadUI_Full_Root" focus="" tab=null
+eval@SharedJSContext --file=.scratch/arch-review-2… → {"last":[{"method":"tradeskillmaster.status","time":700.813,"installationId":null},{"method":"tradeskillmaster.status","time":701.813,"installationId":null},{"method":"tradeskillmaster.status","time":701.887,"installationId":null},{"method":"tradeskillmaster.account","time":701.888,"installationId":null},{"method":"tradeskillmaster.destination","time":701.888,"installationId":"5e80311f078e"},{"method":"providers.list","time":701.888,"installationId":null},{"method":"tradeskillmaster.status","time":702.813,"installationId":null},{"method":"tradeskillmaster.status","time":703.813,"installationId":null}]}
+open → tree="QuickAccess-NA" focus="GET ADDONS" tab="Get Addons"
+eval --file=.scratch/arch-review-229/keyboard-get-… → Get Addons tab activated
+seek TradeSkillMaster --press → found "TradeSkillMaster" after 6 presses (down) → focus="TradeSkillMaster"
+eval --file=.scratch/arch-review-229/keyboard-tsm-… → F6
+GET ADDONS
+F7
+Forever
+Search
+Latest
+Popular
+Manual Install
+TradeSkillMaster
+TradeSkillMaster
+Signed in as Review229 account reread
+3 of 10 realms followed
+Manage
+Uninstall
+Refresh auction data
+Updated 5 hours ago
+Missing a realm or region?
+To discover a realm or region, create a character there (or use an existing one), log in, then log out to save WoW settings. For Classic, enable TradeSkillMaster and AppHelper before logging in and out. This list uses locally saved settings, not live character information from Blizzard.
+Review229 realm reread · Horde
+Updated 5 hours ago
+Followed
+Review229 region invalidated region data
+Updated 21 hours ago

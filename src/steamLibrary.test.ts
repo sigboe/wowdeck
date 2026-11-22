@@ -2,12 +2,10 @@
 import { describe, expect, test } from "bun:test";
 import {
   AUTO_CHECK_EVERY_MS,
-  linkedSteamGames,
   autoUpdateText,
   badgeState,
   filterSteamGames,
   likelyWowFirst,
-  pickerRowMarker,
   shouldAutoCheck,
   shortcutIconUrl,
   shortcutsFrom,
@@ -122,47 +120,6 @@ describe("autoUpdateText (WF-02)", () => {
       "Automatic updates postponed",
     );
     expect(autoUpdateText({ updated: [], failed: [], skipped: null })).toBeNull();
-  });
-});
-
-describe("automatic Steam attachments", () => {
-  const wow = { appId: 42, name: "WoW" };
-  const battle = { appId: 43, name: "Battle.net" };
-  const installs = [{ steamGames: [wow, battle] }, { steamGames: [wow] }, {}];
-  test("every detected entry is attached once, alongside an explicit manual choice", () => {
-    expect(linkedSteamGames(installs, { appId: 9, name: "Manual" })).toEqual([
-      { appId: 9, name: "Manual" },
-      wow,
-      battle,
-    ]);
-  });
-  test("turning off automatic attachment keeps only the explicit manual choice", () => {
-    expect(linkedSteamGames(installs, wow, false)).toEqual([wow]);
-    expect(linkedSteamGames(installs, null, false)).toEqual([]);
-  });
-});
-
-describe("pickerRowMarker (#151)", () => {
-  const wow = { appId: 42, name: "World of Warcraft" };
-  const bnet = { appId: 43, name: "Battle.net" };
-  test("the manual link is Currently linked", () => {
-    expect(pickerRowMarker(wow, { manual: wow, detected: [], autoLinkOn: true })).toBe(
-      "Currently linked",
-    );
-  });
-  test("a detected link is Linked automatically only while automatic linking is on", () => {
-    expect(pickerRowMarker(bnet, { manual: null, detected: [bnet], autoLinkOn: true })).toBe(
-      "Linked automatically",
-    );
-    expect(pickerRowMarker(bnet, { manual: null, detected: [bnet], autoLinkOn: false })).toBeNull();
-  });
-  test("an entry both linked by hand and detected is Currently linked", () => {
-    expect(pickerRowMarker(wow, { manual: wow, detected: [wow], autoLinkOn: true })).toBe(
-      "Currently linked",
-    );
-  });
-  test("an unlinked entry has no marker", () => {
-    expect(pickerRowMarker(bnet, { manual: wow, detected: [wow], autoLinkOn: true })).toBeNull();
   });
 });
 

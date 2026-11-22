@@ -22,6 +22,10 @@ assert _SPEC and _SPEC.loader
 version = importlib.util.module_from_spec(_SPEC)
 _SPEC.loader.exec_module(version)
 
+# The conformance table every WoWDeck version reader and writer runs; the
+# TypeScript module's own test is backend/tests/version.test.ts.
+VERSION_TABLE = json.loads((version.ROOT / "backend/src/api/version-table.json").read_text(encoding="utf-8"))
+
 
 def write_json(path: Path, data: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -43,13 +47,37 @@ class VersionFileTests(unittest.TestCase):
             data = {"name": "wowdeck", "version": value}
             write_json(self._tmp / rel, data)
 
-    def test_accepts_full_semver_including_prereleases(self) -> None:
-        for candidate in ("0.1.0", "1.0.0", "10.20.30", "1.0.0-rc1", "1.0.0-beta.2", "1.0.0+build.5"):
-            self.assertTrue(version.SEMVER.match(candidate), candidate)
+    def test_set_and_check_follow_the_shared_version_table(self) -> None:
+        for row in VERSION_TABLE["versions"]:
+            with self.subTest(text=row["text"], why=row["why"]):
+                self.write({rel: "0.1.0" for rel in version.VERSIONED_FILES})
+                if row["writes"]:
+                    version.set_version(row["text"])
+                    self.assertEqual(version.check(), row["text"])
+                else:
+                    with self.assertRaises(SystemExit):
+                        version.set_version(row["text"])
+                    self.assertEqual(version.check(), "0.1.0")
+                    self.write({rel: row["text"] for rel in version.VERSIONED_FILES})
+                    with self.assertRaises(SystemExit):
+                        version.check()
 
-    def test_rejects_non_semver(self) -> None:
-        for candidate in ("1.0", "v1.0.0", "1.0.0.0", "01.0.0", "1.0.x", "", "1.0.0 "):
-            self.assertFalse(version.SEMVER.match(candidate), candidate)
+    def test_stamp_follows_the_shared_version_table(self) -> None:
+        for row in VERSION_TABLE["versions"]:
+            with self.subTest(text=row["text"], why=row["why"]):
+                self.write({rel: "0.1.0" for rel in version.VERSIONED_FILES})
+                if row["writes"] and row["form"] in ("beta", "pr"):
+                    version.stamp_build(row["text"])
+                    self.assertEqual(version.check(), row["text"])
+                else:
+                    with self.assertRaises(SystemExit):
+                        version.stamp_build(row["text"])
+                    self.assertEqual(version.check(), "0.1.0")
+
+    def test_parse_version_names_the_form_the_table_gives(self) -> None:
+        for row in VERSION_TABLE["versions"]:
+            with self.subTest(text=row["text"]):
+                self.assertEqual(version.parse_version(row["text"]), row["form"] if row["writes"] else None)
 
     def test_check_passes_when_every_file_agrees(self) -> None:
         self.write({rel: "1.0.0" for rel in version.VERSIONED_FILES})

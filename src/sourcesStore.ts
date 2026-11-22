@@ -1,4 +1,5 @@
-import { createStore } from "./store";
+import { createStore, type Store } from "./store";
+import { engine } from "./engineLink";
 import type { Rpc } from "./services/envelope";
 import type { ProviderCategory, ProviderInfo } from "./types";
 
@@ -25,64 +26,75 @@ export interface SourcesState {
 
 const initial = (): SourcesState => ({ providers: null, loaded: false, categories: {} });
 
-export const sourcesStore = createStore<SourcesState>(initial());
-
-/** Category lookups on their way, so a source is asked once. */
-const asking = new Set<string>();
-
-/** Back to nothing loaded (tests). */
-export function resetSourcesStore(): void {
-  asking.clear();
-  sourcesStore.set(initial());
+export interface SourcesStore extends Pick<Store<SourcesState>, "get" | "subscribe"> {
+  /** Read the sources again; a failure keeps the last list (engine not ready). */
+  load(): Promise<void>;
+  /**
+   * Turn a source on or off (Options only, ADR 0002): shown at once, then the
+   * engine's answer. A refusal reads the list again and is rethrown for the
+   * caller to report.
+   */
+  setEnabled(providerId: string, enabled: boolean): Promise<void>;
+  /** Ask for a source's categories, once; a failed ask is not kept, so the next one asks again. */
+  loadCategories(installationId: string, providerId: string): Promise<void>;
+  /** Back to nothing loaded (tests). */
+  reset(): void;
 }
 
-/** Read the sources again; a failure keeps the last list (engine not ready). */
-export async function loadSources(rpc: Rpc): Promise<void> {
-  try {
-    const { providers } = await rpc("providers.list");
-    sourcesStore.patch({ providers, loaded: true });
-  } catch {
-    sourcesStore.patch({ loaded: true });
+export function createSourcesStore(deps: { rpc: Rpc }): SourcesStore {
+  const { rpc } = deps;
+  const store = createStore<SourcesState>(initial());
+  /** Category lookups on their way, so a source is asked once. */
+  const asking = new Set<string>();
+
+  async function load(): Promise<void> {
+    try {
+      const { providers } = await rpc("providers.list");
+      store.patch({ providers, loaded: true });
+    } catch {
+      store.patch({ loaded: true });
+    }
   }
+
+  return {
+    get: store.get,
+    subscribe: store.subscribe,
+    load,
+    async setEnabled(providerId, enabled) {
+      const { providers } = store.get();
+      store.patch({
+        providers: providers?.map((p) => (p.id === providerId ? { ...p, enabled } : p)) ?? null,
+      });
+      try {
+        const { providers: next } = await rpc("providers.setEnabled", { providerId, enabled });
+        store.patch({ providers: next });
+      } catch (e) {
+        await load();
+        throw e;
+      }
+    },
+    async loadCategories(installationId, providerId) {
+      if (store.get().categories[providerId] || asking.has(providerId)) {
+        return;
+      }
+      asking.add(providerId);
+      try {
+        const { categories } = await rpc("addons.getCategories", { installationId, providerId });
+        store.patch({
+          categories: { ...store.get().categories, [providerId]: categories ?? [] },
+        });
+      } catch {
+        // not kept: asked again on the next sources change or remount
+      } finally {
+        asking.delete(providerId);
+      }
+    },
+    reset() {
+      asking.clear();
+      store.set(initial());
+    },
+  };
 }
 
-/**
- * Turn a source on or off (Options only, ADR 0002): shown at once, then the
- * engine's answer. A refusal reads the list again and is rethrown for the
- * caller to report.
- */
-export async function setSourceEnabled(
-  rpc: Rpc,
-  providerId: string,
-  enabled: boolean,
-): Promise<void> {
-  const { providers } = sourcesStore.get();
-  sourcesStore.patch({
-    providers: providers?.map((p) => (p.id === providerId ? { ...p, enabled } : p)) ?? null,
-  });
-  try {
-    const { providers: next } = await rpc("providers.setEnabled", { providerId, enabled });
-    sourcesStore.patch({ providers: next });
-  } catch (e) {
-    await loadSources(rpc);
-    throw e;
-  }
-}
-
-/** Ask for a source's categories, once; a failed ask is not kept, so the next one asks again. */
-export async function loadCategories(rpc: Rpc, providerId: string): Promise<void> {
-  if (sourcesStore.get().categories[providerId] || asking.has(providerId)) {
-    return;
-  }
-  asking.add(providerId);
-  try {
-    const { categories } = await rpc("addons.getCategories", { providerId });
-    sourcesStore.patch({
-      categories: { ...sourcesStore.get().categories, [providerId]: categories ?? [] },
-    });
-  } catch {
-    // not kept: asked again on the next sources change or remount
-  } finally {
-    asking.delete(providerId);
-  }
-}
+/** The one sources store, wired to the engine. */
+export const sourcesStore = createSourcesStore({ rpc: engine.rpc });

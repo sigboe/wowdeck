@@ -135,7 +135,7 @@ describe("CurseForgeAuthService key-source selection", () => {
   });
 
   test("setUserCheckResult records the verdict against the exact key value given, not whatever getUserKey() returns", () => {
-    // backend/src/main.ts's settings.set handler calls this
+    // the settings.set handler (api/handlers/settings.ts) calls this
     // immediately after persisting a new curseApiKey, passing that
     // exact value explicitly — this must work correctly as long as
     // getUserKey() already reflects the same value by the time

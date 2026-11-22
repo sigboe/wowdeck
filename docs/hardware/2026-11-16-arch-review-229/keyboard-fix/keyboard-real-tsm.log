@@ -1,0 +1,5 @@
+rpc tradeskillmaster.status --pick=state → signedIn
+rpc tradeskillmaster.account --pick=followedCount → 3
+nav r1 → tree="GamepadUI_Full_Root" focus="NON-STEAM 20" route="/routes/library/r1" tab=null
+nav r1 → no change
+probe text → text="scrollTop=[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0] 95% 22:34 GREAT ON DECK 264 ALL GAMES 1073 INSTALLED 67 FAVORITES 4 COLLECTIONS 9 NON-STEAM 20 SOUNDTRACKS 10 Dolphin Dolphin Dolphin Emulator Dolphin Emulator"

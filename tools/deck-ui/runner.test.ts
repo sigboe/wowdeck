@@ -1,10 +1,16 @@
 import { expect, test } from "bun:test";
-import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = fileURLToPath(new URL(".", import.meta.url));
+/** A stand-in engine binary for `root` that answers `--methods` with `methods`. */
+function fakeEngine(root: string, methods: string[], note = "") {
+  const bin = path.join(root, `backend/out/wowdeck-${process.arch === "arm64" ? "aarch64" : "x86_64"}`);
+  writeFileSync(bin, `#!/bin/sh\n# ${note}\necho '${JSON.stringify(methods)}'\n`, { mode: 0o755 });
+}
+
 async function cli(script: string, args: string[], env: Record<string, string> = {}, input?: string) {
   const proc = Bun.spawn(["node", "--import", `${here}fixtures/cef.mjs`, script.startsWith("/") ? script : `${here}${script}`, ...args], {
     env: { ...process.env, NODE_OPTIONS: `${process.env.NODE_OPTIONS || ""} --import=${here}fixtures/cef.mjs`, ...env }, stdin: input === undefined ? "ignore" : new Blob([input]), stdout: "pipe", stderr: "pipe",
@@ -15,8 +21,26 @@ async function cli(script: string, args: string[], env: Record<string, string> =
   return { code, text: out + err };
 }
 
+/** Run method-dependent commands against a self-contained repository fixture. */
+async function engineCli(args: string[], env: Record<string, string> = {}) {
+  const root = mkdtempSync(path.join(tmpdir(), "wowdeck-runner-engine-"));
+  try {
+    const scripts = path.join(root, "tools/deck-ui");
+    mkdirSync(scripts, { recursive: true });
+    for (const name of ["deck.mjs", "cdp.mjs", "connection.mjs", "tunnel.mjs", "diagnostics.mjs", "toast.mjs", "active.mjs", "logs.py"]) copyFileSync(path.join(here, name), path.join(scripts, name));
+    mkdirSync(path.join(root, "backend/out"), { recursive: true });
+    fakeEngine(root, ["system.getStatus", "installations.list", "settings.get"]);
+    mkdirSync(path.join(root, "src/services"), { recursive: true });
+    writeFileSync(path.join(root, "src/services/backend.ts"), 'rpc("system.getStatus"); bridge("save_text_file");');
+    writeFileSync(path.join(root, "main.py"), "    async def save_text_file(self): pass\n");
+    return await cli(path.join(scripts, "deck.mjs"), args, env);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+}
+
 test("a batch preserves quoted JSON and separators, and projects RPC arrays", async () => {
-  const r = await cli("deck.mjs", ["run", `# comment\nrpc system.getStatus '{"message":"a;b"}' --pick=params.message; rpc system.getStatus --pick=rows[].name`]);
+  const r = await engineCli(["run", `# comment\nrpc system.getStatus '{"message":"a;b"}' --pick=params.message; rpc system.getStatus --pick=rows[].name`]);
   expect(r.code).toBe(0);
   expect(r.text).toContain("a;b");
   expect(r.text).toContain('["one","two"]');
@@ -30,12 +54,34 @@ test("failed expectations stop the batch before the next action", async () => {
 });
 
 test("RPC names and engine errors fail the command", async () => {
-  const unknown = await cli("deck.mjs", ["rpc", "system.typo"]);
+  const unknown = await engineCli(["rpc", "system.typo"]);
   expect(unknown.code).toBe(1);
   expect(unknown.text).toContain("unknown method");
-  const failed = await cli("deck.mjs", ["rpc", "system.getStatus"], { CEF_RPC_ERROR: "1" });
+  const failed = await engineCli(["rpc", "system.getStatus"], { CEF_RPC_ERROR: "1" });
   expect(failed.code).toBe(1);
   expect(failed.text).toContain("TEST: rpc failed");
+});
+
+test("rpc names come from the built engine's own method list", async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "wowdeck-runner-"));
+  try {
+    const scripts = path.join(root, "tools/deck-ui");
+    mkdirSync(scripts, { recursive: true });
+    for (const name of ["deck.mjs", "cdp.mjs", "connection.mjs", "tunnel.mjs", "diagnostics.mjs", "toast.mjs", "active.mjs"]) copyFileSync(path.join(here, name), path.join(scripts, name));
+    const missing = await cli(path.join(scripts, "deck.mjs"), ["rpc", "--list"]);
+    expect(missing.code).toBe(1);
+    expect(missing.text).toContain("make build-backend");
+    mkdirSync(path.join(root, "backend/out"), { recursive: true });
+    fakeEngine(root, ["fixture.only", "system.getStatus"]);
+    const listed = await cli(path.join(scripts, "deck.mjs"), ["rpc", "--list"]);
+    expect(listed.code).toBe(0);
+    expect(listed.text).toContain("fixture.only system.getStatus");
+    const unknown = await cli(path.join(scripts, "deck.mjs"), ["rpc", "addons.list"]);
+    expect(unknown.code).toBe(1);
+    expect(unknown.text).toContain('unknown method "addons.list"');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("an unterminated run is rejected before executing steps", async () => {
@@ -65,19 +111,119 @@ test("CDP connection, protocol and evaluation failures exit with an error", asyn
   }
 });
 
+test("key, wheel and enter-if drive input through the shared CDP module", async () => {
+  const key = await cli("key.mjs", ["QuickAccess", "ArrowRight", "2", "0"]);
+  expect(key.code).toBe(0);
+  expect(key.text).toContain("fixture: key ArrowRight");
+  const wheel = await cli("wheel.mjs", ["QuickAccess", "2", "-240"]);
+  expect(wheel.code).toBe(0);
+  expect(wheel.text).toContain("fixture: wheel -240");
+  const entered = await cli("enter-if.mjs", ["QuickAccess", ".gpfocus"]);
+  expect(entered.code).toBe(0);
+  expect(entered.text).toContain("fixture: Enter");
+  expect(entered.text).toContain("entered on .gpfocus");
+  const refused = await cli("enter-if.mjs", ["QuickAccess", ".wowdeck-tab"]);
+  expect(refused.code).toBe(3);
+  expect(refused.text).toContain("REFUSED: focus does not match .wowdeck-tab");
+});
+
+test("walk and step press and measure through one shared connection", async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "wowdeck-press-"));
+  try {
+    const file = path.join(root, "measure.js");
+    writeFileSync(file, `JSON.stringify({ tab: document.querySelector(".wowdeck-tab-selected").textContent })`);
+    const w = await cli("walk.mjs", ["QuickAccess", file, "ArrowDown", "ArrowRight"]);
+    expect(w.code).toBe(0);
+    expect(w.text).toContain('ArrowDown  {"tab":"Get Addons"}');
+    expect(w.text).toContain('ArrowRight {"tab":"Options"}');
+    const s = await cli("step.mjs", ["QuickAccess", "ArrowDown", "2", "0", file]);
+    expect(s.code).toBe(0);
+    expect(s.text).toContain('ArrowDown 1 {"tab":"Get Addons"}');
+    expect(s.text).toContain('ArrowDown 2 {"tab":"Get Addons"}');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("scripts report the module's connection and target errors alike", async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "wowdeck-errors-"));
+  try {
+    const file = path.join(root, "measure.js");
+    writeFileSync(file, "1");
+    for (const [script, args] of [
+      ["key.mjs", ["QuickAccess", "ArrowUp"]],
+      ["wheel.mjs", ["QuickAccess"]],
+      ["enter-if.mjs", ["QuickAccess", ".gpfocus"]],
+      ["walk.mjs", ["QuickAccess", file, "ArrowUp"]],
+      ["step.mjs", ["QuickAccess", "ArrowDown", "1", "0", file]],
+      ["film.mjs", ["QuickAccess", "50", `${root}/frames`]],
+      ["profile.mjs", ["QuickAccess", "10", file, `${root}/p.json`]],
+      ["render.mjs", ["Dialog", "{}"]],
+      ["capture.mjs", []],
+    ]) {
+      const r = await cli(script, args, { CEF_CONNECT_ERROR: "1" });
+      expect(r.code).toBe(1);
+      expect(r.text).toContain("EXC CEF connection failed");
+    }
+    const missing = await cli("key.mjs", ["Nope", "ArrowUp"]);
+    expect(missing.code).toBe(1);
+    expect(missing.text).toContain('no target "Nope"; have: SharedJSContext, QuickAccess_uid9, notificationtoasts');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+}, 15000);
+
+test("film records its screencast and fires its trigger through the shared module", async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "wowdeck-film-"));
+  try {
+    const trig = path.join(root, "trigger.js");
+    writeFileSync(trig, "1");
+    const out = path.join(root, "frames");
+    const r = await cli("film.mjs", ["QuickAccess", "50", out, "SharedJSContext", trig]);
+    expect(r.code).toBe(0);
+    expect(r.text).toContain("triggered at");
+    expect(r.text).toContain("frames 0");
+    expect(existsSync(out)).toBe(true);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("render refuses an unknown component and still cleans up", async () => {
+  const r = await cli("render.mjs", ["Dialog", "{}"]);
+  expect(r.code).toBe(1);
+  expect(r.text).toContain("no component Dialog");
+  expect(r.text).toContain("cleanup: removed");
+}, 15000);
+
+test("capture records the owner's start and stop presses through the shared module", async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "wowdeck-capture-"));
+  try {
+    const r = await cli("capture.mjs", ["--tail=30", "--max=900", `--out=${root}`], { CEF_BUTTONS: "80:0,300:1" });
+    expect(r.code).toBe(0);
+    expect(r.text).toContain("ready:");
+    expect(r.text).toContain("recording…");
+    expect(r.text).toContain("stopped");
+    const events = readFileSync(path.join(root, "events.jsonl"), "utf8");
+    expect(events).toContain('"k":"start"');
+    expect(events).toContain('"k":"stop"');
+    expect(existsSync(path.join(root, "summary.txt"))).toBe(true);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+}, 15000);
+
 for (const mode of ["ok", "guard-fail", "reload-fail", "engine-only"]) {
   test(`deployment ${mode}: backs up within plugin data and saves the guard before changing settings`, async () => {
     const root = mkdtempSync(path.join(tmpdir(), "wowdeck-runner-"));
     try {
       const scripts = path.join(root, "tools/deck-ui");
       mkdirSync(scripts, { recursive: true });
-      mkdirSync(path.join(root, "backend/src/api"), { recursive: true });
       mkdirSync(path.join(root, "dist"));
       mkdirSync(path.join(root, "backend/out"), { recursive: true });
-      writeFileSync(path.join(root, "backend/out/wowdeck-x86_64"), "fixture engine version changed");
+      fakeEngine(root, ["settings.get", "settings.set", "system.getStatus"], "fixture engine version changed");
       if (mode === "engine-only") writeFileSync(path.join(root, "backend/package.json"), JSON.stringify({ version: "new-fixture" }));
       for (const name of ["deck.mjs", "cdp.mjs", "connection.mjs", "tunnel.mjs", "diagnostics.mjs", "toast.mjs", "active.mjs"]) copyFileSync(path.join(here, name), path.join(scripts, name));
-      copyFileSync(path.join(here, "../../backend/src/api/contracts.ts"), path.join(root, "backend/src/api/contracts.ts"));
       writeFileSync(path.join(root, "dist/index.js"), "fixture frontend");
       writeFileSync(path.join(root, "main.py"), "fixture bridge");
       const r = await cli(path.join(scripts, "deck.mjs"), ["up", "--no-build"], {
@@ -168,9 +314,10 @@ for (const phase of ["start-stall", "press-stall", "close-stall"]) {
 }
 
 test("local method consistency check needs no device", async () => {
-  const result = await cli("deck.mjs", ["methods-check"]);
+  const result = await engineCli(["methods-check"]);
   expect(result.code).toBe(0);
   expect(result.text).toContain('"missingBridge":[]');
+  expect(result.text).toContain('"unknownRpc":[]');
   expect(result.text).toContain('"save_text_file"');
 });
 
@@ -180,19 +327,19 @@ test("logs support checkpoints, bounded matching waits and scrubbed diagnostic s
     mkdirSync(path.join(root, "homebrew/logs/wowdeck"), { recursive: true });
     writeFileSync(path.join(root, "homebrew/logs/wowdeck/fixture.log"), 'error: old failure api_key="PRIVATE"\n');
     const env = { CEF_LOG_HOME: root, DECK: "fixture", CEF_DIAG: "1" };
-    const read = await cli("deck.mjs", ["log-wait", "failure", "--t=1"], env);
+    const read = await engineCli(["log-wait", "failure", "--t=1"], env);
     expect(read.code).toBe(0);
     expect(read.text).not.toContain("PRIVATE");
-    const since = await cli("deck.mjs", ["run", "log-mark; log 10 --since=mark; log-wait failure --since=mark --t=1; eval 42"], env);
+    const since = await engineCli(["run", "log-mark; log 10 --since=mark; log-wait failure --since=mark --t=1; eval 42"], env);
     expect(since.code).toBe(1);
     expect(since.text).toContain("→ []");
     expect(since.text).toContain("no matching log line before timeout");
     expect(since.text).not.toContain("→ 42");
-    const diag = await cli("deck.mjs", ["diagnose"], env);
+    const diag = await engineCli(["diagnose"], env);
     expect(diag.code).toBe(0);
     expect(diag.text).toContain('"active":[{"id":"retail","gameType":"retail"}]');
     expect(diag.text).not.toContain("PRIVATE");
-    const failed = await cli("deck.mjs", ["diagnose"], { ...env, CEF_DIAG: "", CEF_RPC_ERROR: "1" });
+    const failed = await engineCli(["diagnose"], { ...env, CEF_DIAG: "", CEF_RPC_ERROR: "1" });
     expect(failed.code).toBe(0);
     expect(failed.text).toContain('"engine":{"error":');
     expect(failed.text).toContain('"ui":');
@@ -549,7 +696,7 @@ test("frontend reload restores a control whose full label exceeds the compact fo
 });
 
 test("missing RPC projection reports the field without a TypeError", async () => {
-  const r = await cli("deck.mjs", ["rpc", "system.getStatus", "--pick=absent"]);
+  const r = await engineCli(["rpc", "system.getStatus", "--pick=absent"]);
   expect(r.code).toBe(1);
   expect(r.text).toContain("RPC pick path absent is missing");
   expect(r.text).not.toContain("TypeError");

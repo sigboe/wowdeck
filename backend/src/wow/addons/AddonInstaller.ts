@@ -4,7 +4,7 @@
  * Follows the WowUp install flow (addon-install.service.ts, GPL-3.0,
  * commit 4fdae600) but hardened per AGENTS.md rule 8:
  *
- *   download -> temp file
+ *   acquire  -> the release's archive (ReleaseArchive), disposed at the end
  *   extract  -> staging dir on the SAME filesystem as AddOns
  *   validate -> every planned folder must exist; at least one .toc overall
  *   install  -> the addon transaction (AddonTransaction.ts): rename-based
@@ -22,10 +22,9 @@ import { isDirectory } from "../fs/safe-fs";
 import { getAddonsPath } from "../installation/InstallationDetector";
 import { extractArchive } from "../archives/ArchiveExtractor";
 import { checkAddonFolders, readAddonToc } from "../archives/addonFolders";
-import { PROVIDER_ID } from "../../api/providers";
-import type { DownloadHandle, DownloadService } from "../downloads/DownloadService";
+import type { ReleaseArchive, ReleaseArchives } from "../archives/ReleaseArchive";
 import { latestFile } from "./releaseChannel";
-import { archiveHash, installsByArchive } from "./archiveMatch";
+import { installsByArchive } from "./archiveMatch";
 import { keptRelease } from "./RollbackCache";
 import { AddonTransactions } from "./AddonTransaction";
 import { realStageFs, type StageFs } from "../fs/StageFs";
@@ -51,11 +50,11 @@ export interface InstallOptions {
   /** Source ownership checked after extraction, before any live folder changes. */
   validateFolders?: (folders: string[]) => Promise<void>;
   /**
-   * The release's archive, already fetched (fetchArchive) when the caller
-   * had to look inside it first (the archive match rule); a rejection fails
-   * the install as a failed download would.
+   * The release's archive, when the caller acquired it to look inside first
+   * (the archive match rule). The caller disposes of it; without one the
+   * installer acquires its own and disposes of it.
    */
-  fetched?: Promise<DownloadHandle>;
+  archive?: ReleaseArchive;
   /** The records the install commits through (the caller's gate turn). */
   records: AddonRecords;
   /** The record change the installed files make, given the installer's patch. */
@@ -74,7 +73,7 @@ export class AddonInstaller {
   #transactions: AddonTransactions;
 
   constructor(
-    private downloads: DownloadService,
+    private archives: ReleaseArchives,
     fs: StageFs = realStageFs,
     /** The engine's one transaction runner (its recovery guard reads it); a fresh one by default. */
     transactions: AddonTransactions = new AddonTransactions(fs),
@@ -83,7 +82,7 @@ export class AddonInstaller {
   }
 
   /**
-   * Download, stage and install the release, committing the record with it
+   * Acquire, stage and install the release, committing the record with it
    * (AddonTransactions). Throws an InstallError, a TransactionFailure once
    * the transaction has begun, when nothing was committed.
    */
@@ -121,26 +120,27 @@ export class AddonInstaller {
     // not replace the kept older version (BEYOND-02), or "Roll back" would
     // offer the version already running. Only a changed release puts its
     // previous version in the cache. A file's or link's release id is only
-    // its path or link, so for those the same release is the same content:
-    // the archive is fetched first and hashed (archiveMatch.ts). A fetch
-    // that fails hashes nothing and fails the install in staging.
-    const fetched = installsByArchive(provider.name)
-      ? (opts.fetched ?? this.fetchArchive(provider, downloadUrl, addon.id))
-      : opts.fetched;
-    const hash = fetched && (await fetched.then((handle) => archiveHash(handle.filePath)).catch(() => undefined));
-    const sameRelease = installsByArchive(provider.name)
-      ? hash !== undefined && addon.installedArchiveHash === hash
-      : previous.releaseId != null && previous.releaseId === file?.externalId;
-    const addonsPath = getAddonsPath(installation);
-
+    // its path or link, so for those the same release is the same content
+    // (archiveMatch.ts): their archive is acquired first and read. Any other
+    // release downloads in staging, once the transaction has begun.
+    // A failed download or copy fails the install as it is.
+    let archive = opts.archive;
+    const acquire = async (): Promise<ReleaseArchive> => (archive ??= await this.archives.acquire(provider, downloadUrl));
     try {
+      const byArchive = installsByArchive(provider.name);
+      const hash = byArchive ? await (await acquire()).hash().catch(() => undefined) : undefined;
+      const sameRelease = byArchive
+        ? await (await acquire()).isInstalledIn(addon)
+        : previous.releaseId != null && previous.releaseId === file?.externalId;
+      const addonsPath = getAddonsPath(installation);
+
       const { transactionId, result: patch, cleanupWarning } = await this.#transactions.run(opts.records, {
         installation,
         operation: opts.existing ? "update" : "install",
         addonId: addon.id,
         originalRecord: opts.existing ?? null,
         ...(opts.keepPreviousVersion && !sameRelease && { keepPrevious: previous }),
-        stage: (stagingDir) => this.#stage({ ...opts, fetched }, downloadUrl, file?.folders ?? [], stagingDir),
+        stage: async (stagingDir) => this.#stage(opts, await acquire(), file?.folders ?? [], stagingDir),
         change: async ({ installed, previous: kept }) => {
           const patch = await this.#patch(opts, addonsPath, installed, file, downloadUrl);
           patch.installedArchiveHash = hash;
@@ -154,39 +154,20 @@ export class AddonInstaller {
       });
       return { patch, transactionId, ...(cleanupWarning && { cleanupWarning }) };
     } finally {
-      await this.downloads.cleanup().catch(() => {});
+      // The installer disposes only of what it acquired itself.
+      if (archive && archive !== opts.archive) {
+        await archive.dispose();
+      }
     }
   }
 
-  /**
-   * Download the release's archive — or, for the File provider, copy the
-   * picked archive in: its downloadUrl is a path on this Deck, never a
-   * network address. Keyed on the provider (which owns that meaning), not
-   * on the URL's shape; copyLocal re-validates the path itself. The file
-   * lives until the next fetch or the install's cleanup.
-   */
-  async fetchArchive(provider: AddonProvider, downloadUrl: string, name: string): Promise<DownloadHandle> {
-    const auth = await provider.getDownloadAuth().catch(() => undefined);
-    return provider.name === PROVIDER_ID.File
-      ? this.downloads.copyLocal(downloadUrl, `${name}.archive`)
-      : this.downloads.download(downloadUrl, `${name}.archive`, { auth });
-  }
+  /** Extract the archive to `stagingDir` and check it; returns the folders to install. */
+  async #stage(opts: InstallOptions, archive: ReleaseArchive, releaseFolders: string[], stagingDir: string): Promise<string[]> {
+    const { addon, searchResult } = opts;
+    // 1. extract to staging (same fs as AddOns -> atomic renames possible)
+    const extracted = await extractArchive(archive.path, stagingDir);
 
-  /** Remove what fetchArchive left, for a caller that ends before install(). */
-  async discardFetched(): Promise<void> {
-    await this.downloads.cleanup().catch(() => {});
-  }
-
-  /** Download (or copy in) the archive, extract it to `stagingDir` and check it; returns the folders to install. */
-  async #stage(opts: InstallOptions, downloadUrl: string, releaseFolders: string[], stagingDir: string): Promise<string[]> {
-    const { addon, searchResult, provider } = opts;
-    // 1. download (or take the archive the caller already fetched)
-    const handle = await (opts.fetched ?? this.fetchArchive(provider, downloadUrl, addon.id));
-
-    // 2. extract to staging (same fs as AddOns -> atomic renames possible)
-    const extracted = await extractArchive(handle.filePath, stagingDir);
-
-    // 3. validate structure
+    // 2. validate structure
     // The required folder is the addon's main one: it stays first
     // (recordFolders), whatever order the archive has.
     const plannedFolders = this.planFolders(extracted.topLevelDirs, releaseFolders).sort(

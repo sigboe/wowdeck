@@ -8,19 +8,24 @@
  * `regenerate()` rewrites companion files from whatever addon state is
  * ALREADY persisted — no network calls. Cheap enough to run after any
  * local addon-state change (install/update/remove/ignore) and after a
- * provider-enablement change. Fetching new provider metadata first is
- * UpdateCheck's job (every check ends by regenerating).
+ * provider-enablement change. Fetching new provider metadata first is the
+ * update check's job (AddonUpdates; every check ends by regenerating),
+ * and the addon updates module also says which updates are on offer.
  */
 
 import { scanAddons } from "../addons/AddonScanner";
 import type { AddonService } from "../addons/AddonService";
+import type { AddonUpdates } from "../addons/AddonUpdates";
 import type { WowInstallation } from "../models";
 import { toInterfaceVersion } from "../utils/gameversion";
 import { writeCompanionData } from "./CompanionWriter";
 import { COMPANION_DATA_VERSION, WOWUP_ADDON_FOLDER_NAME } from "./constants";
 
 export class CompanionSyncCoordinator {
-  constructor(private service: AddonService) {}
+  constructor(
+    private service: Pick<AddonService, "installations" | "recovery" | "addonsPathFor">,
+    private updates: Pick<AddonUpdates, "eligibleFor">,
+  ) {}
 
   /**
    * Whether the real WowUp.Addon companion is present for this
@@ -81,7 +86,7 @@ export class CompanionSyncCoordinator {
       return;
     }
 
-    const updates = this.service.eligibleUpdatesFor(installation).map((addon) => ({
+    const updates = this.updates.eligibleFor(installation).map((addon) => ({
       name: addon.name,
       currentVersion: addon.installedVersion ?? "",
       newVersion: addon.latestVersion ?? "",

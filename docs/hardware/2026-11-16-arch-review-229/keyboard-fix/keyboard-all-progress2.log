@@ -1,0 +1,5 @@
+open → no change
+eval --active --t=20000 --file=.scratch/arch-revie… → ["UPDATEDCurseForge · 3.3.14 | WowUp Hub · 1.0.30 | Local file · v4.11.36","UPDATING 2 OF 3 · 33% | Review229 progress | UPDATEDCurseForge · 3.3.14 | WowUp Hub · 1.0.30 | Local file · v4.11.36","UPDATEDCurseForge · 3.3.14 | WowUp Hub · 1.0.30 | Local file · v4.11.36"]
+eval@SharedJSContext --file=.scratch/arch-review-2… → {"traceLen":76,"last":[{"method":"tradeskillmaster.status","time":600.813,"installationId":null},{"method":"tradeskillmaster.status","time":601.813,"installationId":null},{"method":"tradeskillmaster.status","time":602.813,"installationId":null}]}
+FAIL no match after 19 presses, focus=""
+at: tree="QuickAccess-NA" focus="" route="/routes/library/home" plugin="WoWDeck" tab="My Addons"

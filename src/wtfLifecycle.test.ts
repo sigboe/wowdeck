@@ -9,7 +9,7 @@ import type {
   WtfListResult,
 } from "./types";
 import { createWtfLifecycle, WTF_POLL_MS } from "./wtfLifecycle";
-import { createDeferredRpc } from "./testSupport/deferredRpc";
+import { createFakeEngine } from "./testSupport/fakeEngine";
 import { createManualClock } from "./testSupport/manualClock";
 import { createSettingsStore } from "./settingsStore";
 import { defaultSettings } from "../backend/src/wow/storage/settings";
@@ -27,7 +27,7 @@ const names = (list: WtfListResult | null) => list?.backups.map((b) => b.fileNam
 
 /** The module over the deferred typed RPC and a manual clock: the harness later tickets reuse. */
 function harness() {
-  const engine = createDeferredRpc();
+  const engine = createFakeEngine();
   const clock = createManualClock();
   // The real settings store over the same engine: persistence stays there.
   const settings = createSettingsStore({

@@ -3,14 +3,23 @@ import { routerHook } from "@decky/api";
 import { WowGameSection } from "./components/WowGameSection";
 import { settingsStore } from "./settings";
 import { useSyncExternalStore } from "react";
-import { addonSession } from "./session";
-import { linkedSteamGames } from "./steamLibrary";
+import { isShownLinkedGame, linkedGamesStore } from "./linkedGames";
+import { createSteamLaunchSwitch, type AttachLaunch } from "./steamLaunchPatch";
+import { createWarnOnce } from "./warnOnce";
 
-function LinkedWowGameSection({ appId }: { appId: number }) {
-  const { settings } = useSyncExternalStore(settingsStore.subscribe, settingsStore.get);
-  const { installations } = useSyncExternalStore(addonSession.subscribe, addonSession.get);
-  const linked = linkedSteamGames(installations, settings.steamGame, settings.steamAutoLink);
-  return linked.some((g) => g.appId === appId) ? <WowGameSection /> : null;
+/** The section, on a linked game's page only (`isShownLinkedGame`). */
+export function LinkedWowGameSection({
+  appId,
+  attachLaunch,
+}: {
+  appId: number;
+  attachLaunch: AttachLaunch;
+}) {
+  const settings = useSyncExternalStore(settingsStore.subscribe, settingsStore.get);
+  const linked = useSyncExternalStore(linkedGamesStore.subscribe, linkedGamesStore.get);
+  return isShownLinkedGame(appId, settings, linked) ? (
+    <WowGameSection appId={appId} attachLaunch={attachLaunch} />
+  ) : null;
 }
 
 /**
@@ -24,18 +33,15 @@ function LinkedWowGameSection({ appId }: { appId: number }) {
  */
 const GAME_PAGE_ROUTE = "/library/app/:appid";
 const SECTION_KEY = "wowdeck-game-section";
-const PATCHED = Symbol.for("wowdeck.gamePage");
 
-let warned = false;
-function warnOnce(what: string, err?: unknown): void {
-  if (!warned) {
-    warned = true;
-    console.warn(`wowdeck: game page section not shown (${what})`, err ?? "");
-  }
-}
+const warnOnce = createWarnOnce("game page section not shown");
 
 /* eslint-disable @typescript-eslint/no-explicit-any -- Steam's React tree is untyped */
 export function patchGamePage(): () => void {
+  let active = true;
+  // Steam's Play button gets WoWDeck's only while Options says so (#286).
+  const launchSwitch = createSteamLaunchSwitch();
+  const renderPatches = new Map<object, ReturnType<typeof afterPatch>>();
   const patch = routerHook.addPatch(GAME_PAGE_ROUTE, (tree: any) => {
     try {
       const routeProps = findInReactTree(tree, (x: any) => x?.renderFunc);
@@ -43,10 +49,9 @@ export function patchGamePage(): () => void {
         warnOnce("no renderFunc");
         return tree;
       }
-      if (routeProps[PATCHED]) {
+      if (renderPatches.has(routeProps)) {
         return tree;
       }
-      routeProps[PATCHED] = true;
       let appId: unknown;
       const handler = createReactTreePatcher(
         [
@@ -58,7 +63,7 @@ export function patchGamePage(): () => void {
         ],
         (_args: unknown[], ret: any) => {
           try {
-            if (typeof appId !== "number") {
+            if (!active || typeof appId !== "number") {
               return ret;
             }
             const container = findInReactTree(
@@ -73,7 +78,13 @@ export function patchGamePage(): () => void {
               return ret;
             }
             const children = container.props.children as any[];
-            const section = <LinkedWowGameSection key={SECTION_KEY} appId={appId} />;
+            const section = (
+              <LinkedWowGameSection
+                key={SECTION_KEY}
+                appId={appId}
+                attachLaunch={launchSwitch.attach}
+              />
+            );
             const index = children.findIndex((c) => c?.key === SECTION_KEY);
             if (index < 0) children.splice(1, 0, section);
             else children[index] = section;
@@ -84,12 +95,18 @@ export function patchGamePage(): () => void {
         },
         "wowdeck-game-page",
       );
-      afterPatch(routeProps, "renderFunc", handler);
+      renderPatches.set(routeProps, afterPatch(routeProps, "renderFunc", handler));
     } catch (err) {
       warnOnce("patch failed", err);
     }
     return tree;
   });
-  return () => routerHook.removePatch(GAME_PAGE_ROUTE, patch);
+  return () => {
+    active = false;
+    routerHook.removePatch(GAME_PAGE_ROUTE, patch);
+    for (const installed of renderPatches.values()) installed.unpatch();
+    renderPatches.clear();
+    launchSwitch.dispose();
+  };
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */

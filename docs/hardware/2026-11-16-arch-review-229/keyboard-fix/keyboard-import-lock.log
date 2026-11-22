@@ -1,0 +1,9 @@
+toast-start → observer on notificationtoasts (limit 50; 0 notice(s) displayed)
+eval --active --file=.scratch/arch-review-229/keyb… → Import started
+press b → tree="QuickAccess-NA" focus="OPTIONS" tab="Options"
+open → no change
+eval --file=.scratch/arch-review-229/keyboard-lock… → {"selected":"032c354a655f","installingElsewhere":1,"selectors":[{"selected":"032c354a655f","disabled":true},{"selected":"032c354a655f","disabled":true},{"selected":"032c354a655f","disabled":true}]}
+eval --active --t=18000 --file=.scratch/arch-revie… → []
+toast-read → 1 notice(s) ["Controller Connected Xbox 360 controller"]
+toast cleanup → 1 notice(s) ["Controller Connected Xbox 360 controller"]
+toast cleanup: observer removed

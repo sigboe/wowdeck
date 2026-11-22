@@ -18,7 +18,7 @@ import type {
   RecoveryRetryResult,
   RecoveryVerifyResult,
 } from "../types";
-import * as api from "../services/backend";
+import { forgetRecoveryDetails, useRecoveryDetails } from "../recoveryDetails";
 import { addonSession } from "../session";
 import { STEAM, descriptionStyle } from "../steamTheme";
 import { wowupModalStyleCss } from "../sharedStyles";
@@ -47,21 +47,10 @@ function RecoveryDetailsModal({
   closeModal?: () => void;
 }) {
   const close = () => closeModal?.();
-  const [details, setDetails] = useState<InstallationRecoveryDetails | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const { data: details, error, refresh } = useRecoveryDetails(installation.id);
+  useEffect(() => () => forgetRecoveryDetails(installation.id), [installation.id]);
   const [outcome, setOutcome] = useState<RecoveryRetryResult | RecoveryVerifyResult | null>(null);
   const [running, setRunning] = useState<"retry" | "verify" | null>(null);
-  const [reads, setReads] = useState(0);
-  useEffect(() => {
-    let live = true;
-    api
-      .rpc("installations.recoveryDetails", { installationId: installation.id })
-      .then((d) => live && (setDetails(d), setError(null)))
-      .catch((e: unknown) => live && setError(e instanceof Error ? e.message : String(e)));
-    return () => {
-      live = false;
-    };
-  }, [installation.id, reads]);
   const run = async (action: "retry" | "verify") => {
     setRunning(action);
     try {
@@ -70,7 +59,7 @@ function RecoveryDetailsModal({
         : addonSession.verifyRecovery(installation.id));
       if (result) {
         setOutcome(result);
-        setReads((n) => n + 1); // what is kept where changed, or the block is gone
+        await refresh(); // what is kept where changed, or the block is gone
       }
     } finally {
       setRunning(null);

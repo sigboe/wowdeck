@@ -33,6 +33,18 @@ export class TradeSkillMasterProvider extends AddonProvider {
   #finish?: () => void;
   #waiting?: unknown;
   #releases: Release[] = [];
+  /** On needs a session: the current one, or the remembered account resumed. */
+  override async onEnable(): Promise<void> {
+    if (!this.auth.signedIn && !(await this.auth.resume())) {
+      throw new Error("Sign in to TradeSkillMaster first");
+    }
+  }
+
+  /** Off keeps the account (pause); Sign out forgets it. */
+  override onDisable(): void {
+    this.auth.pause();
+  }
+
   constructor(private auth: TradeSkillMasterAuth) {
     super();
     this.name = "TradeSkillMaster";

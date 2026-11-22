@@ -1,35 +1,28 @@
 /// <reference types="bun-types" />
 import { describe, expect, test } from "bun:test";
-import type { Rpc } from "./services/envelope";
-import type { Diagnostics } from "./types";
+import { createFakeEngine, type Answer } from "./testSupport/fakeEngine";
+import type { Addon, Diagnostics } from "./types";
 import { companionStatus, installCompanion } from "./companionInstall";
 
-type Call = { method: string; params?: unknown };
-
-function fakeRpc(answer: (method: string) => unknown = () => ({})) {
-  const calls: Call[] = [];
-  const rpc = (async (method: string, params?: unknown) => {
-    calls.push({ method, params });
-    return answer(method);
-  }) as Rpc;
-  return { rpc, calls };
-}
-
 const installed = (status: "installed" | "failed", error: string | null = null) => ({
-  addon: {},
+  addon: {} as Addon,
   operation: { operationId: "op", addonId: "a", status, error },
 });
 
-function harness(hubOn: boolean, answer?: (method: string) => unknown) {
-  const { rpc, calls } = fakeRpc(answer);
+function harness(hubOn: boolean, install?: Answer<"addons.install">) {
+  const fake = createFakeEngine(install ? { "addons.install": install } : {});
   const reloads: string[] = [];
+  const elsewhere: string[] = [];
   const deps = {
-    rpc,
+    rpc: fake.rpc,
+    installElsewhere: async <T>(installationId: string, call: () => Promise<T>) => {
+      elsewhere.push(installationId);
+      return await call();
+    },
     hubEnabled: () => hubOn,
     reloadDiagnostics: async () => void reloads.push("diagnostics"),
-    reloadAddons: async () => void reloads.push("addons"),
   };
-  return { deps, calls, reloads };
+  return { deps, calls: fake.calls, reloads, elsewhere };
 }
 
 describe("installing WowUp Companion into the active installation", () => {
@@ -38,11 +31,12 @@ describe("installing WowUp Companion into the active installation", () => {
     const result = await installCompanion(h.deps, "retail-1");
     expect(result).toEqual({ status: "hubOff" });
     expect(h.calls).toEqual([]);
+    expect(h.elsewhere).toEqual([]);
     expect(h.reloads).toEqual([]);
   });
 
-  test("with WowUp Hub on, it installs Hub addon 27 into that installation, then reloads", async () => {
-    const h = harness(true, () => installed("installed"));
+  test("with WowUp Hub on, it installs Hub addon 27 through the session, then reloads", async () => {
+    const h = harness(true, installed("installed"));
     const result = await installCompanion(h.deps, "retail-1");
     expect(result.status).toBe("installed");
     expect(h.calls).toEqual([
@@ -51,11 +45,13 @@ describe("installing WowUp Companion into the active installation", () => {
         params: { providerId: "WowUpHub", externalId: "27", installationId: "retail-1" },
       },
     ]);
-    expect(h.reloads.sort()).toEqual(["addons", "diagnostics"]);
+    // The session's entry point owns the install, so it re-reads My Addons.
+    expect(h.elsewhere).toEqual(["retail-1"]);
+    expect(h.reloads).toEqual(["diagnostics"]);
   });
 
   test("a failed install comes back with the engine's error", async () => {
-    const h = harness(true, () => installed("failed", "HTTP 404"));
+    const h = harness(true, installed("failed", "HTTP 404"));
     expect(await installCompanion(h.deps, "retail-1")).toEqual({
       status: "failed",
       error: "HTTP 404",
@@ -64,9 +60,7 @@ describe("installing WowUp Companion into the active installation", () => {
 
   test("a rejected call comes back as failed with what it threw", async () => {
     const boom = new Error("engine not ready");
-    const h = harness(true, () => {
-      throw boom;
-    });
+    const h = harness(true, boom);
     expect(await installCompanion(h.deps, "retail-1")).toEqual({ status: "failed", error: boom });
   });
 });

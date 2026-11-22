@@ -23,6 +23,8 @@ import {
   urlDestination,
 } from "./browseDestinations";
 import { sourcesStore } from "./sourcesStore";
+import { connectEngine } from "./engineLink";
+import { createFakeEngine } from "./testSupport/fakeEngine";
 import type { SearchResult } from "./types";
 
 const r = { providerId: "Curse", externalId: "1" } as SearchResult;
@@ -57,8 +59,13 @@ describe("resetBrowseSessionState", () => {
     expect(urlDestination.get()).toMatchObject({ url: "", resolved: null });
   });
 
-  test("keeps the cached categories, by source", () => {
-    sourcesStore.patch({ categories: { Curse: [{ id: "1019", name: "Combat" }] } });
+  test("keeps the cached categories, by source", async () => {
+    connectEngine(
+      createFakeEngine({
+        "addons.getCategories": { categories: [{ id: "1019", name: "Combat" }] },
+      }),
+    );
+    await sourcesStore.loadCategories("i1", "Curse");
     resetBrowseSessionState();
     expect(sourcesStore.get().categories).toEqual({ Curse: [{ id: "1019", name: "Combat" }] });
   });

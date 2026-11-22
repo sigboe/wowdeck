@@ -1,4 +1,4 @@
-import { formatBytes } from "./wtfFormat";
+import { formatBytes } from "./text";
 
 /** What rollback.status answers: the kept previous versions over every installation. */
 export interface PreviousVersionsUsage {

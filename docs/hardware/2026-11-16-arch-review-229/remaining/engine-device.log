@@ -1,0 +1,19 @@
+{"component":"detection","flavor":"_retail_","validity":"addon-data","sources":["lutris"]}
+14524 |   await original(o);
+14525 | };
+14526 | var flavor = join29(home, "Applications/World of Warcraft/_retail_");
+14527 | mkdirSync5(join29(flavor, "Interface/AddOns"), { recursive: true });
+14528 | var detected = await engine.call("installations.detect", {});
+14529 | assert(detected.installations.length > 0);
+              ^
+AssertionError: false == true
+ generatedMessage: true,
+     actual: false,
+   expected: true,
+   operator: "==",
+       diff: "simple",
+       code: "ERR_ASSERTION"
+
+      at /$bunfs/root/remaining-engine:14529:7
+
+Bun v1.4.2 (Linux x64)

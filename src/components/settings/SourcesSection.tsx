@@ -1,10 +1,10 @@
+import { engine } from "../../engineLink";
 import { RowChevron } from "../RowGlyph";
 import { UpdateDot } from "../UpdateDot";
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { ButtonItem, Field, Navigation, PanelSection, ToggleField } from "@decky/ui";
 
 import type { CurseForgeAuthStatus, ProviderInfo } from "../../types";
-import * as api from "../../services/backend";
 import { toastError } from "../../toast";
 import { curseForgeRowState } from "../../curseForgeAuthUi";
 import { descriptionStyle } from "../../steamTheme";
@@ -14,11 +14,12 @@ import { PROVIDER_ID } from "../../../backend/src/api/providers";
 import { SettingsRow } from "./common";
 import { sourceOffDescription } from "../../sourceAccess";
 import { clearSourceJump, sourceJump, sourceRowKey, subscribeSourceJump } from "../../optionsJump";
-import { setSourceEnabled } from "../../sourcesStore";
+import { sourcesStore } from "../../sourcesStore";
 import { GitHubSourceRow } from "./GitHubSource";
 
 import { startTsmSignIn } from "../../tsmSignIn";
 import { openPanel } from "../../openPanel";
+import { tsmModule, useTsmStatus } from "../../tsmReads";
 
 const signInBrowser = {
   open: (url: string) => Navigation.NavigateToExternalWeb(url),
@@ -28,7 +29,6 @@ const signInBrowser = {
     openPanel("settings");
   },
 };
-import type { TradeSkillMasterAuthStatus } from "../../../backend/src/api/contracts";
 
 interface Props {
   /** Null when they could not be loaded (a Try again row). */
@@ -55,32 +55,7 @@ export function SourcesSection({
 }: Props) {
   // The Options jump (optionsJump.ts) marks the rows it navigated for; they
   // blink until the jump is used, focus moves on, or this section leaves.
-  const [tsm, setTsm] = useState<TradeSkillMasterAuthStatus | null>(null);
-  useEffect(() => {
-    let live = true;
-    let reading = false;
-    const read = async () => {
-      if (reading) return;
-      reading = true;
-      try {
-        const status = await api.rpc("tradeskillmaster.status");
-        if (live) {
-          setTsm(status);
-          await reloadProviders();
-        }
-      } catch {
-        /* Engine not ready; retry when Options reopens. */
-      } finally {
-        reading = false;
-      }
-    };
-    void read();
-    const timer = setInterval(() => void read(), 1000);
-    return () => {
-      live = false;
-      if (timer !== undefined) clearInterval(timer);
-    };
-  }, [reloadProviders, tsm?.state]);
+  const { data: tsm } = useTsmStatus();
   const jump = useSyncExternalStore(subscribeSourceJump, sourceJump);
   useEffect(() => clearSourceJump, []);
 
@@ -106,9 +81,7 @@ export function SourcesSection({
               openCurseForgeKeyModal(curseForgeAuth, onCurseForgeKeyChanged);
             };
             // Off keeps the TradeSkillMaster account; X forgets it.
-            const tsmAccount =
-              p.id === PROVIDER_ID.TradeSkillMaster &&
-              (!!tsm?.account || tsm?.state === "signedOut");
+            const tsmAccount = p.id === PROVIDER_ID.TradeSkillMaster && !!tsm?.account;
             return (
               <SettingsRow
                 key={p.id}
@@ -119,12 +92,8 @@ export function SourcesSection({
                       ? {
                           onSecondaryActionDescription: "Sign out",
                           onSecondaryButton: () => {
-                            void api
-                              .rpc("tradeskillmaster.signOut")
-                              .then(async (status) => {
-                                setTsm(status);
-                                await reloadProviders();
-                              })
+                            void tsmModule
+                              .signOut()
                               .catch((e) => toastError("Couldn't sign out of TradeSkillMaster", e));
                           },
                         }
@@ -188,10 +157,9 @@ export function SourcesSection({
                             tsm?.state !== "signedIn" &&
                             !tsm?.account
                           ) {
-                            await startTsmSignIn(api.rpc, signInBrowser);
-                            setTsm(await api.rpc("tradeskillmaster.status"));
+                            await startTsmSignIn(engine.rpc, signInBrowser);
                           } else {
-                            await setSourceEnabled(api.rpc, p.id, checked);
+                            await sourcesStore.setEnabled(p.id, checked);
                           }
                         } catch (e) {
                           toastError(`Couldn't change ${providerLabel(p.id)}`, e);
@@ -202,8 +170,11 @@ export function SourcesSection({
                       <ButtonItem
                         layout="below"
                         onClick={async () => {
-                          await startTsmSignIn(api.rpc, signInBrowser);
-                          setTsm(await api.rpc("tradeskillmaster.status"));
+                          try {
+                            await startTsmSignIn(engine.rpc, signInBrowser);
+                          } catch (e) {
+                            toastError("Couldn't sign in to TradeSkillMaster", e);
+                          }
                         }}
                       >
                         Sign in
@@ -213,8 +184,11 @@ export function SourcesSection({
                       <ButtonItem
                         layout="below"
                         onClick={async () => {
-                          setTsm(await api.rpc("tradeskillmaster.cancel"));
-                          await reloadProviders();
+                          try {
+                            await tsmModule.cancel();
+                          } catch (e) {
+                            toastError("Couldn't cancel TradeSkillMaster sign-in", e);
+                          }
                         }}
                       >
                         Cancel sign-in

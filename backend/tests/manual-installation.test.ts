@@ -8,6 +8,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { AddonService } from "../src/wow/addons/AddonService";
+import { addonService } from "./helpers/addon-service";
 import { ProviderRegistry } from "../src/wow/providers/provider-registry";
 import { createStateStore } from "../src/wow/storage/StateStore";
 import { DownloadService } from "../src/wow/downloads/DownloadService";
@@ -18,7 +19,7 @@ const ROOT = "/tmp/opencode/wowdeck-tests/manual";
 
 function makeService(dataDir: string) {
   const store = createStateStore(dataDir);
-  const service = new AddonService(store, new ProviderRegistry(), new DownloadService(new NetworkClient(), join(dataDir, "dl")), {
+  const service = addonService(store, new ProviderRegistry(), new DownloadService(new NetworkClient(), join(dataDir, "dl")), {
     addonsChanged: () => {},
     operationResult: () => {},
   });

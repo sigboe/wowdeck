@@ -23,21 +23,12 @@
  * itself: that is this rule.
  */
 
-/** The `Q()` CSS module of Steam's QAM: readable keys, hashed values. */
+/** The `Q()` CSS module of Steam's QAM, by readable key (steamLookup.ts finds it). */
 export interface QamViewClasses {
   ViewPlaceholder: string;
   Expanded: string;
   /** Only the embedded QAM has it. */
   QuickAccessMenuEmbeddedContainer?: string;
-}
-
-/** The `@decky/ui` `findClassModule` filter for that module. */
-export function isQamViewClasses(m: unknown): m is QamViewClasses {
-  if (!m || typeof m !== "object") {
-    return false;
-  }
-  const c = m as Partial<Record<keyof QamViewClasses, unknown>>;
-  return typeof c.ViewPlaceholder === "string" && typeof c.Expanded === "string";
 }
 
 function hasToken(className: unknown, token: string | undefined): boolean {

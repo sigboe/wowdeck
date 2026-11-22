@@ -42,7 +42,7 @@ export function uiDiagnostics() {
 
 export function checkMethods(frontend, bridge, contracts) {
   const python = new Set([...bridge.matchAll(/^    async def ([a-z]\w*)\(/gm)].map(m => m[1]));
-  const names = [...frontend.matchAll(/(?:call(?:<[\s\S]*?>)?|callable(?:<[\s\S]*?>)?)\(\s*["']([\w.]+)["']/g)].map(m => m[1]);
+  const names = [...frontend.matchAll(/(?:\bbridge|call(?:<[^()]*?>)?|callable(?:<[^()]*?>)?)\(\s*["']([\w.]+)["']/g)].map(m => m[1]);
   const engine = [...frontend.matchAll(/\brpc\(\s*["']([\w.]+)["']/g)].map(m => m[1]);
   return {
     bridge: [...new Set(names)].sort(),

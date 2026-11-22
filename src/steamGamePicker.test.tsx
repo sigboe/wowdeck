@@ -15,6 +15,9 @@ import { createRoot, type Root } from "react-dom/client";
 import { JSDOM } from "jsdom";
 import { deckyUiStub } from "./deckyUiStub";
 
+// Picking toasts through Decky; these tests never pick.
+mock.module("@decky/api", () => ({ toaster: { toast: () => {} } }));
+
 let modal: ReactElement | null = null;
 let search: ((e: { target: { value: string } }) => void) | undefined;
 mock.module("@decky/ui", () => ({
@@ -122,11 +125,13 @@ afterEach(async () => {
   jest.useRealTimers();
 });
 
-type Links = Parameters<typeof openSteamGamePicker>[0];
-
-/** Open the picker the way Options does, render it, and read each shortcut row as "name — description". */
-async function openPicker(links: Links): Promise<string[]> {
-  openSteamGamePicker(links, () => {});
+/**
+ * Open the picker the way the Steam library modal does, with nothing linked,
+ * render it, and read each shortcut row as "name — description". Which games
+ * it lists, and what A does, is steamLibraryModal.test.tsx's.
+ */
+async function openPicker(): Promise<string[]> {
+  openSteamGamePicker(() => {});
   root = createRoot(dom.window.document.getElementById("root")!);
   await act(async () => root!.render(modal!));
   return rows();
@@ -154,58 +159,9 @@ async function type(query: string): Promise<string[]> {
   return rows();
 }
 
-describe("Steam library picker rows (#151)", () => {
-  test("the manual link says Currently linked; every other row shows its app id", async () => {
-    expect(await openPicker({ manual: BNET, detected: [], autoLinkOn: true })).toEqual([
-      "Battle.net — App 1414213562 · Currently linked",
-      "World of Warcraft — App 3141592653",
-      "World of Warcraft — App 2718281828",
-      "Super Mario 64 — App 1732050807",
-    ]);
-  });
-
-  test("a detected link says Linked automatically only while automatic linking is on", async () => {
-    expect(await openPicker({ manual: null, detected: [WOW_BNET], autoLinkOn: true })).toEqual([
-      "Battle.net — App 1414213562",
-      "World of Warcraft — App 3141592653",
-      "World of Warcraft — App 2718281828 · Linked automatically",
-      "Super Mario 64 — App 1732050807",
-    ]);
-    await act(async () => root!.unmount());
-    expect(await openPicker({ manual: null, detected: [WOW_BNET], autoLinkOn: false })).toEqual([
-      "Battle.net — App 1414213562",
-      "World of Warcraft — App 3141592653",
-      "World of Warcraft — App 2718281828",
-      "Super Mario 64 — App 1732050807",
-    ]);
-  });
-
-  test("an entry both linked by hand and detected says Currently linked, the link Unlink removes", async () => {
-    const shown = await openPicker({
-      manual: WOW_LUTRIS,
-      detected: [WOW_LUTRIS, BNET],
-      autoLinkOn: true,
-    });
-    expect(shown).toEqual([
-      "Battle.net — App 1414213562 · Linked automatically",
-      "World of Warcraft — App 3141592653 · Currently linked",
-      "World of Warcraft — App 2718281828",
-      "Super Mario 64 — App 1732050807",
-    ]);
-  });
-
-  test("Currently linked shows in green; Linked automatically keeps the description colour", async () => {
-    await openPicker({ manual: WOW_LUTRIS, detected: [BNET], autoLinkOn: true });
-    const marker = (text: string) =>
-      [...dom.window.document.querySelectorAll("[data-row-description] span")].find(
-        (span) => span.textContent === text,
-      ) as HTMLElement | undefined;
-    expect(marker("Currently linked")?.style.color).toBe("rgb(89, 191, 64)");
-    expect(marker("Linked automatically")?.style.color).toBe("");
-  });
-
+describe("Add a game search (#151)", () => {
   test("search matches names and initials, not app ids", async () => {
-    await openPicker({ manual: null, detected: [], autoLinkOn: true });
+    await openPicker();
     expect(await type("wow")).toEqual([
       "World of Warcraft — App 3141592653",
       "World of Warcraft — App 2718281828",
@@ -225,7 +181,7 @@ function iconSlots(): string[] {
 
 describe("Steam library picker icons (#152)", () => {
   test("a row shows its shortcut's icon; a row without one keeps a blank slot of the same size", async () => {
-    await openPicker({ manual: null, detected: [], autoLinkOn: true });
+    await openPicker();
     expect(iconSlots()).toEqual([
       "icon data:image/ico;base64,Qk5FVA==",
       "icon data:image/png;base64,TFVUUklT",
@@ -239,7 +195,7 @@ describe("Steam library picker icons (#152)", () => {
   });
 
   test("the icon is hidden from screen readers, so a row reads as its name and description", async () => {
-    const shown = await openPicker({ manual: null, detected: [], autoLinkOn: true });
+    const shown = await openPicker();
     expect(shown[1]).toBe("World of Warcraft — App 3141592653");
     const slots = [...dom.window.document.querySelectorAll("[data-icon-slot]")];
     expect(slots).toHaveLength(4);
@@ -247,7 +203,7 @@ describe("Steam library picker icons (#152)", () => {
   });
 
   test("an icon that fails to load leaves the blank slot", async () => {
-    await openPicker({ manual: null, detected: [], autoLinkOn: true });
+    await openPicker();
     const img = dom.window.document.querySelector('img[src^="data:image/png"]')!;
     await act(async () => {
       img.dispatchEvent(new dom.window.Event("error"));
@@ -259,7 +215,7 @@ describe("Steam library picker icons (#152)", () => {
     jest.useFakeTimers();
     const store = stubAppStore([WOW_LUTRIS.appId]);
     env.appStore = store;
-    await openPicker({ manual: null, detected: [], autoLinkOn: true });
+    await openPicker();
     expect(iconSlots()).toEqual(["icon data:image/ico;base64,Qk5FVA==", "blank", "blank", "blank"]);
     const atOpen = store.lookups.length;
     await act(async () => {
@@ -293,7 +249,7 @@ describe("Steam library picker icons (#152)", () => {
     }));
     const store = stubAppStore([], ICONS, extra);
     env.appStore = store;
-    const shown = await openPicker({ manual: null, detected: [], autoLinkOn: true });
+    const shown = await openPicker();
     expect(shown).toHaveLength(41); // 40 rows, then "13 more"
     expect(new Set(store.lookups).size).toBe(40);
     expect(store.lookups).not.toContain(MARIO.appId);
@@ -311,7 +267,7 @@ describe("Steam library picker icons (#152)", () => {
     jest.useFakeTimers();
     const store = stubAppStore([WOW_LUTRIS.appId]);
     env.appStore = store;
-    await openPicker({ manual: null, detected: [], autoLinkOn: true });
+    await openPicker();
     await act(async () => root!.unmount());
     root = null;
     const atClose = store.lookups.length;
@@ -329,7 +285,7 @@ describe("Steam library picker icons (#152)", () => {
       [MARIO.appId]: icon,
     });
     env.appStore = store;
-    await openPicker({ manual: null, detected: [], autoLinkOn: true });
+    await openPicker();
     await act(async () => {
       jest.advanceTimersByTime(60_000);
     });

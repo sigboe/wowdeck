@@ -12,7 +12,7 @@ import {
 import { canScroll } from "../scrollEdge";
 import { FaChevronLeft, FaChevronRight } from "react-icons/fa";
 import type { DetailsResult, SearchResult, SearchResultScreenshot } from "../types";
-import * as api from "../services/backend";
+import { engine } from "../engineLink";
 import { useLazyResource } from "../useLazyResource";
 import { dependencyNote, headerFacts, type DependencyNote } from "../detailsHeader";
 import { gameVersionTagList, type VersionTag } from "../gameVersionTags";
@@ -35,9 +35,9 @@ import {
 import { registerDirectScroll, scrollTweenTarget } from "../valveScroll";
 import { nextGalleryIndex } from "../gallery";
 import { holdBrowseSessionForModal } from "../browseSessionState";
-import { addonSession } from "../session";
+import { activeInstallationId, addonSession } from "../session";
 import type { AddonSessionState } from "../addonSession";
-import type { ResultActions } from "../resultActions";
+import type { DetailsActions } from "../resultActions";
 import { SafeMarkdown } from "./SafeMarkdown";
 import { clearModalDimming, stripModalChrome } from "../steamDom/modalChrome";
 
@@ -100,7 +100,15 @@ const DETAILS_STAGE_CSS = `
 
 interface ModalProps {
   result: DetailsResult;
-  onInstall: () => Promise<void>;
+  /**
+   * The X action, the tag line and the channel menu, read from the addon
+   * session while the modal is open: `resultActions` for a provider result,
+   * `installedActions` for an installed addon, a constant for anything else
+   * (a source picked in Find online source). One mode: X, Menu and the tags
+   * follow the session for every caller, so an action started in another
+   * view shows here too.
+   */
+  live: (state: AddonSessionState) => DetailsActions;
   closeModal?: () => void;
   /** Called when the modal unmounts (openAddonDetailsModal's session hold). */
   releaseHold?: () => void;
@@ -111,33 +119,11 @@ interface ModalProps {
    * later without reshaping the modal.
    */
   bannerUrl?: string | null;
-  /** Label of the X action ("Install", "Reinstall", "Update"); null = no X action. */
-  installLabel: string | null;
-  /** Status tags under the name (Get Addons: Installed, Update available, Updated). */
-  tags?: string[];
-  /**
-   * Opens the Release channel menu (WF-03; Menu button in the footer);
-   * absent for providers without channels. `afterPick` closes the modal,
-   * like every other action here.
-   */
-  channelMenu?: (afterPick: () => void) => void;
   /** Required dependencies line under the status line (WF-11); none when null. */
   dependencies?: DependencyNote | null;
   /** The Relationships page's content; the page exists only when this has entries. */
   relationships?: Relationships | null;
-  /**
-   * Get Addons results: X, Menu and the tags read from the addon session
-   * while the modal is open, in place of the four props above. An install
-   * pending in any view shows here, and once it lands X acts on the
-   * installed addon instead of installing again.
-   */
-  live?: (state: AddonSessionState) => LiveInstall;
 }
-
-type LiveInstall = Pick<
-  ResultActions,
-  "installLabel" | "tags" | "pending" | "onInstall" | "channelMenu"
->;
 
 /**
  * The identity block of the details header: logo, name, the facts line
@@ -249,29 +235,27 @@ function AddonDetailsIdentity({
  */
 export function AddonDetailsModal({
   result,
+  live,
   closeModal,
   releaseHold,
   bannerUrl,
   dependencies,
   relationships,
-  live,
-  ...fixed
 }: ModalProps) {
   const [section, setSection] = useState<Section>("description");
-  // The X action this modal is running (closing when it ends), and an install
-  // of this result pending anywhere (the session's).
+  // The X action this modal is running (closing when it ends), and an action
+  // on this addon pending anywhere (the session's).
   const [running, setRunning] = useState(false);
   const session = useSyncExternalStore(addonSession.subscribe, addonSession.get, addonSession.get);
-  const now = live?.(session);
-  const { installLabel, tags, channelMenu, onInstall } = now ?? fixed;
-  const installing = running || !!now?.pending;
+  const { installLabel, tags, channelMenu, onInstall, pending } = live(session);
+  const installing = running || pending;
 
   const {
     value: description,
     loading: descLoading,
     error: descError,
   } = useLazyResource(() =>
-    api
+    engine
       .rpc("addons.getDescription", {
         providerId: result.providerId,
         externalId: result.externalId,
@@ -283,8 +267,12 @@ export function AddonDetailsModal({
     loading: cngLoading,
     error: cngError,
   } = useLazyResource(() =>
-    api
-      .rpc("addons.getChangelog", { providerId: result.providerId, externalId: result.externalId })
+    engine
+      .rpc("addons.getChangelog", {
+        installationId: activeInstallationId(),
+        providerId: result.providerId,
+        externalId: result.externalId,
+      })
       .then((r) => r.changelog),
   );
 
@@ -304,8 +292,9 @@ export function AddonDetailsModal({
   const { value: relNames, error: relError } = useLazyResource(
     providerRels &&
       (() =>
-        api
+        engine
           .rpc("addons.lookup", {
+            installationId: activeInstallationId(),
             providerId: providerRels.providerId,
             externalIds: providerRels.items.map((i) => i.externalId),
           })

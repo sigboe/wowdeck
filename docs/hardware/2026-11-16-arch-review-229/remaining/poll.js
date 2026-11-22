@@ -1,0 +1,1 @@
+DeckyBackend.call('loader/call_plugin_method','WoWDeck','rpc','review.control',{"clear": true, "rules": {"tradeskillmaster.status": {"answer": {"state": "signingIn", "account": null}}}, "events": [{"event": "tradeskillmaster.changed", "params": {}}]})

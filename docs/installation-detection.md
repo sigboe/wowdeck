@@ -200,11 +200,64 @@ override, Steam's appId prefix determines the runtime association. A known-folde
 fallback alone never links an unrelated Steam entry. Each scan refreshes
 these links and removes stale ones without deleting installations.
 
-Discovery runs at engine startup and through Find WoW. The game-page section
-and home-tile badge use all detected links, alongside the existing manual
-picker. Options can disable automatic linking. Linking never changes
-`autoUpdate`, `steamAutoCheck` or `steamBadge`; automatic addon updates stay
-opt-in, and existing user choices remain in effect.
+The WoW client choice on Steam's Play button needs one WoW root for the
+shortcut. When discovery links several roots, a canonical shortcut path to
+a root or flavor, or a Battle.net build record that matches a linked
+flavor, can identify the root. If that evidence points to more than one
+root or is absent, Steam's Play button stays as it is. The launch product
+and remembered client choice apply after the root is known.
+
+Discovery runs at engine startup and through Find WoW. Its links are
+evidence only. `LinkedGameList` (`backend/src/wow/installation/LinkedGames.ts`)
+builds the linked games (GLOSSARY: Linked game) on every read from three
+sources:
+
+- **Found automatically.** Every Steam game a scan linked to an
+  installation, hidden installations included, unless the player removed
+  it.
+- **Removed.** The found games the player removed in the Steam library
+  modal (`steamRemovedGames`). Scans at engine start and through Find WoW
+  leave this list as it is, so a removed game stays unlinked through
+  rescans and restarts. Picking a removed game in Add a game
+  (`linkedGames.add`) takes it off the list, and the list counts it as found again.
+- **Added by you.** The games the player picked in Add a game
+  (`steamAddedGames`, changed only through `linkedGames.add` and
+  `linkedGames.remove`). Adding a game a scan already found adds nothing.
+  Removing an added game deletes it instead of remembering it.
+
+**Find games** in the Steam library modal (`linkedGames.find`) runs the
+same detection as Find WoW, then clears the removed list, so every found
+game comes back. It answers with the linked games that came back or were
+found for the first time, and the modal's toast names them.
+
+Every scan, including the one at engine start, forgets added and removed
+games whose app id no longer appears in any Steam user's `shortcuts.vdf`.
+When a shortcuts file exists but can't be read, the scan forgets nothing,
+because the game may still be in it.
+
+The list holds one entry per app id. A game that is both found and added
+counts as found. `linkedGames.get` returns the list, the removed games
+(for the Add a game picker) and Show in Steam (`steamEnabled`).
+`linkedGames.changed` fires after every scan, add, remove and Find games,
+and whenever Show in Steam changes.
+
+One engine check, `LinkedGameList.isLinked`, decides whether an app id is
+linked right now, and Show in Steam off makes every app id unlinked. The
+launch code calls it before it resolves a launch entry, so `launch.state`,
+`launch.select`, `launch.start` and `launch.icon` treat a game that isn't
+linked like any other Steam game. That includes every game while Show in
+Steam is off. An added Battle.net shortcut gets Play's version choice like
+a found one. Turning Show in Steam off keeps the list, so turning it
+back on restores everything.
+
+On the first load of a state file from before linked games, the engine
+converts the old settings once. It drops a hand-made `steamGame` that a scan
+had also found, as a duplicate. Any other hand-made `steamGame` becomes an
+added game. `steamAutoLink: false` starts Show in Steam off.
+
+Linking never changes `autoUpdate`, `steamAutoCheck` or `steamBadge`.
+Automatic addon updates stay opt-in, and the player's other choices stay as
+they were.
 
 Detector tests construct synthetic binary `shortcuts.vdf` fixtures in
 temporary homes. They cover multiple users, both Steam locations, executable

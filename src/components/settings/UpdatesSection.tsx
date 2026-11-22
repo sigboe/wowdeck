@@ -2,10 +2,11 @@ import { RowChevron } from "../RowGlyph";
 import { useEffect, useSyncExternalStore } from "react";
 import { DialogButton, Field, PanelSection, ToggleField } from "@decky/ui";
 import { FaEllipsisH } from "react-icons/fa";
-import * as api from "../../services/backend";
+import { engine } from "../../engineLink";
 import { descriptionStyle } from "../../steamTheme";
 import { lastAutoUpdateLine } from "../../text";
 import { previousVersionsSummary } from "../../previousVersions";
+import { usePreviousVersionsUsage } from "../../previousVersionsUsage";
 import { settingsStore } from "../../settings";
 import {
   isOffChannel,
@@ -18,11 +19,7 @@ import { selfUpdateStore } from "../../selfUpdate";
 import { openReleaseNotesModal } from "../ReleaseNotesModal";
 import { openUpdateChannelModal } from "../UpdateChannelModal";
 import { openPrBuildsModal } from "../PrBuildsModal";
-import {
-  loadPreviousVersionsUsage,
-  openPreviousVersionsModal,
-  previousVersionsStore,
-} from "../PreviousVersionsModal";
+import { openPreviousVersionsModal } from "../PreviousVersionsModal";
 import { rememberFocus } from "../../focusMemory";
 import { SettingsRow, VIEW } from "./common";
 
@@ -42,10 +39,7 @@ export function UpdatesSection() {
     selfUpdateStore.subscribe,
     selfUpdateStore.get,
   );
-  const { usage: previousUsage } = useSyncExternalStore(
-    previousVersionsStore.subscribe,
-    previousVersionsStore.get,
-  );
+  const { data: previousUsage } = usePreviousVersionsUsage();
 
   // The checkmark is the engine's stored channel, read on each open, or
   // the PR channel the last answer served; the switch's answer lands in the
@@ -61,7 +55,7 @@ export function UpdatesSection() {
         checked,
         pr,
         (next) => void selfUpdateStore.setChannel(next),
-        () => openPrBuildsModal(api.rpc, selfUpdateStore),
+        () => openPrBuildsModal(engine.rpc, selfUpdateStore),
         settingsStore.get().settings.pluginMoveToStableAfterRelease,
         (on) => void settingsStore.save({ pluginMoveToStableAfterRelease: on }),
       );
@@ -76,7 +70,6 @@ export function UpdatesSection() {
   const releaseNotes = releaseNotesAction(offer);
 
   useEffect(() => {
-    void loadPreviousVersionsUsage();
     // The shared self-update store: load or wake has usually answered
     // already, and this re-asks only when the held answer is stale — no
     // fetch on every Options visit.

@@ -3,15 +3,34 @@ const port = () => process.env.DECK_UI_PORT || "18080";
 const TIMEOUT = 10000;
 
 export async function targets() {
-  const res = await fetch(`http://localhost:${port()}/json`, { signal: AbortSignal.timeout(TIMEOUT) });
+  const url = `http://localhost:${port()}/json`;
+  let res;
+  try {
+    res = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT) });
+  } catch (e) {
+    throw new Error(`no CEF at ${url}: start the tunnel (README "Connect")`, { cause: e });
+  }
   if (!res.ok) throw new Error(`CEF targets: HTTP ${res.status}`);
   return res.json();
 }
 
-export async function connect(want) {
-  const list = await targets();
+// The target whose title contains `want` and can be debugged; the error names
+// every title there is, so a wrong target is a one-line fix.
+export function findTarget(list, want) {
   const t = list.find((x) => x.title.includes(want) && x.webSocketDebuggerUrl);
   if (!t) throw new Error(`no target "${want}"; have: ${list.map((x) => x.title).join(", ")}`);
+  return t;
+}
+
+// Connect by a substring of the target title. `onEvent` receives every CDP
+// event (a message without an id, e.g. Page.screencastFrame or
+// Runtime.bindingCalled) on this connection.
+export async function connect(want, opts = {}) {
+  return connectTarget(findTarget(await targets(), want), opts);
+}
+
+// Connect to one target from targets(), for callers that already listed them.
+export async function connectTarget(t, { onEvent } = {}) {
   const ws = new WebSocket(t.webSocketDebuggerUrl);
   const pending = new Map();
   let id = 0;
@@ -26,6 +45,8 @@ export async function connect(want) {
     if (p) {
       if (d.error) p.reject(new Error(`CDP: ${d.error.message}`));
       else p.resolve(d);
+    } else if (d.method && onEvent) {
+      onEvent(d);
     }
   });
   await new Promise((resolve, reject) => {
@@ -74,6 +95,13 @@ export async function evalIn(want, expr, timeout = TIMEOUT) {
   } finally {
     close();
   }
+}
+
+// Report a failed connection or command the way every script does: one line,
+// exit 1. The message is the module's (timeout, connection, target errors).
+export function fail(e) {
+  console.error(`EXC ${e.message.split("\n")[0]}`);
+  process.exit(1);
 }
 
 // Print a value the way the scripts do: strings raw, everything else compact.

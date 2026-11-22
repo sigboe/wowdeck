@@ -3,12 +3,13 @@ import { useSyncExternalStore } from "react";
 import { Field, PanelSection, ToggleField } from "@decky/ui";
 
 import type { Diagnostics, Installation } from "../../types";
-import * as api from "../../services/backend";
+import { engine } from "../../engineLink";
+import { addonSession } from "../../session";
 import { descriptionStyle } from "../../steamTheme";
 import { formatList } from "../../search";
 import { settingsStore } from "../../settings";
 import { sourcesStore } from "../../sourcesStore";
-import { loadDiagnostics } from "../../diagnosticsStore";
+import { diagnosticsStore } from "../../diagnosticsStore";
 import { COMPANION_PROVIDER_ID, companionStatus } from "../../companionInstall";
 import { offerCompanionInstall } from "../companionInstallModal";
 import { rememberFocus } from "../../focusMemory";
@@ -18,13 +19,10 @@ import { SettingsRow, VIEW } from "./common";
 export function NotificationsSection({
   diagnostics,
   installation,
-  onChanged,
 }: {
   diagnostics: Diagnostics | null;
   /** The active installation: the only one offered a WowUp Companion install. */
   installation: Installation | null;
-  /** Reload installations + addons (My Addons lists the companion once installed). */
-  onChanged: () => Promise<void>;
 }) {
   const { settings } = useSyncExternalStore(settingsStore.subscribe, settingsStore.get);
   // A quiet status line, not an alert: the companion-data bridge always runs
@@ -73,12 +71,12 @@ export function NotificationsSection({
             rememberFocus(VIEW, "updatesInsideWow");
             if (offer) {
               offerCompanionInstall(offer, {
-                rpc: api.rpc,
+                rpc: engine.rpc,
+                installElsewhere: addonSession.installElsewhere,
                 hubEnabled: () =>
                   sourcesStore.get().providers?.find((p) => p.id === COMPANION_PROVIDER_ID)
                     ?.enabled ?? false,
-                reloadDiagnostics: () => loadDiagnostics(api.rpc),
-                reloadAddons: onChanged,
+                reloadDiagnostics: () => diagnosticsStore.load(),
               });
             }
           }}

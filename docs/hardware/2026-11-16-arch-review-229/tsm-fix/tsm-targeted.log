@@ -1,0 +1,21 @@
+bun test v1.4.2 (744846f84)
+
+src/tsmModule.test.ts:
+(pass) all sign-in viewers share polling and a change refreshes status and sources [1.83ms]
+(pass) installed TSM addons use installation keys and refresh after addon changes [0.77ms]
+(pass) cancel publishes signed-out state to every viewer without waiting for an obsolete read [1.10ms]
+
+backend/tests/tsm-auth-rpc.test.ts:
+(pass) RPC starts disabled and cancellation closes the callback without enabling the source [8.40ms]
+(pass) local browser redirect exchanges PKCE, keeps only a private refresh token, and revokes on sign out [10.58ms]
+(pass) sign out deletes stored credentials and returns after five seconds even when revocation stalls [2.32ms]
+(pass) restart restores claims, refreshes early, retries temporary failures and preserves enabled on revocation [9.77ms]
+
+backend/tests/tsm-network.test.ts:
+(pass) the sign-in token request goes through the network client and a refused redirect fails the refresh [504.69ms]
+(pass) an oversized catalogue answer fails with the network client's error and is not retried [65.31ms]
+
+ 9 pass
+ 0 fail
+ 81 expect() calls
+Ran 9 tests across 3 files. [653.00ms]

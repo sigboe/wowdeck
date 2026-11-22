@@ -1,0 +1,1 @@
+{"filesScanned": 5, "charactersScanned": 26016, "configuredSecretMatches": 0, "credentialQueryUrlMatches": 0, "scope": "existing *.log directly under plugin log directory; no in-memory access token available"}

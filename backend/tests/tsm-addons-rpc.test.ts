@@ -2,10 +2,9 @@ import { AddonProvider, type ScanMatch } from "../src/wow/providers/addon-provid
 import type { AddonFolder } from "../src/wow/models";
 import { FileProvider } from "../src/wow/providers/file/FileProvider";
 import { ZipProvider } from "../src/wow/providers/zip/ZipProvider";
-import { UpdateCheck } from "../src/wow/notifications/UpdateCheck";
-import { CompanionSyncCoordinator } from "../src/wow/notifications/CompanionSync";
+import { AddonUpdates } from "../src/wow/addons/AddonUpdates";
 import { zipSync } from "fflate";
-import { AddonService } from "../src/wow/addons/AddonService";
+import { addonService } from "./helpers/addon-service";
 import { DownloadService } from "../src/wow/downloads/DownloadService";
 import { NetworkClient } from "../src/wow/net/network";
 import type { WowInstallation } from "../src/wow/models";
@@ -16,7 +15,7 @@ import { mkdtempSync, rmSync, writeFileSync, mkdirSync, existsSync, readFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { JsonlServer } from "../src/bridge/jsonl";
-import { register } from "../src/api/handlers/addons";
+import { addonsHandlers } from "../src/api/handlers/addons";
 import { ProviderRegistry } from "../src/wow/providers/provider-registry";
 import {
   TradeSkillMasterAuth,
@@ -24,7 +23,7 @@ import {
 } from "../src/wow/tsm/TradeSkillMasterAuth";
 import { FaultInjectingFs } from "../src/wow/fs/StageFs";
 import { createStateStore } from "../src/wow/storage/StateStore";
-import type { HandlerDeps } from "../src/api/handlers/deps";
+import { subset } from "./helpers/subset";
 
 test.each(
   Array.from({ length: 11 }, (_, clientType) => [clientType, false] as [number, boolean]).concat(
@@ -138,26 +137,27 @@ test.each(
   mkdirSync(join(second.location, "Interface/AddOns"), { recursive: true });
   store.setInstallations([installation, second]);
   let active = installation;
-  const service = new AddonService(
+  const service = addonService(
     store,
     registry,
     new DownloadService(new NetworkClient(), join(dir, "downloads")),
     { addonsChanged() {}, operationResult() {} },
   );
   // Use the existing game-process seam so the RPC check is independent of /proc.
-  const autoUpdate = service.autoUpdate.bind(service);
-  service.autoUpdate = () => autoUpdate(async () => "not_running");
-  registry.setEnabled("TradeSkillMaster", true);
+  const addonUpdates = new AddonUpdates(service, registry, store);
+  const autoUpdate = addonUpdates.autoUpdate.bind(addonUpdates);
+  addonUpdates.autoUpdate = () => autoUpdate(async () => "not_running");
+  registry.get("TradeSkillMaster")!.enabled = true;
   writeFileSync(join(dir, "tsm-refresh-token"), "fixture");
   let response: any;
   const rpc = new JsonlServer((line) => {
     response = JSON.parse(line);
   });
-  register(rpc, {
+  rpc.handle(addonsHandlers(subset({
     service,
-    updateCheck: new UpdateCheck(service, new CompanionSyncCoordinator(service)),
+    addonUpdates,
     installationService: { require: (id?: string) => id === second.id ? second : active },
-  } as unknown as HandlerDeps);
+  })));
   const call = async (method: string, params = {}) => {
     await rpc.handleLine(JSON.stringify({ id: 1, method, params }));
     if (response.error) throw new Error(JSON.stringify(response.error));
@@ -214,14 +214,14 @@ test.each(
       }
       expect(readFileSync(join(installation.location, "Interface/AddOns", name, "keep.lua"), "utf8")).toBe("existing content");
     }
-    registry.setEnabled("TradeSkillMaster", false);
+    registry.get("TradeSkillMaster")!.enabled = false;
     active = second;
     expect((await call("addons.list")).addons.every((a: any) => a.sourceOff)).toBe(true);
     for (const name of ["TradeSkillMaster", "TradeSkillMaster_AppHelper"]) expect(readFileSync(join(second.location, "Interface/AddOns", name, "keep.lua"), "utf8")).toBe("existing content");
     active = installation;
     expect((await call("addons.list")).addons.every((a: any) => a.sourceOff)).toBe(true);
     expect((await call("addons.install", { providerId: "File", externalId: join(dir, "TradeSkillMaster.zip") })).operation.status).toBe("installed");
-    registry.setEnabled("TradeSkillMaster", true);
+    registry.get("TradeSkillMaster")!.enabled = true;
     await call("addons.refresh");
     // Change source on a copy from another source offers TradeSkillMaster:
     // found by its TOC's folder, as it has no search.

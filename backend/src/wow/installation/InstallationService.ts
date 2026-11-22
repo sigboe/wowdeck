@@ -65,16 +65,27 @@ export class InstallationService {
     /** Settings and installations; addon records change only in AddonService's gate. */
     private store: Omit<StateStore, "addons">,
     /**
-     * Removes an installation: in one turn of AddonService's gate (after any
-     * running or queued addon change), refuses a recovery-required one
-     * (InstallationRecovery), then runs `removeEntry` and drops its addon
-     * records. One turn, so no addon change can stop in the installation
-     * between the check and the removal.
+     * Removes an installation: AddonService.removeInstallation, one guarded
+     * turn of the addon gate (after any running or queued addon change) that
+     * refuses a recovery-required one (InstallationRecovery), then runs
+     * `removeEntry` and drops its addon records. One turn, so no addon
+     * change can stop in the installation between the check and the removal.
      */
     private removeGuarded: (installationId: string, removeEntry: () => void) => Promise<void>,
     /** Called after an installation (and its addon records) was removed. */
     private onRemoved: () => void = () => {},
   ) {}
+
+  /**
+   * Called after a detection scan or a manual add: the list may hold an
+   * installation with no update metadata yet.
+   */
+  readonly foundListeners = new Set<() => void | Promise<void>>();
+
+  /** Tell every found listener, and wait for the ones that answer with a promise. */
+  async #found(): Promise<void> {
+    await Promise.all([...this.foundListeners].map((listener) => listener()));
+  }
 
   /** Detect installations into the list; the whole list after. */
   async detect(homeDir: string): Promise<Installation[]> {
@@ -83,6 +94,7 @@ export class InstallationService {
     // Keep installations through an unmounted drive, but never keep stale shortcut links.
     this.store.setInstallations(mergeInstallations(this.store.installations.map(i => ({ ...i, steamGames: [] })), found,
       (prior, current) => { prior.steamGames = current.steamGames ?? []; }));
+    await this.#found();
     return this.listed();
   }
 
@@ -227,7 +239,13 @@ export class InstallationService {
         }
       }),
     );
+    await this.#found();
     return created.map((c) => this.#wire(this.store.installations.find((e) => e.id === c.id)!));
+  }
+
+  /** Each installation for diagnostics only: `clientLabel` is a display string, never an identity. */
+  summaries(): { id: string; clientLabel: string; path: string }[] {
+    return this.list().map((i) => ({ id: i.id, clientLabel: getClientTypeLabel(i.clientType), path: i.location }));
   }
 
   /**
@@ -299,11 +317,17 @@ export class InstallationService {
     return this.#wire(installation);
   }
 
-  /** The installation with this id, or the active one when no id is given. */
-  require(id?: string): WowInstallation {
-    const installation = id ? this.store.installations.find((i) => i.id === id) : this.ensureSelection();
+  /**
+   * The installation with this id. A missing or empty id is refused, never
+   * read as the selected installation: each caller names the one it means.
+   */
+  require(id: string): WowInstallation {
+    if (typeof id !== "string" || id === "") {
+      throw new ValidationError("No WoW installation chosen. Check Options");
+    }
+    const installation = this.store.installations.find((i) => i.id === id);
     if (!installation) {
-      throw new NotFoundError("installation", id ?? "<selected>");
+      throw new NotFoundError("installation", id);
     }
     return installation;
   }

@@ -158,6 +158,7 @@ class RootFilesTests(unittest.TestCase):
     THIRD_PARTY_NOTICES.md from the installed plugin folder."""
 
     def test_the_notices_ship_next_to_the_license(self) -> None:
+        self.assertIn("recovery_updater.py", package.ROOT_FILES)
         self.assertIn("LICENSE", package.ROOT_FILES)
         self.assertIn("THIRD_PARTY_NOTICES.md", package.ROOT_FILES)
 

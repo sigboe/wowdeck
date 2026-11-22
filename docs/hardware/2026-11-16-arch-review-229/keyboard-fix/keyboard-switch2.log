@@ -1,0 +1,27 @@
+seek TradeSkillMaster --press → found "TradeSkillMaster" after 7 presses (down) → focus="TradeSkillMaster"
+press a → focus="Manage"
+eval@SharedJSContext --file=.scratch/arch-review-2… → {"last":[{"method":"tradeskillmaster.status","time":897.272,"installationId":null},{"method":"tradeskillmaster.status","time":897.746,"installationId":null},{"method":"tradeskillmaster.account","time":897.746,"installationId":null},{"method":"tradeskillmaster.destination","time":897.746,"installationId":"5e80311f078e"},{"method":"providers.list","time":897.746,"installationId":null},{"method":"tradeskillmaster.status","time":898.272,"installationId":null}]}
+eval --t=20000 --file=.scratch/arch-review-229/key… → {"selected":"032c354a655f","text":"GET ADDONS\nClassic Era\nSearch\nLatest\nPopular\nManual Install\nTradeSkillMaster\nTradeSkillMaster\nSigned in as Review229 shared account\n3 of 10 realms followed\nManage\nLoading auction data…\nInstall TradeSkillMaster\nRefresh auction data\nNo auction data yet"} → focus=null
+seek TradeSkillMaster --press → found "TradeSkillMaster" after 1 presses (down) → focus="TradeSkillMaster"
+press a → focus="Manage"
+eval --full --file=.scratch/arch-review-229/keyboa… → GET ADDONS
+Classic Era
+Search
+Latest
+Popular
+Manual Install
+TradeSkillMaster
+TradeSkillMaster
+Signed in as Review229 shared account
+3 of 10 realms followed
+Manage
+Install TradeSkillMaster
+Refresh auction data
+Updated 5 hours ago
+Missing a realm or region?
+To discover a realm or region, create a character there (or use an existing one), log in, then log out to save WoW settings. For Classic, enable TradeSkillMaster and AppHelper before logging in and out. This list uses locally saved settings, not live character information from Blizzard.
+Review229 current Classic answer · Horde
+Updated 5 hours ago
+Followed
+Forever-EU region data
+Updated 21 hours ago

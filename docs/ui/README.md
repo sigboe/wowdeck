@@ -43,7 +43,7 @@ in one line each; open the linked section when a rule applies to you.
 | [focus.md](focus.md) | §6 | `Focusable` facts, F1–F10, details modal, nav contract, forms |
 | [feedback.md](feedback.md) | §7 | A1–A10, copy rules C01–C12 |
 | [verification.md](verification.md) | §8 (not §8.4a–c) | Tooling, test tiers, hardware-claim policy, report template |
-| [device-notes.md](device-notes.md) | §8.4a–§8.4c | Device measurements the rules cite |
+| [device-notes.md](device-notes.md) | §8.4a–§8.4e | Device measurements the rules cite |
 | [lessons.md](lessons.md) | §9 | Case studies, reverted attempts, anti-patterns |
 | [backlog.md](backlog.md) | §10 | Known improvements not yet done |
 | [sources.md](sources.md) | §11 | Reference plugins, licensing, maintenance, known gaps |
@@ -77,7 +77,7 @@ table.
 
 | Rule | Level | What it says |
 | --- | --- | --- |
-| [P1](architecture.md#42-conventions-to-keep) | MUST | keep all backend access in `src/services/backend.ts`. |
+| [P1](architecture.md#42-conventions-to-keep) | MUST | reach the engine through the engine link (`src/engineLink.ts`); stores take its rpc and events, components never subscribe. |
 | [P2](architecture.md#42-conventions-to-keep) | MUST | unit-test new pure UI logic in a `*.test.ts` file. |
 | [P3](architecture.md#42-conventions-to-keep) | MUST | put shared CSS in `src/sharedStyles.ts` and inject it as `<style>{wowdeckSharedStyleCss()}</style>` where it is used (the QAM panel, the Details … |
 | [P4](architecture.md#42-conventions-to-keep) | SHOULD | take colours and text sizes from `src/steamTheme.ts` (`STEAM`, `STEAM_FONT`, `descriptionStyle`) rather than literals (S20). |
@@ -164,7 +164,7 @@ table.
 
 | Rule | Level | What it says |
 | --- | --- | --- |
-| [A1](feedback.md#72-rules) | MUST | use a request-id/ref guard for any fetch whose result can arrive after the user changed the inputs (§4.5). |
+| [A1](feedback.md#72-rules) | MUST | read engine data through a keyed resource (`useResource`), never your own request counter or active flag (§4.5). |
 | [A2](feedback.md#72-rules) | MUST | distinguish loading / error / empty / success as four rendered states. |
 | [A3](feedback.md#72-rules) | MUST | wrap every `await api.*` in `try/catch/finally` when it is triggered by a click, so busy flags reset and the user gets feedback. |
 | [A4](feedback.md#72-rules) | MUST NOT | fire toasts from effects that run on every mount (the original My Addons toast fired on every remount, COMMIT 7858f64). |
@@ -252,8 +252,9 @@ Scope tags: **[GENERAL]** and **[PROJECT]**. Evidence tags used in citations:
 ### 1.5 Hard project constraints (from `AGENTS.md`)
 
 - **MUST** never modify `wowup/` (read-only pinned reference checkout).
-- **MUST** keep `src/` frontend-only; backend calls go through
-  `src/services/backend.ts` → `@decky/api` `callable`. Wire contracts live in
+- **MUST** keep `src/` frontend-only; backend calls go through the engine
+  link (`src/engineLink.ts`), which Decky's adapter in
+  `src/services/backend.ts` connects at plugin load. Wire contracts live in
   `backend/src/api/contracts.ts`.
 - **MUST** run lint, format check, typecheck, tests and build before committing
   (commands in [§8](verification.md#8-testing-and-verification)).

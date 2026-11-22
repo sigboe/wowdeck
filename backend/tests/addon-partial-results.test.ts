@@ -12,7 +12,8 @@ import { zipSync } from "fflate";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { AddonService } from "../src/wow/addons/AddonService";
+import { addonService } from "./helpers/addon-service";
+import { AddonUpdates } from "../src/wow/addons/AddonUpdates";
 import { FaultInjectingFs } from "../src/wow/fs/StageFs";
 import { createStateStore } from "../src/wow/storage/StateStore";
 import { AddonProvider } from "../src/wow/providers/addon-provider";
@@ -143,16 +144,18 @@ function fixture(name: string, catalog: Record<string, Entry>) {
   registry.register(provider);
   const operations: OperationResult[] = [];
   const store = createStateStore(join(root, "data"), fs);
-  const service = new AddonService(store, registry, new DownloadService(network, join(root, "dl")), {
+  const service = addonService(store, registry, new DownloadService(network, join(root, "dl")), {
     addonsChanged: () => {},
     operationResult: (op) => operations.push(op),
   });
+  const updates = new AddonUpdates(service, registry, store);
   const { addonsPath: addonsA, ...instA } = a;
   const { addonsPath: addonsB, ...instB } = b;
   store.setInstallations([instA, instB]);
   return {
     store,
     service,
+    updates,
     fs,
     entries,
     failDownload,
@@ -172,7 +175,7 @@ function fixture(name: string, catalog: Record<string, Entry>) {
     async publish(id: string, version: string) {
       entries.get(id)!.version = version;
       for (const installation of [instA, instB]) {
-        await service.refresh(installation).catch(() => {});
+        await updates.refresh(installation).catch(() => {});
       }
     },
   };
@@ -336,7 +339,7 @@ describe("Update all", () => {
     const f = await updatable("update-all");
     f.failDownload.add("102");
 
-    const operations = await f.service.updateAll(f.a);
+    const operations = await f.updates.updateAll(f.a);
 
     expect(operations.map((o) => [o.addonName, o.status])).toEqual([
       ["Alpha", "updated"],
@@ -353,7 +356,7 @@ describe("Update all", () => {
     const f = await updatable("update-all-installations");
     f.stopUndo.add("103");
 
-    const operations = await f.service.updateAllInstallations();
+    const operations = await f.updates.updateAllInstallations();
 
     expect(operations.map((o) => [o.addonName, o.status, o.recoveryRequired ?? false])).toEqual([
       ["Alpha", "updated", false],

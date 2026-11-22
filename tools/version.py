@@ -45,16 +45,24 @@ ROOT = Path(__file__).resolve().parent.parent
 # Relative to ROOT, in the order they are written.
 VERSIONED_FILES = ("package.json", "plugin.json", "backend/package.json")
 
-# Full semver (pre-release and build metadata allowed) so a release
-# candidate can exercise the whole pipeline before the real launch.
-SEMVER = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$")
-
-# The forms `stamp` writes: tools/beta-release.ts's next-version output
-# (X.Y.Z-beta.N), or a PR build's (X.Y.Z-pr.N, its rebuild X.Y.Z-pr.N.K).
-STAMPED = re.compile(
+# A WoWDeck version as a writer writes it: X.Y.Z, X.Y.Z-beta.N, X.Y.Z-test.N,
+# X.Y.Z-pr.N or X.Y.Z-pr.N.K. No leading zeros; counters start at 1, a
+# rebuild counter at 2. backend/src/api/version-table.json is the shared
+# conformance table; backend/src/api/version.ts is the TypeScript side.
+VERSION = re.compile(
     r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)"
-    r"(?:-beta\.(0|[1-9]\d*)|-pr\.([1-9]\d*)(?:\.([1-9]\d*))?)$"
+    r"(?:-(beta|test)\.([1-9]\d*)|-(pr)\.([1-9]\d*)(?:\.([2-9]|[1-9]\d+))?)?$"
 )
+
+EXPECTED = "expected X.Y.Z, X.Y.Z-beta.N, X.Y.Z-test.N, X.Y.Z-pr.N or X.Y.Z-pr.N.K"
+
+
+def parse_version(text: str) -> str | None:
+    """The form of a WoWDeck version (stable, beta, test or pr), or None."""
+    m = VERSION.match(text)
+    if not m:
+        return None
+    return m.group(4) or m.group(6) or "stable"
 
 
 class VersionError(SystemExit):
@@ -97,8 +105,8 @@ def check(root: Path | None = None) -> str:
             "the versioned files disagree; run `make version-set VERSION=X.Y.Z`:\n" + "\n".join(lines)
         )
     version = distinct.pop()
-    if not SEMVER.match(version):
-        raise VersionError(f"{version} is not a semver version (expected X.Y.Z, optionally with -rc1)")
+    if parse_version(version) is None:
+        raise VersionError(f"{version} is not a WoWDeck version ({EXPECTED})")
     return version
 
 
@@ -116,8 +124,8 @@ def set_version(version: str, root: Path | None = None) -> None:
     array) on every bump, which is noise in the release commit.
     """
     root = ROOT if root is None else root
-    if not SEMVER.match(version):
-        raise VersionError(f"{version!r} is not a semver version (expected X.Y.Z, optionally with -rc1)")
+    if parse_version(version) is None:
+        raise VersionError(f"{version!r} is not a WoWDeck version ({EXPECTED})")
     # Read everything first so a malformed file cannot leave the tree half-bumped.
     parsed = []
     for path in paths(root):
@@ -150,7 +158,7 @@ def set_version(version: str, root: Path | None = None) -> None:
 
 def stamp_build(version: str, root: Path | None = None) -> None:
     """Write a beta or PR build's version into the checkout being built; never committed."""
-    if not STAMPED.match(version):
+    if parse_version(version) not in ("beta", "pr"):
         raise VersionError(
             f"{version!r} is not a beta or PR build version (expected X.Y.Z-beta.N, X.Y.Z-pr.N or X.Y.Z-pr.N.K)"
         )

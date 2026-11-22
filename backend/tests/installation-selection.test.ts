@@ -7,6 +7,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { AddonService } from "../src/wow/addons/AddonService";
+import { addonService } from "./helpers/addon-service";
 import { ProviderRegistry } from "../src/wow/providers/provider-registry";
 import { createStateStore } from "../src/wow/storage/StateStore";
 import { DownloadService } from "../src/wow/downloads/DownloadService";
@@ -17,7 +18,7 @@ const ROOT = "/tmp/opencode/wowdeck-tests/selection";
 
 function makeService(dataDir: string): { service: AddonService; store: ReturnType<typeof createStateStore> } {
   const store = createStateStore(dataDir);
-  const service = new AddonService(store, new ProviderRegistry(), new DownloadService(new NetworkClient(), join(dataDir, "dl")), {
+  const service = addonService(store, new ProviderRegistry(), new DownloadService(new NetworkClient(), join(dataDir, "dl")), {
     addonsChanged: () => {},
     operationResult: () => {},
   });
@@ -97,7 +98,7 @@ describe("installation selection", () => {
   test("selecting classic era is canonical for queries and install target", () => {
     service.installations.select(era.id);
     expect(service.installations.selectedId()).toBe(era.id);
-    expect(service.installations.require().id).toBe(era.id);
+    expect(service.installations.require(era.id).id).toBe(era.id);
     expect(store.settings.selectedInstallationId).toBe(era.id);
   });
 
@@ -109,7 +110,7 @@ describe("installation selection", () => {
   test("selection survives an engine restart", () => {
     const restarted = makeService(join(ROOT, "data")).service;
     expect(restarted.installations.selectedId()).toBe(era.id);
-    expect(restarted.installations.require().location).toBe(era.location);
+    expect(restarted.installations.require(restarted.installations.selectedId()!).location).toBe(era.location);
   });
 
   test("re-detection never drops installations and keeps the selection", async () => {

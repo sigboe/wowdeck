@@ -4,7 +4,9 @@ import { JSDOM } from "jsdom";
 import { act, type ReactNode } from "react";
 import type { Root } from "react-dom/client";
 import { deckyUiStub } from "./deckyUiStub";
-import type { CurseForgeAuthStatus, ProviderInfo } from "./types";
+import type { CurseForgeAuthStatus, PluginSettings, ProviderInfo } from "./types";
+import { connectEngine } from "./engineLink";
+import { createFakeEngine } from "./testSupport/fakeEngine";
 
 /**
  * The CurseForge key modal (#206): one modal with the status first, the key
@@ -15,9 +17,6 @@ import type { CurseForgeAuthStatus, ProviderInfo } from "./types";
 
 const toasts: string[] = [];
 mock.module("@decky/api", () => ({
-  callable: () => async () => ({}),
-  addEventListener: () => {},
-  removeEventListener: () => {},
   toaster: { toast: ({ title }: { title: string }) => toasts.push(title) },
   openFilePicker: () => {},
   FileSelectionType: { FILE: 0, FOLDER: 1 },
@@ -66,7 +65,6 @@ mock.module("@decky/ui", () => ({
   ),
 }));
 
-const calls: Array<{ method: string; params: unknown }> = [];
 let testResult: { ok: boolean; confirmed?: boolean; message?: string } = { ok: true };
 let authAfter: CurseForgeAuthStatus;
 let pendingStatus: Promise<CurseForgeAuthStatus> | null = null;
@@ -81,27 +79,16 @@ const curse = (configured: boolean, enabled: boolean): ProviderInfo => ({
   catalogSearch: true,
   discovers: true,
 });
-mock.module("./services/backend", () => ({
-  rpc: async (method: string, params?: unknown) => {
-    calls.push({ method, params });
-    switch (method) {
-      case "providers.testApiKey":
-        return testResult;
-      case "settings.set":
-        return { settings: (params as { settings: object }).settings };
-      case "providers.setEnabled":
-        return { providers: [curse(true, true)] };
-      case "providers.list":
-        return { providers: [curse(true, true)] };
-      case "curseforge.authStatus":
-        return pendingStatus ?? authAfter;
-      case "curseforge.recheckBundledKey":
-        return authAfter;
-      default:
-        return {};
-    }
-  },
-}));
+const fake = createFakeEngine({
+  "providers.testApiKey": () => ({ httpStatus: null, message: "", ...testResult }),
+  "settings.set": ({ settings }) => ({ settings: settings as PluginSettings }),
+  "providers.setEnabled": () => ({ providers: [curse(true, true)] }),
+  "providers.list": () => ({ providers: [curse(true, true)] }),
+  "curseforge.authStatus": () => pendingStatus ?? authAfter,
+  "curseforge.recheckBundledKey": () => authAfter,
+});
+connectEngine(fake);
+const calls = fake.calls;
 
 // The DOM exists before react-dom loads: it decides at load time whether
 // it can listen for input events, and typing in the key field needs them.
@@ -119,7 +106,7 @@ env.IS_REACT_ACT_ENVIRONMENT = true;
 
 const { createRoot } = await import("react-dom/client");
 const { CurseForgeKeyModal } = await import("./components/settings/CurseForgeKeyModal");
-const { sourcesStore, resetSourcesStore } = await import("./sourcesStore");
+const { sourcesStore } = await import("./sourcesStore");
 
 const rejected: CurseForgeAuthStatus = {
   activeSource: "none",
@@ -137,6 +124,7 @@ const ownKey: CurseForgeAuthStatus = {
 };
 
 let root: Root;
+let hidden = 0;
 let closed = 0;
 let changed = 0;
 
@@ -146,16 +134,29 @@ afterAll(() => {
   delete env.IS_REACT_ACT_ENVIRONMENT;
   dom.window.close();
 });
-beforeEach(() => {
+beforeEach(async () => {
   pendingStatus = null;
-  calls.length = 0;
   toasts.length = 0;
   opened.length = 0;
+  hidden = 0;
+  Object.assign(dom.window, {
+    SteamUIStore: {
+      ActiveWindowInstance: {
+        VirtualKeyboardManager: {
+          IsShowingVirtualKeyboard: { Value: true },
+          SetVirtualKeyboardHidden: () => hidden++,
+        },
+      },
+    },
+  });
   closed = 0;
   changed = 0;
   testResult = { ok: true };
-  resetSourcesStore();
-  sourcesStore.patch({ providers: [curse(false, false)], loaded: true });
+  sourcesStore.reset();
+  fake.answers["providers.list"] = { providers: [curse(false, false)] };
+  await sourcesStore.load();
+  fake.answers["providers.list"] = () => ({ providers: [curse(true, true)] });
+  calls.length = 0;
   root = createRoot(doc.getElementById("root")!);
 });
 afterEach(async () => {
@@ -284,6 +285,7 @@ describe("the CurseForge key modal", () => {
     expect(toasts).toContain("CurseForge key saved and verified");
     expect(changed).toBe(1);
     expect(closed).toBe(1);
+    expect(hidden).toBe(1);
   });
 
   test("a key CurseForge rejects is not saved, nothing turns on and the modal stays", async () => {
@@ -305,6 +307,7 @@ describe("the CurseForge key modal", () => {
     expect(methods()).toContain("providers.setEnabled");
     expect(toasts).toContain("CurseForge key saved");
     expect(closed).toBe(1);
+    expect(hidden).toBe(1);
   });
 
   test("Clear key removes the saved key, shows the new status and stays open", async () => {
@@ -335,4 +338,18 @@ describe("the CurseForge key modal", () => {
     await press("Get a CurseForge API key");
     expect(opened).toEqual(["https://console.curseforge.com/#/api-keys"]);
   });
+});
+
+test("closing key entry dismisses the keyboard before unmount", async () => {
+  await show(rejected);
+  await act(async () =>
+    [...doc.querySelectorAll("button")].find((b) => b.textContent === "Close")!.click(),
+  );
+  expect(closed).toBe(1);
+  expect(hidden).toBe(1);
+});
+test("unmounting key entry dismisses the keyboard", async () => {
+  await show(rejected);
+  await act(async () => root.render(null));
+  expect(hidden).toBe(1);
 });

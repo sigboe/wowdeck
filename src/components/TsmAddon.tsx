@@ -1,3 +1,4 @@
+import { backendErrorMessage } from "../errors";
 import { useEffect, useRef, useState, useSyncExternalStore, type ComponentProps } from "react";
 import {
   ButtonItem,
@@ -9,12 +10,17 @@ import {
   showModal,
   ToggleField,
 } from "@decky/ui";
-import { rpc, onBackendEvent } from "../services/backend";
-import type {
-  TradeSkillMasterDestination,
-  TradeSkillMasterAccount,
-} from "../../backend/src/api/contracts";
-import type { Addon } from "../types";
+import { engine } from "../engineLink";
+import { addonSession } from "../session";
+import { useEngineChange } from "../engineChanges";
+import {
+  forgetTsmCleanupPreview,
+  putTsmDestination,
+  useTsmCleanupPreview,
+  useTsmDestination,
+  useTsmAddons,
+} from "../tsmReads";
+import type { TradeSkillMasterAccount } from "../../backend/src/api/contracts";
 import { tsmAddonState } from "../tsmAddonState";
 import { browseFocusView, holdBrowseSessionForModal } from "../browseSessionState";
 import { realmLabel } from "../tsmRealm";
@@ -23,7 +29,7 @@ import { FocusSlot } from "./FocusSlot";
 import { requestFocus } from "../focusMemory";
 import { openPanel } from "../openPanel";
 import { TsmAccount } from "./TsmAccount";
-import { formatWhen } from "../wtfFormat";
+import { formatWhen } from "../text";
 
 function UninstallConfirmation({
   installationId,
@@ -34,23 +40,10 @@ function UninstallConfirmation({
   onRemove: (cleanup: boolean, preview?: TradeSkillMasterAccount["follows"]) => void;
 }) {
   const [cleanup, setCleanup] = useState(false);
-  const [preview, setPreview] = useState<TradeSkillMasterAccount["follows"]>();
-  const [error, setError] = useState(false);
-  useEffect(() => {
-    let active = true;
-    void rpc("tradeskillmaster.cleanupPreview", { installationId })
-      .then((result) => {
-        if (active) setPreview(result);
-      })
-      .catch(() => {
-        if (active) setError(true);
-      });
-    return () => {
-      active = false;
-    };
-  }, [installationId]);
+  const { data: preview, error } = useTsmCleanupPreview(installationId);
+  useEffect(() => () => forgetTsmCleanupPreview(installationId), [installationId]);
   return (
-    <ConfirmModal {...props} onOK={() => onRemove(cleanup, preview)}>
+    <ConfirmModal {...props} onOK={() => onRemove(cleanup, preview ?? undefined)}>
       <ToggleField
         label="Also unfollow realms added by wowdeck"
         checked={cleanup}
@@ -66,8 +59,8 @@ function UninstallConfirmation({
         />
       ))}
       {preview?.length === 0 && <Field label="No eligible follows to remove." />}
-      {error && (
-        <Field label="Could not preview account cleanup. You can still remove the addons." />
+      {!!error && (
+        <Field label="Couldn't preview account cleanup. You can still remove the addons." />
       )}
     </ConfirmModal>
   );
@@ -87,7 +80,8 @@ const REFRESH_WAIT_MS = 60_000;
 
 /** The destination uses the same install operation and records as My Addons. */
 export function TsmAddon({ installationId }: { installationId: string }) {
-  const [data, setData] = useState<TradeSkillMasterDestination>();
+  const { data: read, error: destinationError, loading } = useTsmDestination(installationId);
+  const data = read ?? undefined;
   const [refreshing, setRefreshing] = useState(false);
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
@@ -101,55 +95,26 @@ export function TsmAddon({ installationId }: { installationId: string }) {
   }, [refreshing]);
   const currentInstallation = useRef(installationId);
   currentInstallation.current = installationId;
-  const requestVersion = useRef(0);
+  const tsmChanges = useEngineChange("tradeskillmaster.changed");
+  const shownChanges = useRef(tsmChanges);
   useEffect(() => {
-    let active = true;
-    setData(undefined);
-    const load = () => {
-      const version = ++requestVersion.current;
-      void rpc("tradeskillmaster.destination", { installationId })
-        .then((result) => {
-          if (active && version === requestVersion.current) setData(result);
-        })
-        .catch(() => {});
-    };
-    load();
-    const off = onBackendEvent((event) => {
-      if (event.event !== "tradeskillmaster.changed") return;
+    if (shownChanges.current !== tsmChanges) {
+      shownChanges.current = tsmChanges;
       setRefreshing(false);
       setNow(Date.now());
-      load();
-    });
-    return () => {
-      active = false;
-      off();
-    };
-  }, [installationId]);
+    }
+  }, [tsmChanges]);
   const [followBusy, setFollowBusy] = useState(false);
   const [followError, setFollowError] = useState<string>();
   const state = tsmAddonState(installationId);
-  const { addon, loaded, busy, error } = useSyncExternalStore(state.subscribe, state.get);
-  const setAddon = (addon: Addon | undefined) => state.patch({ addon });
-  const setLoaded = (loaded: boolean) => state.patch({ loaded });
+  const { busy, error } = useSyncExternalStore(state.subscribe, state.get);
+  const { data: installed, error: addonError, refresh: loadAddons } = useTsmAddons(installationId);
+  const addon = installed?.addons.find((a) =>
+    ["TradeSkillMaster", "TradeSkillMaster_AppHelper"].includes(a.folderName),
+  );
+  const loaded = installed !== null && !installed.unverified;
   const setBusy = (busy: boolean) => state.patch({ busy });
   const setError = (error: string | undefined) => state.patch({ error });
-  const loadAddons = async () => {
-    const result = await rpc("addons.list", { installationId });
-    setAddon(
-      result.addons.find((a) =>
-        ["TradeSkillMaster", "TradeSkillMaster_AppHelper"].includes(a.folderName),
-      ),
-    );
-    setLoaded(!result.unverified);
-  };
-  useEffect(() => {
-    void loadAddons().catch(() => setError("Could not read installed addons"));
-    const off = onBackendEvent((event) => {
-      if (event.event === "addons.changed")
-        void loadAddons().catch(() => setError("Could not read installed addons"));
-    });
-    return off;
-  }, [installationId]);
   const remove = async (
     cleanupFollows = false,
     cleanupPreview?: TradeSkillMasterAccount["follows"],
@@ -157,14 +122,14 @@ export function TsmAddon({ installationId }: { installationId: string }) {
     setBusy(true);
     setError(undefined);
     try {
-      const result = await rpc("tradeskillmaster.removeAddons", {
-        installationId,
-        ...(cleanupFollows ? { cleanupFollows, cleanupPreview } : {}),
-      });
+      const result = await addonSession.installElsewhere(installationId, () =>
+        engine.rpc("tradeskillmaster.removeAddons", {
+          installationId,
+          ...(cleanupFollows ? { cleanupFollows, cleanupPreview } : {}),
+        }),
+      );
       if (result.operations.some((op) => op.status === "failed" || op.cleanupWarning)) {
-        setError(
-          "Could not uninstall completely. Check My Addons for removal errors and recovery.",
-        );
+        setError("Couldn't uninstall completely. Check My Addons for removal errors and recovery.");
       }
       if (result.cleanup) {
         const left = result.cleanup.leftBehind.map(
@@ -176,7 +141,7 @@ export function TsmAddon({ installationId }: { installationId: string }) {
         setError(
           local +
             " " +
-            (result.cleanup.error ??
+            ((result.cleanup.error ? "Couldn't clean up account follows." : undefined) ??
               (left.length
                 ? "Account cleanup was not completed."
                 : "Selected account follows removed.")) +
@@ -184,8 +149,9 @@ export function TsmAddon({ installationId }: { installationId: string }) {
         );
       }
       await loadAddons();
-    } catch {
-      setError("Could not uninstall. Check My Addons for removal errors and recovery.");
+    } catch (error) {
+      backendErrorMessage(error);
+      setError("Couldn't uninstall. Check My Addons for removal errors and recovery.");
     } finally {
       setBusy(false);
     }
@@ -227,18 +193,27 @@ export function TsmAddon({ installationId }: { installationId: string }) {
           }
           setBusy(true);
           setError(undefined);
-          void rpc("addons.install", {
-            providerId: "TradeSkillMaster",
-            externalId: "TradeSkillMaster",
-            installationId,
-            channel: "stable",
-          })
+          // The addon session owns an install it didn't start: switching
+          // waits for it, and the shown list is read again when it settles.
+          void addonSession
+            .installElsewhere(installationId, () =>
+              engine.rpc("addons.install", {
+                providerId: "TradeSkillMaster",
+                externalId: "TradeSkillMaster",
+                installationId,
+                channel: "stable",
+              }),
+            )
             .then(async (result) => {
               if (currentInstallation.current !== installationId) return;
-              if (result.operation.status === "failed") setError("Installation failed. Try again.");
+              if (result.operation.status === "failed")
+                setError("Couldn't install TradeSkillMaster. Try again.");
               await loadAddons();
             })
-            .catch(() => setError("Installation failed. Try again."))
+            .catch((error) => {
+              backendErrorMessage(error);
+              setError("Couldn't install TradeSkillMaster. Try again.");
+            })
             .finally(() => setBusy(false));
         }}
       >
@@ -268,9 +243,10 @@ export function TsmAddon({ installationId }: { installationId: string }) {
                 onClick={() => {
                   setRefreshing(true);
                   setFollowError(undefined);
-                  void rpc("tradeskillmaster.refresh", { installationId }).catch(() => {
+                  void engine.rpc("tradeskillmaster.refresh", { installationId }).catch((error) => {
+                    backendErrorMessage(error);
                     setRefreshing(false);
-                    setFollowError("Could not refresh auction data");
+                    setFollowError("Couldn't refresh auction data");
                   });
                 }}
               >
@@ -315,26 +291,22 @@ export function TsmAddon({ installationId }: { installationId: string }) {
               .filter(Boolean)
               .join(" · ")}
             onClick={() => {
-              ++requestVersion.current;
               setFollowBusy(true);
               setFollowError(undefined);
-              void rpc("tradeskillmaster.setFollow", {
-                installationId,
-                realmId: realm.id,
-                auctionHouseType: realm.auctionHouseType,
-                followed: !realm.followed,
-              })
-                .then((result) => {
-                  if (currentInstallation.current === installationId) {
-                    ++requestVersion.current;
-                    setData(result);
-                  }
+              void engine
+                .rpc("tradeskillmaster.setFollow", {
+                  installationId,
+                  realmId: realm.id,
+                  auctionHouseType: realm.auctionHouseType,
+                  followed: !realm.followed,
                 })
-                .catch(() =>
+                .then((result) => putTsmDestination(installationId, result))
+                .catch((error) => {
+                  backendErrorMessage(error);
                   setFollowError(
-                    "TradeSkillMaster could not change this follow. Your account may have reached its realm limit.",
-                  ),
-                )
+                    "Couldn't change this follow. Your account may have reached its realm limit.",
+                  );
+                })
                 .finally(() => setFollowBusy(false));
             }}
           >
@@ -363,8 +335,23 @@ export function TsmAddon({ installationId }: { installationId: string }) {
   return (
     <>
       <TsmAccount />
+      {loading && !data && (
+        <PanelSectionRow>
+          <Field label="Loading auction data…" />
+        </PanelSectionRow>
+      )}
+      {destinationError && (
+        <PanelSectionRow>
+          <Field label={destinationError} />
+        </PanelSectionRow>
+      )}
       {actions}
       {status}
+      {addonError && (
+        <PanelSectionRow>
+          <Field label={addonError} />
+        </PanelSectionRow>
+      )}
       {error && (
         <PanelSectionRow>
           <Field label={error} />

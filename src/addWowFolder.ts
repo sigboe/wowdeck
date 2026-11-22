@@ -5,8 +5,7 @@
  * added yet.
  */
 
-import type { rpc as backendRpc } from "./services/backend";
-import type { GameType, Installation } from "./types";
+import type { FoundInstallation, GameType, Installation } from "./types";
 
 /** What the Add installation modal opens with. */
 export interface AddInstallationRequest {
@@ -16,17 +15,24 @@ export interface AddInstallationRequest {
   gameType: GameType | null;
 }
 
+/** The folder params every add takes (installations.add). */
+export type AddFolderParams = { path: string; displayName?: string; clientType?: GameType };
+
 export interface AddWowFolderDeps {
   /** The picked folder, or null when the player backed out. */
   pickFolder: () => Promise<string | null>;
-  rpc: typeof backendRpc;
+  /** What a folder holds (installations.inspect); unreadable holds nothing. */
+  inspect: (path: string) => Promise<FoundInstallation[]>;
+  /**
+   * Add the folder's installations through the addon session, which reads
+   * the lists again; answers with every installation the folder holds.
+   */
+  add: (params: AddFolderParams) => Promise<Installation[]>;
   openModal: (request: AddInstallationRequest) => void;
   toast: (title: string, body?: string) => void;
   toastError: (title: string, e: unknown) => void;
   /** The installations added before this pick. */
   installations: Installation[];
-  /** Reload the installation list and active installation after an add. */
-  onAdded: () => Promise<void>;
 }
 
 export async function addWowFolder(deps: AddWowFolderDeps): Promise<void> {
@@ -52,7 +58,7 @@ export async function addWowFolder(deps: AddWowFolderDeps): Promise<void> {
   }
   let added: Installation[];
   try {
-    ({ installations: added } = await deps.rpc("installations.add", { path }));
+    added = await deps.add({ path });
   } catch (e) {
     deps.toastError("Couldn't add installations", e);
     return;
@@ -65,7 +71,6 @@ export async function addWowFolder(deps: AddWowFolderDeps): Promise<void> {
   } else {
     deps.toast(`Added ${names(newOnes)}`);
   }
-  await deps.onAdded();
 }
 
 function newInstallations(added: Installation[], before: Installation[]): Installation[] {
@@ -94,7 +99,7 @@ function isAdded(gameType: GameType, picked: string, installations: Installation
 /** What the folder holds; an unreadable folder holds nothing recognised. */
 async function inspect(deps: AddWowFolderDeps, path: string) {
   try {
-    return (await deps.rpc("installations.inspect", { path })).found;
+    return await deps.inspect(path);
   } catch {
     return [];
   }
@@ -117,18 +122,17 @@ export interface AddInstallationParams {
  * close; on failure the error is toasted and the modal stays open.
  */
 export async function addInstallation(
-  deps: Pick<AddWowFolderDeps, "rpc" | "toast" | "toastError" | "onAdded" | "installations">,
+  deps: Pick<AddWowFolderDeps, "add" | "toast" | "toastError" | "installations">,
   params: AddInstallationParams,
 ): Promise<boolean> {
   let added: Installation[];
   try {
-    ({ installations: added } = await deps.rpc("installations.add", params));
+    added = await deps.add(params);
   } catch (e) {
     deps.toastError("Couldn't add installation", e);
     return false;
   }
   // A parent folder answers with its other, already added installations too.
   deps.toast(`Added ${names(newInstallations(added, deps.installations)) || params.displayName}`);
-  await deps.onAdded();
   return true;
 }

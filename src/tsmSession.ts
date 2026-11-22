@@ -1,21 +1,12 @@
-import { createStore } from "./store";
+import { tsmStatus } from "./tsmReads";
 import type { TradeSkillMasterAuthStatus } from "../backend/src/api/contracts";
-import type { Rpc } from "./services/envelope";
 
-export const tsmSession = createStore<TradeSkillMasterAuthStatus>({ state: "off", account: null });
-let reading = false;
-export async function readTsmSession(rpc: Rpc, notify: () => void): Promise<void> {
-  if (reading) return;
-  reading = true;
-  try {
-    const status = await rpc("tradeskillmaster.status");
-    const previous = tsmSession.get().state;
-    tsmSession.set(status);
-    if (status.state === "signedOut" && previous !== "signedOut") notify();
-  } finally {
-    reading = false;
-  }
-}
+/** All views subscribe to the same status resource and poll loop. */
+const offStatus: TradeSkillMasterAuthStatus = { state: "off", account: null };
+export const tsmSession = {
+  get: () => tsmStatus.get("account").data ?? offStatus,
+  subscribe: (listener: () => void) => tsmStatus.subscribe("account", listener),
+};
 export const tsmActionRequired = (status: TradeSkillMasterAuthStatus): boolean =>
   status.state === "signedOut";
 export const tsmOptionsSources = (): string[] => ["TradeSkillMaster"];

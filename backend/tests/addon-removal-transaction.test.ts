@@ -10,7 +10,7 @@ import { zipSync } from "fflate";
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
-import { AddonService } from "../src/wow/addons/AddonService";
+import { addonService } from "./helpers/addon-service";
 import { classifyTransaction } from "../src/wow/addons/AddonTransaction";
 import { FaultInjectingFs, type FsStage } from "../src/wow/fs/StageFs";
 import { createStateStore } from "../src/wow/storage/StateStore";
@@ -112,7 +112,7 @@ function fixture(name: string) {
     const store = createStateStore(dataDir, fs);
     return {
       store,
-      service: new AddonService(store, registry, new DownloadService(network, join(root, "dl")), {
+      service: addonService(store, registry, new DownloadService(network, join(root, "dl")), {
         addonsChanged: () => {},
         operationResult: (op) => operations.push(op),
       }),

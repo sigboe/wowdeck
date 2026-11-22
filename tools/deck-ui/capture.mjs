@@ -17,9 +17,14 @@
 // Writes <out>/events.jsonl, <out>/summary.txt and <out>/frames/<target>/*.jpg.
 // --learn only prints button codes until Ctrl-C (to map a new button name).
 import fs from "node:fs";
+import { connectTarget, findTarget, targets, fail } from "./cdp.mjs";
 
 const args = process.argv.slice(2);
+// Accepts both "--name value" and "--name=value".
 const opt = (name, def) => {
+  const eq = `--${name}=`;
+  const a = args.find((x) => x.startsWith(eq));
+  if (a) return a.slice(eq.length);
   const i = args.indexOf(`--${name}`);
   return i === -1 ? def : args[i + 1];
 };
@@ -32,52 +37,35 @@ const film = opt("film", "QuickAccess").split(",").filter(Boolean);
 const maxMs = Number(opt("max", "120000"));
 const tailMs = Number(opt("tail", "1500"));
 const learn = args.includes("--learn");
-const HOST = "http://localhost:18080";
 
 /** One CDP connection to a target, with a binding the page calls to report events. */
-async function connect(target, onEvent) {
-  const ws = new WebSocket(target.webSocketDebuggerUrl);
-  await new Promise((r, j) => ((ws.onopen = r), (ws.onerror = j)));
-  let id = 0;
-  const pending = new Map();
+async function watch(t, onEvent) {
   const frames = [];
-  ws.onmessage = (m) => {
-    const d = JSON.parse(m.data);
-    if (d.id && pending.has(d.id)) {
-      pending.get(d.id)(d);
-      pending.delete(d.id);
-    } else if (d.method === "Runtime.bindingCalled" && d.params.name === "__capEvt") {
-      try {
-        onEvent({ target: target.title, ...JSON.parse(d.params.payload) });
-      } catch {}
-    } else if (d.method === "Page.screencastFrame") {
-      frames.push({ t: Date.now(), data: d.params.data });
-      ws.send(JSON.stringify({ id: ++id, method: "Page.screencastFrameAck", params: { sessionId: d.params.sessionId } }));
-    }
+  let send = async () => {};
+  const conn = await connectTarget(t, {
+    onEvent: (d) => {
+      if (d.method === "Runtime.bindingCalled" && d.params.name === "__capEvt") {
+        try {
+          onEvent({ target: t.title, ...JSON.parse(d.params.payload) });
+        } catch {}
+      } else if (d.method === "Page.screencastFrame") {
+        frames.push({ t: Date.now(), data: d.params.data });
+        send("Page.screencastFrameAck", { sessionId: d.params.sessionId }).catch(() => {});
+      }
+    },
+  });
+  send = conn.send;
+  await conn.send("Runtime.enable");
+  await conn.send("Runtime.addBinding", { name: "__capEvt" });
+  return {
+    send: conn.send,
+    close: conn.close,
+    evaluate: (expression) => conn.send("Runtime.evaluate", { expression, returnByValue: true, awaitPromise: true }),
+    frames,
+    title: t.title,
   };
-  const send = (method, params = {}) =>
-    new Promise((r) => {
-      const my = ++id;
-      pending.set(my, r);
-      ws.send(JSON.stringify({ id: my, method, params }));
-    });
-  await send("Runtime.enable");
-  await send("Runtime.addBinding", { name: "__capEvt" });
-  const evaluate = (expression) => send("Runtime.evaluate", { expression, returnByValue: true, awaitPromise: true });
-  return { ws, send, evaluate, frames, title: target.title };
 }
-
-const targets = async () => {
-  let res;
-  try {
-    res = await fetch(`${HOST}/json`);
-  } catch {
-    console.error(`no CEF at ${HOST}: start the tunnel (README "Connect")`);
-    process.exit(2);
-  }
-  return (await res.json()).filter((t) => t.webSocketDebuggerUrl);
-};
-const find = (list, want) => list.find((t) => t.title.includes(want));
+const has = (list, want) => list.find((t) => t.title.includes(want) && t.webSocketDebuggerUrl);
 
 // ---- page-side scripts (each guards on window.__capture and undoes itself in stop()) ----
 
@@ -159,114 +147,117 @@ let stopping = false;
 let done;
 const finished = new Promise((r) => (done = r));
 
-const initial = await targets();
-const shared = await connect(find(initial, "SharedJSContext"), (e) => {
-  if (learn) {
-    if (e.k === "button" && e.pressed) console.log("button code", e.code);
-    return;
-  }
-  if (e.k === "button" && e.pressed && e.code === startCode && !recording) {
-    recording = true;
-    void begin(e.t);
-  } else if (e.k === "button" && e.pressed && e.code === stopCode && recording && !stopping) {
-    stopping = true;
-    record({ ...e, k: "stop" });
-    setTimeout(done, tailMs);
-    return;
-  }
-  if (recording) record(e);
-});
-console.log("SharedJSContext", (await shared.evaluate(SHARED_JS)).result?.result?.value);
-if (learn) {
-  console.log("press buttons on the Deck; Ctrl-C to quit");
-  process.on("SIGINT", async () => {
-    await shared.evaluate("window.__capture?.stop()");
-    process.exit(0);
+async function main() {
+  const shared = await watch(findTarget(await targets(), "SharedJSContext"), (e) => {
+    if (learn) {
+      if (e.k === "button" && e.pressed) console.log("button code", e.code);
+      return;
+    }
+    if (e.k === "button" && e.pressed && e.code === startCode && !recording) {
+      recording = true;
+      void begin(e.t);
+    } else if (e.k === "button" && e.pressed && e.code === stopCode && recording && !stopping) {
+      stopping = true;
+      record({ ...e, k: "stop" });
+      setTimeout(done, tailMs);
+      return;
+    }
+    if (recording) record(e);
   });
-  await new Promise(() => {});
-}
-// Armed before the start press, so the first frames after it are not lost
-// to injection time; only events after the start are kept.
-const watched = [];
-const pageEvent = (e) => {
-  if (recording) record(e);
-};
-const armed = await targets();
-for (const [want, script] of [
-  ["Steam Big Picture Mode", BIG_PICTURE],
-  ["QuickAccess", QAM_WINDOW],
-]) {
-  const t = find(armed, want);
-  if (!t) continue;
-  const c = await connect(t, pageEvent);
-  console.log(t.title, (await c.evaluate(script)).result?.result?.value);
-  if (film.some((name) => t.title.includes(name))) {
-    await c.send("Page.startScreencast", { format: "jpeg", quality: 60, maxWidth: 854, maxHeight: 534, everyNthFrame: 1 });
+  console.log("SharedJSContext", (await shared.evaluate(SHARED_JS)).result?.result?.value);
+  if (learn) {
+    console.log("press buttons on the Deck; Ctrl-C to quit");
+    process.on("SIGINT", async () => {
+      await shared.evaluate("window.__capture?.stop()");
+      process.exit(0);
+    });
+    await new Promise(() => {});
   }
-  watched.push(c);
-}
-console.log(`ready: press ${opt("start", "a")} on the Deck to start, ${opt("stop", "b")} to stop (max ${maxMs / 1000}s after start)`);
-
-let poll;
-let startT = 0;
-async function begin(t0) {
-  console.log("recording…");
-  startT = t0;
-  record({ t: t0, k: "start" });
-  void shared.evaluate("window.__capture?.now()");
-  const list = await targets();
-  let known = new Set(list.map((t) => t.id));
-  const titles = new Map(list.map((t) => [t.id, t.title]));
-  poll = setInterval(async () => {
-    try {
-      const now = await targets();
-      const ids = new Set(now.map((t) => t.id));
-      for (const t of now) if (!known.has(t.id)) record({ t: Date.now(), k: "windowOpened", v: t.title });
-      for (const id of known) if (!ids.has(id)) record({ t: Date.now(), k: "windowClosed", v: titles.get(id) });
-      for (const t of now) titles.set(t.id, t.title);
-      known = ids;
-    } catch {}
-  }, 200);
-  setTimeout(done, maxMs);
-}
-
-const stop = async () => {
-  clearInterval(poll);
-  for (const c of [shared, ...watched]) {
-    try {
-      await c.send("Page.stopScreencast");
-    } catch {}
-    try {
-      await c.evaluate("window.__capture?.stop()");
-    } catch {}
+  // Armed before the start press, so the first frames after it are not lost
+  // to injection time; only events after the start are kept.
+  const watched = [];
+  const pageEvent = (e) => {
+    if (recording) record(e);
+  };
+  const armed = await targets();
+  for (const [want, script] of [
+    ["Steam Big Picture Mode", BIG_PICTURE],
+    ["QuickAccess", QAM_WINDOW],
+  ]) {
+    const t = has(armed, want);
+    if (!t) continue;
+    const c = await watch(t, pageEvent);
+    console.log(t.title, (await c.evaluate(script)).result?.result?.value);
+    if (film.some((name) => t.title.includes(name))) {
+      await c.send("Page.startScreencast", { format: "jpeg", quality: 60, maxWidth: 854, maxHeight: 534, everyNthFrame: 1 });
+    }
+    watched.push(c);
   }
-};
-process.on("SIGINT", async () => {
+  console.log(`ready: press ${opt("start", "a")} on the Deck to start, ${opt("stop", "b")} to stop (max ${maxMs / 1000}s after start)`);
+
+  let poll;
+  let startT = 0;
+  async function begin(t0) {
+    console.log("recording…");
+    startT = t0;
+    record({ t: t0, k: "start" });
+    shared.evaluate("window.__capture?.now()").catch(() => {});
+    const list = await targets();
+    let known = new Set(list.map((t) => t.id));
+    const titles = new Map(list.map((t) => [t.id, t.title]));
+    poll = setInterval(async () => {
+      try {
+        const now = await targets();
+        const ids = new Set(now.map((t) => t.id));
+        for (const t of now) if (!known.has(t.id)) record({ t: Date.now(), k: "windowOpened", v: t.title });
+        for (const id of known) if (!ids.has(id)) record({ t: Date.now(), k: "windowClosed", v: titles.get(id) });
+        for (const t of now) titles.set(t.id, t.title);
+        known = ids;
+      } catch {}
+    }, 200);
+    setTimeout(done, maxMs);
+  }
+
+  const stop = async () => {
+    clearInterval(poll);
+    for (const c of [shared, ...watched]) {
+      try {
+        await c.send("Page.stopScreencast");
+      } catch {}
+      try {
+        await c.evaluate("window.__capture?.stop()");
+      } catch {}
+    }
+  };
+  process.on("SIGINT", async () => {
+    await stop();
+    process.exit(1);
+  });
+
+  await finished;
   await stop();
-  process.exit(1);
-});
+  console.log("stopped");
 
-await finished;
-await stop();
-console.log("stopped");
-
-fs.mkdirSync(out, { recursive: true });
-events.sort((a, b) => a.t - b.t);
-const t0 = events[0]?.t ?? 0;
-fs.writeFileSync(`${out}/events.jsonl`, events.map((e) => JSON.stringify({ ...e, ms: e.t - t0 })).join("\n") + "\n");
-for (const c of watched) {
-  const frames = c.frames.filter((f) => f.t >= startT);
-  if (!frames.length) continue;
-  const dir = `${out}/frames/${c.title.replace(/[^A-Za-z0-9]+/g, "_")}`;
-  fs.mkdirSync(dir, { recursive: true });
-  frames.forEach((f, i) => fs.writeFileSync(`${dir}/f${String(i).padStart(3, "0")}_${f.t - t0}.jpg`, Buffer.from(f.data, "base64")));
+  fs.mkdirSync(out, { recursive: true });
+  events.sort((a, b) => a.t - b.t);
+  const t0 = events[0]?.t ?? 0;
+  fs.writeFileSync(`${out}/events.jsonl`, events.map((e) => JSON.stringify({ ...e, ms: e.t - t0 })).join("\n") + "\n");
+  for (const c of watched) {
+    const frames = c.frames.filter((f) => f.t >= startT);
+    if (!frames.length) continue;
+    const dir = `${out}/frames/${c.title.replace(/[^A-Za-z0-9]+/g, "_")}`;
+    fs.mkdirSync(dir, { recursive: true });
+    frames.forEach((f, i) => fs.writeFileSync(`${dir}/f${String(i).padStart(3, "0")}_${f.t - t0}.jpg`, Buffer.from(f.data, "base64")));
+  }
+  const short = (e) => {
+    const v = e.k === "setBounds" ? `${JSON.stringify(e.v)} from ${e.stack?.[0] ?? "?"}` : JSON.stringify(e.v ?? e.code ?? "");
+    return `${String(e.t - t0).padEnd(6)} ms  ${e.k.padEnd(12)} ${v.slice(0, 160)}`;
+  };
+  const summary = events.filter((e) => e.k !== "qamProps" || e === events.find((x) => x.k === "qamProps")).map(short).join("\n");
+  fs.writeFileSync(`${out}/summary.txt`, summary + "\n");
+  console.log(summary.split("\n").slice(0, 80).join("\n"));
+  console.log(`\n${events.length} events, frames: ${watched.map((c) => `${c.title} ${c.frames.filter((f) => f.t >= startT).length}`).join(", ")} -> ${out}`);
+  process.exit(0);
 }
-const short = (e) => {
-  const v = e.k === "setBounds" ? `${JSON.stringify(e.v)} from ${e.stack?.[0] ?? "?"}` : JSON.stringify(e.v ?? e.code ?? "");
-  return `${String(e.t - t0).padStart(6)} ms  ${e.k.padEnd(12)} ${v.slice(0, 160)}`;
-};
-const summary = events.filter((e) => e.k !== "qamProps" || e === events.find((x) => x.k === "qamProps")).map(short).join("\n");
-fs.writeFileSync(`${out}/summary.txt`, summary + "\n");
-console.log(summary.split("\n").slice(0, 80).join("\n"));
-console.log(`\n${events.length} events, frames: ${watched.map((c) => `${c.title} ${c.frames.filter((f) => f.t >= startT).length}`).join(", ")} -> ${out}`);
-process.exit(0);
+
+main().catch(fail);

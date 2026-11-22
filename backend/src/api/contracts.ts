@@ -82,6 +82,58 @@ export interface SteamGameLink {
   name: string;
 }
 
+/**
+ * How a linked game got on the list: detection found it, or the player
+ * added it. A game both found and added is found.
+ */
+export type LinkedGameSource = "found" | "added";
+
+/** GLOSSARY: Linked game. */
+export interface LinkedGame extends SteamGameLink {
+  source: LinkedGameSource;
+}
+
+/**
+ * Who starts a linked game's Play on this machine, decided once at engine
+ * startup. `droiddeck`: DroidDeck's store launcher
+ * (`/usr/local/bin/droiddeck-store-launch`, executable, under the engine's
+ * system root) replaces Steam's start of every Battle.net game, so WoWDeck
+ * leaves Play to it: every `launch.*` method treats every app id as having
+ * no launch state, and `launch.select` is refused with
+ * "play_left_to_droiddeck". Saved launch targets and Play starts WoW stay
+ * as they are. `wowdeck` everywhere else.
+ */
+export type PlayOwner = "wowdeck" | "droiddeck";
+
+/**
+ * The engine's one answer to "which Steam games get WoWDeck's section,
+ * badge and Play button" (linkedGames.get, linkedGames.changed).
+ */
+export type LinkedGames = {
+  /**
+   * Show in Steam (PluginSettings.steamEnabled). Off: Steam's pages show
+   * nothing of WoWDeck and every `launch.*` method treats every app id as
+   * unlinked. `games` is kept either way.
+   */
+  enabled: boolean;
+  /** One entry per app id, in app id order. */
+  games: LinkedGame[];
+  /**
+   * The found games the player removed (PluginSettings.steamRemovedGames),
+   * in the order removed: the Add a game picker lists them first, marked
+   * Removed.
+   */
+  removed: SteamGameLink[];
+  /** Who owns Play on this machine (PlayOwner); the same for every game. */
+  playOwner: PlayOwner;
+};
+
+/** linkedGames.find's answer. */
+export type FoundGames = LinkedGames & {
+  /** The linked games this search brought back or found for the first time, in app id order. */
+  found: LinkedGame[];
+};
+
 export type InstallationPreferences = Partial<Pick<Installation, "autoUpdateEnabled" | "hidden">>;
 
 /** A World of Warcraft installation (one per game flavor). */
@@ -95,7 +147,7 @@ export interface Installation {
   /** Absolute path of the Interface/AddOns directory. */
   addonsPath: string;
   displayName: string;
-  /** Short client name, e.g. "Forever Beta" (CLIENT_DISPLAY_NAMES). */
+  /** Short client name, e.g. "Forever Beta" (client table, wow/clients.ts). */
   clientName: string;
   /** WowUp's full client name, e.g. "World of Warcraft: Forever Beta". */
   clientFullName: string;
@@ -105,7 +157,11 @@ export interface Installation {
   selected: boolean;
   /** Product version string when discoverable, else null. */
   version: string | null;
-  /** Steam shortcuts proven to launch this installation by registry or executable discovery. */
+  /**
+   * Steam shortcuts proven to launch this installation by registry or
+   * executable discovery: detection evidence only. Whether a game is linked
+   * is `linkedGames.get`'s answer.
+   */
   steamGames?: SteamGameLink[];
 }
 
@@ -672,16 +728,78 @@ export interface TradeSkillMasterAuthStatus {
   account: string | null;
 }
 
+/** The Battle.net launcher's target id in `launch.select` and in saved choices. */
+export const BATTLE_NET_LAUNCH_TARGET = "battlenet";
+/** The Battle.net launcher's name in the menu row and on the Play button. */
+export const BATTLE_NET_NAME = "Battle.net";
+/**
+ * The Classic row's target id: one row for Mists of Pandaria Classic,
+ * Classic Era and Anniversary, which Battle.net starts with one code.
+ */
+export const CLASSIC_LAUNCH_TARGET = "classic";
+
+interface LaunchTargetFields {
+  /**
+   * What `launch.select` takes: BATTLE_NET_LAUNCH_TARGET,
+   * CLASSIC_LAUNCH_TARGET, or a Retail or Forever installation id.
+   */
+  id: string;
+  /** The menu row's label: the client's full name, or BATTLE_NET_NAME. */
+  name: string;
+  /** The Play button's second line: the client's short name, or BATTLE_NET_NAME. */
+  shortName: string;
+}
+
+/** The Battle.net launcher itself: Steam's own launch, with no launch ask. */
+export interface BattleNetLaunchClient extends LaunchTargetFields {
+  kind: "battlenet";
+  id: typeof BATTLE_NET_LAUNCH_TARGET;
+}
+
+/** A WoW row Battle.net can be asked to start: Retail, Classic or Forever. */
+export interface WowLaunchClient extends LaunchTargetFields {
+  kind: "wow";
+}
+
+export type LaunchClient = BattleNetLaunchClient | WowLaunchClient;
+
+export interface LaunchState {
+  /**
+   * Battle.net first, then a row for each of Retail, Classic and Forever
+   * that Battle.net lists as installed in the shortcut's prefix.
+   */
+  clients: LaunchClient[];
+  /** The saved choice for this shortcut; Battle.net when none is saved. */
+  target: LaunchClient;
+  entryRunning: boolean;
+  gameRunning: GameRunning;
+  busy: boolean;
+}
+
+export type LaunchCompletion = {
+  appId: number;
+  /**
+   * The short name of the client that started (Classic names its version,
+   * e.g. "Classic Era"), else the target's.
+   */
+  clientName: string;
+  /**
+   * `not-started`: Battle.net took the ask, yet no target client ran in the
+   * window; Battle.net stays open for its own Play.
+   */
+  outcome: "confirmed" | "steam-refused" | "never-ready" | "ask-failed" | "not-started" | "unconfirmed";
+};
+
 export interface MethodMap {
   /** Local removal and optional account cleanup have independent outcomes. */
   "tradeskillmaster.cleanupPreview": { params: { installationId: string }; result: TradeSkillMasterAccount["follows"] };
   "tradeskillmaster.removeAddons": { params: { installationId: string; cleanupFollows?: boolean; cleanupPreview?: TradeSkillMasterAccount["follows"] }; result: { operations: OperationResult[]; cleanup?: { removed: TradeSkillMasterAccount["follows"]; leftBehind: TradeSkillMasterAccount["follows"]; error?: string } } };
   "tradeskillmaster.account": { params: Record<string, never>; result: TradeSkillMasterAccount };
   "tradeskillmaster.unfollow": { params: { realmId: number; auctionHouseType: string }; result: TradeSkillMasterAccount };
-  "tradeskillmaster.refresh": { params: { installationId?: string }; result: void };
+  "tradeskillmaster.refresh": { params: { installationId: string }; result: void };
   "tradeskillmaster.wake": { params: Record<string, never>; result: void };
-  "tradeskillmaster.setFollow": { params: { installationId?: string; realmId: number; auctionHouseType: string; followed: boolean }; result: TradeSkillMasterDestination };
-  "tradeskillmaster.destination": { params: { installationId?: string }; result: TradeSkillMasterDestination };
+  "tradeskillmaster.setFollow": { params: { installationId: string; realmId: number; auctionHouseType: string; followed: boolean }; result: TradeSkillMasterDestination };
+  "tradeskillmaster.destination": { params: { installationId: string }; result: TradeSkillMasterDestination };
   "tradeskillmaster.status": { params: Record<string, never>; result: TradeSkillMasterAuthStatus };
   "tradeskillmaster.signIn": { params: Record<string, never>; result: { authorizeUrl: string } };
   "tradeskillmaster.cancel": { params: Record<string, never>; result: TradeSkillMasterAuthStatus };
@@ -905,6 +1023,75 @@ export interface MethodMap {
     params: Record<string, never>;
     result: { cancelled: boolean };
   };
+  /**
+   * Saves the shortcut's launch target. It never changes My Addons'
+   * active installation. Refused with "play_left_to_droiddeck" while
+   * DroidDeck owns Play (PlayOwner).
+   */
+  "launch.select": {
+    params: { appId: number; targetId: string };
+    result: { target: LaunchClient };
+  };
+  "launch.state": {
+    params: { appId: number };
+    result: { state: LaunchState | null };
+  };
+  "launch.start": {
+    params: { appId: number; canStartSteam?: boolean; steamEntryRunning?: boolean };
+    result: { state: LaunchState | null; steamStart?: { gameId: string; attemptId: string } };
+  };
+  "launch.steamRefused": {
+    params: { attemptId: string };
+    result: void;
+  };
+  /**
+   * One client's icon for the Play button: a data: URL of a single-image
+   * ICO, the smallest image of at least 48 px. Null means WoWDeck's glyph
+   * (no such client, no icon, or the read failed; a failed read is tried
+   * again on the next call). Kept out of `launch.state`, which the page
+   * polls every 2 s.
+   */
+  "launch.icon": {
+    params: { appId: number; targetId: string };
+    result: { icon: string | null };
+  };
+
+  /** The linked games and Show in Steam. */
+  "linkedGames.get": {
+    params: Record<string, never>;
+    result: LinkedGames;
+  };
+  /**
+   * Link a game from Steam's library (app id and name). A removed game
+   * comes off the removed list and is found again; a game detection already
+   * found stays found; any other game is added. Fails when the state file
+   * can't take the change. Fires linkedGames.changed.
+   */
+  "linkedGames.add": {
+    params: SteamGameLink;
+    result: LinkedGames;
+  };
+  /**
+   * Unlink any linked game. A found game goes on the removed list
+   * (`steamRemovedGames`) and stays unlinked through later automatic scans
+   * and restarts; an added game is deleted. Fails when the app id isn't
+   * linked or the state file can't take the change. Fires
+   * linkedGames.changed.
+   */
+  "linkedGames.remove": {
+    params: { appId: number };
+    result: LinkedGames;
+  };
+  /**
+   * Find games: run the same detection as installations.detect, then clear
+   * the removed list, so every found game comes back. Answers with what
+   * came back or was found for the first time. Fires linkedGames.changed.
+   */
+  "linkedGames.find": {
+    params: Record<string, never>;
+    result: FoundGames;
+  };
+
   "installations.list": {
     params: Record<string, never>;
     result: { installations: Installation[] };
@@ -989,22 +1176,22 @@ export interface MethodMap {
     result: RecoveryVerifyResult;
   };
   /**
-   * The active installation's addons. In a recovery-required installation
+   * The installation's addons. In a recovery-required installation
    * this is read-only: the stored addon records as they are, without
    * scanning folders or reconciling anything, and `unverified` is set (the
    * files may not match them). Unmanaged folders are not listed then.
    */
   "addons.list": {
-    params: { installationId?: string };
+    params: { installationId: string };
     result: { addons: Addon[]; unverified?: true };
   };
   "addons.refresh": {
-    params: { installationId?: string };
+    params: { installationId: string };
     result: { addons: Addon[]; updated: number; failed: number };
   };
   "addons.search": {
     /** providerId: one source with `ProviderInfo.catalogSearch`; any other answers no results. */
-    params: { query: string; providerId?: string };
+    params: { installationId: string; query: string; providerId?: string };
     result: { results: SearchResult[]; providerErrors: ProviderErrors };
   };
   "addons.resolveUrlImport": {
@@ -1013,7 +1200,7 @@ export interface MethodMap {
      * shorthand or Nix-style github:owner/repository reference, or an
      * https link to a .zip/.rar/.7z file (provider "Zip").
      */
-    params: { url: string };
+    params: { installationId: string; url: string };
     /**
      * Never a thrown RPC error: a failure (no compatible release, rate
      * limited, not found, bad input) is an expected outcome and comes back
@@ -1041,12 +1228,12 @@ export interface MethodMap {
    * otherwise shows `message`.
    */
   "addons.inspectArchive": {
-    params: { path: string };
+    params: { installationId: string; path: string };
     result: Settled<ArchivePreview>;
   };
   "discover.latest": {
     /** providerId: a source with `ProviderInfo.discovers` (the list's Source menu). */
-    params: { providerId: string; index: number; pageSize: number };
+    params: { installationId: string; providerId: string; index: number; pageSize: number };
     result: { results: SearchResult[]; totalCount: number };
   };
   "discover.popular": {
@@ -1054,7 +1241,7 @@ export interface MethodMap {
      * providerId: as for discover.latest. categoryId: an id from
      * addons.getCategories for that source, or omitted for "All Categories".
      */
-    params: { providerId: string; index: number; pageSize: number; categoryId?: string };
+    params: { installationId: string; providerId: string; index: number; pageSize: number; categoryId?: string };
     result: { results: SearchResult[]; totalCount: number };
   };
   "addons.getDescription": {
@@ -1062,17 +1249,17 @@ export interface MethodMap {
     result: { description: string | null };
   };
   "addons.getChangelog": {
-    params: { providerId: string; externalId: string };
+    params: { installationId: string; providerId: string; externalId: string };
     result: { changelog: string | null };
   };
   "addons.getCategories": {
-    params: { providerId: string };
+    params: { installationId: string; providerId: string };
     /** null means the provider doesn't support category retrieval — distinct from a genuinely empty list. */
     result: { categories: ProviderCategory[] | null };
   };
   "addons.install": {
     /** `channel`: install from that release channel and follow it (providers with channels only). */
-    params: { providerId: string; externalId: string; channel?: ReleaseChannel; installationId?: string };
+    params: { providerId: string; externalId: string; channel?: ReleaseChannel; installationId: string };
     result: AddonOperation;
   };
   /**
@@ -1101,11 +1288,11 @@ export interface MethodMap {
   };
   /**
    * Names for provider ids (the Relationships page, WF-11), and whether each
-   * is installed in the selected installation. Ids the provider does not
+   * is installed in the installation named. Ids the provider does not
    * return for this game version are left out.
    */
   "addons.lookup": {
-    params: { providerId: string; externalIds: string[] };
+    params: { installationId: string; providerId: string; externalIds: string[] };
     result: { addons: Array<{ externalId: string; name: string; thumbnailUrl: string | null; installed: boolean }> };
   };
   /**
@@ -1118,13 +1305,13 @@ export interface MethodMap {
     result: AddonOperation;
   };
   /**
-   * An addon's folders in the selected installation's AddOns (WF-20, the
+   * An addon's folders in the installation's AddOns (WF-20, the
    * Details Folders page): a managed addon's recorded folders, main folder
    * first, or an unmanaged addon's one folder; `present` false when it is
    * gone from disk. With the file manager addons.showFolders would use.
    */
   "addons.folders": {
-    params: { addonId: string };
+    params: { installationId: string; addonId: string };
     result: { addonsPath: string; folders: Array<{ name: string; path: string; present: boolean }>; fileManager: FileManagerState };
   };
   /**
@@ -1134,7 +1321,7 @@ export interface MethodMap {
    * FileManagerState).
    */
   "addons.showFolders": {
-    params: { addonId: string };
+    params: { installationId: string; addonId: string };
     result: { shown: boolean; steamAppId: number | null };
   };
   "addons.remove": {
@@ -1149,7 +1336,7 @@ export interface MethodMap {
     result: { addonId: string; operation: OperationResult };
   };
   "addons.removeUnmanaged": {
-    params: { folderName: string; installationId?: string };
+    params: { folderName: string; installationId: string };
     result: { operation: OperationResult };
   };
   /**
@@ -1161,7 +1348,7 @@ export interface MethodMap {
    * first, then exact name, then by downloads.
    */
   "addons.findSources": {
-    params: { folderName: string } | { addonId: string };
+    params: { folderName: string; installationId: string } | { addonId: string };
     result: { results: SearchResult[]; providerErrors: ProviderErrors };
   };
   /**
@@ -1170,7 +1357,7 @@ export interface MethodMap {
    * (addons.rollback returns to them). Status "installed", or "failed".
    */
   "addons.adopt": {
-    params: { folderName: string; providerId: string; externalId: string };
+    params: { installationId: string; folderName: string; providerId: string; externalId: string };
     result: AddonOperation;
   };
   /**
@@ -1202,14 +1389,14 @@ export interface MethodMap {
     /**
      * allInstallations (WF-13): every installation, each first checked for
      * updates (its metadata may be old), failures isolated per installation
-     * and per addon. Omitted: the selected installation, as before.
+     * and per addon. Otherwise the installation named.
      */
-    params: { allInstallations?: boolean };
+    params: { installationId: string } | { allInstallations: true };
     result: { operations: OperationResult[] };
   };
   "addons.export": {
     /** WowUp-compatible addon-list export, scoped to one installation. */
-    params: { installationId?: string };
+    params: { installationId: string };
     result: {
       /** Base64 — paste/save this, exactly WowUp's own export string format. */
       payload: string;
@@ -1222,7 +1409,7 @@ export interface MethodMap {
   };
   "addons.previewImport": {
     /** Decode + compare only — never installs anything. */
-    params: { importString: string; installationId?: string };
+    params: { importString: string; installationId: string };
     result: {
       summary: ImportSummary | null;
       /** Set only for a whole-import failure (malformed string, empty list, incompatible client) — per-entry issues show up as "unresolved"/"conflict" rows in `summary` instead. */
@@ -1231,7 +1418,7 @@ export interface MethodMap {
   };
   "addons.importAddonList": {
     /** Installs every "new" row from the same import string's preview, through the normal install pipeline. */
-    params: { importString: string; installationId?: string };
+    params: { importString: string; installationId: string };
     result: {
       operations: OperationResult[];
       error: { code: string; message: string } | null;
@@ -1283,12 +1470,16 @@ export interface MethodMap {
     params: { refresh?: boolean; manual?: boolean };
     result: { installations: Array<{ installationId: string; displayName: string; updates: number }> };
   };
+  /**
+   * Fails when the state file can't be written: the engine then keeps the
+   * settings it had, so an answer always matches what a restart reads.
+   */
   "settings.set": {
     params: { settings: Partial<PluginSettings> };
     result: { settings: PluginSettings };
   };
   "wtf.list": {
-    params: { installationId?: string };
+    params: { installationId: string };
     result: {
       wtfExists: boolean;
       backupDir: string;
@@ -1303,13 +1494,13 @@ export interface MethodMap {
   };
   "wtf.create": {
     /** Returns at once; progress arrives as `wtf.progress`, the outcome as `wtf.completed`. */
-    params: { installationId?: string };
+    params: { installationId: string };
     result: { jobId: string };
   };
   "wtf.restore": {
     /** Returns at once (see wtf.create). Always takes an automatic "pre-restore" safety backup first. */
     params: {
-      installationId?: string;
+      installationId: string;
       fileName: string;
       /** Required for backups that don't record their game flavor (made by desktop WowUp). */
       acceptUnknownFlavor?: boolean;
@@ -1320,7 +1511,7 @@ export interface MethodMap {
   };
   "wtf.copySources": {
     /** Other versions with something to copy; empty when there is none (or the backup folder is unavailable). */
-    params: { installationId?: string };
+    params: { installationId: string };
     result: {
       dirAvailable: boolean;
       /**
@@ -1340,7 +1531,7 @@ export interface MethodMap {
      * Refused with game_running while WoW runs at all, the source's WoW included.
      */
     params: {
-      installationId?: string;
+      installationId: string;
       /** Flavor key of the version the settings belong to (WtfCopySource.flavor). */
       sourceFlavor: string;
       /**
@@ -1363,7 +1554,7 @@ export interface MethodMap {
     result: { jobId: string };
   };
   "wtf.delete": {
-    params: { installationId?: string; fileName: string };
+    params: { installationId: string; fileName: string };
     result: { fileName: string };
   };
   "wtf.import": {
@@ -1372,7 +1563,7 @@ export interface MethodMap {
      * another flavor goes into that flavor's folder, never this one's: it is then a Settings copy source.
      * Zips that record no flavor (desktop WowUp) go into this flavor's folder.
      */
-    params: { installationId?: string; path: string };
+    params: { installationId: string; path: string };
     result: {
       fileName: string;
       alreadyPresent: boolean;
@@ -1419,6 +1610,13 @@ export interface CurseForgeAuthStatus {
 
 export interface PluginSettings {
   selectedInstallationId: string | null;
+  /**
+   * Explicit launch target by Steam app ID: a Retail or Forever installation
+   * id, CLASSIC_LAUNCH_TARGET or BATTLE_NET_LAUNCH_TARGET. A Mists, Classic
+   * Era or Anniversary installation id saved by an earlier picker reads as
+   * Classic. Engine-written.
+   */
+  steamLaunchTargets: Record<string, string>;
   enabledProviders: string[] | null;
   customWowPaths: string[];
   /** User-supplied CurseForge API key (never logged, never echoed in full). */
@@ -1497,17 +1695,37 @@ export interface PluginSettings {
   /** How many automatic pre-restore safety backups to keep per game version (1-10). */
   wtfKeepSnapshots: number;
   /**
-   * The Steam library entry (usually a non-Steam shortcut) that launches WoW,
-   * picked in Options (BEYOND-05). Its game page shows the addon-updates
-   * section. Null leaves only automatic links, when enabled.
+   * Show in Steam (default on): the master switch for everything WoWDeck
+   * adds to Steam's pages and for `launch.*`. Off keeps the linked games.
+   * Replaces `steamAutoLink` (false there starts this off). Does not enable
+   * automatic updates.
    */
-  steamGame: { appId: number; name: string } | null;
-  /** Attach discovered WoW entries to their Steam game pages and home tiles. Does not enable automatic updates. */
-  steamAutoLink: boolean;
+  steamEnabled: boolean;
+  /**
+   * The games the player added (GLOSSARY: Linked game). Engine-written
+   * through linkedGames.add and linkedGames.remove, never settings.set.
+   * Replaces the hand-made `steamGame` link.
+   */
+  steamAddedGames: SteamGameLink[];
+  /**
+   * The found games the player removed: automatic scans leave them
+   * unlinked. Engine-written through linkedGames.remove, linkedGames.add
+   * (takes one off) and linkedGames.find (clears it), never settings.set.
+   * Every scan forgets added and removed games whose app id no longer
+   * appears in any Steam user's shortcuts.
+   */
+  steamRemovedGames: SteamGameLink[];
   /** Check for addon updates in the background when the linked game's page or tile appears (at most every 15 min). */
   steamAutoCheck: boolean;
   /** Badge on the linked game's tile on Steam's home screen; off = a kill switch if a Steam update breaks it. */
   steamBadge: boolean;
+  /**
+   * WoWDeck's launch target choice on Steam's Play button on the linked game
+   * page (#284, ADR 0016); the off switch is #286. Off: Steam's own Play button and "Play from…"
+   * menu, and the addons section drops its launch lines. A kill switch if a
+   * Steam update breaks the patch. `steamLaunchTargets` is kept while off.
+   */
+  steamLaunchMenu: boolean;
   /** My Addons hides libraries (addons installed only as another's dependency, WF-22). */
   hideLibraries: boolean;
   /** My Addons hides unmanaged addons (installed manually, never updated). */
@@ -1791,10 +2009,11 @@ export type UpdateAllProgress = {
 };
 
 export interface EventMap {
+  "launch.completed": LaunchCompletion;
+  /** The linked games or Show in Steam changed: after a scan, an add, a remove or a switch change. */
+  "linkedGames.changed": LinkedGames;
   /** An automatic update ran and updated or failed something (WF-02). */
   "addons.autoUpdated": { result: AutoUpdateResult };
-  "operation.completed": { result: OperationResult };
-  "operation.failed": { result: OperationResult };
   "tradeskillmaster.changed": Record<string, never>;
   "addons.changed": { addonIds: string[] };
   /**
@@ -1826,3 +2045,43 @@ export interface EventMap {
 }
 
 export type EventName = keyof EventMap & string;
+
+/** An engine event as main.py relays it to the frontend. */
+export type EngineEvent = { [K in EventName]: { event: K; params: EventMap[K] } }[EventName];
+
+/**
+ * Methods main.py answers itself instead of forwarding to the engine. Decky
+ * passes their arguments positionally, so each names them in `args`.
+ * tools/test_main_bridge.py fails when main.py's Plugin and this map differ.
+ */
+export interface BridgeMethodMap {
+  /** Health probe. Never fails: a dead or missing engine answers `ok: false`. */
+  get_status: {
+    args: [];
+    result:
+      | ({ ok: true } & MethodMap["system.getStatus"]["result"])
+      | { ok: false; code: string; message: string };
+  };
+  /** Reads a small text file the user picked (Import Addon List's "Load from file"). */
+  read_text_file: {
+    args: [path: string];
+    result: { ok: boolean; content: string | null; message: string };
+  };
+  /**
+   * Writes `content` as a new file in `directory` (Export Addon List's "Save
+   * to file"). Never overwrites: a taken name gets " (n)" before the extension.
+   */
+  save_text_file: {
+    args: [directory: string, filename: string, content: string];
+    result: { ok: boolean; path: string | null; message: string };
+  };
+}
+
+export type BridgeMethodName = keyof BridgeMethodMap & string;
+
+/** Events main.py emits through `decky.emit`, by name. */
+export interface BridgeEventMap {
+  backend_event: EngineEvent;
+}
+
+export type BridgeEventName = keyof BridgeEventMap & string;

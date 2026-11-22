@@ -1,0 +1,7 @@
+{"test":"socket auction data reaches all Retail files and destination through RPC","result":"PASS"}
+[tsm] realm_auctiondb 1/ALL AUCTIONDB_NON_COMMODITY_DATA: no installation needs it
+{"test":"every committed AppHelper folder change refreshes auction data through RPC","result":"PASS"}
+{"test":"RPC starts disabled and cancellation closes the callback without enabling the source","result":"PASS"}
+{"test":"local browser redirect exchanges PKCE, keeps only a private refresh token, and revokes on sign out","result":"PASS"}
+{"test":"sign out deletes stored credentials and returns after five seconds even when revocation stalls","result":"PASS"}
+{"test":"restart restores claims, refreshes early, retries temporary failures and preserves enabled on revocation","result":"PASS"}

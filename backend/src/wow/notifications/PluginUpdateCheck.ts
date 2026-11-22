@@ -71,7 +71,6 @@ import {
 import {
   type BuildSource,
   buildSources,
-  type CandidateBuild,
   RELEASES_PAGE,
 } from "../plugin/BuildSource";
 import {
@@ -79,13 +78,14 @@ import {
   isBetaVersion,
   isPrVersion,
   isTestVersion,
+  newestOffered,
   prNumber,
-} from "../plugin/PluginVersion";
+} from "../../api/version";
 import type { PrBuildFollow } from "../plugin/PrBuildFollow";
 import { releaseNotesText } from "../plugin/ReleaseNotesText";
-import { backoffIntervalMs, DAY_MS, HOUR_MS, isDue, SingleFlight } from "./CheckCadence";
+import { backoffIntervalMs, DAY_MS, HOUR_MS, isDue } from "./CheckCadence";
+import { SingleFlight } from "../utils/SingleFlight";
 
-export { compareVersions };
 
 /** system.updateCheck's answer: the check's status and the one release on offer. */
 export type PluginUpdateStatus = MethodMap["system.updateCheck"]["result"];
@@ -673,15 +673,10 @@ export class PluginUpdateCheck {
    * not run or found no build with a parseable version.
    */
   async #fetch(channel: UpdateChannel): Promise<PluginUpdateSnapshot | null> {
-    const builds = await this.#sources[channel].candidates();
-    let newest: CandidateBuild | null = null;
-    for (const build of builds ?? []) {
-      // Sources only return parseable versions, so the comparison never
-      // answers "can't tell" here.
-      if (newest === null || (compareVersions(build.version, newest.version) ?? 0) > 0)
-        newest = build;
-    }
-    if (newest === null || compareVersions(newest.version, this.currentVersion) === null)
+    const builds = (await this.#sources[channel].candidates()) ?? [];
+    const version = newestOffered(channel, builds.map((b) => b.version));
+    const newest = builds.find((b) => b.version === version);
+    if (newest === undefined || compareVersions(newest.version, this.currentVersion) === null)
       return null;
     // The zip is stored whatever the running version: a same-day rollback
     // below this release then still finds it (#fromStamp exposes it only

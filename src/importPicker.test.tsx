@@ -4,13 +4,16 @@ import { createRoot } from "react-dom/client";
 import { JSDOM } from "jsdom";
 import { renderToStaticMarkup } from "react-dom/server";
 import { deckyUiStub } from "./deckyUiStub";
+import { connectEngine } from "./engineLink";
+import { createFakeEngine } from "./testSupport/fakeEngine";
 
 let opened: ReactElement | null = null;
 let loadFile: (() => Promise<void>) | undefined;
 let importFile: (() => Promise<void>) | undefined;
 const picks: unknown[][] = [];
 let pickedPath: string | null = null;
-let backendCall: (method: string, ...args: unknown[]) => Promise<unknown> = async () => ({});
+const fake = createFakeEngine();
+connectEngine(fake);
 mock.module("@decky/api", () => ({
   FileSelectionType: { FILE: 0 },
   toaster: { toast: () => {} },
@@ -19,12 +22,6 @@ mock.module("@decky/api", () => ({
     if (pickedPath) return { path: pickedPath };
     throw new Error("cancel");
   },
-  callable:
-    (method: string) =>
-    (...args: unknown[]) =>
-      backendCall(method, ...args),
-  addEventListener: () => {},
-  removeEventListener: () => {},
 }));
 mock.module("@decky/ui", () => ({
   ...deckyUiStub,
@@ -108,7 +105,6 @@ test("addon list import navigates nested folders and restricts selection to text
       mode: "import",
       installations: [],
       selectedInstallationId: null,
-      onInstalled: () => {},
     });
     await act(async () => root.render(opened!));
     expect(loadFile).toBeDefined();
@@ -152,48 +148,127 @@ test("partial import keeps failure details and cleanup warnings after the list r
   const root = createRoot(dom.window.document.getElementById("root")!);
   let previews = 0;
   pickedPath = "/fixture/list.txt";
-  backendCall = async (method, ...args) => {
-    if (method === "read_text_file") return { ok: true, content: "fixture payload", message: "" };
-    if (method === "rpc" && args[0] === "addons.previewImport") {
-      previews++;
-      return {
-        summary: {
-          addedCt: previews === 1 ? 2 : 1,
-          noChangeCt: previews === 1 ? 0 : 1,
-          conflictCt: 0,
-          unresolvedCt: 0,
-          comparisons: [],
-        },
+  fake.bridgeAnswers.read_text_file = { ok: true, content: "fixture payload", message: "" };
+  fake.answers["addons.previewImport"] = () => {
+    previews++;
+    return {
+      summary: {
+        addedCt: previews === 1 ? 2 : 1,
+        noChangeCt: previews === 1 ? 0 : 1,
+        conflictCt: 0,
+        unresolvedCt: 0,
+        comparisons: [],
+      },
+      error: null,
+    };
+  };
+  fake.answers["addons.importAddonList"] = {
+    operations: [
+      {
+        operationId: "1",
+        addonId: null,
+        addonName: "Alpha",
+        status: "failed",
+        error: "Couldn't save the addon list",
+      },
+      {
+        operationId: "2",
+        addonId: null,
+        addonName: "Zeta",
+        status: "installed",
         error: null,
-      };
-    }
-    if (method === "rpc" && args[0] === "addons.importAddonList")
-      return {
-        operations: [
-          {
-            operationId: "1",
-            addonName: "Alpha",
-            status: "failed",
-            error: "Couldn't save the addon list",
-          },
-          {
-            operationId: "2",
-            addonName: "Zeta",
-            status: "installed",
-            error: null,
-            cleanupWarning: "fixture leftovers",
-          },
-        ],
-        error: null,
-      };
-    return {};
+        cleanupWarning: "fixture leftovers",
+      },
+    ],
+    error: null,
   };
   try {
     openAddonPortabilityModal({
       mode: "import",
       installations: [],
       selectedInstallationId: null,
-      onInstalled: () => {},
+    });
+    await act(async () => root.render(opened!));
+    expect(loadFile).toBeDefined();
+    await act(async () => loadFile!());
+    const [, , files, folders, , extensions, , allFiles] = picks[picks.length - 1];
+    expect(files).toBe(true);
+    expect(folders).toBe(true);
+    expect(extensions).toEqual(["txt"]);
+    expect(allFiles).toBe(false);
+  } finally {
+    await act(async () => root.unmount());
+    dom.window.close();
+    if (oldDocument) Object.defineProperty(globalThis, "document", oldDocument);
+    else Reflect.deleteProperty(globalThis, "document");
+    if (oldAct) Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", oldAct);
+    else Reflect.deleteProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT");
+    if (original) Object.defineProperty(globalThis, "window", original);
+    else Reflect.deleteProperty(globalThis, "window");
+  }
+});
+
+test("partial import keeps failure details and cleanup warnings after the list refreshes", async () => {
+  const original = Object.getOwnPropertyDescriptor(globalThis, "window");
+  const oldDocument = Object.getOwnPropertyDescriptor(globalThis, "document");
+  const oldAct = Object.getOwnPropertyDescriptor(globalThis, "IS_REACT_ACT_ENVIRONMENT");
+  const dom = new JSDOM('<div id="root"></div>');
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    writable: true,
+    value: dom.window,
+  });
+  Object.defineProperty(globalThis, "document", {
+    configurable: true,
+    writable: true,
+    value: dom.window.document,
+  });
+  Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", {
+    configurable: true,
+    value: true,
+  });
+  const root = createRoot(dom.window.document.getElementById("root")!);
+  let previews = 0;
+  pickedPath = "/fixture/list.txt";
+  fake.bridgeAnswers.read_text_file = { ok: true, content: "fixture payload", message: "" };
+  fake.answers["addons.previewImport"] = () => {
+    previews++;
+    return {
+      summary: {
+        addedCt: previews === 1 ? 2 : 1,
+        noChangeCt: previews === 1 ? 0 : 1,
+        conflictCt: 0,
+        unresolvedCt: 0,
+        comparisons: [],
+      },
+      error: null,
+    };
+  };
+  fake.answers["addons.importAddonList"] = {
+    operations: [
+      {
+        operationId: "1",
+        addonId: null,
+        addonName: "Alpha",
+        status: "failed",
+        error: "Couldn't save the addon list",
+      },
+      {
+        operationId: "2",
+        addonId: null,
+        addonName: "Zeta",
+        status: "installed",
+        error: null,
+        cleanupWarning: "fixture leftovers",
+      },
+    ],
+    error: null,
+  };
+  try {
+    openAddonPortabilityModal({
+      mode: "import",
+      installations: [],
+      selectedInstallationId: null,
     });
     await act(async () => root.render(opened!));
     await act(async () => loadFile!());
@@ -211,7 +286,8 @@ test("partial import keeps failure details and cleanup warnings after the list r
     expect(dom.window.document.body.textContent).not.toContain("fixture leftovers");
   } finally {
     pickedPath = null;
-    backendCall = async () => ({});
+    fake.answers = {};
+    fake.bridgeAnswers = {};
     await act(async () => root.unmount());
     dom.window.close();
     if (oldDocument) Object.defineProperty(globalThis, "document", oldDocument);

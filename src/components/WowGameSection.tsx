@@ -1,20 +1,18 @@
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { DialogButton, Focusable } from "@decky/ui";
 import { FaBoxOpen } from "react-icons/fa";
-import * as api from "../services/backend";
+import { engine } from "../engineLink";
 import { pluginToast, toastError } from "../toast";
 import { createAddonActions } from "../addonActions";
-import { settingsStore } from "../settings";
+import { settingsStore, steamLaunchMenuOn } from "../settings";
 import { openPanel } from "../openPanel";
+import { activeInstallationId } from "../session";
 import { STEAM, descriptionStyle } from "../steamTheme";
 import { updateSummaryText } from "../steamLibrary";
-import {
-  afterUpdate,
-  checkNow,
-  getSteamUpdates,
-  onSteamSurfaceShown,
-  subscribeSteamUpdates,
-} from "../steamUpdates";
+import { steamUpdates } from "../steamUpdates";
+import { steamLaunchState } from "../steamLaunchActions";
+import { useResource } from "../useResource";
+import type { AttachLaunch } from "../steamLaunchPatch";
 
 const BUTTON = { minWidth: 0, width: "auto", padding: "8px 16px" } as const;
 
@@ -28,24 +26,42 @@ const BUTTON = { minWidth: 0, width: "auto", padding: "8px 16px" } as const;
  * badge). Appearing shows the last counts at once and, when the option is
  * on, checks in the background at most every 15 minutes.
  */
-export function WowGameSection() {
-  const { summary, checking } = useSyncExternalStore(subscribeSteamUpdates, getSteamUpdates);
+export function WowGameSection({
+  appId,
+  attachLaunch,
+}: {
+  appId: number;
+  attachLaunch: AttachLaunch;
+}) {
+  const anchor = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    return anchor.current ? attachLaunch(anchor.current, appId) : undefined;
+  }, [appId, attachLaunch]);
+
+  // "Play starts WoW" off: no launch read, no launch lines.
+  const launchMenu = useSyncExternalStore(settingsStore.subscribe, () =>
+    steamLaunchMenuOn(settingsStore.get()),
+  );
+  const launch = useResource(steamLaunchState, launchMenu ? String(appId) : null);
+  const checkingLaunch = launch.loading && !launch.data;
+  const { summary, checking } = useSyncExternalStore(steamUpdates.subscribe, steamUpdates.get);
   const [updating, setUpdating] = useState(false);
 
   useEffect(() => {
-    onSteamSurfaceShown();
+    steamUpdates.onSurfaceShown();
   }, []);
 
   // My Addons' Update all; here the counts on this page are what changed.
   const actions = createAddonActions({
-    rpc: api.rpc,
+    rpc: engine.rpc,
     toast: pluginToast,
     toastError,
     autoUpdateOn: () => settingsStore.get().settings.autoUpdate,
+    installationId: activeInstallationId,
     setUpdatingAll: (scope) => setUpdating(scope !== null),
     begin: () => {},
     // "Updating…" stays until the new counts are in.
-    settled: () => afterUpdate(),
+    settled: () => steamUpdates.loadSummary(),
   });
   const updateAll = () => actions.updateAll("all");
 
@@ -63,6 +79,7 @@ export function WowGameSection() {
 
   return (
     <div
+      ref={anchor}
       className="wowdeck-game-section"
       style={{
         display: "flex",
@@ -94,6 +111,10 @@ export function WowGameSection() {
         >
           {status}
         </div>
+        {launch.error && (
+          <div style={{ ...descriptionStyle, color: STEAM.danger }}>{launch.error}</div>
+        )}
+        {checkingLaunch && <div style={descriptionStyle}>Checking WoW launch status…</div>}
       </div>
       <Focusable flow-children="row" style={{ display: "flex", gap: "8px", flexShrink: 0 }}>
         {total > 0 && (
@@ -101,9 +122,22 @@ export function WowGameSection() {
             Update all
           </DialogButton>
         )}
-        <DialogButton style={BUTTON} disabled={busy} onClick={() => void checkNow({ toast: true })}>
+        <DialogButton
+          style={BUTTON}
+          disabled={busy}
+          onClick={() => void steamUpdates.checkNow({ toast: true })}
+        >
           Check for updates
         </DialogButton>
+        {launch.error && (
+          <DialogButton
+            style={BUTTON}
+            disabled={launch.loading}
+            onClick={() => void launch.refresh()}
+          >
+            Retry
+          </DialogButton>
+        )}
         <DialogButton style={BUTTON} onClick={open}>
           Open
         </DialogButton>

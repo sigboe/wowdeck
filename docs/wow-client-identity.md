@@ -62,13 +62,16 @@ player-facing name before release.
 
 ### Where each column lives
 
-- **Folder → `WowClientType`**: `backend/src/wow/toc/toc.ts`,
-  `getClientTypeForFolderName` — a pure switch on the literal folder name,
-  hardcoded (ported from WowUp's own folder constants). This is **filesystem
-  detection only**; it has no knowledge of providers or CurseForge.
-- **Display label**: `backend/src/wow/utils/gametype.ts`,
-  `getClientTypeLabel` — hardcoded, one function, single source of truth
-  on the backend.
+- **The client table**: `backend/src/wow/clients.ts` (`WOW_CLIENTS`) holds
+  one record per client. A record has the flavor folder, wire `GameType`,
+  WowUp Hub game type, short and full names, former names and Battle.net
+  product code. The lookups below read it. A new client is one new record.
+- **Folder → `WowClientType`**: `getClientTypeForFolderName` in
+  `backend/src/wow/toc/toc.ts` matches the literal folder name against the
+  table. Only filesystem detection uses it. It knows nothing about
+  providers or CurseForge.
+- **Display label**: `getClientTypeLabel` in
+  `backend/src/wow/utils/gametype.ts` returns the table's short name.
 - **Wire `GameType` (manual-add dropdown)**: `backend/src/api/contracts.ts`
   (`export type GameType = "retail" | "classic" | "classic_era" |
   "forever" | "classic_beta" | "ptr" | "beta"`), converted to `WowClientType` by
@@ -86,7 +89,7 @@ player-facing name before release.
 - **Manual selection**: Settings → Add Installation. The user either points
   at a real flavor dir (client type inferred from the folder name, "Auto")
   or a non-standard path with an explicit `GameType` from the dropdown
-  above (`InstallationService.addManual`, `backend/src/main.ts`
+  above (`InstallationService.addManual`, `backend/src/api/handlers/installations.ts`
   `installations.add`).
 
 ### §4 — deliberate gaps

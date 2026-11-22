@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import {
-  isQamViewClasses,
   QamExpandState,
   sharedQamExpandState,
   takesExpanded,
@@ -41,12 +40,6 @@ describe("which QAM nodes take Expanded", () => {
   test("Expanded is added once, also when Friends added it already", () => {
     expect(withExpanded("p", classes)).toBe(`p ${classes.Expanded}`);
     expect(withExpanded(`p ${classes.Expanded}`, classes)).toBe(`p ${classes.Expanded}`);
-  });
-
-  test("finds the class module by its readable keys", () => {
-    expect(isQamViewClasses({ ViewPlaceholder: "x", Expanded: "y", Open: "z" })).toBe(true);
-    expect(isQamViewClasses({ ViewPlaceholder: "x" })).toBe(false);
-    expect(isQamViewClasses(null)).toBe(false);
   });
 });
 

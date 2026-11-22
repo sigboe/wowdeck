@@ -1,0 +1,9 @@
+toast-start → observer on notificationtoasts (limit 50; 0 notice(s) displayed)
+eval --active --file=.scratch/arch-review-229/keyb… → Companion confirmed → tree="QuickAccess-NA" focus="Updates inside WoW Shown in game when the WowUp Co" tab="Options"
+open → no change
+eval --t=16000 --file=.scratch/arch-review-229/key… → [{"at":0,"installingElsewhere":1,"switching":false,"text":"OPTIONS\nWOW INSTALLATIONS\nActive installation\nVersion 1.15.9\nDetected automatically\nWait for addon installs to finish.\nClassic Era\nFind WoW installations\nLooks in Steam, Lutris and"},{"at":8200,"installingElsewhere":0,"switching":false,"text":"OPTIONS\nWOW INSTALLATIONS\nActive installation\nVersion 1.15.9\nDetected automatically\nClassic Era\nFind WoW installations\nLooks in Steam, Lutris and other game folders\nAdd WoW folder\n"}]
+eval --file=.scratch/arch-review-229/keyboard-my-t… → My Addons activated → focus=null tab="My Addons"
+probe text → text="scrollTop=[0,0,0,0,0,0] WoWDeck Manager MY ADDONS Classic Era INSTALLED (1) All up to date WowUp Companion fixture WowUp Hub · 1"
+toast-read → 1 notice(s) ["Installed WowUp Companion In Classic Era"]
+toast cleanup → 1 notice(s) ["Installed WowUp Companion In Classic Era"]
+toast cleanup: observer removed

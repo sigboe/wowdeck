@@ -5,6 +5,8 @@ import { act, type ReactElement, type ReactNode, type Ref } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import type { Diagnostics } from "./types";
 import { deckyUiStub } from "./deckyUiStub";
+import { connectEngine } from "./engineLink";
+import { createFakeEngine, engineFailure } from "./testSupport/fakeEngine";
 
 /**
  * Options › About › Diagnostics (#209): the last About row opens the
@@ -38,22 +40,15 @@ const diagnostics: Diagnostics = {
 } as unknown as Diagnostics;
 
 let diagnosticsFails = false;
-const calls: string[] = [];
+const fake = createFakeEngine({
+  "system.diagnostics": () =>
+    diagnosticsFails ? engineFailure("internal", "engine stopped") : diagnostics,
+  "about.get": { notices: null, funding: [], supporters: [] },
+});
+connectEngine(fake);
+const calls = fake.calls;
 const toasts: string[] = [];
 mock.module("@decky/api", () => ({
-  callable: (name: string) => async (method: string) => {
-    if (name !== "rpc") return {};
-    calls.push(method);
-    if (method === "system.diagnostics") {
-      return diagnosticsFails
-        ? { __error: { code: "internal", message: "engine stopped" } }
-        : diagnostics;
-    }
-    if (method === "about.get") return { notices: null, funding: [], supporters: [] };
-    return {};
-  },
-  addEventListener: () => {},
-  removeEventListener: () => {},
   toaster: { toast: ({ title }: { title: string }) => toasts.push(title) },
   openFilePicker: () => {},
   FileSelectionType: { FILE: 0, FOLDER: 1 },
@@ -179,7 +174,7 @@ describe("Options › About › Diagnostics (#209)", () => {
   test("A loads the diagnostics afresh and shows their text in a modal", async () => {
     calls.length = 0;
     const shown = await openDiagnostics();
-    expect(calls).toEqual(["system.diagnostics"]);
+    expect(calls.map((c) => c.method)).toEqual(["system.diagnostics"]);
     expect(shown.querySelector("h2")!.textContent).toBe("Diagnostics");
     expect(shown.textContent).toContain("WoWDeck version");
     expect(shown.textContent).toContain(diagnostics.pluginVersion!);

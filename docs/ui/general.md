@@ -200,6 +200,24 @@ all in-memory trials were reverted, nothing persistent was changed):
   the view wide, exactly like Friends. In Big Picture Steam does NOT add
   `QAMFriendExpanded` inside the QAM window for us, so lever 1 below is still
   ours.
+- An open QAM can keep its previous render after a plugin update (DEVICE,
+  2026-11-22, CDP on Steam beta 11255874). The renderer pointed to the
+  patch, but the wrapped view had yet to mount. Get Addons stayed 300 px
+  wide until Steam rendered the QAM again. With the refresh in place,
+  focusing Popular after the reload widened Get Addons to 806 px. The
+  native placeholder also carried Steam's `Expanded` class.
+- The hook reads `stateNode.current` from the React root to find the
+  current tree. The renderer's cached `memoizedProps.active` marks the
+  open QAM. On an open view with no wrapper, the hook uses React DOM's
+  `flushSync` to render the repointed fiber once. It finds a `useState`
+  queue through `memoizedState` and the hook's `next` link. The hook
+  matches React's state reducer by its source before calling `dispatch`
+  with an identity update. It briefly clears `lastRenderedReducer` so
+  React schedules the update. It marks `memoizedProps` so the memoized
+  renderer commits the new view. The hook restores those temporary
+  changes and leaves Steam's state values intact. CDP confirmed these
+  fields on Steam's React 19.1.1. If a field or the queue is missing,
+  the patch waits for Steam's next render.
 - Every QAM re-show replays the entrance (DEVICE 2026-10-24, PC-20, capture.mjs:
   per-frame bounds + SetBounds stacks). A context-menu popup (any @decky/ui
   Dropdown/showContextMenu) or a modal hides the QAM BrowserView entirely

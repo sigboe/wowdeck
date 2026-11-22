@@ -1,0 +1,57 @@
+eval --file=.scratch/arch-review-229/keyboard-tsm-… → OPTIONS
+WOW INSTALLATIONS
+Active installation
+Version 1.60.1
+Detected automatically
+Forever
+Find WoW installations
+Looks in Steam, Lutris and other game folders
+Add WoW folder
+The World of Warcraft folder, or a version folder such as _retail_
+ADDON LIST
+Export addon list
+Share it with WowUp or another device
+Import addon list
+From another computer or WowUp
+SETTINGS BACKUP
+WoW Settings Backup
+Last backup 5 days ago · 356 KB · 1 in total
+Manage backups
+Restore, delete or import (WowUp backups too)
+ADDON SOURCES
+WowUp Hub
+TukUI
+CurseForge
+WoWInterface
+TradeSkillMaster
+Cancel sign-in
+GitHub
+UPDATES
+Update automatically
+Last run today at 17:42: updated What The Whisper
+Previous versions
+On · 1.2 GB for 45 addons
+WoWDeck 1.2.1
+Up to date
+Update channel
+STEAM LIBRARY
+Link detected Steam games
+Show addon updates on detected WoW and Battle.net game pages and home tiles
+World of Warcraft in Steam
+World of Warcraft: its game page and tile show addon updates
+Check for updates when shown
+When its game page or tile appears; at most every 15 minutes
+Show a badge on its tile
+Green when updates are waiting, on the home screen and in the library
+NOTIFICATIONS
+Update notifications
+At most once a day, when the Deck starts or wakes up
+Updates inside WoW
+Shown in game when the WowUp Companion addon is installed. Installed in Forever. Not installed in Forever Beta.
+ABOUT
+Support WoWDeck
+Scan a code with your phone to fund WoWDeck
+Third-party notices
+What WoWDeck is built from, and under which licen… (+72 chars; --full)
+eval --t=12000 --file=.scratch/arch-review-229/rem… → observation window ended
+eval@SharedJSContext --full --file=.scratch/arch-r… → {"status":[{"method":"tradeskillmaster.status","time":865.637,"installationId":null},{"method":"tradeskillmaster.status","time":866.637,"installationId":null},{"method":"tradeskillmaster.status","time":867.636,"installationId":null},{"method":"tradeskillmaster.status","time":868.637,"installationId":null},{"method":"tradeskillmaster.status","time":869.637,"installationId":null},{"method":"tradeskillmaster.status","time":870.637,"installationId":null},{"method":"tradeskillmaster.status","time":871.637,"installationId":null},{"method":"tradeskillmaster.status","time":872.637,"installationId":null},{"method":"tradeskillmaster.status","time":873.637,"installationId":null},{"method":"tradeskillmaster.status","time":874.636,"installationId":null},{"method":"tradeskillmaster.status","time":875.637,"installationId":null},{"method":"tradeskillmaster.status","time":876.637,"installationId":null},{"method":"tradeskillmaster.status","time":877.637,"installationId":null},{"method":"tradeskillmaster.status","time":878.637,"installationId":null},{"method":"tradeskillmaster.status","time":879.637,"installationId":null},{"method":"tradeskillmaster.status","time":880.637,"installationId":null},{"method":"tradeskillmaster.status","time":881.637,"installationId":null},{"method":"tradeskillmaster.status","time":882.637,"installationId":null},{"method":"tradeskillmaster.status","time":883.637,"installationId":null},{"method":"tradeskillmaster.status","time":884.637,"installationId":null},{"method":"tradeskillmaster.status","time":885.636,"installationId":null},{"method":"tradeskillmaster.status","time":886.636,"installationId":null},{"method":"tradeskillmaster.status","time":887.637,"installationId":null},{"method":"tradeskillmaster.status","time":888.637,"installationId":null},{"method":"tradeskillmaster.status","time":889.636,"installationId":null},{"method":"tradeskillmaster.status","time":890.637,"installationId":null},{"method":"tradeskillmaster.status","time":891.637,"installationId":null},{"method":"tradeskillmaster.status","time":892.637,"installationId":null},{"method":"tradeskillmaster.status","time":893.637,"installationId":null},{"method":"tradeskillmaster.status","time":894.636,"installationId":null},{"method":"tradeskillmaster.status","time":895.637,"installationId":null},{"method":"tradeskillmaster.status","time":896.637,"installationId":null},{"method":"tradeskillmaster.status","time":897.637,"installationId":null},{"method":"tradeskillmaster.status","time":898.637,"installationId":null},{"method":"tradeskillmaster.status","time":899.637,"installationId":null},{"method":"tradeskillmaster.status","time":899.894,"installationId":null},{"method":"tradeskillmaster.status","time":900.636,"installationId":null},{"method":"tradeskillmaster.status","time":901.637,"installationId":null},{"method":"tradeskillmaster.status","time":902.637,"installationId":null},{"method":"tradeskillmaster.status","time":903.637,"installationId":null},{"method":"tradeskillmaster.status","time":904.636,"installationId":null},{"method":"tradeskillmaster.status","time":905.637,"installationId":null},{"method":"tradeskillmaster.status","time":906.636,"installationId":null},{"method":"tradeskillmaster.status","time":907.637,"installationId":null},{"method":"tradeskillmaster.status","time":908.637,"installationId":null},{"method":"tradeskillmaster.status","time":909.636,"installationId":null},{"method":"tradeskillmaster.status","time":910.637,"installationId":null},{"method":"tradeskillmaster.status","time":911.637,"installationId":null},{"method":"tradeskillmaster.status","time":912.637,"installationId":null},{"method":"tradeskillmaster.status","time":913.637,"installationId":null},{"method":"tradeskillmaster.status","time":914.637,"installationId":null},{"method":"tradeskillmaster.status","time":915.637,"installationId":null},{"method":"tradeskillmaster.status","time":916.637,"installationId":null},{"method":"tradeskillmaster.status","time":917.637,"installationId":null},{"method":"tradeskillmaster.status","time":918.636,"installationId":null},{"method":"tradeskillmaster.status","time":919.636,"installationId":null},{"method":"tradeskillmaster.status","time":920.636,"installationId":null},{"method":"tradeskillmaster.status","time":921.637,"installationId":null},{"method":"tradeskillmaster.status","time":922.636,"installationId":null},{"method":"tradeskillmaster.status","time":923.636,"installationId":null}],"tail":[{"method":"tradeskillmaster.status","time":917.637,"installationId":null},{"method":"wtf.list","time":918.483,"installationId":"5e80311f078e"},{"method":"tradeskillmaster.status","time":918.636,"installationId":null},{"method":"tradeskillmaster.status","time":919.636,"installationId":null},{"method":"tradeskillmaster.status","time":920.636,"installationId":null},{"method":"tradeskillmaster.status","time":921.637,"installationId":null},{"method":"tradeskillmaster.status","time":922.636,"installationId":null},{"method":"tradeskillmaster.status","time":923.636,"installationId":null}]}

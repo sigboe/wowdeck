@@ -67,6 +67,7 @@ ROOT_FILES = (
     "plugin.json",
     "package.json",
     "main.py",
+    "recovery_updater.py",
     "decky.pyi",
     "README.md",
     "LICENSE",

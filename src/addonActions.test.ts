@@ -2,6 +2,7 @@
 import { describe, expect, test } from "bun:test";
 import type { Addon, OperationResult, SearchResult } from "./types";
 import { createAddonActions, type AddonActionDeps } from "./addonActions";
+import { createFakeEngine, type Answers } from "./testSupport/fakeEngine";
 
 const addon: Addon = {
   id: "a1",
@@ -39,6 +40,14 @@ const addon: Addon = {
   canChangeChannel: false,
 };
 
+/** A dependency as addons.lookup names it. */
+const lib = (externalId: string, name: string) => ({
+  externalId,
+  name,
+  thumbnailUrl: null,
+  installed: false,
+});
+
 const op = (status: OperationResult["status"], error: string | null = null): OperationResult => ({
   operationId: "op",
   addonId: addon.id,
@@ -46,22 +55,16 @@ const op = (status: OperationResult["status"], error: string | null = null): Ope
   error,
 });
 
-/** Actions over a stubbed engine: `answers` maps a method to its result (or an Error to throw). */
-function harness(answers: Record<string, unknown>, autoUpdate = false) {
+/** Actions over the typed fake engine: `answers` answers each method (an Error is a failed call). */
+function harness(answers: Answers, autoUpdate = false) {
   const log: string[] = [];
-  const calls: [string, unknown][] = [];
+  const fake = createFakeEngine(answers);
   const deps: AddonActionDeps = {
-    rpc: (async (method: string, params?: unknown) => {
-      calls.push([method, params]);
-      const answer = answers[method];
-      if (answer instanceof Error) {
-        throw answer;
-      }
-      return answer;
-    }) as AddonActionDeps["rpc"],
+    rpc: fake.rpc,
     toast: (title, body = "") => log.push(body ? `toast ${title} | ${body}` : `toast ${title}`),
     toastError: (title, e) => log.push(`error ${title} | ${e instanceof Error ? e.message : e}`),
     autoUpdateOn: () => autoUpdate,
+    installationId: () => "active",
     setUpdatingAll: (scope) => log.push(`updatingAll ${scope}`),
     begin: (id) => {
       if (id) {
@@ -77,7 +80,14 @@ function harness(answers: Record<string, unknown>, autoUpdate = false) {
       );
     },
   };
-  return { actions: createAddonActions(deps), log, calls };
+  return {
+    actions: createAddonActions(deps),
+    log,
+    /** The engine calls so far, as [method, params]. */
+    get calls() {
+      return fake.calls.map((c) => [c.method, c.params]);
+    },
+  };
 }
 
 describe("addon actions: update", () => {
@@ -171,7 +181,7 @@ describe("addon actions: reinstall, channel, pause, ignore, remove", () => {
     expect(h.calls).toEqual([
       ["addons.remove", { addonId: "a1", removeLibraries: false }],
       ["addons.remove", { addonId: "a1", removeLibraries: true }],
-      ["addons.removeUnmanaged", { folderName: "Loose" }],
+      ["addons.removeUnmanaged", { installationId: "i1", folderName: "Loose" }],
     ]);
     expect(h.log.filter((l) => l.startsWith("toast"))).toEqual([
       "toast Removed Details",
@@ -259,7 +269,10 @@ describe("addon actions: use a source (WF-23, WF-12)", () => {
     });
     await h.actions.useSource(loose, source);
     expect(h.calls).toEqual([
-      ["addons.adopt", { folderName: "Loose", providerId: "Curse", externalId: "61284" }],
+      [
+        "addons.adopt",
+        { installationId: "i1", folderName: "Loose", providerId: "Curse", externalId: "61284" },
+      ],
     ]);
     expect(h.log).toEqual([
       "busy unmanaged:Loose true",
@@ -392,6 +405,7 @@ describe("addon actions: update all", () => {
   test("nothing to do, and a rejected call", async () => {
     const none = harness({ "addons.updateAll": { operations: [op("current")] } });
     await none.actions.updateAll("installation");
+    expect(none.calls).toEqual([["addons.updateAll", { installationId: "active" }]]);
     expect(none.log).toContain("toast All addons are up to date");
     const bad = harness({ "addons.updateAll": new Error("offline") });
     await bad.actions.updateAll("installation");
@@ -407,7 +421,10 @@ describe("addon actions: install", () => {
     const h = harness({ "addons.install": { addon, operation: op("installed") } });
     await h.actions.install(result, "beta");
     expect(h.calls).toEqual([
-      ["addons.install", { providerId: "Curse", externalId: "61284", channel: "beta" }],
+      [
+        "addons.install",
+        { installationId: "active", providerId: "Curse", externalId: "61284", channel: "beta" },
+      ],
     ]);
     expect(h.log).toEqual(["toast Installed Details | Beta release", "reload"]);
   });
@@ -439,9 +456,13 @@ describe("addon actions: install", () => {
     const missing = { ...op("installed"), missingRequiredDependencies: ["1", "2"] };
     const named = harness({
       "addons.install": { addon, operation: missing },
-      "addons.lookup": { addons: [{ name: "LibA" }, { name: "LibB" }] },
+      "addons.lookup": { addons: [lib("1", "LibA"), lib("2", "LibB")] },
     });
     await named.actions.install(result);
+    expect(named.calls[1]).toEqual([
+      "addons.lookup",
+      { installationId: "active", providerId: "Curse", externalIds: ["1", "2"] },
+    ]);
     expect(named.log).toContain(
       "toast Details may not work | It needs LibA, LibB, which couldn't be installed. Install it from Get Addons.",
     );
@@ -469,7 +490,7 @@ describe("addon actions: install", () => {
           ],
         },
       },
-      "addons.lookup": { addons: [{ name: "LibA" }, { name: "LibB" }] },
+      "addons.lookup": { addons: [lib("1", "LibA"), lib("2", "LibB")] },
     });
     await h.actions.install(result);
     expect(h.log).toContain(

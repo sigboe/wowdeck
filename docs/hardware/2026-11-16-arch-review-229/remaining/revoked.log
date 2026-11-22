@@ -1,0 +1,71 @@
+eval@SharedJSContext --file=.scratch/arch-review-2… → controlled revocation event, no auth write
+probe text → text="scrollTop=[] Manage followed realms 0 of 10 realms followed Couldn't load followed realms Retry No realms followed Done"
+press B → tree="QuickAccess-NA" focus="GET ADDONS" tab="Get Addons"
+eval --full --file=.scratch/arch-review-229/keyboa… → GET ADDONS
+Forever
+Search
+Latest
+Popular
+Manual Install
+Search addons
+Search
+Search WowUp Hub, TukUI and CurseForge for Forever addons
+eval --file=.scratch/arch-review-229/keyboard-opti… → Options activated → focus=null tab="Options"
+eval --full --file=.scratch/arch-review-229/keyboa… → OPTIONS
+WOW INSTALLATIONS
+Active installation
+Version 1.60.1
+Detected automatically
+Forever
+Find WoW installations
+Looks in Steam, Lutris and other game folders
+Add WoW folder
+The World of Warcraft folder, or a version folder such as _retail_
+ADDON LIST
+Export addon list
+Share it with WowUp or another device
+Import addon list
+From another computer or WowUp
+SETTINGS BACKUP
+WoW Settings Backup
+Last backup 5 days ago · 356 KB · 1 in total
+Manage backups
+Restore, delete or import (WowUp backups too)
+ADDON SOURCES
+WowUp Hub
+TukUI
+CurseForge
+WoWInterface
+TradeSkillMaster
+Your account stays signed in while off. X signs out.
+Sign in
+GitHub
+UPDATES
+Update automatically
+Last run today at 17:42: updated What The Whisper
+Previous versions
+On · 1.2 GB for 45 addons
+WoWDeck 1.2.1
+Up to date
+Update channel
+STEAM LIBRARY
+Link detected Steam games
+Show addon updates on detected WoW and Battle.net game pages and home tiles
+World of Warcraft in Steam
+World of Warcraft: its game page and tile show addon updates
+Check for updates when shown
+When its game page or tile appears; at most every 15 minutes
+Show a badge on its tile
+Green when updates are waiting, on the home screen and in the library
+NOTIFICATIONS
+Update notifications
+At most once a day, when the Deck starts or wakes up
+Updates inside WoW
+Shown in game when the WowUp Companion addon is installed. Installed in Forever. Not installed in Forever Beta.
+ABOUT
+Support WoWDeck
+Scan a code with your phone to fund WoWDeck
+Third-party notices
+What WoWDeck is built from, and under which licenses
+Diagnostics
+Versions and recent errors to share when asking for help

@@ -5,6 +5,9 @@ import { act, type ReactElement, type ReactNode, type Ref } from "react";
 import type { Root } from "react-dom/client";
 import { deckyUiStub } from "./deckyUiStub";
 import type { ProviderInfo } from "./types";
+import { connectEngine } from "./engineLink";
+import { createFakeEngine } from "./testSupport/fakeEngine";
+import { defaultSettings } from "../backend/src/wow/storage/settings";
 
 /**
  * Options › Addon sources › GitHub (#205): the last row of the section opens
@@ -12,28 +15,25 @@ import type { ProviderInfo } from "./types";
  * behind `rpc` answers settings and providers.testApiKey.
  */
 
-type Call = { method: string; params?: Record<string, unknown> };
-const calls: Call[] = [];
 let storedToken: string | null = null;
 let tokenCheck = { ok: true, httpStatus: 200, message: "OK" };
-const engine = async (method: string, params?: Record<string, unknown>) => {
-  calls.push({ method, params });
-  if (method === "settings.get") return { settings: { githubAccessToken: storedToken } };
-  if (method === "settings.set") {
-    const patch = params!.settings as { githubAccessToken?: string | null };
+const settingsWith = (githubAccessToken: string | null) => ({
+  settings: { ...defaultSettings(), githubAccessToken },
+});
+const fake = createFakeEngine({
+  "settings.get": () => settingsWith(storedToken),
+  "settings.set": ({ settings: patch }) => {
     if ("githubAccessToken" in patch) storedToken = patch.githubAccessToken ?? null;
     // The engine redacts tokens in its answer.
-    return { settings: { githubAccessToken: storedToken ? "********" : null } };
-  }
-  if (method === "providers.testApiKey") return tokenCheck;
-  if (method === "tradeskillmaster.status") return { state: "signedOut", account: null };
-  return {};
-};
+    return settingsWith(storedToken ? "********" : null);
+  },
+  "providers.testApiKey": () => tokenCheck,
+  "tradeskillmaster.status": { state: "signedOut", account: null },
+});
+connectEngine(fake);
+const calls = fake.calls;
 const toasts: string[] = [];
 mock.module("@decky/api", () => ({
-  callable: () => engine,
-  addEventListener: () => {},
-  removeEventListener: () => {},
   toaster: { toast: ({ title }: { title: string }) => toasts.push(title) },
   openFilePicker: () => {},
   FileSelectionType: { FILE: 0, FOLDER: 1 },

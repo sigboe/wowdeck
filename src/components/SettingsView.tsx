@@ -2,14 +2,14 @@ import { Focusable } from "@decky/ui";
 import { optionsUpdateDirection } from "../updatePanelNavigation";
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import type { CurseForgeAuthStatus, Installation } from "../types";
-import * as api from "../services/backend";
+import { engine } from "../engineLink";
 import { settingsStore } from "../settings";
-import { loadSources, sourcesStore } from "../sourcesStore";
-import { diagnosticsStore, loadDiagnostics } from "../diagnosticsStore";
+import { sourcesStore } from "../sourcesStore";
+import { diagnosticsStore } from "../diagnosticsStore";
 import { useRestoreFocus } from "./FocusSlot";
 import { WtfBackupSection } from "./WtfBackupSection";
 import { VIEW } from "./settings/common";
-import { InstallationsSection } from "./settings/InstallationsSection";
+import { InstallationsSection, type InstallationsSession } from "./settings/InstallationsSection";
 import { AddonListSection } from "./settings/AddonListSection";
 import { SourcesSection } from "./settings/SourcesSection";
 import { UpdatesSection } from "./settings/UpdatesSection";
@@ -20,8 +20,8 @@ import { AboutSection } from "./settings/AboutSection";
 interface Props {
   installations: Installation[];
   selectedId: string | null;
-  /** Reload installations + addons after structural changes. */
-  onChanged: () => Promise<void>;
+  /** The addon session: installation writes and installs go through it. */
+  session: InstallationsSession;
   /** Focus the last used row again on mount (guide S21). */
   restoreRows: boolean;
 }
@@ -34,7 +34,7 @@ interface Props {
  * reads the companion status from them). The section order is the focus
  * order (FocusRow ids, guide S21).
  */
-export function SettingsView({ installations, selectedId, onChanged, restoreRows }: Props) {
+export function SettingsView({ installations, selectedId, session, restoreRows }: Props) {
   useRestoreFocus(VIEW, restoreRows);
   const { providers } = useSyncExternalStore(sourcesStore.subscribe, sourcesStore.get);
   // Not `providers[…].configured`: that is true for either key, and the
@@ -52,12 +52,12 @@ export function SettingsView({ installations, selectedId, onChanged, restoreRows
     // quiet "companion not found" status — system.diagnostics is local-only
     // (no network calls), so this is cheap. The full diagnostics text stays
     // opt-in (About › Diagnostics reads them afresh into the same store).
-    void loadDiagnostics(api.rpc);
+    void diagnosticsStore.load();
   }, []);
 
   const reloadCurseForgeAuth = useCallback(async () => {
     try {
-      setCurseForgeAuth(await api.rpc("curseforge.authStatus"));
+      setCurseForgeAuth(await engine.rpc("curseforge.authStatus"));
     } catch {
       // engine not ready
     }
@@ -67,7 +67,7 @@ export function SettingsView({ installations, selectedId, onChanged, restoreRows
     void reloadCurseForgeAuth();
   }, [reloadCurseForgeAuth]);
 
-  const reloadProviders = useCallback(() => loadSources(api.rpc), []);
+  const reloadProviders = useCallback(() => sourcesStore.load(), []);
 
   useEffect(() => {
     void reloadProviders();
@@ -82,13 +82,9 @@ export function SettingsView({ installations, selectedId, onChanged, restoreRows
       <InstallationsSection
         installations={installations}
         selectedId={selectedId}
-        onChanged={onChanged}
+        session={session}
       />
-      <AddonListSection
-        installations={installations}
-        selectedId={selectedId}
-        onChanged={onChanged}
-      />
+      <AddonListSection installations={installations} selectedId={selectedId} />
       <WtfBackupSection installation={selected} />
       <SourcesSection
         providers={providers}
@@ -101,11 +97,7 @@ export function SettingsView({ installations, selectedId, onChanged, restoreRows
       />
       <UpdatesSection />
       <SteamLibrarySection />
-      <NotificationsSection
-        diagnostics={diagnostics}
-        installation={selected}
-        onChanged={onChanged}
-      />
+      <NotificationsSection diagnostics={diagnostics} installation={selected} />
       <AboutSection />
     </Focusable>
   );

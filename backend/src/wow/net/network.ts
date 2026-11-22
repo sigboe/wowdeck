@@ -46,6 +46,22 @@ export interface RequestOptions {
    * NetworkError at once and is never retried.
    */
   signal?: AbortSignal;
+  /**
+   * How often a transient failure (network error, 5xx, 429) is retried
+   * (default 2). Requests that change state, or that the caller retries
+   * itself, set 0.
+   */
+  retries?: number;
+  /** "error" fails a request that is redirected instead of following it (default "follow"). */
+  redirect?: "follow" | "error";
+}
+
+/** A finished request whose status the caller inspects itself (see NetworkClient.send). */
+export interface NetworkResponse {
+  status: number;
+  ok: boolean;
+  bytes: Uint8Array;
+  json<T>(): T;
 }
 
 export interface DownloadOptions extends RequestOptions {
@@ -157,6 +173,33 @@ export class NetworkClient {
     }
   }
 
+  /**
+   * A request whose HTTP status the caller handles: a 4xx/5xx answer is
+   * returned with its body, not thrown. Timeout, size cap, redirect trust
+   * and log redaction apply as for every other request. `body` is sent as is
+   * (set Content-Type in `headers`).
+   */
+  async send(
+    method: string,
+    url: string,
+    options: RequestOptions & { body?: string } = {},
+  ): Promise<NetworkResponse> {
+    const res = await this.requestWithRetry(method, url, { ...options, returnErrors: true });
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    return {
+      status: res.status,
+      ok: res.ok,
+      bytes,
+      json: <T>() => {
+        try {
+          return JSON.parse(new TextDecoder().decode(bytes)) as T;
+        } catch {
+          throw new NetworkError(`invalid JSON response from ${redactUrl(url)}`);
+        }
+      },
+    };
+  }
+
   async getText(url: string, options: RequestOptions = {}): Promise<string> {
     const res = await this.requestWithRetry("GET", url, options);
     return res.text();
@@ -211,19 +254,20 @@ export class NetworkClient {
   private async requestWithRetry(
     method: string,
     url: string,
-    options: RequestOptions & { body?: string } = {},
+    options: RequestOptions & { body?: string; returnErrors?: boolean } = {},
   ): Promise<Response> {
+    const retries = options.retries ?? 2;
     const target = buildUrl(url, options.query);
     let lastError: unknown;
-    for (let attempt = 0; attempt <= 2; attempt++) {
+    for (let attempt = 0; attempt <= retries; attempt++) {
       if (options.signal?.aborted) {
         throw new NetworkError(`${method} ${redactUrl(url)} aborted`, undefined, url);
       }
       try {
         const res = await this.fetchWithTimeout(target, options, method, options.body);
         const retryable = res.status >= 500 || res.status === 429;
-        if (!retryable || attempt === 2) {
-          if (!res.ok) {
+        if (!retryable || attempt === retries) {
+          if (!res.ok && !options.returnErrors) {
             throw new NetworkError(
               `${method} ${redactUrl(url)} failed: HTTP ${res.status}`,
               res.status,
@@ -269,7 +313,7 @@ export class NetworkClient {
             body,
             signal,
             headers: { "User-Agent": "wowdeck/0.1 (addon manager)", ...options.headers },
-            redirect: "follow",
+            redirect: options.redirect ?? "follow",
           });
       if (options.streamBody) {
         return res;

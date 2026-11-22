@@ -192,10 +192,19 @@ class Pad {
 
 // --- engine calls --------------------------------------------------------------
 
+// The methods the built engine serves: its handler table's keys (`--methods`).
+let methodList;
 function methods() {
-  const src = fs.readFileSync(path.join(ROOT, "backend/src/api/contracts.ts"), "utf8");
-  const body = src.split("export interface MethodMap {")[1]?.split("\n}\n")[0] ?? "";
-  return [...body.matchAll(/^ {2}"([\w.]+)": \{/gm)].map((m) => m[1]);
+  if (methodList) return methodList;
+  const bin = path.join(ROOT, `backend/out/wowdeck-${process.arch === "arm64" ? "aarch64" : "x86_64"}`);
+  if (!fs.existsSync(bin)) fail(`no engine binary at ${path.relative(ROOT, bin)} to list its methods; run make build-backend`);
+  const r = spawnSync(bin, ["--methods"], { encoding: "utf8", timeout: 10000 });
+  try {
+    methodList = JSON.parse(r.stdout);
+  } catch {
+    fail(`${path.relative(ROOT, bin)} --methods gave no method list (${(r.error?.message ?? r.stderr ?? "").trim().split("\n")[0]}); run make build-backend`);
+  }
+  return methodList;
 }
 
 async function rpc(method, params = {}, ms = 15000) {

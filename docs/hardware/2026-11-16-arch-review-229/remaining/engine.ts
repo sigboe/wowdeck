@@ -1,0 +1,17 @@
+import assert from 'node:assert/strict';
+import {mkdirSync,rmSync,writeFileSync} from 'node:fs';
+import {join} from 'node:path';
+import {startEngine,configFromEnv} from '../../backend/src/engine';
+import {ReplayNetwork} from '../../backend/tests/providers/cassette';
+const root=process.argv[2];assert(root?.includes('/homebrew/data/wowdeck/remaining229/'));
+const home=join(root,'home');mkdirSync(home,{recursive:true});
+const engine=await startEngine({...configFromEnv({HOME:home,WOWDECK_DATA_DIR:join(root,'state')},'fixture'),network:new ReplayNetwork({recordedAt:'fixture',interactions:[]})});
+let checks=0;const original=engine.deps.addonUpdates.checkAll.bind(engine.deps.addonUpdates);
+engine.deps.addonUpdates.checkAll=async(o)=>{checks++;await original(o)};
+const flavor=join(home,'Applications/World of Warcraft/_retail_');mkdirSync(join(flavor,'Interface/AddOns'),{recursive:true});
+writeFileSync(join(flavor,'.flavor.info'),'Product Flavor!STRING:0\nwow\n');writeFileSync(join(flavor,'../.build.info'),'Product!STRING:0|Version!STRING:0\nwow|11.0.2\n');
+const detected=await engine.call('installations.detect',{});assert(detected.installations.length>0);assert.equal(checks,1);console.log(JSON.stringify({claim:'detect starts update discovery',result:'PASS',checks}));
+const added=join(root,'manual/World of Warcraft/_classic_era_');mkdirSync(join(added,'Interface/AddOns'),{recursive:true});
+await engine.call('installations.add',{path:added});assert.equal(checks,2);console.log(JSON.stringify({claim:'add starts update discovery',result:'PASS',checks}));
+let message='';try{await engine.call('providers.setEnabled',{providerId:'TradeSkillMaster',enabled:true})}catch(e){message=(e as Error).message};assert(message.includes('Sign in to TradeSkillMaster first'));console.log(JSON.stringify({claim:'signed-out enable refusal',message,result:'PASS'}));
+rmSync(root,{recursive:true,force:true});process.exit(0);

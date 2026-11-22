@@ -1,5 +1,6 @@
-import { loadSources } from "./sourcesStore";
-import { tsmSession, readTsmSession, tsmActionRequired } from "./tsmSession";
+import { stopTsmSignIn } from "./tsmSignIn";
+import { onTsmSessionEnded } from "./tsmReads";
+import { tsmSession, tsmActionRequired } from "./tsmSession";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   ButtonItem,
@@ -12,7 +13,8 @@ import {
 } from "@decky/ui";
 import { definePlugin } from "@decky/api";
 import { FaBoxOpen, FaDiceD6, FaSearch, FaCog } from "react-icons/fa";
-import * as api from "./services/backend";
+import { deckyEngineLink } from "./services/backend";
+import { connectEngine, engine } from "./engineLink";
 import { FindWowWidget } from "./components/FindWowWidget";
 import { InstalledView } from "./components/InstalledView";
 import { GetAddonsTab as GetAddonsBrowseTab } from "./components/GetAddonsTab";
@@ -33,12 +35,14 @@ import { FocusRow } from "./components/FocusSlot";
 import { RecoveryNotice } from "./components/RecoveryNotice";
 import { QAM_DROPDOWN_BELOW_VALUE } from "./components/dropdownValue";
 import { STEAM_NO_TRANSFORM_SCROLL, useScrollBuffer } from "./components/ScrollBuffer";
-import { wtfLifecycle } from "./wtfSession";
-import { wtfCompletedToast } from "./wtfText";
+// Stores that hear engine events register with the router on import.
+import "./wtfSession";
+import "./steamUpdates";
+import "./engineChanges";
 import { patchGamePage } from "./steamGamePage";
-import { autoUpdateText } from "./steamLibrary";
+import { steamLaunch } from "./steamLaunchActions";
 import { settingsStore } from "./settings";
-import { loadSummary } from "./steamUpdates";
+import { linkedGamesStore } from "./linkedGames";
 import { startHomeBadge } from "./steamDom/homeBadge";
 import { startPluginExitWatch, startQamVisibilityWatch } from "./steamDom/qamVisibility";
 import { setQamExpander, stopQamWidening } from "./steamDom/qamWidening";
@@ -78,21 +82,6 @@ function Content() {
   // the tab bar mirrors it to stay at its collapsed width instead of
   // stretching across the widened panel.
   const tsm = useSyncExternalStore(tsmSession.subscribe, tsmSession.get);
-  useEffect(() => {
-    const read = () => {
-      const previous = tsmSession.get().state;
-      void readTsmSession(api.rpc, () =>
-        pluginToast("TradeSkillMaster session ended", "Sign in again in Options."),
-      )
-        .then(() => {
-          if (previous !== tsmSession.get().state) void loadSources(api.rpc);
-        })
-        .catch(() => {});
-    };
-    read();
-    const timer = setInterval(read, 1000);
-    return () => clearInterval(timer);
-  }, []);
   const [wide, setWide] = useState(widening.wide);
   useEffect(() => subscribeWidening(setWide), []);
   // Valve's scroll buffer below Decky's sticky title, re-measured on every
@@ -113,7 +102,10 @@ function Content() {
       try {
         // A panel opened while Decky reloads the plugin asks the old Python
         // side, which never answers (askUntilAnswered.ts).
-        status = await askUntilAnswered(api.getStatus, { timeoutMs: 5000, attempts: 3 });
+        status = await askUntilAnswered(() => engine.bridge("get_status"), {
+          timeoutMs: 5000,
+          attempts: 3,
+        });
       } catch {
         // Show the "couldn't start" retry state, not a blank panel.
         setEngineOk(false);
@@ -133,22 +125,6 @@ function Content() {
       }
       setEngineOk(false);
     })();
-  }, []);
-
-  // backend events -> refresh addon list when operations complete.
-  //
-  // Deliberately does not also toast on "operation.completed"/
-  // "operation.failed" directly: OperationResult never carries an
-  // addon name, only `addonId` (its internal UUID), so a toast built
-  // from it here could only ever show an unreadable id. Every action
-  // (addonActions.ts) already awaits its own call and shows its own
-  // correctly-named toast.
-  useEffect(() => {
-    return api.onBackendEvent((event) => {
-      if (event.event === "addons.changed") {
-        addonSession.addonsChanged(event.params.addonIds);
-      }
-    });
   }, []);
 
   // Terminology and icons match WowUp's own sidebar nav (wowup-electron
@@ -276,7 +252,7 @@ function Content() {
             detecting={findingWow}
             result={findWowResult}
             onDetect={() => void addonSession.findWow()}
-            onAdded={addonSession.reloadAll}
+            session={addonSession}
             restoreRows={restoreRows}
           />
           {installations.length > 0 && (
@@ -325,7 +301,7 @@ function Content() {
         <SettingsView
           installations={installations}
           selectedId={selectedId}
-          onChanged={addonSession.reloadAll}
+          session={addonSession}
           restoreRows={restoreRows}
         />
       )}
@@ -345,7 +321,7 @@ function Content() {
  */
 async function checkUpdateToast(): Promise<void> {
   try {
-    const { toast } = await api.rpc("notifications.checkUpdateToast");
+    const { toast } = await engine.rpc("notifications.checkUpdateToast");
     if (toast) {
       pluginToast(toast.title, toast.body);
     }
@@ -359,6 +335,11 @@ async function checkUpdateToast(): Promise<void> {
 
 export default definePlugin(() => {
   console.log("wowdeck frontend initializing");
+  // The one connection to the engine, before anything calls it. Its events
+  // go through one router to the stores, which registered at module scope
+  // (session.ts, wtfSession.ts, selfUpdate.ts, steamUpdates.ts,
+  // engineChanges.ts), so they arrive while no panel is mounted.
+  const disconnectEngine = connectEngine(deckyEngineLink());
 
   // Widened mode has a native half the QAM window cannot reach: Steam moves
   // the QAM view itself while its placeholder carries Steam's `Expanded`
@@ -375,42 +356,8 @@ export default definePlugin(() => {
   // it costs a request, so waking the Deck is a useful trigger as well.
   void selfUpdateStore.refresh({ toast: true, bypassWindow: true });
 
-  // WTF backup/restore jobs (and the WoWDeck download) run in the engine and outlive
-  // any panel or modal, so their progress/outcome events are subscribed once per plugin load into a module-scope
-  // lifecycle (wtfLifecycle.ts), not in a component that a modal would unmount.
-  const offWtfEvents = api.onBackendEvent((event) => {
-    wtfLifecycle.handleEvent(event);
-    // The WoWDeck download's bytes, for the update panel and the PR builds modal.
-    selfUpdateStore.handleEvent(event);
-    if (event.event === "wtf.completed") {
-      const toast = wtfCompletedToast(event.params);
-      if (toast) {
-        pluginToast(toast.title, toast.body);
-      }
-    }
-  });
-  // WF-02: an automatic update runs in the engine while nothing of ours may
-  // be open; say what it did, and refresh the Steam band and badge.
-  const offAutoUpdate = api.onBackendEvent((event) => {
-    if (event.event !== "addons.autoUpdated") {
-      return;
-    }
-    const text = autoUpdateText(event.params.result);
-    if (text) {
-      pluginToast(text.title, text.body);
-    }
-    void loadSummary();
-  });
-  // Update all's progress (#253) goes to the module-scope addon session at
-  // plugin-load scope, so a QAM closed and reopened mid-run still shows it.
-  const offUpdateAllProgress = api.onBackendEvent((event) => {
-    if (event.event === "addons.updateAllProgress") {
-      addonSession.updateAllProgress(event.params);
-    }
-  });
-
-  // BEYOND-05: the addons section on the linked WoW entry's game page (the
-  // linked game comes from the settings store, which Options updates).
+  // BEYOND-05: the addons section on linked games' pages (the engine's
+  // list, linkedGames.ts; nothing shows until it and the settings load).
   const unpatchGamePage = patchGamePage();
   // ...and the badge on its home tile.
   const stopHomeBadge = startHomeBadge();
@@ -425,6 +372,7 @@ export default definePlugin(() => {
   // plugin is checked.
   const stopPluginExitWatch = startPluginExitWatch(PLUGIN_NAME);
   void settingsStore.load();
+  void linkedGamesStore.load();
   void addonSession.reloadInstallations();
 
   // Both notifications also run on wake: an engine session can last weeks on
@@ -435,7 +383,7 @@ export default definePlugin(() => {
   let resumeRegistration: { unregister(): void } | null = null;
   if (typeof SteamClient?.System?.RegisterForOnResumeFromSuspend === "function") {
     resumeRegistration = SteamClient.System.RegisterForOnResumeFromSuspend(() => {
-      void api.rpc("tradeskillmaster.wake").catch(() => {});
+      void engine.rpc("tradeskillmaster.wake").catch(() => {});
       void checkUpdateToast();
       void selfUpdateStore.refresh({ toast: true, bypassWindow: true });
     });
@@ -476,10 +424,9 @@ export default definePlugin(() => {
     content: <Content />,
     icon: <FaBoxOpen />,
     onDismount() {
-      offWtfEvents();
-      offAutoUpdate();
-      offUpdateAllProgress();
+      stopTsmSignIn();
       unpatchGamePage();
+      steamLaunch.stopWatching();
       stopHomeBadge();
       stopQamVisibilityWatch();
       stopPluginExitWatch();
@@ -491,7 +438,10 @@ export default definePlugin(() => {
       stopQamWidening();
       qamExpand.deinit();
       resumeRegistration?.unregister();
+      disconnectEngine();
       console.log("wowdeck frontend unloading");
     },
   };
 });
+
+onTsmSessionEnded(() => pluginToast("TradeSkillMaster session ended", "Sign in again in Options."));

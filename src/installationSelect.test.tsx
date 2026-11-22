@@ -3,22 +3,17 @@ import type { DropdownItemProps } from "@decky/ui";
 import { renderToStaticMarkup } from "react-dom/server";
 import { fakeDeckyUi } from "./testing/fakeDeckyUi";
 import type { Installation, SearchResult } from "./types";
-import { createAddonSession, type AddonSessionDeps } from "./addonSession";
+import { createAddonSession } from "./addonSession";
+import { connectEngine } from "./engineLink";
+import { createFakeEngine } from "./testSupport/fakeEngine";
 
 mock.module("@decky/api", () => ({
   toaster: { toast: () => {} },
-  callable: () => async () => ({}),
-  addEventListener: () => {},
-  removeEventListener: () => {},
 }));
 
 let dropdownProps: DropdownItemProps;
 let choices: { value: string; label: string }[] = [];
 let choose: (value: string) => void;
-let updateRpc: (params: { installationId: string; hidden: boolean }) => Promise<unknown>;
-mock.module("./services/backend", () => ({
-  rpc: (_method: string, params: { installationId: string; hidden: boolean }) => updateRpc(params),
-}));
 mock.module("./components/choiceMenu", () => ({
   showChoiceMenu: (
     _label: string,
@@ -55,18 +50,24 @@ function sessionWithInstallations(hidden = false) {
     { id: "i1", displayName: "Retail", selected: true, hidden },
     { id: "i2", displayName: "Classic", selected: false, hidden },
   ] as Installation[];
-  updateRpc = async (params) => {
-    const found = installations.find((i) => i.id === params.installationId)!;
-    found.hidden = params.hidden;
-    return { installation: found };
-  };
+  // The picker's Unhide and the session it reloads share one engine; an
+  // install never answers.
+  const fake = createFakeEngine({
+    "installations.update": (params) => {
+      const found = installations.find((i) => i.id === params.installationId)!;
+      found.hidden = params.hidden ?? found.hidden;
+      return { installation: found };
+    },
+    "installations.list": () => ({ installations }),
+    "installations.select": ({ installationId }) => ({
+      installation: installations.find((i) => i.id === installationId) ?? null,
+    }),
+    "installations.recoveryStatus": { installations: [], stateFile: { status: "readable" } },
+    "addons.list": { addons: [] },
+  });
+  connectEngine(fake);
   return createAddonSession({
-    rpc: (async (method: string) =>
-      method === "installations.list"
-        ? { installations }
-        : method === "addons.install"
-          ? new Promise(() => {})
-          : { addons: [] }) as unknown as AddonSessionDeps["rpc"],
+    rpc: fake.rpc,
     toast: () => {},
     toastError: () => {},
     autoUpdateOn: () => false,

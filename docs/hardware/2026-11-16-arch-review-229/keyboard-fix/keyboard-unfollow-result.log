@@ -1,0 +1,2 @@
+eval --active --file=.scratch/arch-review-229/keyb… → {"before":30,"after":29,"confirmation":true,"countText":"29 of 30 realms followed","firstRealmRemoved":true,"lastRealmPresent":true} → focus="Done"
+press b → tree="QuickAccess-NA" focus="Manage" tab="Get Addons"

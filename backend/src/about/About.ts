@@ -6,7 +6,7 @@
  * (FetchedFile, ADR-0005).
  *
  * refresh() downloads the fetched files again. Only the WoWDeck update check
- * calls it, when it asks GitHub (main.ts wires it to PluginUpdateCheck's
+ * calls it, when it asks GitHub (engine.ts wires it to PluginUpdateCheck's
  * onGitHubAsk), so About makes no network calls of its own.
  */
 

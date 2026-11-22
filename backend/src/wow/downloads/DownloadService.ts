@@ -1,8 +1,14 @@
 /**
  * Download service: fetch an addon archive to a temporary file with
  * progress reporting. Replaces WowUp's Electron net.request download path.
+ *
+ * Every file gets a folder of its own under the managed download dir, so
+ * two archives held at once (a preview beside an install) never clobber
+ * each other. Its owner removes it (`release`); the archive module
+ * (ReleaseArchive) does that on every path.
  */
 
+import { rmSync } from "node:fs";
 import { join } from "node:path";
 import type { DownloadAuth } from "../providers/addon-provider";
 import { NetworkClient, NetworkError } from "../net/network";
@@ -12,25 +18,26 @@ import { canonicalLocalArchive } from "../archives/localArchive";
 export interface DownloadHandle {
   filePath: string;
   bytes: number;
+  /** The file's own folder; `release` removes it. */
+  dir: string;
 }
 
 export class DownloadService {
   constructor(
     private network: NetworkClient,
     private downloadDir: string,
-  ) {}
+  ) {
+    // What an engine that stopped mid-install left: nothing holds it now.
+    rmSync(downloadDir, { recursive: true, force: true });
+  }
 
-  /** Download a url into the managed download dir; cleans the dir first. */
+  /** Download a url into a fresh folder of the managed download dir. */
   async download(
     url: string,
     fileName: string,
     options: { auth?: DownloadAuth } = {},
   ): Promise<DownloadHandle> {
-    await removeDirectory(this.downloadDir);
-    await createDirectory(this.downloadDir);
-
-    const target = join(this.downloadDir, fileName.replace(/[/\\]/g, "_"));
-    try {
+    return this.#into(fileName, async (target) => {
       const bytes = await this.network.downloadToFile(url, target, {
         headers: options.auth?.headers,
         query: options.auth?.queryParams,
@@ -40,11 +47,8 @@ export class DownloadService {
       if (bytes === 0) {
         throw new NetworkError("downloaded file is empty", undefined, url);
       }
-      return { filePath: target, bytes };
-    } catch (err) {
-      await removeDirectory(this.downloadDir).catch(() => {});
-      throw err;
-    }
+      return bytes;
+    });
   }
 
   /**
@@ -57,20 +61,24 @@ export class DownloadService {
    * nothing can change the archive under a running install.
    */
   async copyLocal(source: string, fileName: string): Promise<DownloadHandle> {
-    await removeDirectory(this.downloadDir);
-    await createDirectory(this.downloadDir);
     const canonical = await canonicalLocalArchive(source);
-    const target = join(this.downloadDir, fileName.replace(/[/\\]/g, "_"));
-    try {
-      const bytes = await Bun.write(target, Bun.file(canonical));
-      return { filePath: target, bytes };
-    } catch (err) {
-      await removeDirectory(this.downloadDir).catch(() => {});
-      throw err;
-    }
+    return this.#into(fileName, (target) => Bun.write(target, Bun.file(canonical)));
   }
 
-  async cleanup(): Promise<void> {
-    await removeDirectory(this.downloadDir).catch(() => {});
+  /** Remove a handle's file and folder; never throws. */
+  async release(handle: DownloadHandle): Promise<void> {
+    await removeDirectory(handle.dir).catch(() => {});
+  }
+
+  async #into(fileName: string, write: (target: string) => Promise<number>): Promise<DownloadHandle> {
+    const dir = join(this.downloadDir, crypto.randomUUID());
+    await createDirectory(dir);
+    const target = join(dir, fileName.replace(/[/\\]/g, "_"));
+    try {
+      return { filePath: target, bytes: await write(target), dir };
+    } catch (err) {
+      await removeDirectory(dir).catch(() => {});
+      throw err;
+    }
   }
 }

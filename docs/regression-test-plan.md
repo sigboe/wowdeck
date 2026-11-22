@@ -187,6 +187,7 @@ inactive tabs have no text for `seek` to match.
 | M-32 | P2 | | An installation on an SD card that is removed: Update all installations | That installation's updates fail with "… is not available: its folder is missing (is the SD card in?)"; nothing is written under the card's mount path; the other installations still update |
 | M-33 | P1 | S | An addon installed as another's dependency (Syndicator via Baganator) | **LIBRARY** tag and "needed by Baganator" on its row. **Show libraries** (bottom, saved) hides and shows such rows, except a library no addon needs, which stays shown. Remove on Baganator: the confirmation names Syndicator and offers **Remove Baganator only** and **Remove both** |
 | M-34 | P2 | | An addon whose TOC needs a folder that is missing | The row says "missing <name>" and sorts with the other problems |
+| M-34b | P1 | | Baganator with Syndicator installed as its library. On Baganator: Ignore, Pause auto-update, Reinstall, and Update when one is offered. On Syndicator: Ignore. Do not leave My Addons between actions | After each action the row keeps its "needed by" text and any "missing <name>" text, without a list reload. Details from My Addons still lists the TOC's dependencies. Syndicator still says "needed by Baganator" |
 | M-35 | P1 | S | Update an addon (or let auto-update do it), then its Options menu | "Roll back to <old version>" right after "Release channel"; it puts the old files back (toast) and offers "Undo rollback (<new version>)"; using it toasts "Returned <name> to <new version>" |
 | M-35b | P2 | | Update an addon, then delete its kept copy under AddOns/.wowdeck/rollback/ over SSH; reopen My Addons and its Options menu | No "Roll back" item; the row is otherwise as it was |
 | M-36 | P1 | | Options → Updates → **Previous versions >**, A | One row; its description reads "On · 17 MB for 1 addon". The modal holds **Keep previous versions**, **Space used** ("17 MB for 1 addon") and **Clear**. Clear empties it ("None kept") and the rollback item disappears. **Keep previous versions** off: updates keep nothing |
@@ -205,6 +206,9 @@ inactive tabs have no text for `seek` to match.
 | M-21 | P1 | S | Order of My Addons | Updates first, then "files missing" / "not on …", then A–Z, ignored last. After X updates the top row, it moves to its A–Z place: **note where focus lands** (wanted: on the next row with an update, not the top of the page) |
 | M-44 | P1 | S | On an addon with an update: X (Update); then Options → Ignore and back; then Remove. Repeat Update from a Get Addons result | After each action the row changes once, with no flicker or second spinner: Update → the new version and an UPDATED tag (Get Addons: "Installed, Updated"); Ignore → the row hides (with Show ignored: the IGNORED tag); Remove → the row is gone (Get Addons: Install again) (verified DEVICE 2026-10-27: the row goes from its spinner straight to the new state; the refresh button stays still) |
 | M-45 | P1 | | Two installations with updates waiting, one on an SD card; take the card out, then ≡ **Update all installations** | The toast counts the updated addons and names the others: "Not updated: <name>, <name> +N." The other installation's addons are updated and stay updated; My Addons shows each addon's real version |
+| M-46 | P1 | S | Two installations, each with an addon the other lacks (one unmanaged). Select the second in the **Installation** picker, then: Check for updates; X Update all; on the unmanaged addon Folders, X Find online source and Remove; in Get Addons search, open Latest and Popular with a category, install a result and install from a file | Every list, check, folder view, source search, removal, result and install belongs to the selected installation, never the other one; switching back shows the first installation's addons unchanged |
+| M-47 | P1 | S | With automatic updates on and an update waiting, close the QAM and wait for the automatic update to run (or update an addon from Steam's game page band). Then open My Addons | The list already shows the new version when the panel opens, with no stale row first. TradeSkillMaster in Get Addons shows the same change after a reopen |
+| M-48 | P2 | S | On an addon with an update, open Details (A); from a second row's menu start Update (or Roll back), and reopen Details on the first | Details' footer follows the session while it is open: X reads **Update** and runs it (toast, then Details closes); while that addon's row works, X reads **Update…** and ≡ Release channel is off until it settles. On a recovery-required installation Details offers neither |
 
 One list refresh per addon action (#33) passed M-44, M-4 (row), M-8, M-11,
 M-27, M-33 and M-38b on device on 2026-10-27, driven with the pad and
@@ -339,18 +343,43 @@ device-passed 2026-10-23 on the Deck screen, pane 506 CSS px):
 
 | ID | Pri | S | Steps | Expected |
 |---|---|---|---|---|
-| L-1 | P1 | S | Options → Steam library → **World of Warcraft in Steam**; type "wow"; pick the WoW entry | The picker lists non-Steam games, likely WoW entries first; "wow" also finds "World of Warcraft" by its initials. After A: toast "Linked to Steam"; the row says "<name>: its game page shows addon updates" |
+| L-1 | P1 | S | Options → **Steam library**, with World of Warcraft the only linked game. Press A, then B | The Steam library section, between Updates and Notifications, has one row: **Steam library** with a chevron and "On · World of Warcraft" under it. A opens the Steam library modal. B closes it and focus is back on the row. With two linked games the row says "On · 2 games", with none "On · No games", and with Show in Steam off "Off" |
+| L-1a | P1 | S | In the Steam library modal, move through every row with Up and Down | From the top: **Show in Steam** ("Addon updates on game pages and tiles") with its toggle. Then the heading Linked games and one row per linked game, its name over "Found automatically" or "Added by you". Then the heading On these pages and three toggles: **Check for updates** ("When the page or tile appears, at most every 15 minutes"), **Tile badge** ("Green when updates are waiting") and **Play starts WoW** ("Pick the version with the arrow beside it"). On a game row the footer shows A: Remove. After the games come **Add a game** with a chevron ("Pick one of your non-Steam games") and **Find games** ("Look for WoW and Battle.net in your library"). With nothing linked, the list starts with one row: "No games linked" |
 | L-2 | P1 | S | Library → the WoW entry's page | A **WOW ADDONS** band between the hero and the Play row: "N addon updates …" (green) or "All addons are up to date"; buttons Update all (only with updates), Check for updates, Open. Focus starts on **Play**; Up reaches the band |
 | L-3 | P1 | | Check for updates; Open | Check: a toast "Checked for addon updates" with the result. Open: the QAM opens WoWDeck Manager on My Addons |
 | L-4 | P1 | | Update all on the band (with updates waiting) | All installations update; toast with the count; the band then says all is up to date |
 | L-5 | P1 | S | Another game's page; WoW's page again; restart the Deck and open WoW's page | No band on other games; exactly one band on WoW's; the link survives the restart |
-| L-6 | P2 | | Picker → **Unlink** | Toast "Unlinked from Steam"; no band on WoW's page any more |
+| L-6 | P1 | S | Steam library modal → A on World of Warcraft (Found automatically). Then open WoW's page and look at its tile | Nothing asks to confirm. A toast says "Removed World of Warcraft", the row leaves the list, and focus moves to the next game, or to "No games linked". WoW's page has no band, its tile has no badge, and Play is Steam's own button. Removing a game marked Added by you works the same way |
+| L-6a | P1 | S | After L-6, run Options → **Find WoW installations**. Then restart the Deck, open the Steam library modal and WoW's page | World of Warcraft stays out of Linked games after the scan and after the restart. Its page has no band and its tile no badge |
+| L-6b | P1 | S | Steam library modal → **Add a game**. Look at the list, press B, open it again and press A on a game that isn't WoW | A second modal, Add a game, opens on top. It lists only non-Steam games that aren't linked, never a linked one. B closes it and focus is back on Add a game. A on a game closes it, a toast says "Added <name>", the game is in Linked games as "Added by you", and its page shows the band |
+| L-6c | P1 | S | After L-6, open **Add a game** and press A on World of Warcraft | World of Warcraft is the first row, marked "Removed". A toast says "Added World of Warcraft", and it is back in Linked games as "Found automatically", with its band, badge and WoWDeck's Play button |
+| L-6d | P1 | S | Remove World of Warcraft (found) again, then press **Find games**. Press Find games a second time | The first press shows Steam's spinner on the row, then a toast "Found World of Warcraft", and World of Warcraft is back in Linked games as "Found automatically". The second press says "No new games found" |
 | L-7 | P1 | S | Home screen with the linked game in Recent; also the Library grid | A round badge in the tile's top-right corner: **green with a download arrow** when updates wait, **dark with a check** when all are current, **blue** while checking. It follows the tile when focus moves (big/small tile). Not on other games |
-| L-8 | P1 | | Restart the Deck, wait on the home screen; then open the game page within 15 minutes | The badge's appearance checks in the background (the badge turns blue briefly); the game page shows the counts without a second check. With **Check for updates when shown** off, neither checks |
-| L-9 | P2 | | Options → **Show a badge on its tile** off, then on | The badge disappears and comes back. The picker lists Battle.net / Blizzard entries first along with WoW ones |
-| L-10 | P1 | S | Link one shortcut by hand and let WoWDeck detect another, then open **World of Warcraft in Steam**. Close it, turn **Link detected Steam games** off and open it again | Every row's description starts with "App <id>", right under the name, so two entries with the same name can be told apart and all app ids line up. The hand-linked row says "App <id> · Currently linked", with "Currently linked" in green, and the detected one says "App <id> · Linked automatically". With automatic linking off, the detected row shows only its app id. A shortcut that is both linked by hand and detected says "Currently linked" |
-| L-11 | P1 | S | Have three shortcuts: one with a custom PNG icon, one with a custom ICO icon and one with no icon. Restart Steam, then open **World of Warcraft in Steam** | The PNG and ICO shortcuts show their icons in front of the name. Any icon missing when the picker opens appears within a second. Each icon spans the name and the description line. The shortcut with no icon gets an empty space of the same size, so all names and descriptions start at the same place |
-| L-12 | P2 | | In the picker, type "wow", then the first digits of a listed app id | "wow" lists the World of Warcraft entries. The digits match nothing and the picker says "Nothing matches" |
+| L-8 | P1 | | Restart the Deck, wait on the home screen; then open the game page within 15 minutes | The badge's appearance checks in the background (the badge turns blue briefly); the game page shows the counts without a second check. With **Check for updates** off, neither checks |
+| L-9 | P2 | | Steam library modal → **Tile badge** off, then on | The badge disappears and comes back. The band on WoW's page stays |
+| L-9a | P1 | | Steam library modal → **Tile badge** off, **Check for updates** on. Restart the Deck and wait on the home screen with WoW in Recent. Then set Tile badge on, Check for updates off, restart again and wait the same way. Watch Steam's CEF console both times | With the badge off the tile has no badge, and it still starts one background check, an `addons.updateSummary` call with `refresh: true`. With Check for updates off the badge shows, and no call with `refresh: true` goes out |
+| L-10 | P1 | S | Steam library modal → **Show in Steam** off. Look at the modal, then at WoW's page, its tile and Play. Turn it on again | While it is off, the linked games stay listed. The three On these pages rows stay where they were, greyed out. WoW's page has no band, its tile no badge, and Play is Steam's own. The Options row says "Off". Turned on again, the same games are linked, and the band, the badge and WoWDeck's Play button are back |
+| L-10a | P1 | | Steam library modal → **Show in Steam** off, **Check for updates** on. Restart the Deck, wait on the home screen with WoW in Recent, then open WoW's page. Watch Steam's CEF console | Neither the tile nor the page sends an `addons.updateSummary` call with `refresh: true`, because WoWDeck looks for neither while Show in Steam is off. Automatic updates then run only after the daily check (plugin start and resume), a scan or My Addons' refresh. The Check for updates row stays greyed out |
+| L-10b | P1 | | Upgrade from 1.2.x three times, one setup each. First, World of Warcraft picked by hand in the old Steam picker while WoWDeck also finds it (the owner's Deck: app 4221385996). Second, a non-Steam game WoWDeck doesn't find, picked by hand. Third, **Link detected Steam games** off. Install this build, open the Steam library modal, then restart the Deck and open it again | In the first, World of Warcraft is listed once, as "Found automatically", and removing it keeps it out after a scan (L-6a). In the second, the picked game is listed as "Added by you" and its page shows the band. In the third, Show in Steam starts off and the Options row says "Off". After the restart, each setup looks the same |
+| L-11 | P1 | S | Have three shortcuts: one with a custom PNG icon, one with a custom ICO icon and one with no icon. Restart Steam, then open Options → Steam library → **Add a game** | The PNG and ICO shortcuts show their icons in front of the name. Any icon missing when the picker opens appears within a second. Each icon spans the name and the description line. The shortcut with no icon gets an empty space of the same size, so all names and descriptions start at the same place |
+| L-12 | P2 | | In the **Add a game** picker, type "wow", then the first digits of a listed app id | "wow" lists the World of Warcraft entries. The digits match nothing and the picker says "Nothing matches" |
+| L-13 | P1 | S | Open a linked Battle.net shortcut's game page with no other Steam machine on the network | Steam's Play button has its chevron. Play shows Battle.net's icon and "Battle.net" under "Play", styled like Steam's Stream button. Play keeps first focus and there is no second launch button in the Play row |
+| L-14 | P1 | S | On that page, press Right to the chevron and A. Move with Up and Down, then press B | Steam's "Play from…" menu opens with Battle.net, then Retail, "World of Warcraft Classic" and Forever, in place of "Play on this Steam Deck". Each WoW row shows only when Battle.net has its client installed in the shortcut's prefix. Classic shows for Mists of Pandaria Classic, Classic Era or Anniversary. On the Deck, Classic Era alone brings it. No other version has a row, not even greyed out. The selected row has Steam's blue checkmark. Focus opens on the first row, as in Steam's own menu, not on the checked one. With SteamGridDB installed, no "Change Artwork..." row appears, even after the menu stays open past a few launch state polls. B closes the menu and focus returns to the chevron |
+| L-15 | P1 | S | Note My Addons' installation. Pick Forever in the menu, then press Play. Then pick Classic and press Play | Picking only selects. Nothing starts, the menu closes and Play shows Forever's icon and "Forever". My Addons keeps its installation. Play starts Steam's entry once, then Forever starts through Battle.net. Classic shows "Classic" on Play. Pressing Play starts a Classic version. When none starts, as on the Deck with Classic Era alone, WoWDeck shows "Battle.net didn't start Classic" with "Press Play in Battle.net", and Battle.net stays open |
+| L-16 | P1 | | Pick Battle.net in the menu, then press Play. Then open the page with a choice an earlier build saved, such as Classic Era or Forever Beta | My Addons keeps its installation. Play opens Battle.net through Steam's own launch and WoWDeck sends no launch request. A saved Classic Era choice shows as Classic. A saved Forever Beta choice shows as Battle.net |
+| L-17 | P1 | S | Start the game, return to the page, open the menu and pick another client | Play shows Steam's own Resume and Stop. Picking a row only changes the choice for the next launch. The running game is untouched |
+| L-18 | P1 | | Remove a client's executable icon or make it unreadable, then open the page with that client selected. Restore it, leave the page and open it again | Play shows WoWDeck's glyph in place of the client's icon, never a broken image. After the reopen, the client's icon is back without a plugin reload |
+| L-19 | P1 | | With Forever selected and the entry stopped, make Steam report a launch error, then separately a Battle.net that never becomes ready. Press Play each time | One WoWDeck notice per attempt: Steam couldn't start the library entry, or Battle.net didn't become ready. WoWDeck sends no request to Battle.net. DEVICE 2026-11-19: a stand-in `Battle.net.exe` (Notepad) gives the Battle.net notice. A missing `Battle.net.exe` makes no Steam error: Proton starts and ends the entry, so the Battle.net notice shows again. The Steam refusal notice has automated tests only. Accepted 2026-11-19: a Steam-side refusal can't be produced on the Deck |
+| L-20 | P1 | S | Open a linked shortcut whose executable is `WoW.exe` (a direct WoW entry), then an unlinked game | Both keep Steam's normal Play button, with no forced chevron and no WoW rows in the menu. The direct entry's page still has the WoW addons section |
+| L-21 | P1 | S | Add a fake remote client to the WoW page's per-client data in memory. Open the menu, pick its "Stream from <PC>" row, then pick a WoW client row. Remove the fake client afterwards | The stream row sits after the WoW rows and works as Steam's own, and Play shows Steam's Stream label with the PC's name. Picking a WoW client row switches Steam back to this Deck and Play shows the client again. Accepted 2026-11-19 as a case that can't occur: Steam assigns each machine's non-Steam shortcut its own app ID, so another PC never offers to stream the Deck's WoW entry. Run it again if Steam ever offers that stream row |
+| L-22 | P2 | | Open the "Play from…" menu of a Steam game shared with another PC (Vampire Survivors with Kaptan on), then the WoW page's menu | The WoW rows use the same row markup, checkmark and focus movement as Steam's own rows |
+| L-23 | P2 | | Load a Steam build or fixture where the Play button component can't be found or has another shape | Steam's plain Play button and its own menu work. WoWDeck logs one warning and the WoW addons section still shows |
+| L-24 | P1 | S | Open Battle.net from the page and leave WoW closed. Pick Forever and press Play, then quit WoW, pick Battle.net and look at Play | With Forever chosen, Play shows Forever's icon and "Play" over "Forever", and pressing it starts Forever through the open Battle.net without a second Steam start. With Battle.net chosen, Play shows Steam's own Resume and Stop |
+| L-25 | P1 | S | Leave a WoW folder Battle.net doesn't list beside its installs (the Deck's leftover `_retail_`), then open the menu | No row for that folder. Retail, Classic and Forever keep their rows when Battle.net lists their clients |
+| L-26 | P2 | | Add `WINEPREFIX=<another prefix>` before `%command%` in the Battle.net shortcut's launch options, then open the menu and start a client | The menu and the launch are the same as without it. Proton ignores that WINEPREFIX, and so does WoWDeck |
+| L-27 | P1 | S | Pick Forever on the linked page. Leave the page open, open Options → Steam library, turn **Play starts WoW** off and go back to the page. Wait 10 s, then turn it back on | Off: Play is Steam's plain button with no forced chevron and no client under "Play", and Steam's "Play from…" menu, if Steam shows one, has only its own rows. The WoW addons section keeps Update all, Check for updates and Open, with no launch status line. WoWDeck makes no launch state calls while off, seen from Steam's CEF console. On again: WoWDeck's Play button is back with Forever, without reopening the page (verified DEVICE 2026-11-20, build cfc00d8: off, Play was Steam's plain button with no chevron, the band had no launch line and no `launch.state` went out for 22 s; on again, Play read "Play \| Forever" on the same page and polling resumed. No updates were waiting, so Update all was absent in both states; [report](hardware/2026-11-18-steam-launch-integration/README.md#turning-wowdecks-play-button-off-and-on-l-27-286)) |
+| L-28 | P1 | | On NixOS with Steam in its own user and mount namespaces, open a linked Battle.net shortcut whose launcher is inside its prefix. Pick Forever and Play from rest, then Retail with Battle.net already open. Repeat a launch on SteamOS | The selected client starts in the shortcut prefix, a running Steam entry is reused, and busy clears. Replay enters Steam's namespaces only when both the user and mount namespaces differ. Missing runtime commands or a denied namespace entry report that WoWDeck could not send the request, rather than blaming Battle.net. DEVICE 2026-11-21: Kaptan passed namespace entry and both client launches; the docked Deck passed direct replay under GE and Experimental. [Deck report](hardware/2026-11-18-steam-launch-delivery/README.md#production-plugin-verification-on-deck) |
+| L-29 | P1 | S | On DroidDeck, open the page of a WoW game DroidDeck added and press Play. Look at the WoW addons section. Then open Options → Steam library, move through On these pages, and turn **Show in Steam** off and on again | Play is Steam's own button and starts the version DroidDeck set up for that game. WoWDeck shows no notice. The WoW addons section has no launch lines. In the modal, **Play starts WoW** is greyed out with "Not available on DroidDeck. DroidDeck launches game directly", and A does nothing on it. Up and Down treat it like the other greyed-out rows. Check for updates and Tile badge grey out only while Show in Steam is off. DEVICE 2026-11-22: passed on the DroidDeck phone. Forever started through DroidDeck's Battle.net driver, and WoWDeck showed no notice and logged no launch lines. On this client focus stops on every greyed-out row, the Play row included. The tested build showed the row's earlier wording; the owner waived a retest for the copy change. [Phone report](hardware/2026-11-22-droiddeck-play/README.md) |
 
 ### 4.5c WoWDeck update notice (the plugin's own update check)
 
@@ -1117,3 +1146,69 @@ These cases have not been run on hardware.
 | Inspect a hidden installation's details, then unhide | Auto updates displays off and is disabled with an explanation. Unhiding restores its previous setting, whether on or off. |
 | Restart or detect installations again | Auto updates and Hide choices survive. Newly found installations default to Auto updates on and Hide off. |
 | Run Update all installations | Hidden and auto-off installations are included. |
+
+### TradeSkillMaster shared session
+
+| Action | Expected |
+| --- | --- |
+| Start sign-in in Options, let the browser close the QAM, finish sign-in and return | The browser closes, the source is on, and Options, its nav dot and the destination agree about sign-in. |
+| Revoke the session elsewhere while viewing the destination, then visit Options | Both show signed out and offer sign-in. Sources never says the account stays signed in or offers Sign out after credentials are cleared. One session-ended notification appears. |
+| Keep Manage followed realms open while auction data changes | Manage and the destination both show the current followed realms. |
+| Remove TradeSkillMaster, close and reopen the QAM while it runs | Working stays visible. Installation switching waits, and a recovery-required answer appears in My Addons. |
+
+These rows require the final device run. This change was checked with lint,
+formatting, typechecking, typed-fake tests and a build only. Layout, controller
+navigation and Steam browser return have not been checked on hardware.
+
+Recovery updater TLS verification is pending for both Deck and DroidDeck.
+Before wiring the Recovery screen, probe a valid HTTPS release endpoint and
+an endpoint with an invalid certificate in actual Decky Python on each.
+Confirm certificate rejection and record whether the default trust store or
+Decky's certifi bundle was needed. The read-only attempts on 2026-11-16 did
+not run TLS in either runtime; the phone was unreachable and the Deck used a
+frozen loader without a Python command interface.
+
+
+## Spec 229 review regressions
+
+Automated session tests hold engine responses through the typed fake. They
+check that external installs block switching until the final list arrives,
+that a previous installation's list cannot replace the current list, and
+that a newly discovered recovery refusal shows recovery without an error
+notification. The TradeSkillMaster module test checks installation keys and
+addon-change refreshes. The Manage Follows component test checks a failed
+refresh beside retained follows and a successful retry after QAM teardown.
+
+On the Deck and DroidDeck, check that installation switching waits for a
+file or TradeSkillMaster install to finish. In Manage Follows, interrupt the
+connection, reopen the modal, and check that the old follows remain beside
+the failure message. Restore the connection and choose Retry. Check that
+closing the modal returns focus to Manage.
+
+This code pass reaches automated checks and the build only, tiers T1–T3.
+No visual, controller or hardware verification was performed. The #232 TLS
+acceptance gap still needs evidence from actual Decky Python on both devices.
+
+### TradeSkillMaster delayed sign-in reads
+
+Start a status read and hold its answer. Start sign-in, close Options, then
+finish sign-in. The next shared poll must still run, every view must show
+signed in, and the browser must close once. Delivering the old answer must
+not undo the result. Repeat with Cancel sign-in while a status read is held.
+The cancel request must reach the engine, show signed out, clear loading and
+stop the browser watcher. A late signing-in answer must stay ignored.
+
+Automated coverage uses the typed fake engine and manual clock in
+`src/tsmSignIn.test.ts` and `src/tsmModule.test.ts`. Real browser authentication
+still needs the owner's credentials.
+
+### Sign-in and key-entry keyboard dismissal
+
+With Steam's keyboard open, complete or cancel TradeSkillMaster sign-in.
+The keyboard closes, and completed sign-in returns to Options. Closing
+Options to open the browser must keep the shared sign-in poll running.
+Save a valid CurseForge key, dismiss key entry with Close or B, and close
+the view externally. Each exit closes the keyboard. A rejected key keeps
+entry open for correction. Deterministic tests cover terminal sign-in
+states, key save, explicit close and unmount. Human keyboard verification
+on the Deck remains required.

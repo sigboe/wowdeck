@@ -10,6 +10,19 @@ test("method check finds missing bridge and engine names, including multiline ge
   expect(result.unknownRpc).toEqual(["addons.typo"]);
 });
 
+test("method check counts calls through the typed bridge caller", () => {
+  const result = checkMethods(`await api.bridge("read_text_file", p); bridge(\n  "save_text_file", d);`,
+    "    async def read_text_file(self, path):", []);
+  expect(result.bridge).toEqual(["read_text_file", "save_text_file"]);
+  expect(result.missingBridge).toEqual(["save_text_file"]);
+});
+
+test("method check doesn't read an event name as a bridge method", () => {
+  const result = checkMethods(`const b = bridgeVia((m, ...a) => callable<unknown[], unknown>(m)(...a));
+    addEventListener<[payload: X]>("backend_event", h);`, "", []);
+  expect(result.bridge).toEqual([]);
+});
+
 test("React inspection returns bounded component names without props or hook values", () => {
   const parent: any = { type: { name: "Panel", __deckyPatch: {} }, memoizedProps: { token: "PRIVATE" } };
   parent.return = parent;

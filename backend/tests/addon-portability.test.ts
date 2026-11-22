@@ -9,7 +9,7 @@ import {
   encodeExportString,
   isImportSummaryError,
 } from "../src/wow/addons/AddonPortability";
-import { AddonService } from "../src/wow/addons/AddonService";
+import { addonService } from "./helpers/addon-service";
 import { AddonProvider } from "../src/wow/providers/addon-provider";
 import { ProviderRegistry } from "../src/wow/providers/provider-registry";
 import { createStateStore } from "../src/wow/storage/StateStore";
@@ -363,7 +363,7 @@ describe("AddonListPortability.apply (end-to-end)", () => {
     registry.register(provider);
     const store = createStateStore(root);
     store.setInstallations([installation]);
-    const service = new AddonService(store, registry, new DownloadService(makeNetwork(provider.catalog), join(root, "dl")), {
+    const service = addonService(store, registry, new DownloadService(makeNetwork(provider.catalog), join(root, "dl")), {
       addonsChanged: () => {},
       operationResult: () => {},
     });

@@ -4,15 +4,16 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { gzipSync } from "fflate";
 import { JsonlServer } from "../src/bridge/jsonl";
-import { register } from "../src/api/handlers/providers";
+import { providersHandlers } from "../src/api/handlers/providers";
 import { ProviderRegistry } from "../src/wow/providers/provider-registry";
 import { createStateStore } from "../src/wow/storage/StateStore";
+import { InstallationService } from "../src/wow/installation/InstallationService";
 import {
   TradeSkillMasterAuth,
   TradeSkillMasterProvider,
 } from "../src/wow/tsm/TradeSkillMasterAuth";
 import { TradeSkillMasterData } from "../src/wow/tsm/TradeSkillMasterData";
-import type { HandlerDeps } from "../src/api/handlers/deps";
+import { subset } from "./helpers/subset";
 
 test("all Classic account follows deliver isolated faction and region data to inactive installations", async () => {
   const dir = mkdtempSync(join(tmpdir(), "tsm-classic-"));
@@ -99,7 +100,7 @@ test("all Classic account follows deliver isolated faction and region data to in
   const provider = new TradeSkillMasterProvider(auth);
   registry.register(provider);
   registry.attachStore(store);
-  registry.setEnabled("TradeSkillMaster", true);
+  registry.get("TradeSkillMaster")!.enabled = true;
   const installations = [...new Set<string>(fixtures.map((f: any) => f.folder))].flatMap((folder) =>
     ["helper", "tsm"].map((kind) => ({
       id: folder + kind,
@@ -141,18 +142,18 @@ test("all Classic account follows deliver isolated faction and region data to in
       'TradeSkillMaster_AppHelperDB = { region = "EU" }',
     );
   }
-  const data = new TradeSkillMasterData(auth, provider, store, dir, () => {});
+  const data = new TradeSkillMasterData(auth, provider, new InstallationService(store, async () => {}), dir, () => {});
   let response: any;
   const rpc = new JsonlServer((line) => {
     response = JSON.parse(line);
   });
-  register(rpc, {
+  rpc.handle(providersHandlers(subset({
     store,
     registry,
     tsmAuth: auth,
     tsmData: data,
-    installationService: { require: (id: string) => installations.find((i) => i.id === id) },
-  } as unknown as HandlerDeps);
+    installationService: { require: (id?: string) => installations.find((i) => i.id === id)! },
+  })));
   const call = async (id = installations[0]!.id) => {
     await rpc.handleLine(
       JSON.stringify({

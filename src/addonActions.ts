@@ -10,6 +10,8 @@ export interface AddonActionDeps {
   toastError(title: string, e: unknown): void;
   /** Automatic updates are on (WF-02): a rollback then says the addon is paused. */
   autoUpdateOn(): boolean;
+  /** The active installation, where Get Addons installs and Update all runs. */
+  installationId(): string;
   setUpdatingAll(scope: "installation" | "all" | null): void;
   /** An action starts (on that addon's row: it shows busy); the list may change until it settles. */
   begin(addonId?: string): void;
@@ -60,8 +62,10 @@ export function createAddonActions(deps: AddonActionDeps) {
     install: async (result: SearchResult, channel?: ReleaseChannel) => {
       deps.begin();
       let change: ListChange = "reload";
+      const installationId = deps.installationId();
       try {
         const { operation } = await rpc("addons.install", {
+          installationId,
           providerId: result.providerId,
           externalId: result.externalId,
           channel,
@@ -85,6 +89,7 @@ export function createAddonActions(deps: AddonActionDeps) {
             named.length === missing.length
               ? named
               : await rpc("addons.lookup", {
+                  installationId,
                   providerId: result.providerId,
                   externalIds: missing,
                 })
@@ -212,7 +217,11 @@ export function createAddonActions(deps: AddonActionDeps) {
         const target = { providerId: source.providerId, externalId: source.externalId };
         const adopting = !addon.providerId;
         const { addon: after, operation } = adopting
-          ? await rpc("addons.adopt", { folderName: addon.folderName, ...target })
+          ? await rpc("addons.adopt", {
+              installationId: addon.installationId,
+              folderName: addon.folderName,
+              ...target,
+            })
           : await rpc("addons.changeSource", { addonId: addon.id, ...target });
         if (operation.status === "failed") {
           toastError(`Couldn't install ${source.name}`, operation.error ?? "");
@@ -236,7 +245,10 @@ export function createAddonActions(deps: AddonActionDeps) {
       withBusy(addon.id, async () => {
         const { operation } = addon.providerId
           ? await rpc("addons.remove", { addonId: addon.id, removeLibraries })
-          : await rpc("addons.removeUnmanaged", { folderName: addon.folderName });
+          : await rpc("addons.removeUnmanaged", {
+              installationId: addon.installationId,
+              folderName: addon.folderName,
+            });
         if (operation.status === "failed") {
           toastError(`Couldn't remove ${addon.name}`, operation.error ?? "");
         } else {
@@ -251,7 +263,10 @@ export function createAddonActions(deps: AddonActionDeps) {
       deps.begin();
       deps.setUpdatingAll(scope);
       try {
-        const { operations } = await rpc("addons.updateAll", { allInstallations: scope === "all" });
+        const { operations } = await rpc(
+          "addons.updateAll",
+          scope === "all" ? { allInstallations: true } : { installationId: deps.installationId() },
+        );
         toast(...updateAllToast(operations));
       } catch (e) {
         toastError("Couldn't update addons", e);

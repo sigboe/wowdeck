@@ -1,0 +1,1 @@
+(()=>{const seen=new Set();for(const e of document.querySelectorAll('*')){let f=e[Object.keys(e).find(k=>k.startsWith('__reactFiber'))];while(f&&!seen.has(f)){seen.add(f);const p=f.memoizedProps;if(p?.label==='TradeSkillMaster'&&p.onChange){p.onChange(true);return 'Sources toggle onChange(true)';}f=f.return;}}throw Error('toggle missing')})()
