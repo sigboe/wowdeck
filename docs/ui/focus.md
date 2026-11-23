@@ -303,6 +303,12 @@ needs a human on a controller to confirm.
 | Copy settings modal (Settings copy; device verification pending) | Focus starts on **Copy from**; A opens its dropdown (B closes the dropdown only). Under it, the section header reads "Copying from <version>" in Steam blue. Down reaches **<version> · Current settings** (installed versions only), then every backup of that version, newest first, labelled **<version> · <when> · <size>**; switching **Copy from** renames the header and every row. A on a row opens the Restore dialog worded for a copy; its A label reads Details while the copy can't run (WoW running, another job, damaged backup). B closes the modal; once a copy starts the modal closes itself and Manage backups shows progress and Cancel. |
 | Steam Play button client choice (#285, ADR 0016; device verification pending) | Steam's Play keeps initial focus and Right reaches Steam's chevron, which shows on every linked Battle.net page and while WoW runs. A opens Steam's "Play from…" menu. Up/Down move through Battle.net, the WoW clients and any stream rows, A selects an available row, and B closes it. Focus inside the menu and back to the chevron is Steam's own. |
 
+Get Addons pane entry also covers a cold plugin load. One Right or A from
+Latest or Popular waits for the widened pane and its first result, then
+focuses that result. A loaded list restores its remembered addon. Leaving the
+pane or selecting another destination cancels a pending entry. Empty lists
+keep the browse bar reachable, and a failed load offers Retry.
+
 Acceptance criteria for any change that touches focus:
 
 1. No control becomes unreachable by D-pad.

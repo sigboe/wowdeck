@@ -8,6 +8,7 @@ What's new in each version of WoWDeck Addon Manager. The format follows
 
 ### Fixed
 
+- Entering addon lists after reloading no longer needs extra Right presses while the list loads or slides out.
 - Low-contrast description and changelog text becomes readable while colours that already work stay unchanged.
 
 ## [1.3.0] - 2026-11-22

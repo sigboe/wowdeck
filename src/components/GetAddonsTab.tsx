@@ -121,6 +121,7 @@ export function GetAddonsTab({
   const installationRef = useRef<HTMLDivElement>(null);
   const [landingOnInstallation] = useState(landOnInstallation);
   const paneRef = useRef<HTMLDivElement>(null);
+  const pendingPaneEntry = useRef<GetAddonsTab | null>(null);
   const paneSlotRef = useRef<HTMLDivElement>(null);
   // The destination rows, so Left out of the pane can put focus back on the
   // highlighted one (Steam's own back navigation did not).
@@ -300,6 +301,21 @@ export function GetAddonsTab({
       if (row) {
         return row;
       }
+      // Setup and Retry are pane actions too. The browse bar is only a
+      // fallback once an empty list has finished loading.
+      const action = [
+        ...pane.querySelectorAll<HTMLElement>(
+          ".wowdeck-zero-capability button, button.Focusable, .Focusable[tabindex]",
+        ),
+      ].find(
+        (el) =>
+          !el.closest(".wowdeck-browse-bar") &&
+          !(el as HTMLInputElement).disabled &&
+          !el.classList.contains("Disabled"),
+      );
+      if (action) return action;
+      const list = listDestination(tab).get();
+      if (!sourcesStore.get().loaded || (!list.loaded && !list.error)) return null;
     }
     // Search and Manual Install's link row: the text input itself. Steam's
     // first `.Focusable` there is a wrapper, so landing on it took two
@@ -319,20 +335,39 @@ export function GetAddonsTab({
    * wide, which destination focus has already established; the timeout lets
    * Steam register the new node in its navigation tree (guide G7).
    */
+  const completePaneEntry = () => {
+    const tab = pendingPaneEntry.current;
+    if (tab === null) return;
+    if (browseZone.zone !== "pane" || pageState.tab !== tab) {
+      pendingPaneEntry.current = null;
+      return;
+    }
+    const view = browseFocusView(tab);
+    if ((tab === "latest" || tab === "popular") && restoreFocus(view)) {
+      pendingPaneEntry.current = null;
+      return;
+    }
+    const target = firstPaneControl(tab);
+    if (target) {
+      pendingPaneEntry.current = null;
+      target.focus();
+    }
+  };
+
+  // Sources, results and the widened layout arrive in separate renders on a
+  // fresh load. Keep the entry request until its control is mounted, and let
+  // Steam register that control before focusing it. Leaving the pane cancels
+  // the request so a late answer cannot pull the player back.
+  useEffect(() => {
+    if (pendingPaneEntry.current === null) return;
+    const timer = setTimeout(completePaneEntry, 0);
+    return () => clearTimeout(timer);
+  });
+
   const focusPane = (tab: GetAddonsTab = active) => {
+    pendingPaneEntry.current = tab;
     setPaneFocused(true);
     enterBrowsePane();
-    const view = browseFocusView(tab);
-    setTimeout(() => {
-      // Re-entering a list returns to the row you left on (owner's "doesn't
-      // remember our place"); a first visit, or a list reset since, falls back
-      // to its first item rather than the browse bar. Search and From URL
-      // land on their field (their rows are remembered for round-trips only).
-      if ((tab === "latest" || tab === "popular") && restoreFocus(view)) {
-        return;
-      }
-      firstPaneControl(tab)?.focus();
-    }, 0);
   };
 
   /** A/Enter or a click on a destination: select it, widen, then enter its pane. */
@@ -501,6 +536,7 @@ export function GetAddonsTab({
       ref={paneRef}
       flow-children="column"
       onGamepadFocus={() => {
+        pendingPaneEntry.current = null;
         setPaneFocused(true);
         enterBrowsePane();
       }}
