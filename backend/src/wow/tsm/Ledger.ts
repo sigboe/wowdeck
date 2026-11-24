@@ -21,6 +21,7 @@ import { NotFoundError } from "../errors";
 import { WowClientType } from "../types";
 import { detectGameRunning } from "../wtf/GameProcessGuard";
 import { ledgerItemName } from "./ItemNames";
+import { wowheadSection } from "./Wowhead";
 import { exportable, writeLedgerExport, type ZipWrite } from "./LedgerExport";
 import { GOLD_LOG, hasRows, ledgerItemTotals, ledgerView, RECORD_CSVS, type LedgerSelection } from "./LedgerFigures";
 import { readTradeSkillMaster, safePath, savedVariables, type LuaTable, type LuaValue, type SavedVariablesReader } from "./SavedVariables";
@@ -138,11 +139,12 @@ export class TradeSkillMasterLedgerReader {
   async ledger(installation: WowInstallation, account?: string, selection: LedgerSelection = {}): Promise<TradeSkillMasterLedger> {
     const gameRunning = (await this.#gameRunning()) === "running";
     const retail = RETAIL.has(installation.clientType);
+    const wowhead = wowheadSection(installation);
     const found = accounts(installation);
     const installed = existsSync(join(getAddonsPath(installation), "TradeSkillMaster"));
     if (found.length === 0) {
       return {
-        state: installed ? "noAccount" : "noAddon", accounts: [], account: null, recordedAt: null, gameRunning, retail,
+        state: installed ? "noAccount" : "noAddon", accounts: [], account: null, recordedAt: null, gameRunning, retail, wowhead,
         ...ledgerView(Object.create(null), selection, this.#now(), false),
         exportable: false,
       };
@@ -167,6 +169,7 @@ export class TradeSkillMasterLedgerReader {
       recordedAt: Math.floor(chosen.mtimeMs),
       gameRunning,
       retail,
+      wowhead,
       ...view,
       exportable: ready && saved !== null && exportable(saved.db, view.realm),
     };

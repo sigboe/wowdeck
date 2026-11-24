@@ -751,6 +751,13 @@ export interface TradeSkillMasterLedger {
    */
   retail: boolean;
   /**
+   * The installation's section of Wowhead, for links to its items: "" for
+   * Retail (the site root), a path segment such as "classic" or
+   * "mop-classic", or null when Wowhead has no section for it (betas, a
+   * Classic client of unknown version).
+   */
+  wowhead: string | null;
+  /**
    * The shown account's realms with records, sorted: a row of a realm's
    * record CSVs (`r@<realm>`) or a point of a character's or guild's gold log
    * there. The Realm filter adds All realms.

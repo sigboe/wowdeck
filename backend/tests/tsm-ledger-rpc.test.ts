@@ -70,13 +70,13 @@ test("without the addon or any account's records, the Ledger asks for the addon"
   const { write, call } = fixture();
   // A WoW account the addon never saved to does not count.
   write("WTF/Account/MAIN/SavedVariables/Blizzard_Settings.lua", "Settings = {}\n");
-  expect((await call()).result).toEqual({ state: "noAddon", accounts: [], account: null, recordedAt: null, gameRunning: false, retail: false, ...noFilters });
+  expect((await call()).result).toEqual({ state: "noAddon", accounts: [], account: null, recordedAt: null, gameRunning: false, retail: false, wowhead: "classic", ...noFilters });
 });
 
 test("with the addon installed but nothing saved yet, the Ledger has no account", async () => {
   const { write, call } = fixture();
   write("Interface/AddOns/TradeSkillMaster/TradeSkillMaster.toc", "## Title: TradeSkillMaster\n");
-  expect((await call()).result).toEqual({ state: "noAccount", accounts: [], account: null, recordedAt: null, gameRunning: false, retail: false, ...noFilters });
+  expect((await call()).result).toEqual({ state: "noAccount", accounts: [], account: null, recordedAt: null, gameRunning: false, retail: false, wowhead: "classic", ...noFilters });
 });
 
 test("one account is picked by itself, and a file of headers and empty gold logs has no records", async () => {
@@ -84,7 +84,7 @@ test("one account is picked by itself, and a file of headers and empty gold logs
   write("Interface/AddOns/TradeSkillMaster/TradeSkillMaster.toc", "## Title: TradeSkillMaster\n");
   write(account("MAIN"), saved(empty), 1_800_000_000);
   expect((await call()).result).toEqual({
-    state: "noRecords", accounts: ["MAIN"], account: "MAIN", recordedAt: 1_800_000_000_000, gameRunning: false, retail: false, ...noFilters,
+    state: "noRecords", accounts: ["MAIN"], account: "MAIN", recordedAt: 1_800_000_000_000, gameRunning: false, retail: false, wowhead: "classic", ...noFilters,
   });
   running("running");
   expect((await call()).result.gameRunning).toBe(true);
@@ -163,7 +163,7 @@ test("without the addon, records still show; files with no records ask for the a
   write(account("MAIN"), "TradeSkillMasterDB = {}\n", 1_800_000_000);
   write(account("ALT"), saved(empty), 1_800_000_500);
   expect((await call()).result).toEqual({
-    state: "noAddon", accounts: ["ALT", "MAIN"], account: "ALT", recordedAt: 1_800_000_500_000, gameRunning: false, retail: false, ...noFilters,
+    state: "noAddon", accounts: ["ALT", "MAIN"], account: "ALT", recordedAt: 1_800_000_500_000, gameRunning: false, retail: false, wowhead: "classic", ...noFilters,
   });
   write(account("MAIN"), saved({ ...empty, "r@Silvermoon@internalData@csvSales": JSON.stringify(`${header("r@Silvermoon@internalData@csvSales")}\n${sale}`) }), 1_800_000_000);
   expect((await call()).result).toMatchObject({ state: "ready", account: "MAIN" });
