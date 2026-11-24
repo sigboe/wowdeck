@@ -33,7 +33,11 @@ export function providersHandlers({ store, registry, curseForgeAuth, curseForgeP
     "tradeskillmaster.wake": async () => tsmData.wake(),
     "tradeskillmaster.setFollow": async (params) => tsmData.setFollow(installationService.require(params.installationId).id, params.realmId, params.auctionHouseType, params.followed),
     "tradeskillmaster.destination": async (params) => tsmData.destination(installationService.require(params.installationId).id),
-    "tradeskillmaster.ledger": async (params) => tsmLedger.ledger(installationService.require(params.installationId), params.account),
+    "tradeskillmaster.ledger": async (params) => tsmLedger.ledger(installationService.require(params.installationId), params.account, {
+      realm: params.realm,
+      character: params.character,
+      period: params.period,
+    }),
     "tradeskillmaster.status": async () => tsmAuth.status(),
     "tradeskillmaster.signIn": async () => tsmAuth.begin(),
     "tradeskillmaster.cancel": async () => tsmAuth.cancel(),

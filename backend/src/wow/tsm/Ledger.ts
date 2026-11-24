@@ -11,48 +11,28 @@ import type { GameRunning, TradeSkillMasterLedger } from "../../api/contracts";
 import { getAddonsPath } from "../installation/InstallationDetector";
 import type { WowInstallation } from "../models";
 import { detectGameRunning } from "../wtf/GameProcessGuard";
-import { readTradeSkillMaster, safePath, savedVariables, type LuaValue, type SavedVariablesReader } from "./SavedVariables";
+import { GOLD_LOG, hasRows, ledgerView, RECORD_CSVS, type LedgerSelection } from "./LedgerFigures";
+import { readTradeSkillMaster, safePath, savedVariables, type LuaTable, type LuaValue, type SavedVariablesReader } from "./SavedVariables";
 
 /** Where the game saves the addon's records for one WoW account. */
 const savedFile = (installation: WowInstallation, account: string) =>
   join(installation.location, "WTF/Account", account, "SavedVariables/TradeSkillMaster.lua");
 
-/**
- * The headers the addon reads each record CSV under (spec #308, "Records"),
- * by key. Sales and buys from older files name the other player buyer or
- * seller.
- */
-const trade = (other: string) => `itemString,stackSize,quantity,price,${other},player,time,source`;
-const money = ["type,amount,otherPlayer,player,time"];
-const auctions = ["itemString,stackSize,quantity,player,time"];
-const csvHeaders: [RegExp, string[]][] = [
-  [/^r@.+@internalData@csvSales$/, [trade("otherPlayer"), trade("buyer")]],
-  [/^r@.+@internalData@csvBuys$/, [trade("otherPlayer"), trade("seller")]],
-  [/^r@.+@internalData@csv(?:Income|Expense)$/, money],
-  [/^r@.+@internalData@csv(?:Expired|Cancelled)$/, auctions],
-  [/^(?:s@.+@internalData@goldLog|g@ @internalData@warbankGoldLog)$/, ["minute,copper"]],
-];
+const recordKey = /^r@.+@internalData@(csv\w+)$/;
+const goldLogKey = /^(?:s@.+@internalData@goldLog|g@ @internalData@warbankGoldLog)$/;
 const guildLogKey = /^f@.+@internalData@guildGoldLog$/;
 
 /**
- * A CSV the addon reads at least one row from: a header it knows, then a
- * first row with the header's field count (a row with another count ends
- * the CSV). Only the first two lines are looked at.
+ * Whether the addon would read at least one record from the file: a row of
+ * a record CSV or a gold log point (csvRows: a known header, then rows with
+ * the header's field count).
  */
-function hasRows(value: LuaValue | undefined, headers: string[]): boolean {
-  if (typeof value !== "string") return false;
-  const end = value.indexOf("\n");
-  if (end < 0 || !headers.includes(value.slice(0, end))) return false;
-  const next = value.indexOf("\n", end + 1);
-  const row = value.slice(end + 1, next < 0 ? undefined : next);
-  return row.split(",").length === value.slice(0, end).split(",").length;
-}
-
 function hasRecords(db: Readonly<Record<string, LuaValue>>): boolean {
   for (const [key, value] of Object.entries(db)) {
-    const headers = csvHeaders.find(([pattern]) => pattern.test(key))?.[1];
-    if (headers && hasRows(value, headers)) return true;
-    if (guildLogKey.test(key) && typeof value === "object" && Object.values(value).some((log) => hasRows(log, ["minute,copper"]))) return true;
+    const csv = RECORD_CSVS[recordKey.exec(key)?.[1] ?? ""];
+    if (csv && hasRows(value, csv.headers)) return true;
+    if (goldLogKey.test(key) && hasRows(value, GOLD_LOG)) return true;
+    if (guildLogKey.test(key) && typeof value === "object" && Object.values(value).some((log) => hasRows(log, GOLD_LOG))) return true;
   }
   return false;
 }
@@ -76,32 +56,42 @@ function accounts(installation: WowInstallation): { name: string; mtimeMs: numbe
 export class TradeSkillMasterLedgerReader {
   readonly #gameRunning: () => Promise<GameRunning>;
   readonly #reader: SavedVariablesReader;
-  constructor(options: { gameRunning?: () => Promise<GameRunning>; reader?: SavedVariablesReader } = {}) {
+  readonly #now: () => number;
+  constructor(options: { gameRunning?: () => Promise<GameRunning>; reader?: SavedVariablesReader; now?: () => number } = {}) {
     this.#gameRunning = options.gameRunning ?? (() => detectGameRunning());
     this.#reader = options.reader ?? savedVariables;
+    this.#now = options.now ?? Date.now;
   }
 
   /**
    * The Ledger of `account`, or of the engine's pick: the account written
    * last that has records, else the account written last. Without the addon
-   * and without records anywhere the state is noAddon. Throws when a file it
-   * reads cannot be read as saved data, so a broken file never reads as an
-   * empty Ledger.
+   * and without records anywhere the state is noAddon. The filters and
+   * figures follow `selection` (ledgerView). Throws when a file it reads
+   * cannot be read as saved data, so a broken file never reads as an empty
+   * Ledger.
    */
-  async ledger(installation: WowInstallation, account?: string): Promise<TradeSkillMasterLedger> {
+  async ledger(installation: WowInstallation, account?: string, selection: LedgerSelection = {}): Promise<TradeSkillMasterLedger> {
     const gameRunning = (await this.#gameRunning()) === "running";
     const found = accounts(installation);
     const installed = existsSync(join(getAddonsPath(installation), "TradeSkillMaster"));
     if (found.length === 0) {
-      return { state: installed ? "noAccount" : "noAddon", accounts: [], account: null, recordedAt: null, gameRunning };
+      return {
+        state: installed ? "noAccount" : "noAddon", accounts: [], account: null, recordedAt: null, gameRunning,
+        ...ledgerView(Object.create(null), selection, this.#now(), false),
+      };
     }
-    const records = (name: string): boolean => {
+    const db = (name: string): LuaTable | null => {
       const saved = readTradeSkillMaster(savedFile(installation, name), this.#reader);
       if (saved.status !== "ok" && saved.status !== "missing") {
         console.error("[ledger] TradeSkillMaster.lua not readable:", saved.status);
         throw new Error(`TradeSkillMaster.lua is ${saved.status}`);
       }
-      return saved.status === "ok" && hasRecords(saved.db);
+      return saved.status === "ok" ? saved.db : null;
+    };
+    const records = (name: string): boolean => {
+      const saved = db(name);
+      return saved !== null && hasRecords(saved);
     };
     const asked = found.find((a) => a.name === account);
     // Newest first, so the usual case reads one file.
@@ -116,6 +106,7 @@ export class TradeSkillMasterLedgerReader {
       account: chosen.name,
       recordedAt: Math.floor(chosen.mtimeMs),
       gameRunning,
+      ...ledgerView(db(chosen.name) ?? Object.create(null), selection, this.#now(), ready),
     };
   }
 }

@@ -45,12 +45,22 @@ let qamOpens = 0;
 let cancelModal: (() => void) | undefined;
 let modalRoot: ReturnType<typeof createRoot> | undefined;
 let holdLedger: Promise<void> | undefined;
+/** A Ledger with nothing to choose and nothing to count. */
+const noFilters = {
+  realms: [],
+  realm: null,
+  characters: [],
+  character: null,
+  period: "All",
+  figures: null,
+} as const satisfies Partial<TradeSkillMasterLedger>;
 let ledger: TradeSkillMasterLedger | Error = {
   state: "noRecords",
   accounts: ["MAIN"],
   account: "MAIN",
   recordedAt: null,
   gameRunning: false,
+  ...noFilters,
 };
 
 /** What the fake account, destination and follow calls answer: one fixture for all. */
@@ -1085,6 +1095,7 @@ test("the Ledger shows its freshness, the game-running line, each empty state an
     account: "MAIN",
     recordedAt: Date.now() - 2 * 3_600_000,
     gameRunning: false,
+    ...noFilters,
   };
   ledger = base;
   const view = await mountDestination();
@@ -1161,6 +1172,7 @@ test("entering the remembered Ledger before its records arrive lands on its firs
     account: "MAIN",
     recordedAt: Date.now(),
     gameRunning: false,
+    ...noFilters,
   };
   const view = await mountDestination();
   // The destination row in the list, which Right leaves for the pane.
@@ -1206,6 +1218,7 @@ test("a rebuilt pane puts focus back on the Ledger row the player was on", async
     account: "MAIN",
     recordedAt: Date.now(),
     gameRunning: false,
+    ...noFilters,
   };
   let view = await mountDestination();
   const emptyRow = () =>

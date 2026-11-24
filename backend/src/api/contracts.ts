@@ -745,6 +745,63 @@ export interface TradeSkillMasterLedger {
   recordedAt: number | null;
   /** World of Warcraft is running, so this session's trades are not on disk yet. */
   gameRunning: boolean;
+  /** The shown account's realms whose records (`r@<realm>`) hold rows, sorted; the Realm filter adds All realms. */
+  realms: string[];
+  /** The realm shown; null is All realms (also when the one asked for has no records). */
+  realm: string | null;
+  /**
+   * The Character filter's choices for the realm shown: each character of
+   * the records' `player` column and of the gold logs, sorted by label.
+   */
+  characters: TradeSkillMasterLedgerCharacter[];
+  /** The character shown (a `characters` id); null is All characters (also when the one asked for is not a choice). */
+  character: string | null;
+  period: TradeSkillMasterLedgerPeriod;
+  /** The trading figures for the selection (ADR 0018); null unless `state` is ready. */
+  figures: TradeSkillMasterLedgerFigures | null;
+}
+/** The Ledger's periods, as the in-game Dashboard offers them; All is the default. */
+export const TSM_LEDGER_PERIODS = ["1D", "1W", "1M", "3M", "6M", "1Y", "2Y", "All"] as const;
+export type TradeSkillMasterLedgerPeriod = (typeof TSM_LEDGER_PERIODS)[number];
+export interface TradeSkillMasterLedgerCharacter {
+  /**
+   * `<Name> - <Realm>`: a character is its name within the realm whose
+   * records hold it (the records' `player` column carries no realm).
+   */
+  id: string;
+  /** The name, with ` - <Realm>` under All realms when the account has several realms. */
+  label: string;
+  kind: "character";
+}
+/** Earned, spent or profit over the selection, in copper. */
+export interface TradeSkillMasterLedgerFlow {
+  total: number;
+  /** total ÷ the period's days; for All, ÷ the days since the selection's first gold-log point (at least 1). Unrounded. */
+  perDay: number;
+  /**
+   * The item string with the highest total (for profit: the highest earned
+   * minus spent, and only when above zero); null without one.
+   */
+  topItem: string | null;
+  /** total minus the previous period's total of the same length; null for All. */
+  trend: number | null;
+}
+/** The Ledger's figures, calculated as the addon's in-game Dashboard does (ADR 0018). */
+export interface TradeSkillMasterLedgerFigures {
+  /** Sales from every source, Σ price × quantity. Income records never count. */
+  earned: TradeSkillMasterLedgerFlow;
+  /** Purchases from every source, Σ price × quantity. Expense records never count. */
+  spent: TradeSkillMasterLedgerFlow;
+  /** earned − spent. */
+  profit: TradeSkillMasterLedgerFlow;
+  /** Items sold per day (quantity, not records), divided as `perDay`. Unrounded. */
+  dailySales: number;
+  /** Items bought per day, divided as `perDay`. Unrounded. */
+  dailyPurchases: number;
+  /** The highest price per item among the sales, in copper; 0 without sales. */
+  topSale: number;
+  /** The highest price per item among the purchases, in copper; 0 without purchases. */
+  topPurchase: number;
 }
 export interface TradeSkillMasterAuthStatus {
   state: "off" | "signingIn" | "signedIn" | "signedOut";
@@ -825,8 +882,15 @@ export interface MethodMap {
   "tradeskillmaster.wake": { params: Record<string, never>; result: void };
   "tradeskillmaster.setFollow": { params: { installationId: string; realmId: number; auctionHouseType: string; followed: boolean }; result: TradeSkillMasterDestination };
   "tradeskillmaster.destination": { params: { installationId: string }; result: TradeSkillMasterDestination };
-  /** The Ledger of the installation's WoW account (`account`, or the engine's pick). Reads WoW files only. */
-  "tradeskillmaster.ledger": { params: { installationId: string; account?: string }; result: TradeSkillMasterLedger };
+  /**
+   * The Ledger of the installation's WoW account (`account`, or the
+   * engine's pick) for a realm and character (absent: All) and a period
+   * (absent: All). Reads WoW files only.
+   */
+  "tradeskillmaster.ledger": {
+    params: { installationId: string; account?: string; realm?: string; character?: string; period?: TradeSkillMasterLedgerPeriod };
+    result: TradeSkillMasterLedger;
+  };
   "tradeskillmaster.status": { params: Record<string, never>; result: TradeSkillMasterAuthStatus };
   "tradeskillmaster.signIn": { params: Record<string, never>; result: { authorizeUrl: string } };
   "tradeskillmaster.cancel": { params: Record<string, never>; result: TradeSkillMasterAuthStatus };
