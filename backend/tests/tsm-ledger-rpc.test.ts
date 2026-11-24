@@ -2,6 +2,8 @@ import { test, expect } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { deflateRawSync } from "node:zlib";
+import { encode } from "cbor2/encoder";
 import { JsonlServer } from "../src/bridge/jsonl";
 import { providersHandlers } from "../src/api/handlers/providers";
 import { TradeSkillMasterLedgerReader } from "../src/wow/tsm/Ledger";
@@ -201,6 +203,49 @@ test("the Ledger reads names from the saved legacy item cache and prefers an exa
   expect(refreshed.earned.topItemName).toBe("Linen Variant");
   expect(refreshed.spent.topItem).toBe("i:4306");
   expect(refreshed.spent.topItemName).toBeUndefined();
+});
+
+test("the Ledger reads top item names from the Deck's modern item cache", async () => {
+  const { write, call } = fixture();
+  // The original data literal saved by TSM v4.15.9 on Forever. Only item metadata.
+  const capture = new URL("./fixtures/tsm/ledger-item-names-modern.b64", import.meta.url);
+  const data = readFileSync(capture, "utf8");
+  const db = saved({
+    ...empty,
+    "r@Silvermoon@internalData@csvSales": csv(TRADE, [`i:2589:123,1,2,15,Bob,Hero,${NOW},Auction`]),
+    "r@Silvermoon@internalData@csvBuys": csv(TRADE, [`i:2730,1,1,5,Bob,Hero,${NOW},Auction`]),
+  });
+  write(account("MAIN"), db + `TSMItemInfoDB = { data = "${data}" }`, NOW);
+  const { figures } = (await call()).result;
+  expect(figures.earned).toMatchObject({ total: 30, topItem: "i:2589:123", topItemName: "Linen Cloth" });
+  expect(figures.spent).toMatchObject({ total: 5, topItem: "i:2730", topItemName: "Green Hills of Stranglethorn - Page 6" });
+});
+
+test("the Ledger joins nested legacy lists independently of their chunk boundaries", async () => {
+  const { write, call } = fixture();
+  const db = saved({
+    ...empty,
+    "r@Silvermoon@internalData@csvSales": csv(TRADE, [`i:2589,1,1,15,Bob,Hero,${NOW},Auction`]),
+  });
+  const nested = String.raw`TSMItemInfoDB = {
+    data = { names = { "Linen ", "Cloth\002Wool Cloth" }, itemStrings = { "i:2589\002i:", "2592" } },
+  }`;
+  write(account("MAIN"), db + nested, NOW);
+  expect((await call()).result.figures.earned.topItemName).toBe("Linen Cloth");
+});
+
+test("unnamed modern rows leave named items and base fallback available", async () => {
+  const { write, call } = fixture();
+  const db = saved({
+    ...empty,
+    "r@Silvermoon@internalData@csvSales": csv(TRADE, [`i:2589:123,1,1,15,Bob,Hero,${NOW},Auction`]),
+  });
+  // Synthetic regression for unnamed rows. The captured-cache test is separate.
+  const fields = Array<number>(13).fill(0);
+  const rows = encode(["i:2589", "Linen Cloth", ...fields, "i:2589:123", "", ...fields]);
+  const cache = deflateRawSync(rows).toString("base64");
+  write(account("MAIN"), db + `TSMItemInfoDB = { data = "${cache}" }`, NOW);
+  expect((await call()).result.figures.earned.topItemName).toBe("Linen Cloth");
 });
 
 test("missing and corrupt item caches leave the Ledger's item strings and totals available", async () => {

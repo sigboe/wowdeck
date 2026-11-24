@@ -1289,7 +1289,17 @@ on the Deck remains required.
 
 | ID | Priority | Result | Steps | Expected |
 | --- | --- | --- | --- | --- |
-| LEDGER-314-1 | P1 | Not run | Open the Ledger while signed out of TradeSkillMaster. Pick a realm and period with known top items. In a temporary test account, try the same records with a missing or corrupt item cache | Sales, Expenses and Profit show the cached names. Long names wrap within the panel. With no usable cache, the same figures appear with item strings such as `i:2589` |
+| LEDGER-314-1 | P1 | Partial. DEVICE, Deck, 2026-11-24, automated D-pad and DOM probes. All three panels showed names and fell back to item strings after cache corruption. A long name wrapped within a 300 px row. The signed-out hardware pass remains open. | Open the Ledger while signed out of TradeSkillMaster. Pick a realm and period with known top items. In a temporary test account, try the same records with a missing or corrupt item cache | Sales, Expenses and Profit show the cached names. Long names wrap within the panel. With no usable cache, the same figures appear with item strings such as `i:2589` |
 
-The RPC tests use three public item names from a Deck's legacy cache.
-The destination test checks the names on all three panels.
+The RPC tests use three public item names from the Deck's Classic Era
+legacy cache and the original encoded item cache from TSM 4.15.9 on
+Forever. The modern fixture holds 7,569 item metadata rows. It includes
+only the `TSMItemInfoDB.data` literal. The destination test checks the
+names on all three panels.
+
+The Deck test used a temporary Forever account with synthetic trades and
+the real modern item cache. A corrupt cache kept the same earned, spent
+and profit totals. The Deck also returned names from the real Classic Era
+legacy cache through RPC. The frontend and engine hashes start with
+`e07247ed` and `412de91d`. The test removed the temporary account, restored
+auto-update, and left the tested build installed.
