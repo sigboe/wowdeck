@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
+import { linkSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { deflateRawSync } from "node:zlib";
@@ -7,6 +7,7 @@ import { encode } from "cbor2/encoder";
 import { JsonlServer } from "../src/bridge/jsonl";
 import { providersHandlers } from "../src/api/handlers/providers";
 import { TradeSkillMasterLedgerReader } from "../src/wow/tsm/Ledger";
+import { writeLedgerExport } from "../src/wow/tsm/LedgerExport";
 import { SavedVariablesReader } from "../src/wow/tsm/SavedVariables";
 import { listZipEntries, readZipEntryText } from "../src/wow/wtf/ZipReader";
 import { writeZipFiles } from "../src/wow/wtf/ZipWriter";
@@ -1031,6 +1032,104 @@ test("Export keeps realms apart whose safe names are the same, ignoring case as 
     "TSM_Bad_X_4_Expired_2026-11-24.csv": 2,
   });
   expect(Object.keys(zip)).toHaveLength(24);
+});
+
+/** One realm's records, written by writeLedgerExport itself, into a fresh folder. */
+const exportUnit = (options: Partial<Parameters<typeof writeLedgerExport>[0]> = {}) => {
+  const folder = options.folder ?? mkdtempSync(join(tmpdir(), "tsm-ledger-publish-"));
+  return {
+    folder,
+    run: () => writeLedgerExport({ db: { "r@Silvermoon@internalData@csvExpired": `${AUCTIONS}\ni:2589,1,1,Hero,${NOW}` }, itemInfo: null, realm: "Silvermoon", folder, now: EXPORT_NOW, ...options }),
+  };
+};
+const fsError = (code: string) => Object.assign(new Error(`${code}: test, link`), { code });
+
+test("Export never replaces a file, even one made while it publishes, with hard links or without", async () => {
+  // Without hard links (FAT and exFAT SD cards answer EPERM) it claims the
+  // name with an exclusive create and renames the ZIP onto its own claim.
+  for (const hardLinks of [true, false]) {
+    const folder = mkdtempSync(join(tmpdir(), "tsm-ledger-publish-"));
+    writeFileSync(join(folder, "TSM_Silvermoon_2026-11-24.zip"), "first");
+    let raced = false;
+    const { run } = exportUnit({
+      folder,
+      link: (from, to) => {
+        // Another program takes the next name between our tries.
+        if (!raced) writeFileSync(join(folder, "TSM_Silvermoon_2026-11-24 (1).zip"), "racer");
+        raced = true;
+        if (!hardLinks) throw fsError("EPERM");
+        linkSync(from, to);
+      },
+    });
+    const path = await run();
+    expect([hardLinks, path]).toEqual([hardLinks, join(folder, "TSM_Silvermoon_2026-11-24 (2).zip")]);
+    expect(readFileSync(join(folder, "TSM_Silvermoon_2026-11-24.zip"), "utf8")).toBe("first");
+    expect(readFileSync(join(folder, "TSM_Silvermoon_2026-11-24 (1).zip"), "utf8")).toBe("racer");
+    expect((await listZipEntries(path)).map((e) => e.name)).toHaveLength(6);
+    // The temporary file is gone.
+    expect(readdirSync(folder).sort()).toEqual([
+      "TSM_Silvermoon_2026-11-24 (1).zip", "TSM_Silvermoon_2026-11-24 (2).zip", "TSM_Silvermoon_2026-11-24.zip",
+    ]);
+  }
+});
+
+test("a failed publish leaves neither the ZIP, its temporary file nor a claimed name", async () => {
+  const linkFails = exportUnit({ link: () => { throw fsError("EIO"); } });
+  await expect(linkFails.run()).rejects.toThrow("Couldn't write the file");
+  expect(readdirSync(linkFails.folder)).toEqual([]);
+
+  const renameFails = exportUnit({
+    link: () => { throw fsError("EPERM"); },
+    rename: () => { throw fsError("EIO"); },
+  });
+  await expect(renameFails.run()).rejects.toThrow("Couldn't write the file");
+  expect(readdirSync(renameFails.folder)).toEqual([]);
+});
+
+test("Export removes the temporary files an interrupted export left there, and only those", async () => {
+  const { folder, run } = exportUnit();
+  const ours = [".TSM_Silvermoon_2026-11-20.zip.0a1b2c3d.part", ".TSM_3_Realms_2026-11-23.zip.deadbeef.part"];
+  const others = [
+    ".TSM_Silvermoon_2026-11-20.zip.0a1b2c3.part",
+    ".TSM_Silvermoon_2026-11-20.zip.0A1B2C3D.part",
+    "TSM_Silvermoon_2026-11-20.zip.0a1b2c3d.part",
+    ".TSM_Silvermoon_2026-11-20.zip.0a1b2c3d.part.bak",
+    ".TSM_Silvermoon.zip.0a1b2c3d.part",
+    ".Other_2026-11-20.zip.0a1b2c3d.part",
+    "notes.txt",
+  ];
+  for (const name of [...ours, ...others]) writeFileSync(join(folder, name), "x");
+  // A folder with our name is not our file.
+  mkdirSync(join(folder, ".TSM_Folder_2026-11-20.zip.00000000.part"));
+  await run();
+  expect(readdirSync(folder).sort()).toEqual(
+    [...others, ".TSM_Folder_2026-11-20.zip.00000000.part", "TSM_Silvermoon_2026-11-24.zip"].sort(),
+  );
+});
+
+test("Export leaves the temporary file of an export still running", async () => {
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => { release = resolve; });
+  let written!: () => void;
+  const isWritten = new Promise<void>((resolve) => { written = resolve; });
+  const folder = mkdtempSync(join(tmpdir(), "tsm-ledger-publish-"));
+  const first = exportUnit({
+    folder,
+    // Written, and not yet published when the second export starts.
+    write: async (path, files, options) => {
+      await writeZipFiles(path, files, options);
+      written();
+      await held;
+    },
+  }).run();
+  await isWritten;
+  const second = await exportUnit({ folder }).run();
+  release();
+  const firstPath = await first;
+  expect([firstPath, second].sort()).toEqual([
+    join(folder, "TSM_Silvermoon_2026-11-24 (1).zip"), join(folder, "TSM_Silvermoon_2026-11-24.zip"),
+  ]);
+  expect((await listZipEntries(firstPath)).map((e) => e.name)).toHaveLength(6);
 });
 
 test("Export's folder picker starts in Documents, created when missing, then in the remembered folder", async () => {

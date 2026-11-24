@@ -5,7 +5,7 @@
  * form and export worker) is a reference for the layout only, nothing is
  * copied from it. The account's file is only read.
  */
-import { existsSync, mkdirSync, renameSync, statSync, unlinkSync } from "node:fs";
+import { closeSync, linkSync, lstatSync, mkdirSync, openSync, readdirSync, renameSync, statSync, unlinkSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { isAbsolute, join } from "node:path";
 import { FileSystemError, ValidationError } from "../errors";
@@ -110,12 +110,99 @@ function* exportFiles(db: LuaTable, itemInfo: LuaTable | null, realms: string[],
   }
 }
 
-/** `name` in `folder`, or with ` (n)` before `.zip` when that is taken. */
-function freePath(folder: string, name: string): string {
+/** The temporary file an export writes before it publishes `name` (`TSM_…_<date>.zip`). */
+const tempName = (name: string) => `.${name}.${randomBytes(4).toString("hex")}.part`;
+/** Exactly the names tempName gives, so cleaning up never touches another file. */
+const ourTemp = /^\.TSM_.+_\d{4}-\d{2}-\d{2}\.zip\.[0-9a-f]{8}\.part$/;
+/** The temporary files of exports running in this engine, which a cleanup leaves alone. */
+const running = new Set<string>();
+
+/**
+ * Remove the temporary files an export killed mid-write left in `folder`:
+ * regular files named exactly as tempName names them, other than those of
+ * exports still running. A file that can't be removed stays.
+ */
+function removeStaleTemps(folder: string): void {
+  let names: string[];
+  try {
+    names = readdirSync(folder);
+  } catch {
+    return; // the write that follows says why
+  }
+  for (const name of names) {
+    const path = join(folder, name);
+    if (!ourTemp.test(name) || running.has(path)) continue;
+    try {
+      if (lstatSync(path).isFile()) unlinkSync(path);
+    } catch (err) {
+      console.error(`[ledger] couldn't remove an old temporary export file: ${String(err)}`);
+    }
+  }
+}
+
+/** File operations publishing uses; tests make them fail. */
+export interface PublishFs {
+  link: (existing: string, path: string) => void;
+  rename: (from: string, to: string) => void;
+}
+const nodeFs: PublishFs = { link: linkSync, rename: renameSync };
+const errorCode = (err: unknown) => (err as NodeJS.ErrnoException | null)?.code;
+/** What link answers on a file system without hard links (FAT and exFAT answer EPERM). */
+const NO_HARD_LINKS = new Set(["EPERM", "ENOTSUP", "EOPNOTSUPP", "EXDEV", "ENOSYS"]);
+const MAX_COPIES = 1000;
+
+/**
+ * Give the finished ZIP at `temp` the name `name` in `folder`, or that name
+ * with ` (n)` before `.zip` when it is taken, and answer the path. No file
+ * is ever replaced, even one made meanwhile: a hard link fails on a taken
+ * name. Where the file system has no hard links, an exclusive create claims
+ * the name first and the ZIP is renamed onto that claim; a failed rename
+ * removes the claim. `temp` is gone afterwards, unless removing it failed
+ * (logged; the next export removes it).
+ */
+function publish(temp: string, folder: string, name: string, fs: PublishFs): string {
   const stem = name.replace(/\.zip$/, "");
-  let path = join(folder, name);
-  for (let n = 1; existsSync(path); n++) path = join(folder, `${stem} (${n}).zip`);
-  return path;
+  let hardLinks = true;
+  for (let n = 0; n < MAX_COPIES; n++) {
+    const path = join(folder, n === 0 ? name : `${stem} (${n}).zip`);
+    if (hardLinks) {
+      try {
+        fs.link(temp, path);
+      } catch (err) {
+        if (errorCode(err) === "EEXIST") continue;
+        if (!NO_HARD_LINKS.has(errorCode(err) ?? "")) throw err;
+        hardLinks = false;
+      }
+      if (hardLinks) {
+        try {
+          unlinkSync(temp);
+        } catch (err) {
+          console.error(`[ledger] couldn't remove the temporary export file: ${String(err)}`);
+        }
+        return path;
+      }
+    }
+    let claim: number;
+    try {
+      claim = openSync(path, "wx");
+    } catch (err) {
+      if (errorCode(err) === "EEXIST") continue;
+      throw err;
+    }
+    closeSync(claim);
+    try {
+      fs.rename(temp, path);
+    } catch (err) {
+      try {
+        unlinkSync(path);
+      } catch {
+        /* nothing more to do: the error below is the one to report */
+      }
+      throw err;
+    }
+    return path;
+  }
+  throw new Error(`EEXIST: ${MAX_COPIES} exports of that name already`);
 }
 
 /** A failed write as the player reads it (C06); the raw error is logged. */
@@ -135,8 +222,10 @@ export type ZipWrite = typeof writeZipFiles;
  * Write the ZIP of `realm` (null: every realm with records) into `folder`
  * and answer its path. A realm without a record row is an invalid request
  * that writes nothing. `now` dates the file names (its UTC day, as the
- * desktop app's) and the entries. The ZIP is written to a hidden temporary
- * file in `folder` and renamed into place, so a failure leaves neither.
+ * desktop app's) and the entries. Temporary files an interrupted export
+ * left in `folder` go first. The ZIP is written to a hidden temporary file
+ * in `folder` and published under a free name (publish), so a failure
+ * leaves neither and no file is replaced.
  */
 export async function writeLedgerExport(options: {
   db: LuaTable;
@@ -145,8 +234,12 @@ export async function writeLedgerExport(options: {
   folder: string;
   now: number;
   write?: ZipWrite;
+  /** Tests make publishing fail. */
+  link?: PublishFs["link"];
+  rename?: PublishFs["rename"];
 }): Promise<string> {
   const { db, itemInfo, realm, folder, now, write = writeZipFiles } = options;
+  const fs: PublishFs = { link: options.link ?? nodeFs.link, rename: options.rename ?? nodeFs.rename };
   let isFolder = false;
   try {
     isFolder = isAbsolute(folder) && statSync(folder).isDirectory();
@@ -160,19 +253,21 @@ export async function writeLedgerExport(options: {
 
   const date = new Date(now).toISOString().slice(0, 10);
   const name = `TSM_${realms.length === 1 ? safeRealmName(realms[0]!) : `${realms.length}_Realms`}_${date}.zip`;
-  const temp = join(folder, `.${name}.${randomBytes(4).toString("hex")}.part`);
+  removeStaleTemps(folder);
+  const temp = join(folder, tempName(name));
+  running.add(temp);
   try {
     await write(temp, exportFiles(db, itemInfo, realms, date), { mtime: new Date(now) });
-    const path = freePath(folder, name);
-    renameSync(temp, path);
-    return path;
+    return publish(temp, folder, name, fs);
   } catch (err) {
     try {
       unlinkSync(temp);
     } catch {
-      /* the writer already removed it */
+      /* the writer already removed it, or publishing did */
     }
     throw writeError(err);
+  } finally {
+    running.delete(temp);
   }
 }
 

@@ -1014,9 +1014,10 @@ export interface MethodMap {
    * (Sales, Buys, Income, Expense, Expired, Cancelled): UTF-8 with a BOM, the
    * stored header and rows with an `itemName` column after `itemString`.
    * Realm names are made safe for file names (`_2`, `_3`, … tell apart
-   * realms whose safe names are the same); the date is the UTC day. The
-   * ZIP is written beside its final name and renamed into place, so a failed
-   * export leaves no file. On success the engine remembers `folder`
+   * realms whose safe names are the same); the date is the UTC day. The ZIP
+   * is written to a hidden temporary file beside its final name and
+   * published without replacing any file, so a failed export leaves no
+   * file; temporary files an interrupted export left go first. On success the engine remembers `folder`
    * (PluginSettings.tsmLedgerExportFolder). WoW files are only read.
    */
   "tradeskillmaster.ledgerExport": {
