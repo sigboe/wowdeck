@@ -33,9 +33,12 @@ SavedVariables.ts holds the table reader that character discovery and the
 Ledger share. It reads the `TradeSkillMasterDB` layout described in upstream
 `saved_variables.py` at the same commit. The parser is WoWDeck's own.
 Upstream matches regular expressions. WoWDeck parses `Name = table`
-statements, rejects anything else and never evaluates Lua. It also
-caches each file by last-write time and size, refuses files over 256 MiB
-before reading them, and skips `TSMItemCacheDB`. The reader's fixtures are
+statements, rejects anything else and never evaluates Lua. It keeps the
+four files it parsed last and parses one again when its last-write time or
+size changes. Together they hold at most 32 MiB of file, except
+that the newest stays whatever its size, so a scan over many files keeps
+few of them in memory. It refuses files over 256 MiB before
+reading them and skips `TSMItemCacheDB`. The reader's fixtures are
 synthetic.
 
 Interruption recovery extends the same socket and auction protocol with

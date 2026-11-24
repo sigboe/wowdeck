@@ -43,16 +43,16 @@ export function safePath(path: string): boolean {
 class Invalid extends Error {}
 
 const escapes: Record<string, string> = { a: "\x07", b: "\b", f: "\f", n: "\n", r: "\r", t: "\t", v: "\v", "\\": "\\", '"': '"', "'": "'" };
-const escape = /\\(?:(\d{1,3})|x([0-9A-Fa-f]{2})|u\{([0-9A-Fa-f]{1,8})\}|z\s*|(\r\n?|\n\r?)|([\s\S]))/g;
-/** An escape that produces a byte above 127, so the string is decoded as bytes. */
-const highByte = /\\(?:1[2-9]\d|2\d\d|x[89A-Fa-f])/;
+/** Lua's whitespace (C's isspace), not JavaScript's wider `\s`. */
+const escape = /\\(?:(\d{1,3})|x([0-9A-Fa-f]{2})|u\{([0-9A-Fa-f]{1,8})\}|z[ \t\n\v\f\r]*|(\r\n?|\n\r?)|([\s\S]))/g;
 
-/** Decodes a quoted Lua string's body. Lua strings are bytes; the file is UTF-8. */
+/**
+ * Decodes a quoted Lua string's body, given as bytes (one Latin-1 character
+ * per byte): escapes become the bytes Lua makes of them, and the result is
+ * decoded as UTF-8, the file's encoding.
+ */
 function unescape(body: string): string {
-  if (!body.includes("\\")) return body;
-  const bytes = highByte.test(body);
-  const source = bytes ? Buffer.from(body, "utf8").toString("latin1") : body;
-  const result = source.replace(escape, (_all, dec?: string, hex?: string, unicode?: string, newline?: string, other?: string) => {
+  const result = body.replace(escape, (_all, dec?: string, hex?: string, unicode?: string, newline?: string, other?: string) => {
     if (dec !== undefined || hex !== undefined) {
       const code = dec !== undefined ? Number(dec) : parseInt(hex!, 16);
       if (code > 255) throw new Invalid();
@@ -61,8 +61,7 @@ function unescape(body: string): string {
     if (unicode !== undefined) {
       const point = parseInt(unicode, 16);
       if (point > 0x10ffff) throw new Invalid();
-      const char = String.fromCodePoint(point);
-      return bytes ? Buffer.from(char, "utf8").toString("latin1") : char;
+      return Buffer.from(String.fromCodePoint(point), "utf8").toString("latin1");
     }
     if (newline !== undefined) return "\n";
     if (other === undefined) return ""; // \z skips the following whitespace.
@@ -70,33 +69,55 @@ function unescape(body: string): string {
     if (simple === undefined) throw new Invalid();
     return simple;
   });
-  return bytes ? Buffer.from(result, "latin1").toString("utf8") : result;
+  return Buffer.from(result, "latin1").toString("utf8");
 }
 
 const number = /-?0[xX][0-9A-Fa-f]+|-?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?/y;
 const opening = /\[=*\[/y;
 const name = /[A-Za-z_]\w*/y;
-const space = /(?:\s+|--(?!\[=*\[)[^\n]*|--\[(=*)\[[\s\S]*?\]\1\])*/y;
+const space = /(?:[ \t\n\v\f\r]+|--(?!\[=*\[)[^\n]*|--\[(=*)\[[\s\S]*?\]\1\])*/y;
 
 /**
  * A restricted parser for the data WoW writes into SavedVariables: one
  * `Name = value` statement per saved global, where values are strings,
  * numbers, booleans, nil and tables. It rejects everything else and never
  * evaluates input. Globals in `skip` are checked but not built.
+ *
+ * It scans the file's bytes as Latin-1 text, one character per byte, and
+ * copies every string it keeps out of `bytes`. A slice of the scanned text
+ * would keep the whole file's text alive for as long as the parsed tables
+ * live (Bun shares a slice's storage with the string it came from).
  */
-function parse(source: string, skip: ReadonlySet<string>): Record<string, LuaValue> {
-  let pos = 0;
+function parse(bytes: Buffer, skip: ReadonlySet<string>): Record<string, LuaValue> {
+  const source = bytes.toString("latin1");
+  // A UTF-8 byte order mark is not part of the data.
+  let pos = source.startsWith("\xEF\xBB\xBF") ? 3 : 0;
   const ws = () => { space.lastIndex = pos; space.exec(source); pos = space.lastIndex; };
-  const sticky = (re: RegExp): string | undefined => {
+  /** Matches `re` at `pos`; returns the match's end, or -1. */
+  const sticky = (re: RegExp): number => {
     re.lastIndex = pos;
-    const match = re.exec(source);
-    if (!match) return undefined;
-    pos = re.lastIndex;
-    return match[0];
+    if (!re.test(source)) return -1;
+    return re.lastIndex;
+  };
+  /** A name at `pos`, copied; undefined when there is none. */
+  const word = (): string | undefined => {
+    const start = pos;
+    const end = sticky(name);
+    if (end < 0) return undefined;
+    pos = end;
+    return bytes.toString("latin1", start, end);
   };
   const atLongBracket = () => { opening.lastIndex = pos; return opening.test(source); };
   const expect = (char: string) => { ws(); if (source[pos] !== char) throw new Invalid(); pos++; };
-  const longBracket = (): string | undefined => {
+  /** A string's bytes from `start` to `end`, decoded and copied. */
+  const text = (start: number, end: number, escaped: boolean): string => {
+    if (escaped) {
+      const body = source.slice(start, end);
+      if (body.includes("\\")) return unescape(body);
+    }
+    return bytes.toString("utf8", start, end);
+  };
+  const longBracket = (build: boolean): string | undefined => {
     const open = /\[(=*)\[/y; open.lastIndex = pos;
     const match = open.exec(source);
     if (!match) return undefined;
@@ -108,7 +129,7 @@ function parse(source: string, skip: ReadonlySet<string>): Record<string, LuaVal
     if (source[start] === "\r") start += source[start + 1] === "\n" ? 2 : 1;
     else if (source[start] === "\n") start += source[start + 1] === "\r" ? 2 : 1;
     pos = end + close.length;
-    return source.slice(start, end);
+    return build ? text(start, end, false) : "";
   };
   const quoted = (build: boolean): string => {
     const quote = source[pos]!;
@@ -121,9 +142,9 @@ function parse(source: string, skip: ReadonlySet<string>): Record<string, LuaVal
       if (slashes % 2 === 0) { end = next; break; }
       end = next + 1;
     }
-    const body = source.slice(pos + 1, end);
+    const start = pos + 1;
     pos = end + 1;
-    return build ? unescape(body) : "";
+    return build ? text(start, end, true) : "";
   };
   /** Returns null for nil, which callers leave out. */
   function value(depth: number, build: boolean): LuaValue | null {
@@ -139,7 +160,7 @@ function parse(source: string, skip: ReadonlySet<string>): Record<string, LuaVal
         if (source[pos] === "}") { pos++; return table; }
         let key: string;
         const start = pos;
-        const field = sticky(name);
+        const field = word();
         ws();
         if (field !== undefined && source[pos] === "=" && source[pos + 1] !== "=") { key = field; pos++; }
         else if (field === undefined && source[pos] === "[" && !atLongBracket()) {
@@ -157,16 +178,20 @@ function parse(source: string, skip: ReadonlySet<string>): Record<string, LuaVal
       }
     }
     if (char === '"' || char === "'") return quoted(build);
-    if (char === "[") { const text = longBracket(); if (text !== undefined) return text; }
-    const word = sticky(name);
-    if (word !== undefined) {
-      if (word === "true") return true;
-      if (word === "false") return false;
-      if (word === "nil") return null;
+    if (char === "[") { const long = longBracket(build); if (long !== undefined) return long; }
+    const start = pos;
+    if (sticky(name) >= 0) {
+      const keyword = source.slice(start, name.lastIndex);
+      pos = name.lastIndex;
+      if (keyword === "true") return true;
+      if (keyword === "false") return false;
+      if (keyword === "nil") return null;
       throw new Invalid();
     }
-    const digits = sticky(number);
-    if (digits !== undefined) {
+    const end = sticky(number);
+    if (end >= 0) {
+      const digits = source.slice(start, end);
+      pos = end;
       // A name or digit glued to a number (`1x`, `0x1g`) is not data.
       if (/[\w.]/.test(source[pos] ?? "")) throw new Invalid();
       return digits.startsWith("-") ? -Number(digits.slice(1)) : Number(digits);
@@ -177,7 +202,7 @@ function parse(source: string, skip: ReadonlySet<string>): Record<string, LuaVal
   for (;;) {
     ws();
     if (pos >= source.length) return globals;
-    const global = sticky(name);
+    const global = word();
     if (global === undefined) throw new Invalid();
     expect("=");
     const keep = !skip.has(global);
@@ -189,6 +214,13 @@ function parse(source: string, skip: ReadonlySet<string>): Record<string, LuaVal
   }
 }
 
+/**
+ * JavaScript's legacy `RegExp.input` keeps the last string a regular
+ * expression matched, here the whole file's text, alive until the next
+ * match. Matching a tiny string lets the text go once parsing is done.
+ */
+const forgetLastInput = () => { /$/.test(""); };
+
 /** WoW rewrites a file at logout or /reload; a changed version changes these. */
 interface Version { mtimeMs: number; ctimeMs: number; size: number; ino: number }
 interface Cached extends Version { result: SavedVariablesRead }
@@ -196,17 +228,45 @@ const sameVersion = (a: Version, b: Version) =>
   a.mtimeMs === b.mtimeMs && a.ctimeMs === b.ctimeMs && a.size === b.size && a.ino === b.ino;
 
 /**
- * Reads SavedVariables files and remembers each parsed file by last-write
- * time and size (and inode and change time), so an unchanged file is parsed once. Callers share the
- * returned tables and must not change them.
+ * How many parsed files the cache keeps, and how many file bytes they may
+ * hold together. The newest file read is always kept, whatever its size, so the Ledger's repeated
+ * reads of one large file parse it once, while a scan over many files
+ * (character discovery) keeps only the last few.
+ */
+export const cachedFiles = 4;
+export const cacheBudget = 32 * 1024 * 1024;
+
+/**
+ * Reads SavedVariables files and remembers the most recently read ones by
+ * last-write time and size (and inode and change time), so an unchanged file
+ * is parsed once. Callers share the returned tables and must not change them.
  */
 export class SavedVariablesReader {
+  /** Least recently read first. */
   readonly #cache = new Map<string, Cached>();
   readonly #limit: number;
   readonly #skip: ReadonlySet<string>;
-  constructor(options: { limit?: number; skip?: string[] } = {}) {
+  readonly #entries: number;
+  readonly #budget: number;
+  constructor(options: { limit?: number; skip?: string[]; entries?: number; budget?: number } = {}) {
     this.#limit = options.limit ?? savedVariablesLimit;
     this.#skip = new Set(options.skip ?? []);
+    this.#entries = options.entries ?? cachedFiles;
+    this.#budget = options.budget ?? cacheBudget;
+  }
+  /** Keep `entry` as the newest, then drop the oldest until the cache fits. */
+  #remember(path: string, entry: Cached): void {
+    this.#cache.delete(path);
+    this.#cache.set(path, entry);
+    // Only parsed files hold data; a refused one is just its status.
+    const weight = (cached: Cached) => (cached.result.status === "ok" ? cached.size : 0);
+    let bytes = 0;
+    for (const cached of this.#cache.values()) bytes += weight(cached);
+    for (const [oldest, cached] of this.#cache) {
+      if (this.#cache.size <= 1 || (this.#cache.size <= this.#entries && bytes <= this.#budget)) break;
+      this.#cache.delete(oldest);
+      bytes -= weight(cached);
+    }
   }
   read(path: string): SavedVariablesRead {
     let fd: number | undefined;
@@ -222,7 +282,7 @@ export class SavedVariablesReader {
       const st = fstatSync(fd);
       const version: Version = { mtimeMs: st.mtimeMs, ctimeMs: st.ctimeMs, size: st.size, ino: st.ino };
       const cached = this.#cache.get(path);
-      if (cached && sameVersion(cached, version)) return cached.result;
+      if (cached && sameVersion(cached, version)) { this.#remember(path, cached); return cached.result; }
       let result: SavedVariablesRead;
       if (!st.isFile()) result = { status: "unreadable" };
       else if (st.size > this.#limit) result = { status: "tooLarge" };
@@ -234,14 +294,14 @@ export class SavedVariablesReader {
           if (read === 0) break;
           length += read;
         }
-        try { result = { status: "ok", globals: parse(buffer.toString("utf8", 0, length), this.#skip) }; }
+        try { result = { status: "ok", globals: parse(length < st.size ? buffer.subarray(0, length) : buffer, this.#skip) }; }
         catch (error) {
           // RangeError: nesting deep enough to exhaust the stack.
           if (!(error instanceof Invalid) && !(error instanceof RangeError)) throw error;
           result = { status: "invalid" };
-        }
+        } finally { forgetLastInput(); }
       }
-      this.#cache.set(path, { ...version, result });
+      this.#remember(path, { ...version, result });
       return result;
     } catch (error) {
       this.#cache.delete(path);

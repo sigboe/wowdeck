@@ -2,7 +2,7 @@ import { test, expect } from "bun:test";
 import { mkdtempSync, statSync, symlinkSync, truncateSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { readTradeSkillMaster, savedVariables, savedVariablesLimit } from "../src/wow/tsm/SavedVariables";
+import { readTradeSkillMaster, SavedVariablesReader, savedVariables, savedVariablesLimit } from "../src/wow/tsm/SavedVariables";
 
 function file(content: string): string {
   const path = join(mkdtempSync(join(tmpdir(), "tsm-sv-")), "TradeSkillMaster.lua");
@@ -81,6 +81,29 @@ test("an unchanged file is parsed once; a new last-write time or size parses it 
   utimesSync(path, 2000, 2000);
   const resized = readTradeSkillMaster(path);
   expect(resized.status === "ok" && resized.db.a).toBe(22);
+});
+
+test("the cache keeps a few recent files: older ones are parsed again, the newest always stays", () => {
+  const reader = new SavedVariablesReader({ entries: 2, budget: 100 });
+  const [a, b, c] = ["A", "B", "C"].map((name) => file(`${name} = { ["x"] = "${"y".repeat(30)}" }`));
+  const first = reader.read(a!);
+  reader.read(b!);
+  expect(reader.read(a!)).toBe(first);
+  // A third file pushes out the one read longest ago (b, since a was just read).
+  const third = reader.read(c!);
+  expect(reader.read(a!)).toBe(first);
+  // b was parsed again, and pushed out c.
+  const second = reader.read(b!);
+  expect(reader.read(b!)).toBe(second);
+  expect(reader.read(c!)).not.toBe(third);
+
+  // Over the byte budget only the newest file stays, however large it is.
+  const small = new SavedVariablesReader({ entries: 4, budget: 60 });
+  const big = file(`Big = { ["x"] = "${"y".repeat(200)}" }`);
+  const keptA = small.read(a!);
+  const keptBig = small.read(big);
+  expect(small.read(big)).toBe(keptBig);
+  expect(small.read(a!)).not.toBe(keptA);
 });
 
 test("expressions, calls, symlinks and pipes are refused; nothing is evaluated", () => {
