@@ -70,8 +70,12 @@ export function createTsmModule(deps: {
     clock: deps.clock,
   });
   // The Ledger reads WoW's saved files only: no sign-in, no network. One key
-  // per installation and filter selection (ledgerKey).
+  // per installation and filter selection (ledgerKey). A viewed Ledger reads
+  // again every minute: a period's figures move as records age past its
+  // edges, and a logout's save shows without leaving the view. An unchanged
+  // file stays parsed in the engine, so a read is a scan of its records.
   const ledger = createKeyedResource<TradeSkillMasterLedger>({
+    pollMs: 60_000,
     read: (key) => {
       const { installationId, filters } = JSON.parse(key) as {
         installationId: string;
