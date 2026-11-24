@@ -37,7 +37,16 @@ The Dashboard shows a top item for sales and expenses and an average of
 daily sales only. The Ledger also shows average daily purchases, counted
 the same way, and a top item for profit: the item with the highest earned
 minus spent in the period, or none when no item comes out ahead. A Realm
-filter is a Ledger addition too; the Dashboard counts every realm's records.
+filter is a Ledger addition too.
+
+All realms counts every realm with records, in full. The Dashboard counts
+fewer records. It covers the realm you are logged in on and its connected
+realms, or every realm when TradeSkillMaster's region-wide option is on. For
+another realm whose sales and purchases together pass 4,000,000 characters,
+it loads only the last 180 days. All realms, and a realm other than the one
+you play, can therefore show other figures than the Dashboard. One realm's
+figures match the Dashboard viewed while logged in on that realm, as long as
+no connected realm adds records of its own.
 
 ## Considered options
 
