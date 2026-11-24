@@ -87,8 +87,8 @@ Everything in claim 7 passed except the Wowhead round trip:
 
 After this run, the next commit closed All items before opening Wowhead,
 painted the 24 px strip above the column labels, added 8 px under the
-Export row and removed the second "TradeSkillMaster" heading. None of
-those fixes has been checked on the Deck yet.
+Export row and removed the second "TradeSkillMaster" heading. The two
+rechecks below cover those fixes.
 
 ## Regression rows
 
@@ -102,3 +102,63 @@ those fixes has been checked on the Deck yet.
 | LEDGER-319-3 | Passed |
 | LEDGER-319-4 | Failed: the dialog covers the Wowhead page, and B closes the dialog. There is also a 24 px strip of rows above the sticky labels. Battle pets are untested. |
 | LEDGER-319-5 | Partial: the descriptions for All realms and Normal passed. A on Export was not pressed (brief), and the no-records state is untested. |
+
+## Recheck at 248678a
+
+Target was the owner's Steam Deck; the brief named `deck`. Build was
+`feat/308-ledger` at `248678a`, frontend only; the engine stayed the one
+from `c92c0e7`. `deck up` deployed `dist/index.js` and reloaded the plugin.
+The deployed file's SHA-256 matches the local build:
+`fea7fc64f8658f03378a097250547dfb8e766d5880e856f900475227ca956e0e`.
+Fixture as above: Forever, one account, 107 items. Export was never pressed
+and no file was written. Afterwards the QAM was closed, Steam's browser was
+already gone (no Wowhead target left), autoUpdate was restored, the tunnel
+was closed and the build stayed installed. Screens are in the session
+scratchpad `shots-319b/`, numbered 00 to 12b.
+
+DEVICE, 24 November 2026, method UI (pad presses, CDP probes, screenshots).
+Positions are CSS px.
+
+| Claim | Result | Evidence |
+| --- | --- | --- |
+| 1. Wowhead round trip | passed | R2 opened page 2 on "Item 5941"; Down ×2 reached its 3rd item, Hunting Cloak. A: the tree went from `ModalDialogOverlay_Modal_147` to `GamepadUI_Full_Root`, route `/routes/externalweb`, no modal. Six seconds later the QAM was still closed. The browser target was `https://www.wowhead.com/forever/item=4689/hunting-cloak` (Wowhead added the slug). In that target `visibilityState` was `visible` and `document.hasFocus()` true, while Steam's own window had lost focus; Steam's URL bar showed "Use touch" and the footer "B Back" (shot 08). The page's own screenshot shows Wowhead with its consent dialog (shot 09). B left the browser for the game page. Opening the QAM landed on "All items (107)" (shot 10); A reopened the list on page 2 with focus on Hunting Cloak and the LT/RT footer (shot 11). B, then A again, opened page 1 on its first item, Rough Bronze Leggings. |
+| 2. Column labels | failed | Paint: at scrollTop 340, the strip from the scroller top (40) to 62 is solid `#0e141b` (pixel scan of the 1.5× shot 05). Two bands remain wrong. (a) At 62–64, across the labels' width, a scrolled row shows through as a 2 px `rgb(35,38,46)` line: the labels are 22 px tall and the `box-shadow: 0 -24px` is the labels' own size, so it covers only 40–62. (b) Hit-tests still land on rows: 1128 samples (8 × 2 px) between 40 and 64 all hit row elements (Stonewood Hammer, Heavy Linen Bandage), because a box-shadow takes no hits. New regression: at scrollTop 0 the same shadow paints 128–152 and covers the lower half of the dialog header (114–142), so "All items · All realms · All characters · All" is cut through (shots 11, 12, 12b). |
+| 3. Export gap | passed | `.wowdeck-ledger-export` `[373,50,830,110]` has `margin-bottom: 8px`; its Field (the focus highlight's box) is `[357,50,846,110]`. The REALM caption starts at 118: 8 px. With Export focused, the highlight band ends at 110 and the REALM caption sits clear of it (shot 03). |
+| 4. Auction data heading | passed | One element in the pane has the text "TradeSkillMaster": the title-row span `[373,13,495,37]`. The pane has no `h1`–`h3`. Under the title row comes the sign-in line, with no TSM icon (shot 01). |
+| Ledger top, Auction data top | passed | Title row, pills, Export row, filters and recorded line as in the first run (shots 01, 02). |
+
+Remaining for LEDGER-319-4: one painted strip of 24 px above the labels
+that takes hits and does not paint over the header when the list is at the
+top. A `::before` that is 24 px tall and sits above the labels would cover
+the 2 px line and take hits, but would still cover the header at
+scrollTop 0. Battle pets remain untested.
+
+## Recheck of the column labels
+
+Target was the owner's Steam Deck; the brief named `deck`. Build was
+`feat/308-ledger` at `248678a` plus an uncommitted change in
+`src/sharedStyles.ts`: `.wowdeck-ledger-items-labels` lost its
+`box-shadow` and now uses `position: sticky; top: -24px`. Frontend only;
+the engine stayed the one from `c92c0e7`. `deck up` built and deployed
+`dist/index.js` and reloaded the plugin. The deployed file's SHA-256
+matches the local build:
+`439b8e28f8d05be3be3071613261140df62837d8c3dbf25ff319ccd0c64df7e5`, and
+it contains `top: -24px; z-index: 1; background: #0e141b`. Fixture as
+above: Forever, one account, 107 items. Export was never pressed.
+Afterwards the Wowhead browser was gone (no `wowhead.com` target left),
+All items and the QAM were closed, autoUpdate was restored, the tunnel
+was closed and the build stayed installed. Screens are in the session
+scratchpad `shots-319c/`, numbered 01 to 06.
+
+DEVICE, 24 November 2026, method UI (pad presses, CDP probes, a pixel scan
+of the 1.5× screenshots). Positions are CSS px in the 854 × 534 modal
+document. The scroller spans 40 to 492 with 24 px of top padding.
+
+| Claim | Result | Evidence |
+| --- | --- | --- |
+| a. List at the top | passed | At scrollTop 0 the dialog header "All items · All realms · All characters · All" is `[50,114,804,142]`. 560 hit-tests across it all land on the header or its ancestors, none on the labels. Its glyph pixels run from 120 to 137 with `#0e141b` above and below, so nothing cuts through it (shot 01). The labels sit at 152 to 174, 10 px under the header, computed `box-shadow: none`. The first row, Rough Bronze Leggings, starts at 174. |
+| b. Scrolled | passed | At scrollTop 340 and at the end of page 1 (scrollTop 2012 of 2012), the labels are at 40 to 62, flush with the scroller's top edge. From 40 to 61 every pixel across the labels' width is `#0e141b` or label text (ITEM, EARNED, SPENT, NET); the first row colour `#23262e` starts at 62. Hit-tests every 1 px from 40 to 62, every 8 px across (2068 samples per position), all land on the labels: no row hits (shots 02, 03). Focus walk: Down ×52 from Rough Bronze Leggings through the 40 rows to Next page and Close (11 presses of no change at Close), then Up ×52 back to the first row (11 of no change there). After each of the 104 presses the focused row's top was at or below the labels' bottom. While the labels were stuck, the closest the focused row came was 140 px below them (Up keeps it at y 202). |
+| c. Wowhead | passed | Down ×3 to Heavy Linen Bandage, A: tree `GamepadUI_Full_Root`, route `/routes/externalweb`, no modal. The browser target was "Heavy Linen Bandage - Item - WoW Forever" at `https://www.wowhead.com/forever/item=2581/heavy-linen-bandage`. B went back to the game page. `open` landed on "All items (107)"; A reopened the list with focus on Heavy Linen Bandage. Done twice, same result both times. |
+
+LEDGER-319-4's column-label part passes with this change. Battle pets
+remain untested.
