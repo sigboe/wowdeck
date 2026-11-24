@@ -34,7 +34,7 @@ export function firstTsmControl(pane: HTMLElement): HTMLElement | null {
 /**
  * Entering the destination (Right or A on it in the list): focus its first
  * content row. A view still reading has none yet (the Ledger's first read
- * shows only a loading line and the disabled Export), so focus stays on the
+ * shows only a loading line under its bar), so focus stays on the
  * list until the first row appears, for PENDING_RESTORE_MS, unless the
  * player moves first or leaves the pane. Without the wait, focus stayed on
  * the list while the pane counted itself focused.
@@ -108,7 +108,7 @@ export function TsmDestination({
   return (
     <>
       {/* Navigation floats at the top of the pane (S24): the pill bar, and
-          under it the Ledger's filters. */}
+          under it the Ledger's filters and Export. */}
       <div ref={barRef} className="wowdeck-pane-bar">
         <PanelSectionRow>
           <FocusSlot view={browseFocusView("tsm")} id={TSM_PILL_BAR}>

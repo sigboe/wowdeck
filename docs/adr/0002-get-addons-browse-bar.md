@@ -70,3 +70,9 @@ column with the current choice checked, A picks, B cancels. Other popups
 (the installation pickers, the row choice menus, details) stay Steam's for
 now; the same treatment is the agreed follow-up if their entrance replay
 bothers in use.
+
+**Ledger exception (2026-11-24, #312).** The Ledger's bar is the one place
+with two bar rows. Realm, Character and Period fill the first; the second
+holds Account, shown only with several WoW accounts, beside Export, which
+spec #308 places at the top of the Ledger. Both rows float with the pill
+bar, and entering the Ledger still lands on its first content row.

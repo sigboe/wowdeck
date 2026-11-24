@@ -39,11 +39,14 @@ export const QAM_DROPDOWN_BELOW_VALUE = ellipsisValue("200px");
  */
 export const BAR_DROPDOWN_VALUE = ellipsisValue("calc((100vw - 348px - 60px) / 2 - 56px)");
 /**
- * The Ledger's filter bar (TsmLedger): Account alone on its row, then Realm
- * and Character sharing a row with the fixed-width Period segment.
+ * The Ledger's filter bar (TsmLedger): Realm and Character sharing a row
+ * with the fixed-width Period segment, then Account sharing a row with
+ * Export (and its text the width Export would take, so it stays in view).
  */
 export const LEDGER_PERIOD_WIDTH = 96;
-export const LEDGER_WIDE_VALUE = ellipsisValue("calc(100vw - 396px - 56px)");
+export const LEDGER_PAIR_VALUE = ellipsisValue("calc((100vw - 396px - 12px) / 2 - 56px)");
+/** Export's text: half the row less the button's padding (it has no arrow). */
+export const LEDGER_EXPORT_VALUE = ellipsisValue("calc((100vw - 396px - 12px) / 2 - 38px)");
 export const LEDGER_HALF_VALUE = ellipsisValue(
   `calc((100vw - 396px - 24px - ${LEDGER_PERIOD_WIDTH}px) / 2 - 56px)`,
 );

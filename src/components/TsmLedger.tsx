@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { ButtonItem, Field, PanelSectionRow } from "@decky/ui";
+import { DialogButton, Field, PanelSectionRow } from "@decky/ui";
 import { FaCaretDown, FaCaretUp } from "react-icons/fa";
 import type {
   TradeSkillMasterLedgerFigures,
@@ -11,14 +11,15 @@ import { browseFocusView } from "../browseSessionState";
 import { useTsmLedger } from "../tsmReads";
 import { pickLedgerFilter } from "../tsmLedgerFilters";
 import { STEAM } from "../steamTheme";
-import { FocusSlot, focusTarget } from "./FocusSlot";
+import { focusTarget } from "./FocusSlot";
 import { SegmentRow, type BarSegment } from "./BrowseBar";
 import { SegmentMenu } from "./SegmentMenu";
 import {
+  LEDGER_EXPORT_VALUE,
   LEDGER_HALF_VALUE,
+  LEDGER_PAIR_VALUE,
   LEDGER_PERIOD_VALUE,
   LEDGER_PERIOD_WIDTH,
-  LEDGER_WIDE_VALUE,
 } from "./dropdownValue";
 import { formatMoney, formatWhen } from "../text";
 
@@ -56,14 +57,16 @@ export const LEDGER_FOCUS = {
 } as const;
 
 /**
- * Filter segments that sit beside another on the bar's row, by focus key:
- * Left from the key goes to its value (GetAddonsTab's pane Left handling;
+ * Bar segments that sit beside another on their row, by focus key: Left
+ * from the key goes to its value (GetAddonsTab's pane Left handling;
  * Steam's own row navigation skipped the sibling and left the pane, DEVICE
- * 2026-10-23). Account has a row of its own.
+ * 2026-10-23). Up and Down between the rows are Steam's own. Export takes
+ * focus once it works (phase 2).
  */
 export const LEDGER_LEFT_NEIGHBOUR: Record<string, string> = {
   [LEDGER_FOCUS.character]: LEDGER_FOCUS.realm,
   [LEDGER_FOCUS.period]: LEDGER_FOCUS.character,
+  [LEDGER_FOCUS.export]: LEDGER_FOCUS.account,
 };
 
 /** The in-game Dashboard's periods, in its order. */
@@ -71,14 +74,25 @@ const PERIODS: TradeSkillMasterLedgerPeriod[] = ["1D", "1W", "1M", "3M", "6M", "
 
 /**
  * The Ledger's filter bar (ADR 0002, G14): the browse bar's segments with
- * in-pane menus, floating with the pill bar (S24). Account shows only with
- * more than one account, on a row of its own; Realm, Character and Period
- * show once the account has records.
+ * in-pane menus, floating with the pill bar (S24) in two rows. Realm,
+ * Character and Period come first, once the account has records. The second
+ * row holds Account, only with more than one account, and Export, disabled
+ * until it works (phase 2), shown whatever the Ledger holds.
  */
 export function TsmLedgerFilters({ installationId }: { installationId: string }) {
   const { data } = useTsmLedger(installationId);
+  const exportSegment: BarSegment = {
+    id: "export",
+    caption: "Export",
+    focusId: LEDGER_FOCUS.export,
+    menu: (
+      <DialogButton disabled onClick={() => {}} style={{ width: "100%" }}>
+        {LEDGER_EXPORT_VALUE("Export arrives in the next update")}
+      </DialogButton>
+    ),
+  };
   if (!data) {
-    return null;
+    return <SegmentRow view={FOCUS_VIEW} segments={[exportSegment]} />;
   }
   const pick = (change: Parameters<typeof pickLedgerFilter>[2]) =>
     pickLedgerFilter(installationId, data, change);
@@ -91,7 +105,7 @@ export function TsmLedgerFilters({ installationId }: { installationId: string })
         menuLabel="Account"
         choices={data.accounts.map((name) => ({ data: name, label: name }))}
         selected={data.account}
-        renderValue={LEDGER_WIDE_VALUE}
+        renderValue={LEDGER_PAIR_VALUE}
         onPick={(name) => pick({ account: name })}
       />
     ),
@@ -149,8 +163,11 @@ export function TsmLedgerFilters({ installationId }: { installationId: string })
   ];
   return (
     <>
-      {data.accounts.length > 1 && <SegmentRow view={FOCUS_VIEW} segments={[account]} />}
       {data.state === "ready" && <SegmentRow view={FOCUS_VIEW} segments={filters} />}
+      <SegmentRow
+        view={FOCUS_VIEW}
+        segments={data.accounts.length > 1 ? [account, exportSegment] : [exportSegment]}
+      />
     </>
   );
 }
@@ -339,18 +356,6 @@ export function TsmLedger({ installationId }: { installationId: string }) {
           )}
         </>
       )}
-      <PanelSectionRow>
-        <FocusSlot view={FOCUS_VIEW} id={LEDGER_FOCUS.export}>
-          <ButtonItem
-            label="Export records"
-            description="Export arrives in the next update"
-            disabled
-            onClick={() => {}}
-          >
-            Export
-          </ButtonItem>
-        </FocusSlot>
-      </PanelSectionRow>
     </>
   );
 }

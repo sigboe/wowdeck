@@ -357,6 +357,7 @@ const { resetTsmReads, putTsmAccount } = await import("./tsmReads");
 const { TsmDestination, firstTsmControl, focusTsmEntry } =
   await import("./components/TsmDestination");
 const { resetTsmView, tsmView } = await import("./tsmView");
+const { LEDGER_FOCUS, LEDGER_LEFT_NEIGHBOUR } = await import("./components/TsmLedger");
 const { resetLedgerFilters } = await import("./tsmLedgerFilters");
 const { Focusable, GamepadButton } = await import("@decky/ui");
 
@@ -1198,7 +1199,7 @@ test("entering the remembered Ledger before its records arrive lands on its firs
     await act(async () => listRow.focus());
     browseZone.zone = "pane";
     focusTsmEntry(view.container);
-    // Only a loading line and the disabled Export so far: nothing to land on.
+    // Only a loading line under the bar so far: nothing to land on.
     expect(view.container.textContent).toContain("Reading TradeSkillMaster's records");
     expect(document.activeElement).toBe(listRow);
     await act(async () => release());
@@ -1455,6 +1456,61 @@ test("the Ledger's filters float with the pill bar, open in the pane, and reset 
     expect(values()).toEqual([null, "All realms", "All characters", "1M"]);
   } finally {
     echoFilters = undefined;
+    ledger = readyLedger;
+    await view.close();
+  }
+});
+
+test("the Ledger's bar floats two rows: Realm, Character and Period, then Account and a disabled Export", async () => {
+  resetTsmView();
+  resetTsmReads();
+  resetLedgerFilters();
+  ledger = readyLedger;
+  const view = await mountDestination();
+  // Each floating row's segments, by their wrappers' ids.
+  const rows = () =>
+    [...view.container.querySelectorAll(".wowdeck-pane-bar .wowdeck-browse-bar")].map((row) =>
+      [...row.querySelectorAll("[data-wowdeck-segment]")].map((s) =>
+        s.getAttribute("data-wowdeck-segment"),
+      ),
+    );
+  const exportButton = () =>
+    [...view.container.querySelectorAll("button")].filter((b) =>
+      b.textContent?.includes("Export arrives in the next update"),
+    );
+  try {
+    await showLedger(view.container);
+    expect(rows()).toEqual([
+      ["realm", "character", "period"],
+      ["account", "export"],
+    ]);
+    // Export sits at the top only, disabled, and entry skips it with the bar.
+    expect(exportButton()).toHaveLength(1);
+    expect(exportButton()[0]!.closest(".wowdeck-pane-bar")).not.toBeNull();
+    expect(exportButton()[0]!.disabled).toBe(true);
+    expect(firstTsmControl(view.container)?.textContent).toContain("Recorded at last logout");
+    // Left from Export goes to Account, from Period to Character to Realm.
+    expect(LEDGER_LEFT_NEIGHBOUR).toEqual({
+      [LEDGER_FOCUS.export]: LEDGER_FOCUS.account,
+      [LEDGER_FOCUS.period]: LEDGER_FOCUS.character,
+      [LEDGER_FOCUS.character]: LEDGER_FOCUS.realm,
+    });
+
+    // One account: Export alone on the second row.
+    ledger = { ...readyLedger, accounts: ["MAIN"] };
+    await view.leave();
+    resetTsmReads();
+    await view.render();
+    expect(rows()).toEqual([["realm", "character", "period"], ["export"]]);
+
+    // Without records there is nothing to filter, and Export still shows.
+    ledger = { ...readyLedger, accounts: ["MAIN"], state: "noRecords", ...noFilters };
+    await view.leave();
+    resetTsmReads();
+    await view.render();
+    expect(rows()).toEqual([["export"]]);
+    expect(exportButton()).toHaveLength(1);
+  } finally {
     ledger = readyLedger;
     await view.close();
   }

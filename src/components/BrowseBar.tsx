@@ -140,7 +140,7 @@ export interface BarSegment {
   id: string;
   caption: string;
   focusId: string;
-  /** The segment's SegmentMenu. */
+  /** The segment's SegmentMenu, or a button (the Ledger's Export). */
   menu: ReactNode;
   /** Its share of the row; by default the segments share it equally. */
   flex?: string;
@@ -148,7 +148,7 @@ export interface BarSegment {
 
 /**
  * A row of browse-bar segments (ADR 0002): the browse bar's own row, and
- * the Ledger's filter bar.
+ * each of the Ledger's two bar rows.
  */
 export function SegmentRow({ view, segments }: { view: string; segments: BarSegment[] }) {
   // One row, inline segments in fixed order; the segments share its width,
