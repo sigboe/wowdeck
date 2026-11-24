@@ -63,7 +63,7 @@ function fixture() {
 
 const account = (name: string) => `WTF/Account/${name}/SavedVariables/TradeSkillMaster.lua`;
 /** Nothing to choose and nothing to count. */
-const noFilters = { realms: [], realm: null, characters: [], character: null, period: "All", itemCount: 0, figures: null, gold: null };
+const noFilters = { realms: [], realm: null, characters: [], character: null, period: "All", itemCount: 0, exportable: false, figures: null, gold: null };
 
 test("without the addon or any account's records, the Ledger asks for the addon", async () => {
   const { write, call } = fixture();
@@ -853,6 +853,8 @@ const exportDb = {
   "r@Empty@internalData@csvSales": csv(TRADE, []),
   "r@Bad:Realm/Name.@internalData@csvExpired": csv(AUCTIONS, [`i:2589,1,1,Hero,${NOW}`]),
   "s@Hero - Horde - Silvermoon@internalData@goldLog": csv(GOLD, [`${minute(DAY)},500`]),
+  // A realm the Realm filter lists for its gold log alone: nothing to export.
+  "s@Miser - Horde - Hoard@internalData@goldLog": csv(GOLD, [`${minute(DAY)},900`]),
 };
 
 function exportFixture(options: { remembered?: string | null; writeZip?: typeof writeZipFiles } = {}) {
@@ -982,6 +984,28 @@ test("a failed export leaves no partial ZIP, says why, and remembers no folder",
   writeFileSync(ok.file, saved(empty));
   expect((await ok.exportTo()).error).toMatchObject({ code: "invalid_request" });
   expect(readdirSync(ok.folder)).toEqual([]);
+});
+
+test("Export refuses a realm without records, and the Ledger says whether the shown realm has any", async () => {
+  const { file, folder, call, exportTo } = exportFixture();
+  const ledger = async (params: object = {}) =>
+    (await call("tradeskillmaster.ledger", { installationId: "era", account: "MAIN", ...params })).result;
+  expect(await ledger()).toMatchObject({ state: "ready", realm: null, exportable: true });
+  expect(await ledger({ realm: "Silvermoon" })).toMatchObject({ realm: "Silvermoon", exportable: true });
+  // Hoard is a Realm choice for its gold log, with no record to export.
+  expect(await ledger({ realm: "Hoard" })).toMatchObject({ realm: "Hoard", exportable: false });
+  for (const realm of ["Hoard", "Empty", "Nowhere"]) {
+    expect([realm, (await exportTo({ realm })).error]).toMatchObject([
+      realm, { code: "invalid_request", message: "No sales, purchases or other records to export yet" },
+    ]);
+  }
+  expect(readdirSync(folder)).toEqual([]);
+
+  // Gold logs alone make a ready Ledger with nothing to export, on any realm.
+  writeFileSync(file, saved({ "s@Miser - Horde - Hoard@internalData@goldLog": csv(GOLD, [`${minute(DAY)},900`]) }));
+  expect(await ledger()).toMatchObject({ state: "ready", realms: ["Hoard"], exportable: false });
+  expect((await exportTo()).error).toMatchObject({ code: "invalid_request" });
+  expect(readdirSync(folder)).toEqual([]);
 });
 
 test("Export's folder picker starts in Documents, created when missing, then in the remembered folder", async () => {

@@ -11,23 +11,34 @@ import { isAbsolute, join } from "node:path";
 import { FileSystemError, ValidationError } from "../errors";
 import { writeZipFiles, type ZipFile } from "../wtf/ZipWriter";
 import { ledgerItemName } from "./ItemNames";
+import { hasRows, RECORD_CSVS } from "./LedgerFigures";
 import type { LuaTable } from "./SavedVariables";
 
 /** The datasets in the desktop app's order, by the name their files carry. */
 const DATASETS = ["Sales", "Buys", "Income", "Expense", "Expired", "Cancelled"] as const;
-const recordKey = /^r@(.+)@internalData@csv(Sales|Buys|Income|Expense|Expired|Cancelled)$/;
+const recordKey = /^r@(.+)@internalData@(csv(?:Sales|Buys|Income|Expense|Expired|Cancelled))$/;
 const BOM = "\ufeff";
 const utf8 = new TextEncoder();
+const NOTHING_TO_EXPORT = "No sales, purchases or other records to export yet";
 
-/** The realms with a row in at least one of their record CSVs, sorted as the Realm filter sorts them. */
+/**
+ * The realms with a row in at least one of their record CSVs, read as the
+ * Ledger reads them (a CSV of its header alone records nothing), sorted as
+ * the Realm filter sorts them. Gold logs are no records.
+ */
 export function exportRealms(db: LuaTable): string[] {
   const realms = new Set<string>();
   for (const [key, value] of Object.entries(db)) {
-    const realm = recordKey.exec(key)?.[1];
-    // A line after the header; a CSV of its header alone records nothing.
-    if (realm !== undefined && typeof value === "string" && /\n[^\n]/.test(value)) realms.add(realm);
+    const match = recordKey.exec(key);
+    if (match && !realms.has(match[1]!) && hasRows(value, RECORD_CSVS[match[2]!]!.headers)) realms.add(match[1]!);
   }
   return [...realms].sort((a, b) => a.localeCompare(b, "en"));
+}
+
+/** Whether Export has something to write for `realm` (null: All realms). */
+export function exportable(db: LuaTable, realm: string | null): boolean {
+  const realms = exportRealms(db);
+  return realm === null ? realms.length > 0 : realms.includes(realm);
 }
 
 /**
@@ -95,7 +106,8 @@ export type ZipWrite = typeof writeZipFiles;
 
 /**
  * Write the ZIP of `realm` (null: every realm with records) into `folder`
- * and answer its path. `now` dates the file names (its UTC day, as the
+ * and answer its path. A realm without a record row is an invalid request
+ * that writes nothing. `now` dates the file names (its UTC day, as the
  * desktop app's) and the entries. The ZIP is written to a hidden temporary
  * file in `folder` and renamed into place, so a failure leaves neither.
  */
@@ -115,8 +127,9 @@ export async function writeLedgerExport(options: {
     /* missing: answered below */
   }
   if (!isFolder) throw new ValidationError("That folder isn't available. Choose another");
-  const realms = realm === null ? exportRealms(db) : [realm];
-  if (realms.length === 0) throw new ValidationError("No sales, purchases or other records to export yet");
+  const withRecords = exportRealms(db);
+  const realms = realm === null ? withRecords : withRecords.filter((r) => r === realm);
+  if (realms.length === 0) throw new ValidationError(NOTHING_TO_EXPORT);
 
   const date = new Date(now).toISOString().slice(0, 10);
   const name = `TSM_${realms.length === 1 ? safeRealmName(realms[0]!) : `${realms.length}_Realms`}_${date}.zip`;

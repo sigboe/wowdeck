@@ -776,6 +776,13 @@ export interface TradeSkillMasterLedger {
   period: TradeSkillMasterLedgerPeriod;
   /** Distinct items bought or sold for this selection. */
   itemCount: number;
+  /**
+   * Export has something to write for the account and realm shown: a row of
+   * a record CSV on the realm shown, or on any realm under All realms. Gold
+   * logs are no records, so a realm or account with only gold logs has
+   * nothing to export.
+   */
+  exportable: boolean;
   /** The trading figures for the selection (ADR 0018); null unless `state` is ready. */
   figures: TradeSkillMasterLedgerFigures | null;
   /**
@@ -814,7 +821,11 @@ export interface TradeSkillMasterLedgerExportParams {
   installationId: string;
   /** The WoW account (`WTF/Account/<name>`); one without a TradeSkillMaster.lua is an error. */
   account: string;
-  /** One realm; absent is every realm the account's records name. */
+  /**
+   * One realm with a record row (TradeSkillMasterLedger.exportable); absent
+   * is every such realm. With none, the export is an invalid request and
+   * writes nothing.
+   */
   realm?: string;
   /** An existing folder, as Decky's folder picker returned it. */
   folder: string;

@@ -81,6 +81,7 @@ const noFilters = {
   period: "All",
   figures: null,
   itemCount: 0,
+  exportable: false,
   gold: null,
 } as const satisfies Partial<TradeSkillMasterLedger>;
 let ledger: TradeSkillMasterLedger | Error = {
@@ -1193,10 +1194,16 @@ test("the Ledger shows its freshness, the game-running line, each empty state an
     await showLedger();
     expect(text()).toContain("Log out or /reload to include this session");
 
+    // Gold logs alone, or a realm with only gold logs: nothing to export.
     ledger = { ...base, state: "ready" };
     await showLedger();
     expect(text()).toContain("Recorded at last logout");
     expect(text()).not.toContain("recorded yet");
+    expect(exportButton().disabled).toBe(true);
+    expect(exportButton().textContent).toBe("Nothing to export yet");
+
+    ledger = { ...base, state: "ready", exportable: true };
+    await showLedger();
     expect(exportButton().disabled).toBe(false);
     expect(exportButton().textContent).toBe("Choose folder…");
 
@@ -1400,6 +1407,7 @@ const readyLedger: TradeSkillMasterLedger = {
   character: null,
   period: "All",
   itemCount: 3,
+  exportable: true,
   figures: {
     earned: {
       total: 12_345_678,

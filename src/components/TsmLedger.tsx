@@ -92,14 +92,15 @@ const PERIODS: TradeSkillMasterLedgerPeriod[] = ["1D", "1W", "1M", "3M", "6M", "
  * row holds Account, only with more than one account, and Export, shown
  * whatever the Ledger holds. Export writes the shown account's records for
  * the shown realm, or every realm, whatever Character and Period show.
- * Without records it is disabled and takes no focus: Steam's navigation
+ * Without records there (gold logs are none) it is disabled and takes no
+ * focus: Steam's navigation
  * stopped on a disabled button although A did nothing there (DEVICE
  * 2026-11-24).
  */
 export function TsmLedgerFilters({ installationId }: { installationId: string }) {
   const { data } = useTsmLedger(installationId);
   const { exporting } = useSyncExternalStore(ledgerExport.subscribe, ledgerExport.get);
-  const canExport = data?.state === "ready" && data.account !== null;
+  const canExport = data?.exportable === true && data.account !== null;
   const exportSegment: BarSegment = canExport
     ? {
         id: "export",

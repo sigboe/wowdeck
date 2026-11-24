@@ -21,7 +21,7 @@ import { NotFoundError } from "../errors";
 import { WowClientType } from "../types";
 import { detectGameRunning } from "../wtf/GameProcessGuard";
 import { ledgerItemName } from "./ItemNames";
-import { writeLedgerExport, type ZipWrite } from "./LedgerExport";
+import { exportable, writeLedgerExport, type ZipWrite } from "./LedgerExport";
 import { GOLD_LOG, hasRows, ledgerItemTotals, ledgerView, RECORD_CSVS, type LedgerSelection } from "./LedgerFigures";
 import { readTradeSkillMaster, safePath, savedVariables, type LuaTable, type LuaValue, type SavedVariablesReader } from "./SavedVariables";
 
@@ -144,6 +144,7 @@ export class TradeSkillMasterLedgerReader {
       return {
         state: installed ? "noAccount" : "noAddon", accounts: [], account: null, recordedAt: null, gameRunning, retail,
         ...ledgerView(Object.create(null), selection, this.#now(), false),
+        exportable: false,
       };
     }
     const { chosen, saved } = this.#readAccount(installation, found, account);
@@ -167,6 +168,7 @@ export class TradeSkillMasterLedgerReader {
       gameRunning,
       retail,
       ...view,
+      exportable: ready && saved !== null && exportable(saved.db, view.realm),
     };
   }
 
