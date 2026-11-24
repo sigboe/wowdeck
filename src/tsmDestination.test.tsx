@@ -1308,7 +1308,17 @@ const readyLedger: TradeSkillMasterLedger = {
     topSale: 1_000,
     topPurchase: 2_000_000,
   },
-  gold: null,
+  gold: {
+    points: [
+      // Midday this year, so the start reads as a day and month anywhere.
+      [Date.UTC(new Date().getFullYear(), 0, 15, 12), 1_000_000],
+      [Date.UTC(new Date().getFullYear(), 0, 16, 12), 1_500_000],
+      [Date.UTC(new Date().getFullYear(), 0, 17, 12), 1_200_000],
+    ],
+    high: 20_000_000,
+    low: 500_000,
+    dailyChange: -300_000,
+  },
 };
 
 const segment = (container: HTMLElement, name: string) =>
@@ -1377,6 +1387,52 @@ test("the Ledger's figures render under its freshness line: a 2×2 grid, then Sa
       "Down from the previous period",
     ]);
     expect(trends.map((t) => t.getAttribute("data-good"))).toEqual(["true", "false", "false"]);
+  } finally {
+    ledger = readyLedger;
+    await view.close();
+  }
+});
+
+test("the Ledger's gold graph sits between the freshness line and the grid as one focus stop, or says there is no gold history", async () => {
+  resetTsmView();
+  resetTsmReads();
+  resetLedgerFilters();
+  resetFocusMemory();
+  ledger = readyLedger;
+  const view = await mountDestination();
+  try {
+    await showLedger(view.container);
+    const graph = view.container.querySelector<HTMLElement>(".wowdeck-ledger-gold")!;
+    // One focus stop holds the line, its dates and the summary (G3).
+    const stop = graph.closest<HTMLElement>(".Focusable[tabindex]")!;
+    expect(stop).not.toBeNull();
+    expect(stop.querySelectorAll(".Focusable")).toHaveLength(0);
+    const line = graph.querySelector("polyline")!;
+    expect(line.getAttribute("points")!.trim().split(/\s+/)).toHaveLength(3);
+    expect(graph.querySelector("svg")!.getAttribute("aria-label")).toBe(
+      "Gold from 15 Jan to now, between 100g and 150g",
+    );
+    expect([...stop.querySelectorAll(".wowdeck-ledger-line")].map((l) => l.textContent)).toEqual([
+      "15 JanNow",
+      "52-week high2,000g",
+      "52-week low50g",
+      "Daily change-30g",
+    ]);
+    const text = view.container.textContent ?? "";
+    expect(text.indexOf("Recorded at last logout")).toBeLessThan(text.indexOf("52-week high"));
+    expect(text.indexOf("Daily change")).toBeLessThan(text.indexOf("Avg daily sales"));
+
+    ledger = { ...readyLedger, gold: null };
+    await view.leave();
+    resetTsmReads();
+    await view.render();
+    expect(view.container.querySelector(".wowdeck-ledger-gold")).toBeNull();
+    const empty = [...view.container.querySelectorAll<HTMLElement>(".Focusable[tabindex]")].find(
+      (e) => e.textContent?.includes("No gold history"),
+    );
+    expect(empty).toBeDefined();
+    // The figures still follow.
+    expect(view.container.querySelector(".wowdeck-ledger-grid")).not.toBeNull();
   } finally {
     ledger = readyLedger;
     await view.close();

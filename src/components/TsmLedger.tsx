@@ -4,6 +4,7 @@ import { FaCaretDown, FaCaretUp } from "react-icons/fa";
 import type {
   TradeSkillMasterLedgerFigures,
   TradeSkillMasterLedgerFlow,
+  TradeSkillMasterLedgerGold,
   TradeSkillMasterLedgerPeriod,
   TradeSkillMasterLedgerState,
 } from "../../backend/src/api/contracts";
@@ -20,7 +21,7 @@ import {
   LEDGER_PERIOD_VALUE,
   LEDGER_PERIOD_WIDTH,
 } from "./dropdownValue";
-import { formatMoney, formatWhen } from "../text";
+import { dayMonth, formatMoney, formatWhen } from "../text";
 
 /** What an empty Ledger says, by the engine's reason. */
 const EMPTY: Record<Exclude<TradeSkillMasterLedgerState, "ready">, [string, string]> = {
@@ -48,6 +49,7 @@ export const LEDGER_FOCUS = {
   realm: "ledger-realm",
   character: "ledger-character",
   period: "ledger-period",
+  gold: "ledger-gold",
   averages: "ledger-averages",
   sales: "ledger-sales",
   expenses: "ledger-expenses",
@@ -252,6 +254,75 @@ function FlowPanel({
   );
 }
 
+/** The graph's drawing box; the SVG stretches it to the row's width. */
+const GRAPH_WIDTH = 300;
+const GRAPH_HEIGHT = 72;
+
+/**
+ * The selection's gold over the period, as the in-game Dashboard's graph:
+ * one line through the engine's samples (Retail's 1,000 g steps as
+ * recorded), then the 52-week High and Low and the daily change. One focus
+ * stop (G3), so the D-pad scrolls past it.
+ */
+function GoldGraph({ gold, now }: { gold: TradeSkillMasterLedgerGold | null; now: number }) {
+  if (!gold) {
+    return (
+      <PanelSectionRow>
+        <Field focusable label="No gold history" {...focusTarget(FOCUS_VIEW, LEDGER_FOCUS.gold)} />
+      </PanelSectionRow>
+    );
+  }
+  const values = gold.points.map(([, copper]) => copper);
+  const low = Math.min(...values);
+  const high = Math.max(...values);
+  const first = gold.points[0]![0];
+  const span = gold.points[gold.points.length - 1]![0] - first;
+  // A flat line sits in the middle; the line's width stays inside the box.
+  const y = (copper: number) =>
+    high === low ? GRAPH_HEIGHT / 2 : 1 + ((high - copper) / (high - low)) * (GRAPH_HEIGHT - 2);
+  const x = (ms: number) => (span === 0 ? 0 : ((ms - first) / span) * GRAPH_WIDTH);
+  const line = gold.points.map(([ms, copper]) => `${x(ms)},${y(copper)}`).join(" ");
+  const start = dayMonth(new Date(first), new Date(now));
+  return (
+    <PanelSectionRow>
+      <Field
+        focusable
+        label="Gold"
+        childrenLayout="below"
+        {...focusTarget(FOCUS_VIEW, LEDGER_FOCUS.gold)}
+      >
+        <div className="wowdeck-ledger-gold">
+          <svg
+            role="img"
+            aria-label={`Gold from ${start} to now, between ${formatMoney(low)} and ${formatMoney(high)}`}
+            viewBox={`0 0 ${GRAPH_WIDTH} ${GRAPH_HEIGHT}`}
+            preserveAspectRatio="none"
+          >
+            <polyline
+              points={line}
+              fill="none"
+              stroke={STEAM.primary}
+              strokeWidth={2}
+              strokeLinejoin="round"
+              vectorEffect="non-scaling-stroke"
+            />
+          </svg>
+          <Line label={start}>Now</Line>
+          <Line label="52-week high">
+            <Money copper={gold.high} />
+          </Line>
+          <Line label="52-week low">
+            <Money copper={gold.low} />
+          </Line>
+          <Line label="Daily change">
+            <Money copper={gold.dailyChange} />
+          </Line>
+        </div>
+      </Field>
+    </PanelSectionRow>
+  );
+}
+
 /** Items per day, as the Dashboard rounds them: one decimal. */
 const perDay = (items: number) => String(Math.round(items * 10) / 10);
 
@@ -345,7 +416,12 @@ export function TsmLedger({ installationId }: { installationId: string }) {
               />
             </PanelSectionRow>
           )}
-          {data.state === "ready" && data.figures && <Figures figures={data.figures} />}
+          {data.state === "ready" && data.figures && (
+            <>
+              <GoldGraph gold={data.gold} now={now} />
+              <Figures figures={data.figures} />
+            </>
+          )}
           {data.state !== "ready" && (
             <PanelSectionRow>
               <Field

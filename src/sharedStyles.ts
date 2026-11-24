@@ -187,6 +187,7 @@ export function wowdeckSharedStyleCss(): string {
 .wowdeck-ledger-line .wowdeck-ledger-value { display: inline-flex; align-items: center; gap: 4px; }
 .wowdeck-ledger-trend { display: inline-flex; }
 .wowdeck-ledger-trend svg { width: 12px; height: 12px; }
+.wowdeck-ledger-gold > svg { display: block; width: 100%; height: 72px; margin-top: 4px; }
 .wowdeck-glyph-text {
   display: inline-flex; align-items: center; justify-content: center;
   min-width: 24px; height: 18px; padding: 0 4px; border-radius: 4px 4px 2px 2px;

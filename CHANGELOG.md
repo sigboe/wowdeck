@@ -8,7 +8,7 @@ What's new in each version of WoWDeck Addon Manager. The format follows
 
 ### Added
 
-- TradeSkillMaster in Get Addons has a Ledger beside Auction data. It shows the gold you earned and spent per realm, character and period, with the same totals as the in-game Dashboard.
+- TradeSkillMaster in Get Addons has a Ledger beside Auction data. It graphs your gold and shows what you earned and spent per realm, character and period, as the in-game Dashboard does.
 
 ### Fixed
 

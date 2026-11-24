@@ -1247,6 +1247,22 @@ drops or merges.
 `src/tsmDestination.test.tsx` drives the filters and the figure layout with
 the fake engine.
 
+### TradeSkillMaster Ledger: gold graph (#313)
+
+| ID | Priority | Result | Steps | Expected |
+| --- | --- | --- | --- | --- |
+| LEDGER-313-1 | P1 | Not run | Open the Ledger of an account with gold logs and press Down from the recorded line through the figures, then back up | The gold graph sits between the recorded line and the grid of averages: a line under "Gold", the first day on the left and "Now" on the right, then 52-week high, 52-week low and Daily change. The graph is one focus stop, and Down moves on to the grid |
+| LEDGER-313-2 | P1 | Not run | Log in on a realm and log out. In the Ledger pick that realm, then All characters and one character, with Period All and 1M, and compare with the in-game Dashboard's graph and summary on that realm | The line has the Dashboard graph's shape over the same days. 52-week high, 52-week low and Daily change match the Dashboard's 52W HIGH, 52W LOW and DAILY CHANGE. On Retail the line moves in steps of 1,000 g, as the addon records it. Connected realms and the region-wide option can make one realm differ, as ADR 0018 explains |
+| LEDGER-313-3 | P2 | Not run | On Retail, with a guild a character leads, open Character under All realms and under each realm. Pick Warband bank, then the guild | Character lists the characters, then Warband bank under every realm, then each guild under its own realm. Picking Warband bank or a guild graphs only its gold, and the grid and the Sales, Expenses and Profit panels show zero |
+| LEDGER-313-4 | P2 | Not run | Pick a character that traded but never logged gold | The graph's place says "No gold history" and is one focus stop; the figures still follow |
+
+`backend/tests/tsm-ledger-rpc.test.ts` asserts each gold rule against the
+addon with an injected clock: the sum and carry-forward, zero before a log's
+first point, the sampling, the 52-week High and Low, the daily change, the
+balances the addon drops on load, and guilds it stops counting.
+`src/tsmDestination.test.tsx` covers the graph's place, its single focus
+stop and "No gold history".
+
 ### Sign-in and key-entry keyboard dismissal
 
 With Steam's keyboard open, complete or cancel TradeSkillMaster sign-in.
