@@ -1308,13 +1308,20 @@ auto-update, and left the tested build installed.
 
 | ID | Priority | Result | Steps | Expected |
 | --- | --- | --- | --- | --- |
-| LEDGER-315-1 | P1 | Partial. DEVICE, Deck, 2026-11-24. Three fixture saves produced one visible update 330 ms after the last save. The earned total changed from 1g to 4g, the recorded line changed to just now, and focus stayed on the line. Live logout and quit remain to be checked. | Make a trade with TradeSkillMaster installed. Start a logout countdown outside a rested area, then open the QAM on the Ledger before it finishes. Keep the Ledger open through character selection. Then quit WoW | The recorded time and figures update within a few seconds. The logout or reload hint stays while WoW is at character selection and goes away when WoW closes |
+| LEDGER-315-1 | P1 | Pass. DEVICE, Deck, 2026-11-24. Three fixture saves produced one visible update 330 ms after the last save. The earned total changed from 1g to 4g, the recorded line changed to just now, and focus stayed on the line. In a real Forever session on build `afaa82d`, the owner logged out to character selection. The Ledger showed the logout save's time and the hint "Log out or /reload to include this session". After WoW exited, the hint was gone. | Make a trade with TradeSkillMaster installed. Start a logout countdown outside a rested area, then open the QAM on the Ledger before it finishes. Keep the Ledger open through character selection. Then quit WoW | The recorded time and figures update within a few seconds. The logout or reload hint stays while WoW is at character selection and goes away when WoW closes |
 
 The Deck test used a temporary Forever account and replaced its saved file
 three times while the Ledger stayed open. The frontend and engine hashes
 start with `ae368baf` and `f8d6aef0`. The test removed the fixture, restored
 auto-update, and left the build installed. The engine tests cover storage
 recovery, debounce timing and game start and stop.
+
+In the live session the QAM was closed at the logout save, so that check
+shows the result, not the update arriving. The recorded time on screen, in
+the engine and on the saved file was the same to the millisecond. Exit game
+from the Steam menu closes the QAM within about 4 seconds, so nobody can see
+the hint clear while the Ledger stays open. When the Ledger opened
+again, it showed no hint, and the engine reported the game stopped.
 
 ### TradeSkillMaster Ledger all items (#316)
 
