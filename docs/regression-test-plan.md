@@ -1344,3 +1344,18 @@ transfers, postage and repairs. None of those entries appeared in the
 list, and the 55 rows matched the expected order. The frontend and engine
 hashes start with `1758d9d8` and `ece09dac`. The test removed the account,
 restored auto-update, and left the tested build installed.
+
+### TradeSkillMaster Ledger export (#317)
+
+| ID | Priority | Result | Steps | Expected |
+| --- | --- | --- | --- | --- |
+| LEDGER-317-1 | P1 | Pending | Open the Ledger of an account with records on a realm. Pick that realm, a character and a period. Move to Export and press A. In the folder picker, choose Documents. Copy the ZIP to a computer and open each CSV in a spreadsheet | Export reads "Choose folder…" and is a focus stop; Left from it goes to Account when there is one. The picker opens in `~/Documents`, which exists even if it didn't before. Closing the picker returns focus to Export. A toast says "Exported TradeSkillMaster records" with the file's path. The ZIP is `TSM_<realm>_<date>.zip` with six files, `TSM_<realm>_Sales_<date>.csv` through `Cancelled`. Each opens in a spreadsheet with accented letters intact. Files with items have an itemName column after itemString that holds item names. The files hold every record of the realm, whatever the Character and Period filters showed. WoW's saved files are unchanged |
+| LEDGER-317-2 | P2 | Pending | Pick All realms and export again. Then export to a folder on a full or read-only drive, such as a write-protected SD card. Cancel the picker once | The second export starts in the folder the first one went to. All realms writes `TSM_<N>_Realms_<date>.zip` with six files per realm, and a second export on the same day adds ` (1)` to the name instead of replacing the first. The failed export toasts "Couldn't export TradeSkillMaster records" with the reason and leaves no file behind. Cancelling writes nothing and shows no toast. With no records, Export is disabled, says "Nothing to export yet" and takes no focus |
+
+The RPC tests export a fixture with the recorded item cache into a
+temporary folder and read the ZIP back with the backup ZIP reader. They
+check entry names, the BOM, the itemName column and row counts, for one
+realm and for all realms. They also check that commas leave item names,
+that unsafe realm names become safe file names, that a write failing
+after the first CSV leaves no file, and the picker's start folder. The destination test checks the start folder, the
+remembered folder, the request's realm, both toasts and focus on Export.

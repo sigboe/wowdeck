@@ -8,7 +8,7 @@ What's new in each version of WoWDeck Addon Manager. The format follows
 
 ### Added
 
-- TradeSkillMaster's Ledger refreshes at logout and shows gold history, earnings, spending and a breakdown by item.
+- TradeSkillMaster's Ledger refreshes at logout, shows gold history, earnings, spending and a breakdown by item, and exports your records for spreadsheets.
 
 ### Fixed
 

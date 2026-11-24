@@ -5,7 +5,7 @@ import { createRoot } from "react-dom/client";
 import { JSDOM } from "jsdom";
 import { fakeDeckyUi } from "./testing/fakeDeckyUi";
 import { connectEngine } from "./engineLink";
-import { createFakeEngine } from "./testSupport/fakeEngine";
+import { createFakeEngine, engineFailure } from "./testSupport/fakeEngine";
 import type {
   TradeSkillMasterAccount,
   TradeSkillMasterDestination,
@@ -15,10 +15,20 @@ import type { Addon } from "./types";
 
 // The addon session TsmAddon now writes through pulls in the plugin toasts,
 // which import Decky's API: not installed outside the Deck.
+const toasts: { title: string; body: string }[] = [];
+/** Each folder picker opened: its selection type and start folder. */
+const pickers: { type: number; start: string }[] = [];
+/** What the picker answers: a folder, or a rejection (cancelled). */
+let pickFolder: (start: string) => Promise<{ path: string }> = async () => {
+  throw new Error("cancel");
+};
 mock.module("@decky/api", () => ({
-  toaster: { toast: () => {} },
-  openFilePicker: async () => {
-    throw new Error("cancel");
+  toaster: {
+    toast: (t: { title: string; body: string }) => toasts.push({ title: t.title, body: t.body }),
+  },
+  openFilePicker: async (type: number, start: string) => {
+    pickers.push({ type, start });
+    return pickFolder(start);
   },
   FileSelectionType: { FILE: 0, FOLDER: 1 },
 }));
@@ -46,6 +56,10 @@ let cancelModal: (() => void) | undefined;
 let modalRoot: ReturnType<typeof createRoot> | undefined;
 let holdLedger: Promise<void> | undefined;
 const ledgerRequests: unknown[] = [];
+/** Export as the engine answers it: the folder it remembers, the exports asked for, a failure. */
+let exportFolder: string | null = null;
+const exportRequests: unknown[] = [];
+let exportFails = false;
 /** When set, the fake Ledger answers with the selection asked for, as the engine would. */
 let echoFilters:
   | ((
@@ -139,6 +153,14 @@ const fake = createFakeEngine({
     return echoFilters ? echoFilters(ledger, params) : ledger;
   },
   "tradeskillmaster.ledgerItems": { rows: [], nextOffset: null },
+  "tradeskillmaster.ledgerExportFolder": () => ({ folder: exportFolder ?? "/home/deck/Documents" }),
+  "tradeskillmaster.ledgerExport": (params) => {
+    exportRequests.push(params);
+    if (exportFails)
+      return engineFailure("internal_error", "No permission to write to that folder");
+    exportFolder = params.folder;
+    return { path: `${params.folder}/TSM_${params.realm ?? "2_Realms"}_2026-11-24.zip` };
+  },
   "tradeskillmaster.destination": async (params) => {
     await holdDestination;
     return accountFixture(params) as unknown as TradeSkillMasterDestination;
@@ -376,7 +398,7 @@ mock.module("@decky/ui", () => ({
     return { Close: close };
   },
 }));
-const { resetFocusMemory, restoreFocus } = await import("./focusMemory");
+const { rememberedFocus, resetFocusMemory, restoreFocus } = await import("./focusMemory");
 const { browseFocusView, browseZone } = await import("./browseSessionState");
 const { TsmAddon } = await import("./components/TsmAddon");
 const { resetTsmReads, putTsmAccount } = await import("./tsmReads");
@@ -385,6 +407,7 @@ const { TsmDestination, firstTsmControl, focusTsmEntry } =
 const { resetTsmView, tsmView } = await import("./tsmView");
 const { LEDGER_FOCUS, LEDGER_LEFT_NEIGHBOUR } = await import("./components/TsmLedger");
 const { resetLedgerFilters } = await import("./tsmLedgerFilters");
+const { resetLedgerExport } = await import("./tsmLedgerExport");
 const { Focusable, GamepadButton } = await import("@decky/ui");
 
 beforeEach(resetTsmReads);
@@ -1128,7 +1151,7 @@ test("signed out, Auction data offers sign-in and the Ledger still reads the rec
   }
 });
 
-test("the Ledger shows its freshness, the game-running line, each empty state and a disabled Export", async () => {
+test("the Ledger shows its freshness, the game-running line, each empty state and Export only with records", async () => {
   setSystemTime(new Date("2026-11-24T12:00:00Z"));
   resetTsmView();
   const base: TradeSkillMasterLedger = {
@@ -1159,11 +1182,12 @@ test("the Ledger shows its freshness, the game-running line, each empty state an
     expect(text()).toContain("Recorded at last logout · 2 hours ago");
     expect(text()).not.toContain("/reload to include this session");
     expect(text()).toContain("No sales, purchases or gold recorded yet");
-    const exportButton = [...view.container.querySelectorAll("button")].find((b) =>
-      b.textContent?.includes("Export"),
-    )!;
-    expect(exportButton.disabled).toBe(true);
-    expect(exportButton.textContent).toContain("Export arrives in the next update");
+    // Nothing to export: Export is disabled and says so.
+    const exportButton = () =>
+      view.container.querySelector<HTMLButtonElement>('[data-wowdeck-segment="export"] button')!;
+    expect(exportButton().disabled).toBe(true);
+    expect(exportButton().textContent).toBe("Nothing to export yet");
+    expect(text()).not.toContain("next update");
 
     ledger = { ...base, gameRunning: true };
     await showLedger();
@@ -1173,6 +1197,8 @@ test("the Ledger shows its freshness, the game-running line, each empty state an
     await showLedger();
     expect(text()).toContain("Recorded at last logout");
     expect(text()).not.toContain("recorded yet");
+    expect(exportButton().disabled).toBe(false);
+    expect(exportButton().textContent).toBe("Choose folder…");
 
     ledger = { ...base, state: "noAddon", accounts: [], account: null, recordedAt: null };
     await showLedger();
@@ -1881,7 +1907,7 @@ test("the Ledger's filters float with the pill bar, open in the pane, and reset 
   }
 });
 
-test("the Ledger's bar floats two rows: Realm, Character and Period, then Account and a disabled Export", async () => {
+test("the Ledger's bar floats two rows: Realm, Character and Period, then Account and Export", async () => {
   resetTsmView();
   resetTsmReads();
   resetLedgerFilters();
@@ -1894,25 +1920,45 @@ test("the Ledger's bar floats two rows: Realm, Character and Period, then Accoun
         s.getAttribute("data-wowdeck-segment"),
       ),
     );
-  const exportButton = () =>
-    [...view.container.querySelectorAll("button")].filter((b) =>
-      b.textContent?.includes("Export arrives in the next update"),
-    );
+  const exportSegment = () => view.container.querySelector('[data-wowdeck-segment="export"]')!;
+  const exportButton = () => exportSegment().querySelector("button")!;
   try {
     await showLedger(view.container);
     expect(rows()).toEqual([
       ["realm", "character", "period"],
       ["account", "export"],
     ]);
-    // Export sits at the top only, disabled, and entry skips it with the bar.
-    expect(exportButton()).toHaveLength(1);
-    expect(exportButton()[0]!.closest(".wowdeck-pane-bar")).not.toBeNull();
-    expect(exportButton()[0]!.disabled).toBe(true);
+    // Export sits at the top only, and entry skips it with the bar.
+    expect(view.container.querySelectorAll('[data-wowdeck-segment="export"]')).toHaveLength(1);
+    expect(exportSegment().closest(".wowdeck-pane-bar")).not.toBeNull();
+    expect(exportButton().disabled).toBe(false);
+    expect(exportButton().textContent).toBe("Choose folder…");
     expect(firstTsmControl(view.container)?.textContent).toContain("Recorded at last logout");
-    // Until it works, Export is no focus stop: Up from the recorded line
-    // reaches the filters in one press and Right from Account stops.
-    const exportSegment = () =>
-      view.container.querySelector('.wowdeck-pane-bar [data-wowdeck-segment="export"]')!;
+    // Export is a focus stop, and Left from it goes to Account.
+    expect(exportSegment().querySelector(".Focusable")).not.toBeNull();
+    // Left from Period goes to Character, from Character to Realm.
+    expect(LEDGER_LEFT_NEIGHBOUR).toEqual({
+      [LEDGER_FOCUS.period]: LEDGER_FOCUS.character,
+      [LEDGER_FOCUS.character]: LEDGER_FOCUS.realm,
+      [LEDGER_FOCUS.export]: LEDGER_FOCUS.account,
+    });
+
+    // One account: Export alone on the second row.
+    ledger = { ...readyLedger, accounts: ["MAIN"] };
+    await view.leave();
+    resetTsmReads();
+    await view.render();
+    expect(rows()).toEqual([["realm", "character", "period"], ["export"]]);
+
+    // Without records there is nothing to filter, and Export still shows,
+    // disabled and no focus stop: Steam's navigation stopped on a disabled
+    // button although A did nothing there (DEVICE 2026-11-24).
+    ledger = { ...readyLedger, accounts: ["MAIN"], state: "noRecords", ...noFilters };
+    await view.leave();
+    resetTsmReads();
+    await view.render();
+    expect(rows()).toEqual([["export"]]);
+    expect(exportButton().disabled).toBe(true);
     expect(exportSegment().querySelector(".Focusable")).toBeNull();
     // Its whole text shows: it wraps rather than being cut with an ellipsis.
     const cut = (el: Element | null): boolean =>
@@ -1923,30 +1969,99 @@ test("the Ledger's bar floats two rows: Realm, Character and Period, then Accoun
         cut(el.parentElement));
     // The innermost element holding the text.
     const exportText = [...exportSegment().querySelectorAll("button, button *")]
-      .filter((el) => el.textContent === "Export arrives in the next update")
+      .filter((el) => el.textContent === "Nothing to export yet")
       .pop()!;
     expect(cut(exportText)).toBe(false);
-    // Left from Period goes to Character, from Character to Realm.
-    expect(LEDGER_LEFT_NEIGHBOUR).toEqual({
-      [LEDGER_FOCUS.period]: LEDGER_FOCUS.character,
-      [LEDGER_FOCUS.character]: LEDGER_FOCUS.realm,
-    });
-
-    // One account: Export alone on the second row.
-    ledger = { ...readyLedger, accounts: ["MAIN"] };
-    await view.leave();
-    resetTsmReads();
-    await view.render();
-    expect(rows()).toEqual([["realm", "character", "period"], ["export"]]);
-
-    // Without records there is nothing to filter, and Export still shows.
-    ledger = { ...readyLedger, accounts: ["MAIN"], state: "noRecords", ...noFilters };
-    await view.leave();
-    resetTsmReads();
-    await view.render();
-    expect(rows()).toEqual([["export"]]);
-    expect(exportButton()).toHaveLength(1);
   } finally {
+    ledger = readyLedger;
+    await view.close();
+  }
+});
+
+test("Export picks a folder from Documents, then the remembered one, and toasts where the file went or why it failed", async () => {
+  resetTsmView();
+  resetTsmReads();
+  resetLedgerFilters();
+  resetFocusMemory();
+  resetLedgerExport();
+  exportFolder = null;
+  exportRequests.length = 0;
+  pickers.length = 0;
+  toasts.length = 0;
+  // Character and Period are set, and play no part in the export.
+  ledger = {
+    ...readyLedger,
+    realm: "Silvermoon",
+    character: "Hero - Silvermoon",
+    period: "1M",
+  };
+  const view = await mountDestination();
+  const pressExport = async () => {
+    await act(async () =>
+      view.container
+        .querySelector<HTMLButtonElement>('[data-wowdeck-segment="export"] button')!
+        .click(),
+    );
+    // The picker's answer, the export and its toast.
+    await act(async () => {
+      for (let i = 0; i < 5; i++) await Promise.resolve();
+    });
+  };
+  try {
+    await showLedger(view.container);
+    // Cancelled: nothing is written, nothing is said, and focus is back on Export.
+    await pressExport();
+    expect(pickers).toEqual([{ type: 1, start: "/home/deck/Documents" }]);
+    expect(exportRequests).toEqual([]);
+    expect(toasts).toEqual([]);
+    expect(rememberedFocus(browseFocusView("tsm"))).toBe(LEDGER_FOCUS.export);
+
+    pickFolder = async (start) => ({ path: `${start}/Gold` });
+    await pressExport();
+    expect(exportRequests).toEqual([
+      {
+        installationId: "active",
+        account: "MAIN",
+        realm: "Silvermoon",
+        folder: "/home/deck/Documents/Gold",
+      },
+    ]);
+    expect(toasts).toEqual([
+      {
+        title: "Exported TradeSkillMaster records",
+        body: "Saved to /home/deck/Documents/Gold/TSM_Silvermoon_2026-11-24.zip",
+      },
+    ]);
+
+    // The next export starts in the folder the last one went to. All realms
+    // sends no realm.
+    ledger = { ...readyLedger };
+    await view.leave();
+    resetTsmReads();
+    await view.render();
+    exportFails = true;
+    pickFolder = async (start) => ({ path: start });
+    await pressExport();
+    expect(pickers.slice(-1)).toEqual([{ type: 1, start: "/home/deck/Documents/Gold" }]);
+    expect(exportRequests.slice(-1)).toEqual([
+      {
+        installationId: "active",
+        account: "MAIN",
+        folder: "/home/deck/Documents/Gold",
+      },
+    ]);
+    expect(toasts.slice(-1)).toEqual([
+      {
+        title: "Couldn't export TradeSkillMaster records",
+        body: "No permission to write to that folder",
+      },
+    ]);
+    expect(rememberedFocus(browseFocusView("tsm"))).toBe(LEDGER_FOCUS.export);
+  } finally {
+    exportFails = false;
+    pickFolder = async () => {
+      throw new Error("cancel");
+    };
     ledger = readyLedger;
     await view.close();
   }

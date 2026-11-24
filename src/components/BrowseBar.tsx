@@ -139,7 +139,7 @@ export interface BarSegment {
   /** Marks the segment's wrapper (`data-wowdeck-segment`), for the pane's Left handling. */
   id: string;
   caption: string;
-  /** Its focus-memory id; none for a segment that takes no focus (the Ledger's Export). */
+  /** Its focus-memory id; none for a segment that takes no focus (the Ledger's disabled Export). */
   focusId?: string;
   /** The segment's SegmentMenu, or a button (the Ledger's Export). */
   menu: ReactNode;

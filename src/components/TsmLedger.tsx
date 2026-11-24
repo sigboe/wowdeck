@@ -1,4 +1,11 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from "react";
 import { DialogButton, Field, PanelSectionRow } from "@decky/ui";
 import { FaCaretDown, FaCaretUp } from "react-icons/fa";
 import type {
@@ -10,8 +17,10 @@ import type {
   TradeSkillMasterLedgerState,
 } from "../../backend/src/api/contracts";
 import { browseFocusView } from "../browseSessionState";
+import { requestFocus } from "../focusMemory";
 import { useTsmLedger } from "../tsmReads";
 import { ledgerPlotWidth, pickLedgerFilter } from "../tsmLedgerFilters";
+import { exportLedger, ledgerExport } from "../tsmLedgerExport";
 import { STEAM } from "../steamTheme";
 import { openLedgerItems } from "./TsmLedgerItemsModal";
 import { focusTarget } from "./FocusSlot";
@@ -51,6 +60,7 @@ export const LEDGER_FOCUS = {
   realm: "ledger-realm",
   character: "ledger-character",
   period: "ledger-period",
+  export: "ledger-export",
   gold: "ledger-gold",
   averages: "ledger-averages",
   sales: "ledger-sales",
@@ -63,12 +73,13 @@ export const LEDGER_FOCUS = {
  * Bar segments that sit beside another on their row, by focus key: Left
  * from the key goes to its value (GetAddonsTab's pane Left handling;
  * Steam's own row navigation skipped the sibling and left the pane, DEVICE
- * 2026-10-23). Up and Down between the rows are Steam's own. Export takes
- * no focus until it works (phase 2), so it needs no entry yet.
+ * 2026-10-23). Up and Down between the rows are Steam's own. Left from
+ * Export without Account falls through to the destination list.
  */
 export const LEDGER_LEFT_NEIGHBOUR: Record<string, string> = {
   [LEDGER_FOCUS.character]: LEDGER_FOCUS.realm,
   [LEDGER_FOCUS.period]: LEDGER_FOCUS.character,
+  [LEDGER_FOCUS.export]: LEDGER_FOCUS.account,
 };
 
 /** The in-game Dashboard's periods, in its order. */
@@ -79,25 +90,46 @@ const PERIODS: TradeSkillMasterLedgerPeriod[] = ["1D", "1W", "1M", "3M", "6M", "
  * in-pane menus, floating with the pill bar (S24) in two rows. Realm,
  * Character and Period come first, once the account has records. The second
  * row holds Account, only with more than one account, and Export, shown
- * whatever the Ledger holds. Until Export works (phase 2) it is disabled and
- * takes no focus: Steam's navigation stopped on the disabled button although
- * A did nothing there (DEVICE 2026-11-24), and its text is always in view.
+ * whatever the Ledger holds. Export writes the shown account's records for
+ * the shown realm, or every realm, whatever Character and Period show.
+ * Without records it is disabled and takes no focus: Steam's navigation
+ * stopped on a disabled button although A did nothing there (DEVICE
+ * 2026-11-24).
  */
 export function TsmLedgerFilters({ installationId }: { installationId: string }) {
   const { data } = useTsmLedger(installationId);
-  const exportSegment: BarSegment = {
-    id: "export",
-    caption: "Export",
-    menu: (
-      <DialogButton disabled focusable={false} onClick={() => {}} style={{ width: "100%" }}>
-        {/* The whole sentence, wrapping beside Account (S27): an ellipsis
-            cut it to "Export arrives in the n…" (DEVICE 2026-11-24). */}
-        <span style={{ display: "block", whiteSpace: "normal" }}>
-          Export arrives in the next update
-        </span>
-      </DialogButton>
-    ),
-  };
+  const { exporting } = useSyncExternalStore(ledgerExport.subscribe, ledgerExport.get);
+  const canExport = data?.state === "ready" && data.account !== null;
+  const exportSegment: BarSegment = canExport
+    ? {
+        id: "export",
+        caption: "Export",
+        focusId: LEDGER_FOCUS.export,
+        menu: (
+          <DialogButton
+            onClick={() =>
+              void exportLedger(installationId, data, () =>
+                requestFocus(FOCUS_VIEW, LEDGER_FOCUS.export),
+              )
+            }
+            onOKActionDescription="Choose folder"
+            style={{ width: "100%" }}
+          >
+            {exporting ? "Exporting…" : "Choose folder…"}
+          </DialogButton>
+        ),
+      }
+    : {
+        id: "export",
+        caption: "Export",
+        menu: (
+          <DialogButton disabled focusable={false} onClick={() => {}} style={{ width: "100%" }}>
+            {/* The whole text, wrapping beside Account (S27): an ellipsis
+                cut the phase-1 text short (DEVICE 2026-11-24). */}
+            <span style={{ display: "block", whiteSpace: "normal" }}>Nothing to export yet</span>
+          </DialogButton>
+        ),
+      };
   if (!data) {
     return <SegmentRow view={FOCUS_VIEW} segments={[exportSegment]} />;
   }
