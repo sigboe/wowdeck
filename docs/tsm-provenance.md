@@ -29,6 +29,15 @@ at `1908e34930f742a3a9ce754faf4e1839431fff3a`. WoWDeck reads tables as data,
 combines known installations and orders candidates by character-directory
 modification time. The RPC fixtures use synthetic characters and fixed times.
 
+SavedVariables.ts holds the table reader that character discovery and the
+Ledger share. It reads the `TradeSkillMasterDB` layout described in upstream
+`saved_variables.py` at the same commit. The parser is WoWDeck's own.
+Upstream matches regular expressions. WoWDeck parses `Name = table`
+statements, rejects anything else and never evaluates Lua. It also
+caches each file by last-write time and size, refuses files over 256 MiB
+before reading them, and skips `TSMItemCacheDB`. The reader's fixtures are
+synthetic.
+
 Interruption recovery extends the same socket and auction protocol with
 WoWDeck's transaction completion hook, forced refresh per installation,
 four download slots, cancellation and status-only diagnostics. Reconnects
