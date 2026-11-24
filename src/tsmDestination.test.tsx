@@ -1305,9 +1305,27 @@ const readyLedger: TradeSkillMasterLedger = {
   character: null,
   period: "All",
   figures: {
-    earned: { total: 12_345_678, perDay: 301_114.1, topItem: "i:2589", trend: null },
-    spent: { total: 2_000_050, perDay: 48_781.7, topItem: "i:2592", trend: null },
-    profit: { total: 10_345_628, perDay: 252_332.4, topItem: "i:4306", trend: null },
+    earned: {
+      total: 12_345_678,
+      perDay: 301_114.1,
+      topItem: "i:2589",
+      topItemName: "Linen Cloth",
+      trend: null,
+    },
+    spent: {
+      total: 2_000_050,
+      perDay: 48_781.7,
+      topItem: "i:2592",
+      topItemName: "Wool Cloth",
+      trend: null,
+    },
+    profit: {
+      total: 10_345_628,
+      perDay: 252_332.4,
+      topItem: "i:4306",
+      topItemName: "Silk Cloth",
+      trend: null,
+    },
     dailySales: 3.66,
     dailyPurchases: 0.04,
     topSale: 1_000,
@@ -1360,9 +1378,9 @@ test("the Ledger's figures render under its freshness line: a 2×2 grid, then Sa
       (panel) => panel.textContent,
     );
     expect(panels).toEqual([
-      "SalesTotal earned1,234g 56s 78cPer day30g 11s 14cTop itemi:2589",
-      "ExpensesTotal spent200g 50cPer day4g 87s 82cTop itemi:2592",
-      "ProfitTotal profit1,034g 56s 28cPer day25g 23s 32cTop itemi:4306",
+      "SalesTotal earned1,234g 56s 78cPer day30g 11s 14cTop itemLinen Cloth",
+      "ExpensesTotal spent200g 50cPer day4g 87s 82cTop itemWool Cloth",
+      "ProfitTotal profit1,034g 56s 28cPer day25g 23s 32cTop itemSilk Cloth",
     ]);
     // The freshness line comes first, then the grid, then the panels.
     expect(text.indexOf("Recorded at last logout")).toBeLessThan(text.indexOf("Avg daily sales"));

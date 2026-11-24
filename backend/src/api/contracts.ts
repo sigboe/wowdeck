@@ -830,6 +830,8 @@ export interface TradeSkillMasterLedgerFlow {
    * minus spent, and only when above zero); null without one.
    */
   topItem: string | null;
+  /** The local item-cache name for topItem, when known. */
+  topItemName?: string;
   /** total minus the previous period's total of the same length; null for All. */
   trend: number | null;
 }

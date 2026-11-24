@@ -246,8 +246,11 @@ function FlowPanel({
           <Line label="Per day">
             <Money copper={flow.perDay} />
           </Line>
-          {/* The raw item string until the Ledger reads item names. */}
-          <Line label="Top item">{flow.topItem ?? "None"}</Line>
+          <Line label="Top item">
+            <span className="wowdeck-ledger-item">
+              {flow.topItemName ?? flow.topItem ?? "None"}
+            </span>
+          </Line>
         </Field>
       </div>
     </PanelSectionRow>

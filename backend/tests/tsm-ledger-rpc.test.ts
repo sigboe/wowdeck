@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { mkdirSync, mkdtempSync, utimesSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { JsonlServer } from "../src/bridge/jsonl";
@@ -179,6 +179,43 @@ const MONEY = "type,amount,otherPlayer,player,time";
 const AUCTIONS = "itemString,stackSize,quantity,player,time";
 const GOLD = "minute,copper";
 const minute = (secondsAgo: number) => (NOW - secondsAgo) / 60;
+
+test("the Ledger reads names from the saved legacy item cache and prefers an exact match", async () => {
+  const { write, call } = fixture();
+  const legacy = readFileSync(new URL("./fixtures/tsm/ledger-item-names-legacy.lua", import.meta.url), "utf8");
+  const db = {
+    ...empty,
+    "r@Silvermoon@internalData@csvSales": csv(TRADE, [`i:2589:123,1,2,15,Bob,Hero,${NOW},Auction`]),
+    "r@Silvermoon@internalData@csvBuys": csv(TRADE, [`i:4306,1,1,5,Bob,Hero,${NOW},Auction`]),
+  };
+  write(account("MAIN"), saved(db) + legacy, NOW);
+  const { figures } = (await call()).result;
+  expect(figures.earned).toMatchObject({ total: 30, topItem: "i:2589:123", topItemName: "Linen Cloth" });
+  expect(figures.spent).toMatchObject({ total: 5, topItem: "i:4306", topItemName: "Silk Cloth" });
+  expect(figures.profit.topItemName).toBe("Linen Cloth");
+
+  // Rewriting the same file replaces its names. Flat legacy lists also work.
+  const flat = String.raw`TSMItemInfoDB = { names = "Linen Cloth\002Linen Variant", itemStrings = "i:2589\002i:2589:123" }`;
+  write(account("MAIN"), saved(db) + flat, NOW + 1);
+  const refreshed = (await call()).result.figures;
+  expect(refreshed.earned.topItemName).toBe("Linen Variant");
+  expect(refreshed.spent.topItem).toBe("i:4306");
+  expect(refreshed.spent.topItemName).toBeUndefined();
+});
+
+test("missing and corrupt item caches leave the Ledger's item strings and totals available", async () => {
+  const { write, call } = fixture();
+  const db = saved({
+    ...empty,
+    "r@Silvermoon@internalData@csvSales": csv(TRADE, [`i:2589:123,1,2,15,Bob,Hero,${NOW},Auction`]),
+  });
+  for (const [index, itemInfo] of ["", 'TSMItemInfoDB = { data = "AAAA" }'].entries()) {
+    write(account("MAIN"), db + itemInfo, NOW + index);
+    const { state, figures } = (await call()).result;
+    expect(state).toBe("ready");
+    expect(figures.earned).toEqual({ total: 30, perDay: 30, topItem: "i:2589:123", trend: null });
+  }
+});
 
 /**
  * Account MAIN: Silvermoon (Hero, Alt, Trader who trades without a gold log,

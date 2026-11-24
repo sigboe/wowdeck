@@ -41,6 +41,19 @@ few of them in memory. It refuses files over 256 MiB before
 reading them and skips `TSMItemCacheDB`. The reader's fixtures are
 synthetic.
 
+ItemNames.ts reads the addon's `TSMItemInfoDB`. Its format follows
+`ItemInfoSerializer.lua`, `ItemInfoCache.lua` and `LongString.lua` in
+TradeSkillMaster 4.15.9. The Ledger looks up the full item string, then the
+base item string, using the selected account's cache. The display falls back
+to the item string when the cache has no name.
+
+`backend/tests/fixtures/tsm/ledger-item-names-legacy.lua` contains three
+public ID and name pairs verified against a local Classic Era Deck
+capture. The fixture puts those pairs in short legacy chunks and omits
+account records, item metadata and all other cache entries. The captured
+cache uses legacy lists and its `data` field fails raw deflate. A
+current-format regression fixture needs a Deck capture with a CBOR cache.
+
 Interruption recovery extends the same socket and auction protocol with
 WoWDeck's transaction completion hook, forced refresh per installation,
 four download slots, cancellation and status-only diagnostics. Reconnects

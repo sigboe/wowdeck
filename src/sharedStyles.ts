@@ -185,6 +185,7 @@ export function wowdeckSharedStyleCss(): string {
 .wowdeck-ledger-value { color: #dcdedf; font-size: 16px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .wowdeck-ledger-line { display: flex; justify-content: space-between; gap: 12px; color: #b8bcbf; font-size: 12px; line-height: 20px; }
 .wowdeck-ledger-line .wowdeck-ledger-value { display: inline-flex; align-items: center; gap: 4px; }
+.wowdeck-ledger-item { min-width: 0; white-space: normal; overflow-wrap: anywhere; text-align: right; }
 .wowdeck-ledger-trend { display: inline-flex; }
 .wowdeck-ledger-trend svg { width: 12px; height: 12px; }
 .wowdeck-ledger-gold > svg { display: block; width: 100%; height: 72px; margin-top: 4px; }

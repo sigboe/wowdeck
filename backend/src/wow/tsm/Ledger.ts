@@ -12,8 +12,9 @@ import { getAddonsPath } from "../installation/InstallationDetector";
 import type { WowInstallation } from "../models";
 import { WowClientType } from "../types";
 import { detectGameRunning } from "../wtf/GameProcessGuard";
+import { ledgerItemName } from "./ItemNames";
 import { GOLD_LOG, hasRows, ledgerView, RECORD_CSVS, type LedgerSelection } from "./LedgerFigures";
-import { readTradeSkillMaster, safePath, savedVariables, type LuaTable, type LuaValue, type SavedVariablesReader } from "./SavedVariables";
+import { readTradeSkillMaster, safePath, savedVariables, type LuaValue, type SavedVariablesReader } from "./SavedVariables";
 
 /** The clients the addon counts as Retail, where it records gold rounded to 1,000 gold. */
 const RETAIL = new Set([WowClientType.Retail, WowClientType.RetailPtr, WowClientType.RetailXPtr, WowClientType.Beta]);
@@ -86,25 +87,35 @@ export class TradeSkillMasterLedgerReader {
         ...ledgerView(Object.create(null), selection, this.#now(), false),
       };
     }
-    const db = (name: string): LuaTable | null => {
+    const read = (name: string) => {
       const saved = readTradeSkillMaster(savedFile(installation, name), this.#reader);
       if (saved.status !== "ok" && saved.status !== "missing") {
         console.error("[ledger] TradeSkillMaster.lua not readable:", saved.status);
         throw new Error(`TradeSkillMaster.lua is ${saved.status}`);
       }
-      return saved.status === "ok" ? saved.db : null;
+      return saved.status === "ok" ? saved : null;
     };
     const records = (name: string): boolean => {
-      const saved = db(name);
-      return saved !== null && hasRecords(saved);
+      const saved = read(name);
+      return saved !== null && hasRecords(saved.db);
     };
     const asked = found.find((a) => a.name === account);
     // Newest first, so the usual case reads one file.
     const newestFirst = [...found].sort((a, b) => b.mtimeMs - a.mtimeMs);
     const chosen = asked ?? newestFirst.find((a) => records(a.name)) ?? newestFirst[0]!;
-    const ready = records(chosen.name);
+    const saved = read(chosen.name);
+    const ready = saved !== null && hasRecords(saved.db);
     // Without the addon, an empty Ledger asks for it unless another account has records.
     const noAddon = !ready && !installed && !found.some((a) => a !== chosen && records(a.name));
+    const view = ledgerView(saved?.db ?? Object.create(null), selection, this.#now(), ready);
+    const itemInfo = saved?.itemInfo;
+    if (view.figures && itemInfo) {
+      for (const flow of [view.figures.earned, view.figures.spent, view.figures.profit]) {
+        if (flow.topItem === null) continue;
+        const name = ledgerItemName(itemInfo, flow.topItem);
+        if (name !== undefined) flow.topItemName = name;
+      }
+    }
     return {
       state: ready ? "ready" : noAddon ? "noAddon" : "noRecords",
       accounts: found.map((a) => a.name),
@@ -112,7 +123,7 @@ export class TradeSkillMasterLedgerReader {
       recordedAt: Math.floor(chosen.mtimeMs),
       gameRunning,
       retail,
-      ...ledgerView(db(chosen.name) ?? Object.create(null), selection, this.#now(), ready),
+      ...view,
     };
   }
 }
