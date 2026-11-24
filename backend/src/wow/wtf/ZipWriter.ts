@@ -1,5 +1,6 @@
 /**
- * Streaming zip writer for WTF backups (project-owned).
+ * Streaming zip writer (project-owned): WTF backups, and files built in
+ * memory one at a time (the Ledger's export).
  *
  * Replaces desktop WowUp's AdmZip `addLocalFolder` (whole archive in RAM)
  * with fflate's streaming `Zip`. Memory is bounded by one read chunk plus
@@ -59,13 +60,11 @@ function safeMtime(ms: number): Date | undefined {
   return ms >= 315532800000 && ms < 4102444800000 ? new Date(ms) : undefined;
 }
 
-export async function writeBackupZip(options: WriteZipOptions): Promise<WriteZipResult> {
-  const { outPath, entries, totalBytes, signal, onProgress } = options;
-  const level = options.level ?? 1;
-  if (entries.length + 2 > MAX_ZIP_ENTRIES) {
-    throw new WtfBackupError("wtf_too_large", "Too many settings files to back up in one zip");
-  }
-
+/**
+ * A zip being written to `outPath`: `finish` ends and syncs it, `discard`
+ * closes it and deletes what was written.
+ */
+function openZip(outPath: string, signal?: AbortSignal) {
   const fd = openSync(outPath, "w");
   let closed = false;
   let zipError: unknown;
@@ -82,6 +81,82 @@ export async function writeBackupZip(options: WriteZipOptions): Promise<WriteZip
     }
     throwIfAborted(signal);
   };
+  return {
+    zip,
+    check,
+    finish() {
+      zip.end();
+      check();
+      fsyncSync(fd);
+      closeSync(fd);
+      closed = true;
+    },
+    discard() {
+      if (!closed) {
+        try {
+          closeSync(fd);
+        } catch {
+          /* already closed */
+        }
+        closed = true;
+      }
+      try {
+        unlinkSync(outPath);
+      } catch {
+        /* partial may not exist */
+      }
+    },
+  };
+}
+
+/** One file of a zip built in memory: its entry name and contents. */
+export interface ZipFile {
+  name: string;
+  data: Uint8Array;
+}
+
+/**
+ * Write `files` as a new zip at `outPath`, deflated, each entry dated
+ * `mtime`. The files are taken one at a time, so a caller can build each
+ * just before it is added. Whatever fails, nothing is left at `outPath`.
+ */
+export async function writeZipFiles(
+  outPath: string,
+  files: Iterable<ZipFile>,
+  options: { mtime?: Date; level?: WriteZipOptions["level"] } = {},
+): Promise<void> {
+  const out = openZip(outPath);
+  try {
+    let count = 0;
+    for (const file of files) {
+      out.check();
+      if (++count > MAX_ZIP_ENTRIES || file.data.length >= MAX_ZIP_FILE_BYTES) {
+        throw new Error("Too much to write in one zip");
+      }
+      const entry = new ZipDeflate(file.name, { level: options.level ?? 6 });
+      const mtime = options.mtime && safeMtime(options.mtime.getTime());
+      if (mtime) {
+        entry.mtime = mtime;
+      }
+      out.zip.add(entry);
+      entry.push(file.data, true);
+      await yieldToEventLoop();
+    }
+    out.finish();
+  } catch (err) {
+    out.discard();
+    throw err;
+  }
+}
+
+export async function writeBackupZip(options: WriteZipOptions): Promise<WriteZipResult> {
+  const { outPath, entries, totalBytes, signal, onProgress } = options;
+  const level = options.level ?? 1;
+  if (entries.length + 2 > MAX_ZIP_ENTRIES) {
+    throw new WtfBackupError("wtf_too_large", "Too many settings files to back up in one zip");
+  }
+
+  const { zip, check, finish, discard } = openZip(outPath, signal);
 
   const contents: BackupMetaEntry[] = [{ path: "", isDirectory: true, size: 0 }];
   let fileCount = 0;
@@ -148,26 +223,10 @@ export async function writeBackupZip(options: WriteZipOptions): Promise<WriteZip
     const metaEntry = new ZipDeflate(BACKUP_META_NAME, { level });
     zip.add(metaEntry);
     metaEntry.push(new TextEncoder().encode(JSON.stringify(meta)), true);
-    zip.end();
-    check();
-    fsyncSync(fd);
-    closeSync(fd);
-    closed = true;
+    finish();
     return { contents, fileCount, dirCount, skippedFiles };
   } catch (err) {
-    if (!closed) {
-      try {
-        closeSync(fd);
-      } catch {
-        /* already closed */
-      }
-      closed = true;
-    }
-    try {
-      unlinkSync(outPath);
-    } catch {
-      /* partial may not exist */
-    }
+    discard();
     throw err;
   }
 }

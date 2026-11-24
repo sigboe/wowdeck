@@ -7,12 +7,21 @@
  */
 import { existsSync, lstatSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import type { GameRunning, TradeSkillMasterLedger, TradeSkillMasterLedgerItem, TradeSkillMasterLedgerItemsPage, TradeSkillMasterLedgerItemsParams } from "../../api/contracts";
+import type {
+  GameRunning,
+  TradeSkillMasterLedger,
+  TradeSkillMasterLedgerExportParams,
+  TradeSkillMasterLedgerItem,
+  TradeSkillMasterLedgerItemsPage,
+  TradeSkillMasterLedgerItemsParams,
+} from "../../api/contracts";
 import { getAddonsPath } from "../installation/InstallationDetector";
 import type { WowInstallation } from "../models";
+import { NotFoundError } from "../errors";
 import { WowClientType } from "../types";
 import { detectGameRunning } from "../wtf/GameProcessGuard";
 import { ledgerItemName } from "./ItemNames";
+import { writeLedgerExport, type ZipWrite } from "./LedgerExport";
 import { GOLD_LOG, hasRows, ledgerItemTotals, ledgerView, RECORD_CSVS, type LedgerSelection } from "./LedgerFigures";
 import { readTradeSkillMaster, safePath, savedVariables, type LuaTable, type LuaValue, type SavedVariablesReader } from "./SavedVariables";
 
@@ -97,6 +106,7 @@ export class TradeSkillMasterLedgerReader {
   readonly #gameRunning: () => Promise<GameRunning>;
   readonly #reader: SavedVariablesReader;
   readonly #now: () => number;
+  readonly #writeZip: ZipWrite | undefined;
   // Reuse the sort on adjacent reads. A rewritten file or a moving period
   // window invalidates the totals.
   #items?: {
@@ -104,10 +114,17 @@ export class TradeSkillMasterLedgerReader {
     key: string;
     totals: ReturnType<typeof ledgerItemTotals>;
   };
-  constructor(options: { gameRunning?: () => Promise<GameRunning>; reader?: SavedVariablesReader; now?: () => number } = {}) {
+  constructor(options: {
+    gameRunning?: () => Promise<GameRunning>;
+    reader?: SavedVariablesReader;
+    now?: () => number;
+    /** The ZIP writer Export uses; tests make it fail. */
+    writeZip?: ZipWrite;
+  } = {}) {
     this.#gameRunning = options.gameRunning ?? (() => detectGameRunning());
     this.#reader = options.reader ?? savedVariables;
     this.#now = options.now ?? Date.now;
+    this.#writeZip = options.writeZip;
   }
 
   /**
@@ -167,6 +184,25 @@ export class TradeSkillMasterLedgerReader {
       this.#items = { db: saved.db, key, totals: ledgerItemTotals(saved.db, params, now, exact) };
     }
     return itemPage(this.#items.totals, saved.itemInfo, Number.isSafeInteger(offset) && offset >= 0 ? offset : 0);
+  }
+
+  /**
+   * Export the records of `account` for `realm` (absent: every realm with
+   * records) into `folder` and answer the ZIP's path (LedgerExport). The
+   * file is read as it is on disk now; Character and Period play no part.
+   */
+  async ledgerExport(installation: WowInstallation, params: Omit<TradeSkillMasterLedgerExportParams, "installationId">): Promise<string> {
+    const found = accounts(installation).find((a) => a.name === params.account);
+    const saved = found ? this.#read(installation, found.name) : null;
+    if (!saved) throw new NotFoundError("Ledger account", params.account);
+    return writeLedgerExport({
+      db: saved.db,
+      itemInfo: saved.itemInfo,
+      realm: params.realm ?? null,
+      folder: params.folder,
+      now: this.#now(),
+      write: this.#writeZip,
+    });
   }
 
   #read(installation: WowInstallation, name: string) {

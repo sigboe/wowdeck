@@ -806,6 +806,20 @@ export interface TradeSkillMasterLedgerItemsPage {
   nextOffset: number | null;
 }
 
+/**
+ * What Export writes: the records of one WoW account for one realm, or every
+ * realm with records, whatever the Character and Period filters show.
+ */
+export interface TradeSkillMasterLedgerExportParams {
+  installationId: string;
+  /** The WoW account (`WTF/Account/<name>`); one without a TradeSkillMaster.lua is an error. */
+  account: string;
+  /** One realm; absent is every realm the account's records name. */
+  realm?: string;
+  /** An existing folder, as Decky's folder picker returned it. */
+  folder: string;
+}
+
 export interface TradeSkillMasterLedgerItem {
   /** Canonical item string, shortened only if the row would exceed the page budget. */
   itemString: string;
@@ -980,6 +994,31 @@ export interface MethodMap {
   "tradeskillmaster.ledgerItems": {
     params: TradeSkillMasterLedgerItemsParams;
     result: TradeSkillMasterLedgerItemsPage;
+  };
+  /**
+   * Export (GLOSSARY: Ledger): the account's records, read fresh, as the
+   * ZIP of CSVs TradeSkillMaster's desktop app writes, saved into `folder`
+   * as `TSM_<realm or N_Realms>_<date>.zip` (` (n)` added when that name is
+   * taken). One `TSM_<realm>_<dataset>_<date>.csv` per realm and dataset
+   * (Sales, Buys, Income, Expense, Expired, Cancelled): UTF-8 with a BOM, the
+   * stored header and rows with an `itemName` column after `itemString`.
+   * Realm names are made safe for file names; the date is the UTC day. The
+   * ZIP is written beside its final name and renamed into place, so a failed
+   * export leaves no file. On success the engine remembers `folder`
+   * (PluginSettings.tsmLedgerExportFolder). WoW files are only read.
+   */
+  "tradeskillmaster.ledgerExport": {
+    params: TradeSkillMasterLedgerExportParams;
+    result: { path: string };
+  };
+  /**
+   * Where Export's folder picker starts: the folder the last export went to
+   * while it still exists, else `~/Documents`, created when missing (the
+   * home folder if it can't be).
+   */
+  "tradeskillmaster.ledgerExportFolder": {
+    params: Record<string, never>;
+    result: { folder: string };
   };
   "tradeskillmaster.status": { params: Record<string, never>; result: TradeSkillMasterAuthStatus };
   "tradeskillmaster.signIn": { params: Record<string, never>; result: { authorizeUrl: string } };
@@ -1873,6 +1912,8 @@ export interface PluginSettings {
   pluginUpdateStagedVersion: string | null;
   /** User-chosen folder for WTF backups (e.g. on an SD card); null = the plugin's own data folder. */
   wtfBackupDir: string | null;
+  /** The folder the last Ledger export went to (tradeskillmaster.ledgerExport); engine-written only. Null before the first export. */
+  tsmLedgerExportFolder: string | null;
   /** How many automatic pre-restore safety backups to keep per game version (1-10). */
   wtfKeepSnapshots: number;
   /**

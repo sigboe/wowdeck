@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { deflateRawSync } from "node:zlib";
@@ -8,6 +8,8 @@ import { JsonlServer } from "../src/bridge/jsonl";
 import { providersHandlers } from "../src/api/handlers/providers";
 import { TradeSkillMasterLedgerReader } from "../src/wow/tsm/Ledger";
 import { SavedVariablesReader } from "../src/wow/tsm/SavedVariables";
+import { listZipEntries, readZipEntryText } from "../src/wow/wtf/ZipReader";
+import { writeZipFiles } from "../src/wow/wtf/ZipWriter";
 import type { WowInstallation } from "../src/wow/models";
 import { WowClientType } from "../src/wow/types";
 import type { GameRunning } from "../src/api/contracts";
@@ -826,4 +828,169 @@ test("a Retail installation's Ledger says so: the addon records gold there in st
   ] as const) {
     expect([WowClientType[type], (await figuresFixture(goldDb(), type)()).retail]).toEqual([WowClientType[type], retail]);
   }
+});
+
+// ---------------------------------------------------------------------------
+// Export: the desktop app's ZIP of CSVs, read back with the backup ZIP reader.
+
+const BOM = "\ufeff";
+const EXPORT_NOW = Date.UTC(2026, 10, 24, 23, 30); // late evening: the file names carry the UTC day
+const modernNames = () => `TSMItemInfoDB = { data = "${readFileSync(new URL("./fixtures/tsm/ledger-item-names-modern.b64", import.meta.url), "utf8")}" }`;
+/** Two realms with records, one only with headers, and one whose name is no safe file name. */
+const exportDb = {
+  "r@Silvermoon@internalData@csvSales": csv(TRADE, [
+    `i:2589:123,1,2,15,Bob,Hero,${NOW},Auction`,
+    `i:2730,1,1,5,Bob,Hero,${NOW},Auction`,
+    `i:999999,1,1,5,Bob,Hero,${NOW},Vendor`,
+  ]),
+  "r@Silvermoon@internalData@csvBuys": csv(TRADE, [`i:2589,1,1,5,Bob,Alt,${NOW},Auction`]),
+  "r@Silvermoon@internalData@csvIncome": csv(MONEY, [`Money Transfer,1000,Alt,Hero,${NOW}`]),
+  "r@Silvermoon@internalData@csvExpense": csv(MONEY, [`Postage,30,Alt,Alt,${NOW}`, `Repair Bill,500,Merchant,Hero,${NOW}`]),
+  "r@Silvermoon@internalData@csvExpired": csv(AUCTIONS, [`i:2589,1,20,Hero,${NOW}`]),
+  "r@Silvermoon@internalData@csvCancelled": csv(AUCTIONS, []),
+  // Older files say buyer; the stored header is kept as it is.
+  "r@Argent Dawn@internalData@csvSales": csv(TRADE.replace("otherPlayer", "buyer"), [`i:2589,1,1,15,X,Hero,${NOW},Auction`]),
+  "r@Empty@internalData@csvSales": csv(TRADE, []),
+  "r@Bad:Realm/Name.@internalData@csvExpired": csv(AUCTIONS, [`i:2589,1,1,Hero,${NOW}`]),
+  "s@Hero - Horde - Silvermoon@internalData@goldLog": csv(GOLD, [`${minute(DAY)},500`]),
+};
+
+function exportFixture(options: { remembered?: string | null; writeZip?: typeof writeZipFiles } = {}) {
+  const dir = mkdtempSync(join(tmpdir(), "tsm-ledger-export-"));
+  const installation = { id: "era", location: join(dir, "_classic_era_"), clientType: WowClientType.ClassicEra } as WowInstallation;
+  const file = join(installation.location, account("MAIN"));
+  mkdirSync(join(file, ".."), { recursive: true });
+  writeFileSync(file, saved(exportDb) + modernNames());
+  const home = join(dir, "home");
+  const folder = join(dir, "exports");
+  mkdirSync(folder, { recursive: true });
+  mkdirSync(home);
+  const ledger = new TradeSkillMasterLedgerReader({
+    gameRunning: async () => "not_running",
+    reader: new SavedVariablesReader(),
+    now: () => EXPORT_NOW,
+    writeZip: options.writeZip,
+  });
+  const settings = { tsmLedgerExportFolder: options.remembered ?? null };
+  const store = { settings, updateSettings: (patch: Partial<typeof settings>) => Object.assign(settings, patch) };
+  let response: any;
+  const rpc = new JsonlServer((line) => { response = JSON.parse(line); });
+  rpc.handle(providersHandlers(subset({
+    tsmLedger: ledger, installationService: { require: () => installation }, homeDir: home, store: store as never,
+  })));
+  const call = async (method: string, params: object = {}) => {
+    await rpc.handleLine(JSON.stringify({ id: 1, method, params }));
+    return response;
+  };
+  const exportTo = (params: object = {}) =>
+    call("tradeskillmaster.ledgerExport", { installationId: "era", account: "MAIN", folder, ...params });
+  return { file, folder, home, settings, call, exportTo };
+}
+
+/** Every entry of a ZIP, by name, as text. */
+async function readZip(path: string): Promise<Record<string, string>> {
+  const entries: Record<string, string> = {};
+  for (const entry of await listZipEntries(path)) entries[entry.name] = await readZipEntryText(path, entry);
+  return entries;
+}
+
+test("Export writes one realm's records as the desktop app's ZIP: six BOM-prefixed CSVs with item names", async () => {
+  const { file, folder, settings, exportTo } = exportFixture();
+  const before = readFileSync(file, "utf8");
+  // Character and Period are no export parameters: the whole realm is written.
+  const response = await exportTo({ realm: "Silvermoon" });
+  expect(response.error).toBeUndefined();
+  const path = join(folder, "TSM_Silvermoon_2026-11-24.zip");
+  expect(response.result).toEqual({ path });
+  const zip = await readZip(path);
+  expect(Object.keys(zip)).toEqual(
+    ["Sales", "Buys", "Income", "Expense", "Expired", "Cancelled"].map((dataset) => `TSM_Silvermoon_${dataset}_2026-11-24.csv`),
+  );
+  for (const text of Object.values(zip)) expect(text.startsWith(BOM)).toBe(true);
+  const rows = (dataset: string) => zip[`TSM_Silvermoon_${dataset}_2026-11-24.csv`]!.slice(1).split("\n");
+  // itemName after itemString, from the recorded item cache; an item the cache
+  // lacks keeps its item string. Every stored field is unchanged.
+  expect(rows("Sales")).toEqual([
+    "itemString,itemName,stackSize,quantity,price,otherPlayer,player,time,source",
+    `i:2589:123,Linen Cloth,1,2,15,Bob,Hero,${NOW},Auction`,
+    `i:2730,Green Hills of Stranglethorn - Page 6,1,1,5,Bob,Hero,${NOW},Auction`,
+    `i:999999,i:999999,1,1,5,Bob,Hero,${NOW},Vendor`,
+  ]);
+  expect(rows("Buys")).toHaveLength(2);
+  // Income and expense have no item: stored as they are.
+  expect(rows("Income")).toEqual([MONEY, `Money Transfer,1000,Alt,Hero,${NOW}`]);
+  expect(rows("Expense")).toHaveLength(3);
+  expect(rows("Expired")).toEqual(["itemString,itemName,stackSize,quantity,player,time", `i:2589,Linen Cloth,1,20,Hero,${NOW}`]);
+  expect(rows("Cancelled")).toEqual(["itemString,itemName,stackSize,quantity,player,time"]);
+  // The folder is remembered; the records and the folder hold nothing else.
+  expect(settings.tsmLedgerExportFolder).toBe(folder);
+  expect(readFileSync(file, "utf8")).toBe(before);
+  expect(readdirSync(folder)).toEqual(["TSM_Silvermoon_2026-11-24.zip"]);
+});
+
+test("Export of all realms names the realm count and makes realm names safe in file names", async () => {
+  const { folder, exportTo } = exportFixture();
+  const response = await exportTo();
+  // Empty, whose CSVs hold headers only, is no realm with records.
+  const path = join(folder, "TSM_3_Realms_2026-11-24.zip");
+  expect(response.result).toEqual({ path });
+  const zip = await readZip(path);
+  const names = Object.keys(zip);
+  expect(names).toHaveLength(18);
+  expect(names.filter((name) => name.endsWith("_Sales_2026-11-24.csv"))).toEqual([
+    "TSM_Argent Dawn_Sales_2026-11-24.csv", "TSM_Bad_Realm_Name_Sales_2026-11-24.csv", "TSM_Silvermoon_Sales_2026-11-24.csv",
+  ]);
+  expect(zip["TSM_Argent Dawn_Sales_2026-11-24.csv"]).toBe(
+    `${BOM}itemString,itemName,stackSize,quantity,price,buyer,player,time,source\ni:2589,Linen Cloth,1,1,15,X,Hero,${NOW},Auction`,
+  );
+  // A dataset the realm never saved is an empty file, as in the desktop app.
+  expect(zip["TSM_Argent Dawn_Expired_2026-11-24.csv"]).toBe(BOM);
+  expect(zip["TSM_Bad_Realm_Name_Expired_2026-11-24.csv"]!.split("\n")).toHaveLength(2);
+  // A second export the same day keeps the first.
+  expect((await exportTo()).result).toEqual({ path: join(folder, "TSM_3_Realms_2026-11-24 (1).zip") });
+  expect((await exportTo({ realm: "Bad:Realm/Name." })).result).toEqual({ path: join(folder, "TSM_Bad_Realm_Name_2026-11-24.zip") });
+});
+
+test("Export removes commas from item names", async () => {
+  const { file, folder, exportTo } = exportFixture();
+  writeFileSync(file, saved(exportDb) + String.raw`TSMItemInfoDB = { names = "Tome of Fire, Volume 2", itemStrings = "i:2589" }`);
+  await exportTo({ realm: "Silvermoon" });
+  const zip = await readZip(join(folder, "TSM_Silvermoon_2026-11-24.zip"));
+  expect(zip["TSM_Silvermoon_Expired_2026-11-24.csv"]).toBe(`${BOM}itemString,itemName,stackSize,quantity,player,time\ni:2589,Tome of Fire Volume 2,1,20,Hero,${NOW}`);
+});
+
+test("a failed export leaves no partial ZIP, says why, and remembers no folder", async () => {
+  // The real writer, failing after the first CSV is in the ZIP.
+  const { folder, settings, exportTo } = exportFixture({
+    writeZip: (path, files, options) => writeZipFiles(path, (function* () {
+      let count = 0;
+      for (const file of files) {
+        if (count++ === 1) throw Object.assign(new Error("ENOSPC: no space left on device, write"), { code: "ENOSPC" });
+        yield file;
+      }
+    })(), options),
+  });
+  const response = await exportTo({ realm: "Silvermoon" });
+  expect(response.error).toMatchObject({ message: "Not enough free space" });
+  expect(readdirSync(folder)).toEqual([]);
+  expect(settings.tsmLedgerExportFolder).toBeNull();
+
+  const ok = exportFixture();
+  // A folder that is gone, an account without the addon's file, nothing to export.
+  expect((await ok.exportTo({ folder: join(ok.folder, "gone") })).error).toMatchObject({ code: "invalid_request", message: "That folder isn't available. Choose another" });
+  expect((await ok.exportTo({ account: "GONE" })).error).toMatchObject({ code: "not_found" });
+  writeFileSync(ok.file, saved(empty));
+  expect((await ok.exportTo()).error).toMatchObject({ code: "invalid_request" });
+  expect(readdirSync(ok.folder)).toEqual([]);
+});
+
+test("Export's folder picker starts in Documents, created when missing, then in the remembered folder", async () => {
+  const { home, folder, call, exportTo } = exportFixture();
+  expect((await call("tradeskillmaster.ledgerExportFolder")).result).toEqual({ folder: join(home, "Documents") });
+  expect(statSync(join(home, "Documents")).isDirectory()).toBe(true);
+  await exportTo({ realm: "Silvermoon" });
+  expect((await call("tradeskillmaster.ledgerExportFolder")).result).toEqual({ folder });
+  // A remembered folder that is gone falls back to Documents.
+  rmSync(folder, { recursive: true });
+  expect((await call("tradeskillmaster.ledgerExportFolder")).result).toEqual({ folder: join(home, "Documents") });
 });

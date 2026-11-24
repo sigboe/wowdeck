@@ -247,6 +247,8 @@ const RULES: Rules = {
   },
   // Only ever stored after validation (settings.set checks the folder).
   wtfBackupDir: stringOrNull(true),
+  // Written by tradeskillmaster.ledgerExport after an export succeeds.
+  tsmLedgerExportFolder: stringOrNull(false),
   wtfKeepSnapshots: {
     default: () => 3,
     normalize: (value) => Math.min(10, Math.max(1, Math.round(Number(value)) || 3)),
