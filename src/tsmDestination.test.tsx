@@ -44,6 +44,7 @@ let holdAddons: Promise<void> | undefined;
 let qamOpens = 0;
 let cancelModal: (() => void) | undefined;
 let modalRoot: ReturnType<typeof createRoot> | undefined;
+let holdLedger: Promise<void> | undefined;
 let ledger: TradeSkillMasterLedger | Error = {
   state: "noRecords",
   accounts: ["MAIN"],
@@ -105,7 +106,8 @@ const fake = createFakeEngine({
     await holdAccount;
     return accountFixture({}) as unknown as TradeSkillMasterAccount;
   },
-  "tradeskillmaster.ledger": () => {
+  "tradeskillmaster.ledger": async () => {
+    await holdLedger;
     if (ledger instanceof Error) throw ledger;
     return ledger;
   },
@@ -237,9 +239,17 @@ mock.module("@decky/ui", () => ({
   QuickAccessTab: { Decky: 3 },
   GamepadButton: { DIR_LEFT: 13, DIR_RIGHT: 14 },
   Focusable: SteamFocusable,
-  Field: (p: Parameters<typeof fakeDeckyUi.Field>[0] & { focusable?: boolean }) =>
+  // A focusable Field is itself the focus target: its ref, and Steam's
+  // onGamepadFocus when it takes focus.
+  Field: (
+    p: Parameters<typeof fakeDeckyUi.Field>[0] & {
+      focusable?: boolean;
+      ref?: Ref<HTMLDivElement>;
+      onGamepadFocus?: () => void;
+    },
+  ) =>
     p.focusable ? (
-      <div className="Focusable" tabIndex={-1}>
+      <div className="Focusable" tabIndex={-1} ref={p.ref} onFocus={p.onGamepadFocus}>
         {fakeDeckyUi.Field(p)}
       </div>
     ) : (
@@ -250,8 +260,9 @@ mock.module("@decky/ui", () => ({
       {fakeDeckyUi.DialogButton(p)}
     </div>
   ),
+  // Steam's disabled button is no focus stop.
   ButtonItem: (p: Parameters<typeof fakeDeckyUi.ButtonItem>[0]) => (
-    <div className="Focusable" tabIndex={-1}>
+    <div className="Focusable" tabIndex={p.disabled ? undefined : -1}>
       {fakeDeckyUi.ButtonItem(p)}
     </div>
   ),
@@ -315,11 +326,13 @@ mock.module("@decky/ui", () => ({
     return { Close: close };
   },
 }));
-const { resetFocusMemory } = await import("./focusMemory");
+const { resetFocusMemory, restoreFocus } = await import("./focusMemory");
+const { browseFocusView, browseZone } = await import("./browseSessionState");
 const { TsmAddon } = await import("./components/TsmAddon");
 const { resetTsmReads, putTsmAccount } = await import("./tsmReads");
-const { TsmDestination, firstTsmControl } = await import("./components/TsmDestination");
-const { resetTsmView } = await import("./tsmView");
+const { TsmDestination, firstTsmControl, focusTsmEntry } =
+  await import("./components/TsmDestination");
+const { resetTsmView, tsmView } = await import("./tsmView");
 const { Focusable, GamepadButton } = await import("@decky/ui");
 
 beforeEach(resetTsmReads);
@@ -939,6 +952,8 @@ async function mountDestination(signedIn = true) {
     IS_REACT_ACT_ENVIRONMENT: true,
   });
   const container = dom.window.document.getElementById("root")!;
+  // The widened pane's slot, which scrolls itself (GetAddonsTab).
+  container.className = "wowdeck-pane-slot wowdeck-pane-slot-open";
   const root = createRoot(container);
   const reachedPane: number[] = [];
   const signIns: number[] = [];
@@ -1109,6 +1124,13 @@ test("the Ledger shows its freshness, the game-running line, each empty state an
     await showLedger();
     expect(text()).toContain("Install TradeSkillMaster to start recording");
     expect(text()).not.toContain("Recorded at last logout");
+    // Files without records from before the addon was removed: nothing to
+    // date, and nothing this session will record.
+    ledger = { ...base, state: "noAddon", gameRunning: true };
+    await showLedger();
+    expect(text()).toContain("Install TradeSkillMaster to start recording");
+    expect(text()).not.toContain("Recorded at last logout");
+    expect(text()).not.toContain("include this session");
 
     ledger = { ...base, state: "noAccount", accounts: [], account: null, recordedAt: null };
     await showLedger();
@@ -1124,5 +1146,102 @@ test("the Ledger shows its freshness, the game-running line, each empty state an
     ledger = base;
     await view.close();
     setSystemTime();
+  }
+});
+
+test("entering the remembered Ledger before its records arrive lands on its first row once they do", async () => {
+  resetTsmView();
+  tsmView.set("ledger");
+  resetFocusMemory();
+  let release = () => {};
+  holdLedger = new Promise((resolve) => (release = resolve));
+  ledger = {
+    state: "noRecords",
+    accounts: ["MAIN"],
+    account: "MAIN",
+    recordedAt: Date.now(),
+    gameRunning: false,
+  };
+  const view = await mountDestination();
+  // The destination row in the list, which Right leaves for the pane.
+  const listRow = document.createElement("div");
+  listRow.tabIndex = -1;
+  document.body.append(listRow);
+  try {
+    await act(async () => listRow.focus());
+    browseZone.zone = "pane";
+    focusTsmEntry(view.container);
+    // Only a loading line and the disabled Export so far: nothing to land on.
+    expect(view.container.textContent).toContain("Reading TradeSkillMaster's records");
+    expect(document.activeElement).toBe(listRow);
+    await act(async () => release());
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
+    expect(document.activeElement?.textContent).toContain("Recorded at last logout");
+
+    // The player moving on first keeps focus where they put it.
+    await view.leave();
+    resetTsmReads();
+    holdLedger = new Promise((resolve) => (release = resolve));
+    await view.render();
+    await act(async () => listRow.focus());
+    focusTsmEntry(view.container);
+    browseZone.zone = "list";
+    await act(async () => release());
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
+    expect(document.activeElement).toBe(listRow);
+  } finally {
+    holdLedger = undefined;
+    browseZone.zone = "nav";
+    await view.close();
+  }
+});
+
+test("a rebuilt pane puts focus back on the Ledger row the player was on", async () => {
+  resetTsmView();
+  tsmView.set("ledger");
+  resetFocusMemory();
+  ledger = {
+    state: "noRecords",
+    accounts: ["MAIN"],
+    account: "MAIN",
+    recordedAt: Date.now(),
+    gameRunning: false,
+  };
+  let view = await mountDestination();
+  const emptyRow = () =>
+    [...view.container.querySelectorAll<HTMLElement>(".Focusable[tabindex]")].find((e) =>
+      e.textContent?.includes("No sales, purchases or gold"),
+    )!;
+  try {
+    await act(async () => emptyRow().focus());
+    await view.close();
+    // A modal or menu rebuilt the panel (G4); the pane restores by identity.
+    view = await mountDestination();
+    await act(async () => {
+      restoreFocus(browseFocusView("tsm"));
+    });
+    expect(document.activeElement).toBe(emptyRow());
+  } finally {
+    await view.close();
+  }
+});
+
+test("the pill bar ends in Valve's scroll fade once the pane has scrolled under it", async () => {
+  resetTsmView();
+  const view = await mountDestination();
+  const bar = view.container.querySelector(".wowdeck-pane-bar")!;
+  const scroll = (top: number) =>
+    act(async () => {
+      view.container.scrollTop = top;
+      view.container.dispatchEvent(new window.Event("scroll"));
+    });
+  try {
+    expect(bar.hasAttribute("data-wowdeck-scrolled")).toBe(false);
+    await scroll(40);
+    expect(bar.hasAttribute("data-wowdeck-scrolled")).toBe(true);
+    await scroll(0);
+    expect(bar.hasAttribute("data-wowdeck-scrolled")).toBe(false);
+  } finally {
+    await view.close();
   }
 });

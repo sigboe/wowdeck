@@ -1,6 +1,6 @@
 import { TsmIcon } from "../icons/TsmIcon";
 import { TSM_ADDON_ACTION, TSM_REFRESH } from "./TsmAddon";
-import { firstTsmControl, TsmDestination } from "./TsmDestination";
+import { focusTsmEntry, TsmDestination } from "./TsmDestination";
 import { tsmSession, tsmOptionsSources, tsmDestinationVisible } from "../tsmSession";
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { FaClock, FaFileArchive, FaFire, FaSearch } from "react-icons/fa";
@@ -167,7 +167,7 @@ export function GetAddonsTab({
         if (rememberedFocus(view) !== undefined) {
           restoreFocus(view);
         } else {
-          firstPaneControl(tab)?.focus();
+          focusFirstPaneControl(tab);
         }
       }, 0);
     }
@@ -295,10 +295,6 @@ export function GetAddonsTab({
       [...pane.querySelectorAll<HTMLElement>(selector)].find(
         (e) => !(e as HTMLInputElement).disabled && !e.classList.contains("Disabled"),
       ) ?? null;
-    if (tab === "tsm") {
-      // Its first content row, below the pill bar.
-      return firstTsmControl(pane);
-    }
     if (tab === "latest" || tab === "popular") {
       const row = first(".wowdeck-result-row");
       if (row) {
@@ -315,6 +311,21 @@ export function GetAddonsTab({
       first(".wowdeck-zero-capability button") ??
       first("button.Focusable, .Focusable[tabindex]")
     );
+  };
+
+  /**
+   * Focus the destination's first control. The TradeSkillMaster destination
+   * lands on its first content row below the pill bar, and waits for it when
+   * its view is still reading.
+   */
+  const focusFirstPaneControl = (tab: GetAddonsTab) => {
+    if (tab === "tsm") {
+      if (paneRef.current) {
+        focusTsmEntry(paneRef.current);
+      }
+      return;
+    }
+    firstPaneControl(tab)?.focus();
   };
 
   /**
@@ -335,7 +346,7 @@ export function GetAddonsTab({
       if ((tab === "latest" || tab === "popular") && restoreFocus(view)) {
         return;
       }
-      firstPaneControl(tab)?.focus();
+      focusFirstPaneControl(tab);
     }, 0);
   };
 

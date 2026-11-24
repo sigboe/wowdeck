@@ -1,6 +1,7 @@
-import { useSyncExternalStore } from "react";
+import { useEffect, useRef, useSyncExternalStore } from "react";
 import { ButtonItem, PanelSectionRow } from "@decky/ui";
-import { browseFocusView } from "../browseSessionState";
+import { browseFocusView, browseZone } from "../browseSessionState";
+import { PENDING_RESTORE_MS } from "../focusMemory";
 import { TSM_VIEWS, tsmView, type TsmView } from "../tsmView";
 import { FocusSlot } from "./FocusSlot";
 import { PillBar } from "./TopNav";
@@ -30,6 +31,50 @@ export function firstTsmControl(pane: HTMLElement): HTMLElement | null {
 }
 
 /**
+ * Entering the destination (Right or A on it in the list): focus its first
+ * content row. A view still reading has none yet (the Ledger's first read
+ * shows only a loading line and the disabled Export), so focus stays on the
+ * list until the first row appears, for PENDING_RESTORE_MS, unless the
+ * player moves first or leaves the pane. Without the wait, focus stayed on
+ * the list while the pane counted itself focused.
+ */
+export function focusTsmEntry(pane: HTMLElement): void {
+  const row = firstTsmControl(pane);
+  if (row) {
+    row.focus();
+    return;
+  }
+  const doc = pane.ownerDocument;
+  const win = doc.defaultView;
+  if (!win) {
+    return;
+  }
+  const from = doc.activeElement;
+  const waiting = () => browseZone.zone === "pane" && doc.activeElement === from;
+  const observer = new win.MutationObserver(() => {
+    const found = firstTsmControl(pane);
+    if (!waiting() || found) {
+      stop();
+    }
+    if (found && waiting()) {
+      // After the commit, once Steam has registered the row (guide G7).
+      win.setTimeout(() => waiting() && found.focus(), 0);
+    }
+  });
+  const timer = win.setTimeout(() => stop(), PENDING_RESTORE_MS);
+  const stop = () => {
+    observer.disconnect();
+    win.clearTimeout(timer);
+  };
+  observer.observe(pane, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ["class", "disabled", "tabindex"],
+  });
+}
+
+/**
  * The TradeSkillMaster destination (GLOSSARY): a pill bar over its two
  * views. Auction data is today's pane (or, signed out, the way back to
  * signing in); the Ledger reads the addon's own records and works signed
@@ -45,10 +90,24 @@ export function TsmDestination({
   onSignIn: () => void;
 }) {
   const view = useSyncExternalStore(tsmView.subscribe, tsmView.get);
+  const barRef = useRef<HTMLDivElement>(null);
+  // The bar's scroll fade shows only while rows continue under it (S24,
+  // Valve's ScrollFade): the widened pane scrolls itself.
+  useEffect(() => {
+    const bar = barRef.current;
+    const scroller = bar?.closest<HTMLElement>(".wowdeck-pane-slot");
+    if (!bar || !scroller) {
+      return;
+    }
+    const onScroll = () => bar.toggleAttribute("data-wowdeck-scrolled", scroller.scrollTop > 0);
+    onScroll();
+    scroller.addEventListener("scroll", onScroll, { passive: true });
+    return () => scroller.removeEventListener("scroll", onScroll);
+  }, []);
   return (
     <>
       {/* Navigation floats at the top of the pane (S24). */}
-      <div className="wowdeck-pane-bar">
+      <div ref={barRef} className="wowdeck-pane-bar">
         <PanelSectionRow>
           <FocusSlot view={browseFocusView("tsm")} id={TSM_PILL_BAR}>
             <PillBar

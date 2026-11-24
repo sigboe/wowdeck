@@ -86,13 +86,24 @@ export function wowdeckSharedStyleCss(): string {
 .wowdeck-tab.gpfocus { background: #fff; color: #23262e; box-shadow: 0 3px 6px rgba(0,0,0,.32); }
 /* A pane's own navigation (the TradeSkillMaster destination's pill bar)
    floats at the top of the widened pane while its rows scroll under it
-   (S24). The pane scrolls itself inside 8 px of padding: the bar sticks at
+   (S24). The pane is pinned to the QAM viewport and scrolls itself inside
+   8 px of padding, with nothing above it to attach to: the bar sticks at
    the scroller's very top and covers that padding, opaque on the QAM's own
-   background, like .wowdeck-float-pane. */
+   background, like .wowdeck-float-pane, and ends in the same scroll fade
+   once rows scroll under it. The pane's rows keep the root's scroll buffer,
+   which is taller than the bar and its fade, so a focused row never rests
+   under them. */
 .wowdeck-pane-slot-open .wowdeck-pane-bar {
   position: sticky; top: -8px; z-index: 1; background: #0e141b;
   margin-top: -8px; padding-top: 8px; padding-bottom: 4px;
 }
+.wowdeck-pane-slot-open .wowdeck-pane-bar::after {
+  content: ""; position: absolute; left: 0; right: 0; top: 100%;
+  height: var(--wowdeck-fade-size, 20px); pointer-events: none;
+  background: linear-gradient(#0e141b, rgba(14, 20, 27, 0));
+  opacity: 0; transition: opacity .15s ease;
+}
+.wowdeck-pane-slot-open .wowdeck-pane-bar[data-wowdeck-scrolled]::after { opacity: 1; }
 /* The destination whose pane holds focus keeps a subtle selected background:
    the destination loses Steam's focus ring when focus moves into the pane, and
    without this the list looked unselected (owner, Valve's Friends list keeps
