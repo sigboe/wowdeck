@@ -7,17 +7,50 @@
  */
 import { existsSync, lstatSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import type { GameRunning, TradeSkillMasterLedger, TradeSkillMasterLedgerItem } from "../../api/contracts";
+import type { GameRunning, TradeSkillMasterLedger, TradeSkillMasterLedgerItem, TradeSkillMasterLedgerItemsPage, TradeSkillMasterLedgerItemsParams } from "../../api/contracts";
 import { getAddonsPath } from "../installation/InstallationDetector";
 import type { WowInstallation } from "../models";
 import { WowClientType } from "../types";
 import { detectGameRunning } from "../wtf/GameProcessGuard";
 import { ledgerItemName } from "./ItemNames";
 import { GOLD_LOG, hasRows, ledgerItemTotals, ledgerView, RECORD_CSVS, type LedgerSelection } from "./LedgerFigures";
-import { readTradeSkillMaster, safePath, savedVariables, type LuaValue, type SavedVariablesReader } from "./SavedVariables";
+import { readTradeSkillMaster, safePath, savedVariables, type LuaTable, type LuaValue, type SavedVariablesReader } from "./SavedVariables";
 
 /** The clients the addon counts as Retail, where it records gold rounded to 1,000 gold. */
 const RETAIL = new Set([WowClientType.Retail, WowClientType.RetailPtr, WowClientType.RetailXPtr, WowClientType.Beta]);
+
+// Steam measures each mounted focus stop. The JSONL reply also needs room
+// for its envelope under the Python bridge's 16 MiB line limit.
+const ITEM_PAGE_ROWS = 40;
+const ITEM_PAGE_BYTES = 64 * 1024;
+
+function itemPage(
+  items: ReturnType<typeof ledgerItemTotals>,
+  itemInfo: LuaTable | null,
+  offset: number,
+): TradeSkillMasterLedgerItemsPage {
+  const rows: TradeSkillMasterLedgerItem[] = [];
+  let bytes = 2; // array brackets
+  let index = offset;
+  for (; index < items.length && rows.length < ITEM_PAGE_ROWS; index++) {
+    const item = items[index]!;
+    const name = (itemInfo && ledgerItemName(itemInfo, item.itemString)) ?? item.itemString;
+    let row = { ...item, name };
+    let size = Buffer.byteLength(JSON.stringify(row));
+    // A malformed record/cache can hold a single string larger than the page.
+    // Keep its amounts and its place in the list, with a shortened label.
+    if (size + 2 > ITEM_PAGE_BYTES) {
+      const shorten = (text: string) => text.length > 1024 ? text.slice(0, 1024) + "…" : text;
+      row = { ...item, itemString: shorten(item.itemString), name: shorten(name) };
+      size = Buffer.byteLength(JSON.stringify(row));
+    }
+    const comma = rows.length > 0 ? 1 : 0;
+    if (bytes + comma + size > ITEM_PAGE_BYTES) break;
+    bytes += comma + size;
+    rows.push(row);
+  }
+  return { rows, nextOffset: index < items.length ? index : null };
+}
 
 export const LEDGER_SAVED_FILE = "TradeSkillMaster.lua";
 
@@ -64,6 +97,13 @@ export class TradeSkillMasterLedgerReader {
   readonly #gameRunning: () => Promise<GameRunning>;
   readonly #reader: SavedVariablesReader;
   readonly #now: () => number;
+  // Reuse the sort on adjacent reads. A rewritten file or a moving period
+  // window invalidates the totals.
+  #items?: {
+    db: LuaTable;
+    key: string;
+    totals: ReturnType<typeof ledgerItemTotals>;
+  };
   constructor(options: { gameRunning?: () => Promise<GameRunning>; reader?: SavedVariablesReader; now?: () => number } = {}) {
     this.#gameRunning = options.gameRunning ?? (() => detectGameRunning());
     this.#reader = options.reader ?? savedVariables;
@@ -113,16 +153,20 @@ export class TradeSkillMasterLedgerReader {
     };
   }
 
-  ledgerItems(installation: WowInstallation, account?: string, selection: LedgerSelection = {}): TradeSkillMasterLedgerItem[] {
+  ledgerItems(installation: WowInstallation, params: TradeSkillMasterLedgerItemsParams): TradeSkillMasterLedgerItemsPage {
+    const { account, exact = false, realm, character, period, offset = 0 } = params;
     const found = accounts(installation);
-    if (found.length === 0) return [];
-    const { saved } = this.#readAccount(installation, found, account);
-    if (!saved) return [];
-    const cache = saved.itemInfo;
-    return ledgerItemTotals(saved.db, selection, this.#now()).map((item) => ({
-      ...item,
-      name: (cache && ledgerItemName(cache, item.itemString)) ?? item.itemString,
-    }));
+    const asked = found.find((a) => a.name === account);
+    if (found.length === 0 || (exact && !asked)) return { rows: [], nextOffset: null };
+    const saved = asked ? this.#read(installation, asked.name) : this.#readAccount(installation, found).saved;
+    if (!saved) return { rows: [], nextOffset: null };
+
+    const now = this.#now();
+    const key = JSON.stringify([exact, realm, character, period, !period || period === "All" ? null : Math.floor(now / 1000)]);
+    if (this.#items?.db !== saved.db || this.#items.key !== key) {
+      this.#items = { db: saved.db, key, totals: ledgerItemTotals(saved.db, params, now, exact) };
+    }
+    return itemPage(this.#items.totals, saved.itemInfo, Number.isSafeInteger(offset) && offset >= 0 ? offset : 0);
   }
 
   #read(installation: WowInstallation, name: string) {

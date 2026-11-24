@@ -262,9 +262,10 @@ function selectTrades(data: Layout, asked: LedgerSelection) {
 }
 
 /** Per-item totals for the same selection and time window as the summary. */
-export function ledgerItemTotals(db: LuaTable, asked: LedgerSelection, nowMs: number) {
+export function ledgerItemTotals(db: LuaTable, asked: LedgerSelection, nowMs: number, exact: boolean) {
   const data = layout(db);
-  const { realm, selected, range } = selectTrades(data, asked);
+  const { realm, character, selected, range } = selectTrades(data, asked);
+  if (exact && (realm !== (asked.realm ?? null) || character !== (asked.character ?? null))) return [];
   const { current } = tradeTallies(data, realm, selected, range, nowMs);
   return itemKeys(current).map((itemString) => {
     const earned = current.sale.perItem.get(itemString) ?? 0;

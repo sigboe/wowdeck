@@ -793,9 +793,23 @@ export interface TradeSkillMasterLedgerParams {
   period?: TradeSkillMasterLedgerPeriod;
 }
 
+export interface TradeSkillMasterLedgerItemsParams extends TradeSkillMasterLedgerParams {
+  /** Keep the opened selection. Missing named filters produce an empty list. */
+  exact?: boolean;
+  /** Start of the page, from the preceding page's nextOffset. Defaults to zero. */
+  offset?: number;
+}
+
+export interface TradeSkillMasterLedgerItemsPage {
+  rows: TradeSkillMasterLedgerItem[];
+  /** The next offset in the same ordered selection, or null at the end. */
+  nextOffset: number | null;
+}
+
 export interface TradeSkillMasterLedgerItem {
+  /** Canonical item string, shortened only if the row would exceed the page budget. */
   itemString: string;
-  /** The cached name, or the item string when no name is available. */
+  /** The cached name, or the item string when no name is available. Oversized strings may be shortened for display. */
   name: string;
   /** Amounts in copper. */
   earned: number;
@@ -964,8 +978,8 @@ export interface MethodMap {
   };
   /** Items bought or sold for the Ledger selection, highest earned plus spent first. */
   "tradeskillmaster.ledgerItems": {
-    params: TradeSkillMasterLedgerParams;
-    result: TradeSkillMasterLedgerItem[];
+    params: TradeSkillMasterLedgerItemsParams;
+    result: TradeSkillMasterLedgerItemsPage;
   };
   "tradeskillmaster.status": { params: Record<string, never>; result: TradeSkillMasterAuthStatus };
   "tradeskillmaster.signIn": { params: Record<string, never>; result: { authorizeUrl: string } };

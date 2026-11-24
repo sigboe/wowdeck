@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import {
   DialogBody,
   DialogButton,
@@ -10,7 +11,7 @@ import {
 } from "@decky/ui";
 import type {
   TradeSkillMasterLedger,
-  TradeSkillMasterLedgerParams,
+  TradeSkillMasterLedgerItemsParams,
 } from "../../backend/src/api/contracts";
 import { browseFocusView, holdBrowseSessionForModal } from "../browseSessionState";
 import { requestFocus } from "../focusMemory";
@@ -26,32 +27,59 @@ function LedgerItemsModal({
   filters,
   closeModal,
 }: {
-  params: TradeSkillMasterLedgerParams;
+  params: TradeSkillMasterLedgerItemsParams;
   filters: string;
   closeModal: () => void;
 }) {
-  const { data, error } = useTsmLedgerItems(params);
+  const [offsets, setOffsets] = useState([0]);
+  const offset = offsets[offsets.length - 1]!;
+  const { data, error } = useTsmLedgerItems({ ...params, offset });
+  const firstRow = useRef<HTMLDivElement>(null);
+  const focusPage = useRef(false);
+  useEffect(() => {
+    if (focusPage.current && firstRow.current) {
+      focusPage.current = false;
+      firstRow.current.focus();
+    }
+  }, [data, error]);
+
+  const changePage = (next: number[]) => {
+    focusPage.current = true;
+    setOffsets(next);
+  };
+  const nextOffset = data?.nextOffset ?? null;
   return (
-    <ModalRoot
-      onCancel={closeModal}
-      closeModal={closeModal}
-      bAllowFullSize
-      modalClassName="wowdeck-ledger-items-modal"
-    >
+    <ModalRoot onCancel={closeModal} closeModal={closeModal} bAllowFullSize>
       <style>{wowdeckSharedStyleCss()}</style>
       <DialogHeader>
         All items
         <div className="wowdeck-ledger-items-filters">{filters}</div>
       </DialogHeader>
       <DialogBody>
-        <ScrollBuffer>
+        <ScrollBuffer key={offset}>
           <DialogControlsSection>
+            {offsets.length > 1 && (
+              <Field
+                focusable
+                label="Previous page"
+                onOKActionDescription="Previous page"
+                onClick={() => changePage(offsets.slice(0, -1))}
+              />
+            )}
             {error ? (
-              <Field focusable label={error} />
+              <Field ref={firstRow} focusable label={error} />
             ) : data === null ? (
               <Field label="Reading Ledger items…" />
-            ) : data.length === 0 ? (
-              <Field focusable label="No items bought or sold for these filters" />
+            ) : data.rows.length === 0 ? (
+              <Field
+                ref={firstRow}
+                focusable
+                label={
+                  offset === 0
+                    ? "No items bought or sold for these filters"
+                    : "No items on this page"
+                }
+              />
             ) : (
               <>
                 <Field childrenLayout="below" childrenContainerWidth="max">
@@ -62,9 +90,10 @@ function LedgerItemsModal({
                     <span>Net</span>
                   </div>
                 </Field>
-                {data.map(({ itemString, name, earned, spent, net }) => (
+                {data.rows.map(({ itemString, name, earned, spent, net }, index) => (
                   <Field
-                    key={itemString}
+                    key={`${index}:${itemString}`}
+                    ref={index === 0 ? firstRow : undefined}
                     focusable
                     childrenLayout="below"
                     childrenContainerWidth="max"
@@ -77,6 +106,14 @@ function LedgerItemsModal({
                     </div>
                   </Field>
                 ))}
+                {nextOffset !== null && (
+                  <Field
+                    focusable
+                    label="Next page"
+                    onOKActionDescription="Next page"
+                    onClick={() => changePage([...offsets, nextOffset])}
+                  />
+                )}
               </>
             )}
           </DialogControlsSection>
@@ -97,6 +134,7 @@ export function openLedgerItems(
   // Freeze the filters shown beside the figures when the row was opened.
   const params = {
     installationId,
+    exact: true,
     ...ledgerParams({ ...ledger, account: ledger.account ?? undefined }),
   };
   const character = ledger.characters.find(({ id }) => id === ledger.character);

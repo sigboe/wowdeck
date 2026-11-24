@@ -1320,4 +1320,10 @@ recovery, debounce timing and game start and stop.
 
 | ID | Priority | Result | Steps | Expected |
 | --- | --- | --- | --- | --- |
-| LEDGER-316-1 | P1 | Pending | Select a realm and period with enough traded items to scroll. Press A on All items below Profit. Scroll down and back up, then press B. Repeat with a filter that has no trades | The row counts the items bought or sold for the selected filters. The modal spans the screen and names the active filters above the list. Each item is one focus stop. The Earned, Spent and Net columns line up, with the largest earned plus spent first. Transfers and fees are absent. With zero items the modal says there were no purchases or sales for these filters. B returns focus to All items with the same filters |
+| LEDGER-316-1 | P1 | Pending | Select a realm and period with more than 40 traded items. Press A on All items below Profit. Scroll to Next page and press A. Go back with Previous page, then press B. Repeat with a filter that has no trades | The row counts the items bought or sold for the selected filters. The native full-size modal names the opened filters above the list. Check whether the modal spans the screen and whether Earned, Spent and Net fit beside the item names. Items are ordered by earned plus spent, highest first. Each item is one focus stop, and turning a page focuses its first item. Transfers and fees are absent. A filter with zero trades shows an empty message. B returns focus to All items |
+
+The RPC tests cover a four-realm fixture with 55,000 items per realm and
+check the JSONL reply against the bridge limit. They also follow pages
+with long UTF-8 names to the end and check that a missing account, realm
+or character leaves the opened scope empty. The destination test checks
+page focus, the frozen filter header after a save and focus on return.

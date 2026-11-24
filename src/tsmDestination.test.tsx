@@ -138,7 +138,7 @@ const fake = createFakeEngine({
     if (ledger instanceof Error) throw ledger;
     return echoFilters ? echoFilters(ledger, params) : ledger;
   },
-  "tradeskillmaster.ledgerItems": [],
+  "tradeskillmaster.ledgerItems": { rows: [], nextOffset: null },
   "tradeskillmaster.destination": async (params) => {
     await holdDestination;
     return accountFixture(params) as unknown as TradeSkillMasterDestination;
@@ -1410,51 +1410,111 @@ const showLedger = (container: HTMLElement) =>
     ).click(),
   );
 
-test("All items shows the filtered count and restores focus after B closes the modal", async () => {
+test("All items pages native focus rows and refreshes only the opened filters", async () => {
   resetTsmView();
   resetTsmReads();
   resetLedgerFilters();
   resetFocusMemory();
   const previousLedger = ledger;
   const previousItems = fake.answers["tradeskillmaster.ledgerItems"];
-  ledger = { ...readyLedger, realm: "Silvermoon", period: "1M", itemCount: 2 };
-  fake.answers["tradeskillmaster.ledgerItems"] = [
+  ledger = { ...readyLedger, realm: "Silvermoon", period: "1M", itemCount: 41 };
+  const firstPage = [
     { itemString: "i:2589", name: "Linen Cloth", earned: 300, spent: 200, net: 100 },
     { itemString: "i:2592", name: "Wool Cloth", earned: 0, spent: 50, net: -50 },
+    ...Array.from({ length: 38 }, (_, i) => ({
+      itemString: `i:${i + 1}`,
+      name: `Item ${i + 1}`,
+      earned: 1,
+      spent: 0,
+      net: 1,
+    })),
   ];
+  const lastItem = { itemString: "i:4306", name: "Silk Cloth", earned: 1, spent: 0, net: 1 };
+  let realmExists = true;
+  fake.answers["tradeskillmaster.ledgerItems"] = ({ exact, realm, offset }) => {
+    if (!realmExists && exact && realm === "Silvermoon") return { rows: [], nextOffset: null };
+    return offset === 40
+      ? { rows: [lastItem], nextOffset: null }
+      : { rows: firstPage, nextOffset: 40 };
+  };
   const view = await mountDestination(false);
   const opener = () =>
     [...view.container.querySelectorAll<HTMLElement>(".Focusable[tabindex]")].find(
-      (row) => row.textContent === "All items (2)",
+      (row) => row.textContent === "All items (41)",
     )!;
   try {
     await showLedger(view.container);
-    expect(view.container.textContent).toMatch(/Profit.*All items \(2\)/);
+    expect(view.container.textContent).toMatch(/Profit.*All items \(41\)/);
     const reads = fake.paramsOf("tradeskillmaster.ledgerItems").length;
     await act(async () => {
       opener().focus();
       opener().querySelector("b")!.click();
     });
     await view.leave(); // Opening a Steam modal unmounts the pane.
+    const scope = {
+      installationId: "active",
+      account: "MAIN",
+      exact: true,
+      realm: "Silvermoon",
+      period: "1M",
+    } as const;
     expect(fake.paramsOf("tradeskillmaster.ledgerItems").slice(reads)).toEqual([
-      { installationId: "active", account: "MAIN", realm: "Silvermoon", period: "1M" },
+      { ...scope, offset: 0 },
     ]);
 
     expect(document.querySelector("h2")?.textContent).toBe(
       "All itemsMAIN · Silvermoon · All characters · 1M",
     );
-    const columns = [...document.querySelectorAll(".wowdeck-ledger-items-columns")];
-    expect(columns.map((row) => [...row.children].map((cell) => cell.textContent))).toEqual([
+    const columns = () => [...document.querySelectorAll(".wowdeck-ledger-items-columns")];
+    expect(columns()).toHaveLength(41); // header plus one bounded page of item rows
+    expect(
+      columns()
+        .slice(0, 3)
+        .map((row) => [...row.children].map((cell) => cell.textContent)),
+    ).toEqual([
       ["Item", "Earned", "Spent", "Net"],
       ["Linen Cloth", "3s", "2s", "1s"],
       ["Wool Cloth", "0c", "50c", "-50c"],
     ]);
-    expect(columns[0]!.closest(".Focusable")).toBeNull();
-    for (const row of columns.slice(1)) {
+    expect(columns()[0]!.closest(".Focusable")).toBeNull();
+    for (const row of columns().slice(1)) {
       const field = row.closest<HTMLElement>(".Focusable[tabindex]")!;
       await act(async () => field.focus());
       expect(document.activeElement).toBe(field);
     }
+    const pageAction = (label: string) =>
+      [...document.querySelectorAll<HTMLElement>(".Focusable[tabindex]")].find(
+        (row) => row.textContent === label,
+      );
+    const turnPage = (label: string) =>
+      act(async () => {
+        const row = pageAction(label)!;
+        row.focus();
+        row.querySelector("b")!.click();
+      });
+    await turnPage("Next page");
+    expect(columns()).toHaveLength(2);
+    expect(document.activeElement).toBe(columns()[1]!.closest(".Focusable"));
+    expect(document.activeElement?.textContent).toContain("Silk Cloth");
+    expect(pageAction("Next page")).toBeUndefined();
+    await turnPage("Previous page");
+    expect(columns()).toHaveLength(41);
+    expect(document.activeElement?.textContent).toContain("Linen Cloth");
+    expect(pageAction("Previous page")).toBeUndefined();
+
+    realmExists = false;
+    await act(async () =>
+      fake.emit({ event: "tradeskillmaster.ledgerChanged", params: { installationId: "active" } }),
+    );
+    expect(fake.paramsOf("tradeskillmaster.ledgerItems").slice(reads)).toEqual([
+      { ...scope, offset: 0 },
+      { ...scope, offset: 40 },
+      { ...scope, offset: 0 },
+      { ...scope, offset: 0 },
+    ]);
+    expect(document.querySelector("h2")?.textContent).toContain("Silvermoon · All characters · 1M");
+    expect(document.body.textContent).toContain("No items bought or sold for these filters");
+    expect(columns()).toHaveLength(0);
     const opens = qamOpens;
     await act(async () => cancelModal!());
     expect(qamOpens).toBe(opens + 1);

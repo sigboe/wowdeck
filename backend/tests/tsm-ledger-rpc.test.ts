@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { deflateRawSync } from "node:zlib";
@@ -46,13 +46,17 @@ function fixture() {
     reader: new SavedVariablesReader(),
   });
   let response: any;
-  const rpc = new JsonlServer((line) => { response = JSON.parse(line); });
+  let lineBytes = 0;
+  const rpc = new JsonlServer((line) => {
+    response = JSON.parse(line);
+    lineBytes = Buffer.byteLength(line) + 1; // stdout newline
+  });
   rpc.handle(providersHandlers(subset({ tsmLedger: ledger, installationService: { require: () => installation } })));
   const call = async (params: object = {}, method = "tradeskillmaster.ledger") => {
     await rpc.handleLine(JSON.stringify({ id: 1, method, params: { installationId: "era", ...params } }));
     return response;
   };
-  return { write, call, running: (state: GameRunning) => { running = state; } };
+  return { write, call, remove: (path: string) => rmSync(join(installation.location, path)), lineBytes: () => lineBytes, running: (state: GameRunning) => { running = state; } };
 }
 
 const account = (name: string) => `WTF/Account/${name}/SavedVariables/TradeSkillMaster.lua`;
@@ -195,7 +199,7 @@ test("the Ledger reads names from the saved legacy item cache and prefers an exa
   expect(figures.earned).toMatchObject({ total: 30, topItem: "i:2589:123", topItemName: "Linen Cloth" });
   expect(figures.spent).toMatchObject({ total: 5, topItem: "i:4306", topItemName: "Silk Cloth" });
   expect(figures.profit.topItemName).toBe("Linen Cloth");
-  expect((await call({}, "tradeskillmaster.ledgerItems")).result).toEqual([
+  expect((await call({}, "tradeskillmaster.ledgerItems")).result.rows).toEqual([
     { itemString: "i:2589:123", name: "Linen Cloth", earned: 30, spent: 0, net: 30 },
     { itemString: "i:4306", name: "Silk Cloth", earned: 0, spent: 5, net: -5 },
   ]);
@@ -357,7 +361,7 @@ test("the item RPC shares the summary's filters and counts only bought and sold 
       `Money Transfer,1,1,99999,X,Hero,${NOW - 3600},Trade`,
     ]),
   });
-  const items = (params: object = {}) => call(params, "tradeskillmaster.ledgerItems");
+  const items = async (params: object = {}) => (await call(params, "tradeskillmaster.ledgerItems")).rows;
   const row = (itemString: string, earned: number, spent: number) => ({
     itemString, name: itemString, earned, spent, net: earned - spent,
   });
@@ -374,6 +378,74 @@ test("the item RPC shares the summary's filters and counts only bought and sold 
     expect(await items({ character })).toEqual([]);
     expect((await call({ character })).itemCount).toBe(0);
   }
+});
+
+test("a four-realm Ledger fits the Python bridge's JSONL limit", async () => {
+  const { write, call, lineBytes } = fixture();
+  const tradesPerRealm = 55_000;
+  const db = Object.fromEntries(Array.from({ length: 4 }, (_, realm) => [
+    `r@Realm ${realm}@internalData@csvSales`,
+    csv(TRADE, Array.from({ length: tradesPerRealm }, (_, row) =>
+      `i:2589:123:456:${realm + 1}:${row + 1},1,1,15,Bob,Hero,${NOW},Auction`)),
+  ]));
+  write(account("MAIN"), saved(db), NOW);
+  const response = await call({ account: "MAIN" }, "tradeskillmaster.ledgerItems");
+  expect(response.error).toBeUndefined();
+  expect(lineBytes()).toBeLessThan(16 * 1024 * 1024);
+  expect(response.result.rows).toHaveLength(40);
+  expect(response.result.nextOffset).toBe(40);
+  const last = await call({ account: "MAIN", offset: 4 * tradesPerRealm - 1 }, "tradeskillmaster.ledgerItems");
+  expect(last.result.rows).toHaveLength(1);
+  expect(last.result.nextOffset).toBeNull();
+});
+
+test("item pages split by serialized UTF-8 bytes and still reach every row in order", async () => {
+  const { write, call, lineBytes } = fixture();
+  const ids = Array.from({ length: 70 }, (_, index) => `i:${index + 1}`);
+  const longName = '雪"'.repeat(1000); // JSON quoting and multibyte UTF-8
+  const oversizedName = "雪".repeat(30_000);
+  const names = ids.map((_, index) => index === 0 ? oversizedName : longName).map((name) => JSON.stringify(name).slice(1, -1));
+  const separator = String.raw`\002`;
+  const cache = `TSMItemInfoDB = { names = "${names.join(separator)}", itemStrings = "${ids.join(separator)}" }`;
+  write(account("MAIN"), saved({
+    "r@Silvermoon@internalData@csvSales": csv(TRADE, ids.map((id, index) =>
+      `${id},1,1,${ids.length - index},Bob,Hero,${NOW},Auction`)),
+  }) + cache, NOW);
+  const read = (offset: number) => call({ account: "MAIN", offset }, "tradeskillmaster.ledgerItems");
+  let offset: number | null = 0;
+  const seen: string[] = [];
+  while (offset !== null) {
+    const { result } = await read(offset);
+    expect(result.rows.length).toBeGreaterThan(0);
+    expect(result.rows.length).toBeLessThan(40);
+    expect(lineBytes()).toBeLessThan(65 * 1024); // 64 KiB rows plus the reply envelope
+    if (offset === 0) {
+      expect(result.rows[0]).toMatchObject({ itemString: ids[0], earned: ids.length, name: "雪".repeat(1024) + "…" });
+      expect(result.rows[1].name).toBe(longName);
+    }
+    seen.push(...result.rows.map((row: { itemString: string }) => row.itemString));
+    expect(result.nextOffset).toBe(seen.length < ids.length ? seen.length : null);
+    offset = result.nextOffset;
+  }
+  expect(seen).toEqual(ids);
+});
+
+test("a Ledger item refresh keeps the filters that were open", async () => {
+  const { write, call, remove } = fixture();
+  const items = (params: object) => call({ exact: true, account: "MAIN", ...params }, "tradeskillmaster.ledgerItems");
+  const trade = (id: number, player: string) => csv(TRADE, [`i:${id},1,1,15,Bob,${player},${NOW},Auction`]);
+  const argent = { "r@Argent Dawn@internalData@csvSales": trade(2, "Hero") };
+  write(account("MAIN"), saved({ ...argent, "r@Silvermoon@internalData@csvSales": trade(1, "Hero") }), NOW);
+  write(account("ALT"), saved(argent), NOW);
+  expect((await items({ realm: "Silvermoon" })).result.rows).toMatchObject([{ itemString: "i:1" }]);
+  write(account("MAIN"), saved(argent), NOW + 1);
+  expect((await items({ realm: "Silvermoon" })).result.rows).toEqual([]);
+  // The summary can still fall back to All when the same filter disappears.
+  expect((await call({ account: "MAIN", realm: "Silvermoon" })).result.realm).toBeNull();
+  write(account("MAIN"), saved({ "r@Silvermoon@internalData@csvSales": trade(3, "Alt") }), NOW + 2);
+  expect((await items({ character: "Hero - Silvermoon" })).result.rows).toEqual([]);
+  remove(account("MAIN"));
+  expect((await items({})).result.rows).toEqual([]);
 });
 
 test("filter choices: realms with records, characters from records and gold logs, the Warband bank and logged guilds, All by default", async () => {

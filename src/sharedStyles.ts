@@ -192,7 +192,6 @@ export function wowdeckSharedStyleCss(): string {
 .wowdeck-ledger-trend svg { width: 12px; height: 12px; }
 .wowdeck-ledger-gold > svg { display: block; width: 100%; height: 72px; margin-top: 4px; }
 .wowdeck-ledger-note { color: #b8bcbf; font-size: 12px; line-height: 16px; }
-.wowdeck-ledger-items-modal { width: 100vw; max-width: 100vw; box-sizing: border-box; }
 .wowdeck-ledger-items-filters {
   color: ${STEAM.textMuted}; font-size: ${STEAM_FONT.body}; overflow-wrap: anywhere;
 }

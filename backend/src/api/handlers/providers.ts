@@ -39,7 +39,7 @@ export function providersHandlers({ store, registry, curseForgeAuth, curseForgeP
       period: params.period,
       plotWidth: params.plotWidth,
     }),
-    "tradeskillmaster.ledgerItems": async (params) => tsmLedger.ledgerItems(installationService.require(params.installationId), params.account, params),
+    "tradeskillmaster.ledgerItems": async (params) => tsmLedger.ledgerItems(installationService.require(params.installationId), params),
     "tradeskillmaster.status": async () => tsmAuth.status(),
     "tradeskillmaster.signIn": async () => tsmAuth.begin(),
     "tradeskillmaster.cancel": async () => tsmAuth.cancel(),

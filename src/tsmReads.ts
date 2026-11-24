@@ -11,8 +11,8 @@ import type {
   TradeSkillMasterAuthStatus,
   TradeSkillMasterDestination,
   TradeSkillMasterLedger,
-  TradeSkillMasterLedgerItem,
-  TradeSkillMasterLedgerParams,
+  TradeSkillMasterLedgerItemsPage,
+  TradeSkillMasterLedgerItemsParams,
 } from "../backend/src/api/contracts";
 import { useResource } from "./useResource";
 import {
@@ -99,9 +99,12 @@ export function createTsmModule(deps: {
     },
     clock: deps.clock,
   });
-  const ledgerItems = createKeyedResource<TradeSkillMasterLedgerItem[]>({
+  const ledgerItems = createKeyedResource<TradeSkillMasterLedgerItemsPage>({
     read: (key) =>
-      deps.rpc("tradeskillmaster.ledgerItems", JSON.parse(key) as TradeSkillMasterLedgerParams),
+      deps.rpc(
+        "tradeskillmaster.ledgerItems",
+        JSON.parse(key) as TradeSkillMasterLedgerItemsParams,
+      ),
     errorText: (e) => {
       backendErrorMessage(e);
       return "Couldn't load Ledger items";
@@ -212,7 +215,7 @@ export function useTsmLedger(installationId: string) {
   }
   return { ...snapshot, data: snapshot.data ?? last.current };
 }
-export function useTsmLedgerItems(params: TradeSkillMasterLedgerParams) {
+export function useTsmLedgerItems(params: TradeSkillMasterLedgerItemsParams) {
   const key = JSON.stringify(params);
   const snapshot = useResource(tsmModule.ledgerItems, key);
   useEffect(() => () => tsmModule.ledgerItems.forget(key), [key]);
