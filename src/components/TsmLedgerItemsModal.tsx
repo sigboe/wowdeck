@@ -34,26 +34,50 @@ const Amount = ({ copper }: { copper: number }) =>
     <Money copper={copper} />
   );
 
+/** Where All items was left for Wowhead: its pages so far and the item's row on the last. */
+type ItemsPlace = { offsets: number[]; index: number };
+
+/**
+ * The place All items was left at for Wowhead, by its filters. Steam shows
+ * its browser under a QAM dialog, so A closes the list before opening the
+ * page (DEVICE 2026-11-24, #319); the next A on All items with the same
+ * filters reopens it there, once (owner, PR #318 review).
+ */
+let resume: { key: string; place: ItemsPlace } | null = null;
+
+/** Test hook: forget where All items was left. */
+export function resetLedgerItemsResume(): void {
+  resume = null;
+}
+
 function LedgerItemsModal({
   params,
   filters,
   wowhead,
+  start,
+  openWeb,
   closeModal,
 }: {
   params: TradeSkillMasterLedgerItemsParams;
   filters: string;
   /** The installation's Wowhead section (TradeSkillMasterLedger.wowhead). */
   wowhead: string | null;
+  /** Where to open: page 1 and its first row, or where Wowhead was opened. */
+  start: ItemsPlace;
+  /** Closes the list, keeping `place` for the next open, then opens `url`. */
+  openWeb: (url: string, place: ItemsPlace) => void;
   closeModal: () => void;
 }) {
-  const [offsets, setOffsets] = useState([0]);
+  const [offsets, setOffsets] = useState(start.offsets);
   const offset = offsets[offsets.length - 1]!;
   const { data, error } = useTsmLedgerItems({ ...params, offset });
   const firstRow = useRef<HTMLDivElement>(null);
   // Each page, the first one included, lands on its first row when it
   // arrives. Steam's dialog takes focus as it opens, often before the first
   // page: without this, focus stayed where it took it (DEVICE 2026-11-24).
+  // Back from Wowhead, the first page shown lands on the item opened.
   const focusPage = useRef(true);
+  const focusIndex = useRef(start.index);
   useEffect(() => {
     if (focusPage.current && firstRow.current) {
       focusPage.current = false;
@@ -63,6 +87,7 @@ function LedgerItemsModal({
 
   const changePage = (next: number[]) => {
     focusPage.current = true;
+    focusIndex.current = 0;
     setOffsets(next);
   };
   const nextOffset = data?.nextOffset ?? null;
@@ -90,6 +115,7 @@ function LedgerItemsModal({
     },
   };
   const rows = data !== null && !error ? data.rows : [];
+  const focusRow = Math.min(focusIndex.current, Math.max(rows.length - 1, 0));
   return (
     <ModalRoot
       onCancel={closeModal}
@@ -150,18 +176,19 @@ function LedgerItemsModal({
                   return (
                     <Field
                       key={`${index}:${itemString}`}
-                      ref={index === 0 ? firstRow : undefined}
+                      ref={index === focusRow ? firstRow : undefined}
                       focusable
                       childrenLayout="below"
                       childrenContainerWidth="max"
                       {...paging}
-                      // A opens the item on Wowhead in Steam's browser; the
-                      // list stays open under it, so B comes back to this
-                      // row (owner, PR #318 review). No ID or no section:
-                      // no action.
+                      // A opens the item on Wowhead in Steam's browser. The
+                      // list closes first, as Steam's browser opens under it,
+                      // and the next A on All items comes back to this row
+                      // (owner, PR #318 review). No ID or no section: no
+                      // action.
                       {...(url && {
                         onOKActionDescription: "Open on Wowhead",
-                        onClick: () => Navigation.NavigateToExternalWeb(url),
+                        onClick: () => openWeb(url, { offsets, index }),
                       })}
                     >
                       <div className="wowdeck-ledger-items-columns">
@@ -212,12 +239,24 @@ export function openLedgerItems(
     character?.label ?? "All characters",
     ledger.period,
   ].join(" · ");
+  const key = JSON.stringify(params);
+  const start = resume?.key === key ? resume.place : { offsets: [0], index: 0 };
+  resume = null;
+  // Leaving for Wowhead, the QAM stays closed so the page shows.
+  let leavingForWeb = false;
   const release = holdBrowseSessionForModal();
   const modal = showModal(
     <LedgerItemsModal
       params={params}
       filters={filters}
       wowhead={ledger.wowhead}
+      start={start}
+      openWeb={(url, place) => {
+        resume = { key, place };
+        leavingForWeb = true;
+        modal.Close();
+        Navigation.NavigateToExternalWeb(url);
+      }}
       closeModal={() => modal.Close()}
     />,
     window,
@@ -226,7 +265,9 @@ export function openLedgerItems(
       bHideMainWindowForPopouts: false,
       fnOnClose: () => {
         requestFocus(browseFocusView("tsm"), focusId);
-        openPanel("browse");
+        if (!leavingForWeb) {
+          openPanel("browse");
+        }
         release();
       },
     },

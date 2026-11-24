@@ -1,5 +1,4 @@
 import { backendErrorMessage } from "../errors";
-import { TsmIcon } from "../icons/TsmIcon";
 import { useEffect, useState } from "react";
 import {
   ButtonItem,
@@ -177,10 +176,6 @@ export function TsmAccount() {
   const { data: account, error } = useTsmAccount();
   return (
     <>
-      <h2>
-        <TsmIcon style={{ verticalAlign: "-0.125em", marginRight: "0.35em" }} />
-        TradeSkillMaster
-      </h2>
       {error && (
         <PanelSectionRow>
           <Field label={error} />

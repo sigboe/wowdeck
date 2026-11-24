@@ -487,7 +487,8 @@ test("destination shows account allowance, waiting data and live freshness for t
     await act(async () => root.render(<TsmAddon installationId="active" />));
     expect(container.textContent).not.toContain("gold");
     expect(container.textContent).toContain("Signed in as Fixture");
-    expect(container.querySelector("h2")?.textContent).toBe("TradeSkillMaster");
+    // The title row names the destination; the page repeats no heading.
+    expect(container.querySelector("h2")).toBeNull();
     expect(container.textContent).toContain("Der Abyssische Rat: Followed");
 
     expect(container.textContent).toContain("7 of 25 realms followed");
@@ -1715,12 +1716,31 @@ test("All items opens an item on Wowhead with A, names unnamed items by ID and p
       "Open on Wowhead",
       null,
     ]);
+    const opens = qamOpens;
     await act(async () =>
       items()[1]!.querySelector<HTMLElement>(".wowdeck-ledger-items-columns")!.click(),
     );
     expect(webPages).toEqual(["https://www.wowhead.com/mop-classic/item=286742"]);
-    // The list stays open under Steam's browser.
+    // Steam's browser opens under a QAM dialog, so the list closes first
+    // and the QAM stays closed for the page (DEVICE 2026-11-24, #319).
+    expect(items()).toHaveLength(0);
+    expect(qamOpens).toBe(opens);
+
+    // The next All items comes back to the item opened, once.
+    await view.render();
+    const reopen = () =>
+      [...view.container.querySelectorAll<HTMLElement>(".Focusable[tabindex]")]
+        .find((row) => row.textContent === "All items (4)")!
+        .querySelector("b")!;
+    await act(async () => reopen().click());
+    await view.leave();
     expect(items()).toHaveLength(3);
+    expect(document.activeElement).toBe(items()[1]!);
+    await act(async () => cancelModal && modalRoot && cancelModal());
+    await view.render();
+    await act(async () => reopen().click());
+    await view.leave();
+    expect(document.activeElement).toBe(items()[0]!);
 
     // R2 turns to the next page from any row, L2 back; the footer names each.
     expect([items()[0]!.getAttribute("data-l2"), items()[0]!.getAttribute("data-r2")]).toEqual([

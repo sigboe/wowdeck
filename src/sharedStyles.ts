@@ -207,6 +207,9 @@ export function wowdeckSharedStyleCss(): string {
 .wowdeck-ledger-flows > .wowdeck-ledger-value { display: inline-flex; align-items: center; gap: 4px; }
 .wowdeck-ledger-flow-name { color: #dcdedf; font-size: 16px; line-height: 20px; }
 .wowdeck-ledger-recorded { padding-bottom: 4px; }
+/* The Export row's focus highlight met the REALM caption (DEVICE
+   2026-11-24, #319): the same 8 px the other control rows keep. */
+.wowdeck-ledger-export { margin-bottom: 8px; }
 .wowdeck-ledger-trend { display: inline-flex; }
 .wowdeck-ledger-trend svg { width: 12px; height: 12px; }
 .wowdeck-ledger-gold > svg { display: block; width: 100%; height: 72px; margin-top: 4px; }
@@ -234,6 +237,10 @@ export function wowdeckSharedStyleCss(): string {
 .wowdeck-ledger-items-labels {
   position: sticky; top: 0; z-index: 1; background: #0e141b;
   box-sizing: border-box; padding: 0 12px 6px;
+  /* The dialog's scroller has 24 px of top padding, so the labels stick
+     24 px below its edge; paint that strip too, or scrolled rows show
+     through above ITEM (DEVICE 2026-11-24, #319). */
+  box-shadow: 0 -24px 0 0 #0e141b;
 }
 .wowdeck-ledger-items-none { color: ${STEAM.textDisabled}; }
 .wowdeck-glyph-text {

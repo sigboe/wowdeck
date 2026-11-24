@@ -104,39 +104,41 @@ function ExportRow({
   const canExport = ledger.exportable && ledger.account !== null;
   return (
     <PanelSectionRow>
-      <Field
-        label="Export ledger"
-        description={
-          canExport
-            ? `${ledger.realm ?? "All realms"} · every character and period`
-            : "Nothing to export yet"
-        }
-      >
-        {canExport ? (
-          <FocusSlot view={FOCUS_VIEW} id={LEDGER_FOCUS.export}>
+      <div className="wowdeck-ledger-export">
+        <Field
+          label="Export ledger"
+          description={
+            canExport
+              ? `${ledger.realm ?? "All realms"} · every character and period`
+              : "Nothing to export yet"
+          }
+        >
+          {canExport ? (
+            <FocusSlot view={FOCUS_VIEW} id={LEDGER_FOCUS.export}>
+              <DialogButton
+                onClick={() =>
+                  void exportLedger(installationId, ledger, () =>
+                    requestFocus(FOCUS_VIEW, LEDGER_FOCUS.export),
+                  )
+                }
+                onOKActionDescription="Export"
+                style={{ minWidth: 0, width: "auto", padding: "10px 24px" }}
+              >
+                {exporting ? "Exporting…" : "Export"}
+              </DialogButton>
+            </FocusSlot>
+          ) : (
             <DialogButton
-              onClick={() =>
-                void exportLedger(installationId, ledger, () =>
-                  requestFocus(FOCUS_VIEW, LEDGER_FOCUS.export),
-                )
-              }
-              onOKActionDescription="Export"
+              disabled
+              focusable={false}
+              onClick={() => {}}
               style={{ minWidth: 0, width: "auto", padding: "10px 24px" }}
             >
-              {exporting ? "Exporting…" : "Export"}
+              Export
             </DialogButton>
-          </FocusSlot>
-        ) : (
-          <DialogButton
-            disabled
-            focusable={false}
-            onClick={() => {}}
-            style={{ minWidth: 0, width: "auto", padding: "10px 24px" }}
-          >
-            Export
-          </DialogButton>
-        )}
-      </Field>
+          )}
+        </Field>
+      </div>
     </PanelSectionRow>
   );
 }
