@@ -547,3 +547,73 @@ test("a guild none of the player's characters is in, last logged over 30 days ag
   expect(await gold(guild(NOW - 31 * DAY, "Hero"))).toEqual([[60 * DAY, 200], [40 * DAY, 300]]);
   expect(await gold(guild(NOW - 29 * DAY))).toEqual([[60 * DAY, 200], [40 * DAY, 300]]);
 });
+
+test("a gold-log row whose minute or copper is no whole number in range is skipped, so the graph still ends", async () => {
+  const good = [`${minute(2 * HOUR)},500`, `${minute(HOUR)},800`];
+  const absurd = [
+    "-1e308,100", // a minute before 1970, as far as it goes
+    "1e308,100", // a minute far past any clock
+    `${minute(HOUR) + 0.5},100`, // half a minute
+    "9007199254740993,100", // beyond a whole number JavaScript holds exactly
+    `${minute(3 * HOUR)},1e300`, // copper beyond any balance
+    `${minute(3 * HOUR)},-5`, // copper below zero
+    `${minute(3 * HOUR)},1.5`, // half a copper
+  ];
+  const call = figuresFixture(goldDb({ "s@Alt - Horde - Silvermoon@internalData@goldLog": csv(GOLD, [absurd[0]!, ...good, ...absurd.slice(1)]) }));
+  for (const period of ["All", "1D"]) {
+    const { gold } = await call({ character: "Alt - Silvermoon", period });
+    expect([period, steps(gold.points)]).toEqual([period, [[2 * HOUR, 500], [HOUR, 800]]]);
+    expect(gold).toMatchObject({ high: 800, low: 500, dailyChange: 300 });
+  }
+  // Under All characters too.
+  expect((await call()).gold.points.at(-1)).toEqual([NOW * 1000, 13_707 - 500 + 800]);
+});
+
+test("Realm lists every realm with records, gold-log points counting as records", async () => {
+  const call = figuresFixture(goldDb({
+    "s@Solo - Alliance - Stormrage@internalData@goldLog": csv(GOLD, [`${minute(HOUR)},42`]),
+    "f@Horde - Kazzak@internalData@guildGoldLog": `{ ["Bank"] = ${csv(GOLD, [`${minute(HOUR)},7`])} }`,
+    // A log with no point is no record.
+    "s@Idle - Horde - Draenor@internalData@goldLog": csv(GOLD, []),
+    "f@Horde - Ragnaros@internalData@guildGoldLog": `{ ["Empty"] = ${csv(GOLD, [])} }`,
+  }));
+  expect((await call()).realms).toEqual(["Argent Dawn", "Kazzak", "Silvermoon", "Stormrage"]);
+  const stormrage = await call({ realm: "Stormrage" });
+  expect(stormrage).toMatchObject({ realm: "Stormrage", characters: [{ id: "Solo - Stormrage", label: "Solo", kind: "character" }, { id: "warbank" }] });
+  // The realm's own logs and the Warband bank; its figures are zero.
+  expect(steps(stormrage.gold.points).at(-1)).toEqual([HOUR, 10_042]);
+  expect(stormrage.figures.earned.total).toBe(0);
+  const kazzak = await call({ realm: "Kazzak" });
+  expect(kazzak.characters.map((c: { id: string }) => c.id)).toEqual(["warbank", "guild:Bank - Horde - Kazzak"]);
+  expect(steps(kazzak.gold.points).at(-1)).toEqual([HOUR, 10_007]);
+});
+
+test("a guild stays current only through a character of its own faction and realm", async () => {
+  const stale = {
+    "f@Horde - Silvermoon@internalData@guildGoldLog": `{ ["Guild"] = ${csv(GOLD, [`${minute(60 * DAY)},200`, `${minute(40 * DAY)},300`])} }`,
+    "f@Horde - Silvermoon@internalData@guildGoldLogLastUpdate": `{ ["Guild"] = ${NOW - 31 * DAY} }`,
+  };
+  const gold = async (db: Record<string, string>) =>
+    steps((await figuresFixture(goldDb({ ...stale, ...db }))({ character: "guild:Guild - Horde - Silvermoon" })).gold.points);
+  // A same-named guild elsewhere keeps nothing current: on another realm, or on the other faction.
+  expect(await gold({
+    "s@Other - Horde - Kazzak@internalData@goldLog": csv(GOLD, [`${minute(HOUR)},1`]),
+    "f@Horde - Kazzak@internalData@characterGuilds": '{ ["Other"] = "Guild" }',
+    "s@Hero - Alliance - Silvermoon@internalData@goldLog": csv(GOLD, [`${minute(HOUR)},1`]),
+    "f@Alliance - Silvermoon@internalData@characterGuilds": '{ ["Hero"] = "Guild" }',
+  })).toEqual([[60 * DAY, 200], [40 * DAY, 0]]);
+  // A character of its own faction and realm keeps it current.
+  expect(await gold({ "f@Horde - Silvermoon@internalData@characterGuilds": '{ ["Alt"] = "Guild" }' })).toEqual([[60 * DAY, 200], [40 * DAY, 300]]);
+});
+
+test("the Warband bank is a choice whenever the addon saved its log, even with no point", async () => {
+  // The addon saves the log's header on a game with a Warband bank (Retail, Forever).
+  const call = figuresFixture(goldDb({ "g@ @internalData@warbankGoldLog": csv(GOLD, []) }));
+  expect((await call()).characters.map((c: { id: string }) => c.id)).toContain("warbank");
+  const bank = await call({ character: "warbank" });
+  expect(bank).toMatchObject({ character: "warbank", gold: null });
+  expect([bank.figures.earned.total, bank.figures.spent.total, bank.figures.dailySales]).toEqual([0, 0, 0]);
+  // Classic Era, which has none, leaves the key an empty string: no Warband bank.
+  const era = figuresFixture(goldDb({ "g@ @internalData@warbankGoldLog": '""' }));
+  expect((await era()).characters.map((c: { id: string }) => c.id)).not.toContain("warbank");
+});

@@ -73,6 +73,13 @@ export function* csvRows(value: LuaValue | undefined, headers: string[]): Genera
 
 export const hasRows = (value: LuaValue | undefined, headers: string[]): boolean => !csvRows(value, headers).next().done;
 
+/** A CSV with one of `headers` as its first line, with or without rows. */
+const hasHeader = (value: LuaValue | undefined, headers: string[]): boolean => {
+  if (typeof value !== "string") return false;
+  const end = value.indexOf("\n");
+  return headers.includes(end < 0 ? value : value.slice(0, end));
+};
+
 /** Lua's tonumber for the decimal and hex numbers the addon writes; NaN for anything else. */
 function luaNumber(text: string): number {
   const trimmed = text.trim();
@@ -187,10 +194,13 @@ export interface LedgerView {
  */
 export function ledgerView(db: LuaTable, asked: LedgerSelection, nowMs: number, withFigures: boolean): LedgerView {
   const data = layout(db);
-  const realms = [...data.records]
-    .filter(([, csvs]) => [...csvs].some(([name, csv]) => hasRows(csv, RECORD_CSVS[name]!.headers)))
-    .map(([realm]) => realm)
-    .sort(byText);
+  // Every realm with records: a record CSV's row or a character's or guild's gold-log point.
+  const realms = [...new Set([
+    ...[...data.records]
+      .filter(([, csvs]) => [...csvs].some(([name, csv]) => hasRows(csv, RECORD_CSVS[name]!.headers)))
+      .map(([realm]) => realm),
+    ...[...data.characterLogs, ...data.guildLogs].filter((l) => hasRows(l.log, GOLD_LOG)).map((l) => l.realm),
+  ])].sort(byText);
   const realm = asked.realm !== undefined && realms.includes(asked.realm) ? asked.realm : null;
 
   // Every character of the records' player column and of the gold logs, per realm.
@@ -206,8 +216,10 @@ export function ledgerView(db: LuaTable, asked: LedgerSelection, nowMs: number, 
   }
   for (const { name, realm: of, log } of data.characterLogs) if (hasRows(log, GOLD_LOG)) add(name, of);
   // The Warband bank under every realm, and the realm's guilds with a gold log.
+  // The addon lists the Warband bank whenever it keeps the log, points or not:
+  // only a game with a Warband bank saves it, so its header marks one.
   const others = new Map<string, Choice>();
-  if (hasRows(data.warbankLog, GOLD_LOG)) others.set(WARBANK, { kind: "warbank" });
+  if (hasHeader(data.warbankLog, GOLD_LOG)) others.set(WARBANK, { kind: "warbank" });
   const guilds = data.guildLogs.filter((g) => (realm === null || g.realm === realm) && hasRows(g.log, GOLD_LOG));
   const severalRealms = new Set([...named.values(), ...guilds].map((c) => c.realm)).size > 1;
   const label = (name: string, of: string) => (realm === null && severalRealms ? `${name} - ${of}` : name);
@@ -336,8 +348,8 @@ function figures(
  * its own log; All characters select the realm's character and guild logs
  * (every realm's under All realms) and the account-wide Warband bank log.
  * Character and Warband bank logs are cleaned of misread balances. A guild
- * none of the player's characters is in, logged last over 30 days ago,
- * counts only until its last entry.
+ * none of the player's characters of its faction and realm is in, logged
+ * last over 30 days ago, counts only until its last entry.
  */
 function selectedLogs(data: Layout, realm: string | null, selected: Choice | null, nowMs: number): SelectedLog[] {
   const logs: SelectedLog[] = [];
@@ -351,11 +363,12 @@ function selectedLogs(data: Layout, realm: string | null, selected: Choice | nul
   const guilds = data.guildLogs.filter((g) =>
     selected === null ? inScope(g.realm) : selected.kind === "guild" && guildId(g) === guildId(selected));
   if (guilds.length === 0) return logs;
-  // A guild is current while a character with a gold log is in it, on any realm (by name, as the addon keys guilds).
-  const current = new Set<LuaValue>();
+  // A guild is current while a character with a gold log is in it. The addon
+  // sees the realm it runs on, so only the guild's own faction and realm count.
+  const current = new Set<string>();
   for (const c of data.characterLogs) {
     const guild = data.characterGuilds.get(`${c.faction} - ${c.realm}`)?.[c.name];
-    if (guild !== undefined) current.add(guild);
+    if (typeof guild === "string") current.add(guildId({ name: guild, faction: c.faction, realm: c.realm }));
   }
   const stale = Math.floor(nowMs / 1000) - STALE_GUILD;
   for (const g of guilds) {
@@ -363,7 +376,7 @@ function selectedLogs(data: Layout, realm: string | null, selected: Choice | nul
     const last = log.minutes.at(-1);
     const updated = data.guildUpdates.get(`${g.faction} - ${g.realm}`)?.[g.name];
     const lastEntry = last === undefined ? Infinity : last * 60;
-    const ended = !current.has(g.name) && Math.max(lastEntry, typeof updated === "number" ? updated : 0) < stale;
+    const ended = !current.has(guildId(g)) && Math.max(lastEntry, typeof updated === "number" ? updated : 0) < stale;
     logs.push(ended ? { log, until: lastEntry } : { log });
   }
   return logs;

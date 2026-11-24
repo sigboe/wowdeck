@@ -27,12 +27,30 @@ export interface GoldLog {
   values: number[];
 }
 
-/** Rows of `minute,copper` as numbers; a row that is not two numbers is skipped. */
+/**
+ * The last minute a log point may have: past the year 10,000, and small
+ * enough that its time in milliseconds stays a whole number.
+ */
+const MAX_MINUTE = 2 ** 32;
+
+/** A whole number from 0 to `max` written as one, else null. */
+function wholeNumber(text: string, max: number): number | null {
+  const trimmed = text.trim();
+  const value = trimmed === "" ? NaN : Number(trimmed);
+  return Number.isSafeInteger(value) && value >= 0 && value <= max ? value : null;
+}
+
+/**
+ * Rows of `minute,copper` as numbers. A row is skipped unless both are whole
+ * numbers from zero: a minute up to MAX_MINUTE, copper up to the largest
+ * whole number held exactly. The addon writes nothing else, and an absurd
+ * minute would stretch the graph's range past any count of steps.
+ */
 export function goldLog(rows: Iterable<string[]>, maxCopper?: number): GoldLog {
   const log: GoldLog = { minutes: [], values: [] };
   for (const [minute, copper] of rows) {
-    const m = Number(minute), c = Number(copper);
-    if (minute!.trim() === "" || copper!.trim() === "" || !Number.isFinite(m) || !Number.isFinite(c)) continue;
+    const m = wholeNumber(minute!, MAX_MINUTE), c = wholeNumber(copper!, Number.MAX_SAFE_INTEGER);
+    if (m === null || c === null) continue;
     log.minutes.push(m);
     log.values.push(c);
   }
@@ -117,15 +135,18 @@ export function goldGraph(logs: SelectedLog[], rangeSeconds: number | null, nowM
 
   // The addon's sampling: the first and last time, and between them a time
   // more than one step past the last kept one and more than a step from the end.
-  const step = Math.ceil((zoomEnd - zoomStart) / MAX_PLOT_POINTS / MINUTE) * MINUTE;
+  // Every time is a whole second, so the step is a whole minute of at least
+  // one, and the loop ends after at most `steps` of them.
+  const step = Math.max(MINUTE, Math.ceil((zoomEnd - zoomStart) / MAX_PLOT_POINTS / MINUTE) * MINUTE);
+  const steps = Math.ceil((zoomEnd - zoomStart) / step);
   const points: [number, number][] = [];
   let kept: number | undefined;
-  for (let x = zoomStart; ; x = Math.min(x + step, zoomEnd)) {
+  for (let i = 0; i <= steps; i++) {
+    const x = Math.min(zoomStart + i * step, zoomEnd);
     if (kept === undefined || x === zoomEnd || (x - kept > step && zoomEnd - x > step)) {
       points.push([x * 1000, goldAt(logs, x)]);
       kept = x;
     }
-    if (x >= zoomEnd) break;
   }
 
   const current = goldAt(logs, end);

@@ -745,7 +745,11 @@ export interface TradeSkillMasterLedger {
   recordedAt: number | null;
   /** World of Warcraft is running, so this session's trades are not on disk yet. */
   gameRunning: boolean;
-  /** The shown account's realms whose records (`r@<realm>`) hold rows, sorted; the Realm filter adds All realms. */
+  /**
+   * The shown account's realms with records, sorted: a row of a realm's
+   * record CSVs (`r@<realm>`) or a point of a character's or guild's gold log
+   * there. The Realm filter adds All realms.
+   */
   realms: string[];
   /** The realm shown; null is All realms (also when the one asked for has no records). */
   realm: string | null;
@@ -753,7 +757,9 @@ export interface TradeSkillMasterLedger {
    * The Character filter's choices for the realm shown: each character of
    * the records' `player` column and of the gold logs, sorted by label,
    * then the Warband bank and each guild of the realm shown with a gold log,
-   * guilds sorted by label. The Warband bank is a choice under every realm.
+   * guilds sorted by label. The Warband bank is a choice under every realm
+   * whenever the addon saved its log (a game with a Warband bank), even one
+   * with no point; picked, it has no gold history.
    */
   characters: TradeSkillMasterLedgerCharacter[];
   /**

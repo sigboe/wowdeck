@@ -30,9 +30,11 @@ The rules this pins down:
 - The graph treats each log as the addon loads it. A log counts as zero
   before its first point. A period's graph starts at the selection's first
   point when that is later than the period's start. Like the addon, the
-  graph drops misread balances from character and Warband bank logs. A guild none of
-  the player's characters is in, last logged more than 30 days ago, counts
-  only until its last entry.
+  graph drops misread balances from character and Warband bank logs. A guild
+  none of the player's characters on its realm and faction is in, last logged
+  more than 30 days ago, counts only until its last entry. The addon only
+  sees the realm it runs on, so a guild with the same name elsewhere never
+  keeps it counting.
 
 Two additions have no in-game equivalent, and the community clients set
 their pattern. The Ledger picks one WoW account at a time, as every
@@ -43,13 +45,16 @@ The Dashboard shows a top item for sales and expenses and an average of
 daily sales only. The Ledger also shows average daily purchases, counted
 the same way, and a top item for profit: the item with the highest earned
 minus spent in the period, or none when no item comes out ahead. A Realm
-filter is a Ledger addition too.
+filter is a Ledger addition too. It lists every realm with records, and a
+point in a character's or guild's gold log there counts as a record.
 
 The in-game graph ticks characters, guilds and the Warband bank on and off
 in one list. The Ledger's Character filter picks one of them, or all. The
 Warband bank and each guild with a gold log are choices of their own. Picking
 one shows its gold, and the trading figures show zero, because neither one
-trades.
+trades. The Ledger lists the Warband bank whenever the addon saved its log,
+even an empty one, as the addon does. Only a game with a Warband bank saves
+that log. Classic Era leaves the key empty.
 
 All realms counts every realm with records, in full. The Dashboard counts
 fewer records. It covers the realm you are logged in on and its connected
