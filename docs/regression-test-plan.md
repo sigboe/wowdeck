@@ -1213,6 +1213,21 @@ Automated coverage uses the typed fake engine and manual clock in
 `src/tsmSignIn.test.ts` and `src/tsmModule.test.ts`. Real browser authentication
 still needs the owner's credentials.
 
+### TradeSkillMaster Ledger: pill bar and empty states (#311)
+
+| ID | Priority | Result | Steps | Expected |
+| --- | --- | --- | --- | --- |
+| LEDGER-311-1 | P1 | | Signed in, focus the TradeSkillMaster destination and press Right. Scroll the Auction data rows | Focus lands on Manage, not on the pill bar. The pill bar shows Auction data selected and stays at the top of the pane while the rows scroll under it |
+| LEDGER-311-2 | P1 | | Press Up to the pill bar, then Right, Right, Left, Left. Then press L1 and R1 from the bar | Right opens the Ledger. The second Right does nothing. Left returns to Auction data, and Left on it puts focus on the TradeSkillMaster destination row with the QAM still widened. L1 and R1 switch plugin tabs |
+| LEDGER-311-3 | P1 | | Open the Ledger, go back to the destination list, close and reopen the QAM, then enter the destination again | The Ledger is still selected and focus lands on its first row |
+| LEDGER-311-4 | P1 | | Open the Ledger with WoW closed, then with WoW running. Repeat in an installation without the addon, one where the addon is installed but no character has logged out yet, and one whose file has no records | "Recorded at last logout · …ago", plus "Log out or /reload to include this session" while WoW runs. The empty installations say "Install TradeSkillMaster to start recording", "Nothing recorded yet" and "No sales, purchases or gold recorded yet". The Export row is disabled and says export arrives in the next update |
+| LEDGER-311-5 | P1 | | Sign out of TradeSkillMaster and open the Ledger. Then turn the source off and on in Options | The Ledger works signed out, and Auction data offers sign-in. The destination disappears with the source and comes back with it. WoW's saved files are unchanged |
+
+For automated coverage, `backend/tests/tsm-ledger-rpc.test.ts` drives
+`tradeskillmaster.ledger` against fixture WTF trees, and
+`src/tsmDestination.test.tsx` drives the pill bar, the kept view, entry
+focus and the Ledger's lines with the fake engine.
+
 ### Sign-in and key-entry keyboard dismissal
 
 With Steam's keyboard open, complete or cancel TradeSkillMaster sign-in.

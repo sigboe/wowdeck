@@ -10,6 +10,7 @@ import type {
   TradeSkillMasterAccount,
   TradeSkillMasterAuthStatus,
   TradeSkillMasterDestination,
+  TradeSkillMasterLedger,
 } from "../backend/src/api/contracts";
 import { useResource } from "./useResource";
 
@@ -57,6 +58,15 @@ export function createTsmModule(deps: {
     },
     clock: deps.clock,
   });
+  // The Ledger reads WoW's saved files only: no sign-in, no network.
+  const ledger = createKeyedResource<TradeSkillMasterLedger>({
+    read: (installationId) => deps.rpc("tradeskillmaster.ledger", { installationId }),
+    errorText: (e) => {
+      backendErrorMessage(e);
+      return "Couldn't read TradeSkillMaster's records";
+    },
+    clock: deps.clock,
+  });
   const cleanupPreview = createKeyedResource<TradeSkillMasterAccount["follows"]>({
     read: (installationId) => deps.rpc("tradeskillmaster.cleanupPreview", { installationId }),
     errorText: (e) => {
@@ -81,6 +91,7 @@ export function createTsmModule(deps: {
     status,
     account,
     destination,
+    ledger,
     cleanupPreview,
     /**
      * The engine's TradeSkillMaster state moved. Auction data moves often (every
@@ -134,6 +145,8 @@ export const putTsmAccount = (data: TradeSkillMasterAccount) => account.put(ACCO
 export const useTsmAccount = () => useResource(account, ACCOUNT_KEY);
 export const useTsmDestination = (installationId: string) =>
   useResource(tsmDestination, installationId);
+export const useTsmLedger = (installationId: string) =>
+  useResource(tsmModule.ledger, installationId);
 export const useTsmCleanupPreview = (installationId: string) =>
   useResource(tsmCleanupPreview, installationId);
 
@@ -155,6 +168,7 @@ export function resetTsmReads(): void {
     tsmDestination,
     tsmCleanupPreview,
     tsmModule.addons,
+    tsmModule.ledger,
   ]) {
     resource.retainOnly([]);
   }

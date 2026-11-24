@@ -1,10 +1,10 @@
 import { TsmIcon } from "../icons/TsmIcon";
-import { TSM_ADDON_ACTION, TSM_REFRESH, TsmAddon } from "./TsmAddon";
+import { TSM_ADDON_ACTION, TSM_REFRESH } from "./TsmAddon";
+import { firstTsmControl, TsmDestination } from "./TsmDestination";
 import { tsmSession, tsmOptionsSources, tsmDestinationVisible } from "../tsmSession";
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { FaClock, FaFileArchive, FaFire, FaSearch } from "react-icons/fa";
 import {
-  ButtonItem,
   Field,
   Focusable,
   GamepadButton,
@@ -295,6 +295,10 @@ export function GetAddonsTab({
       [...pane.querySelectorAll<HTMLElement>(selector)].find(
         (e) => !(e as HTMLInputElement).disabled && !e.classList.contains("Disabled"),
       ) ?? null;
+    if (tab === "tsm") {
+      // Its first content row, below the pill bar.
+      return firstTsmControl(pane);
+    }
     if (tab === "latest" || tab === "popular") {
       const row = first(".wowdeck-result-row");
       if (row) {
@@ -484,12 +488,14 @@ export function GetAddonsTab({
           </CapabilityGate>
         );
       case "tsm":
-        return tsm.state === "signedIn" ? (
-          <>{installation && <TsmAddon key={installation.id} installationId={installation.id} />}</>
-        ) : (
-          <ButtonItem layout="below" onClick={() => sources.openSources(tsmOptionsSources())}>
-            Sign in in Options
-          </ButtonItem>
+        // Signed out, Auction data offers the way back to signing in; the
+        // Ledger needs no sign-in.
+        return (
+          <TsmDestination
+            installationId={installation?.id ?? null}
+            signedIn={tsm.state === "signedIn"}
+            onSignIn={() => sources.openSources(tsmOptionsSources())}
+          />
         );
       case "url":
         return <ManualInstallTab sources={sources} />;

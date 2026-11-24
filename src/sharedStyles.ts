@@ -84,6 +84,15 @@ export function wowdeckSharedStyleCss(): string {
 .wowdeck-tab svg { width: 14px; height: 14px; }
 .wowdeck-tab-selected { background: rgba(255,255,255,.15); color: #fff; padding: 6px 14px; }
 .wowdeck-tab.gpfocus { background: #fff; color: #23262e; box-shadow: 0 3px 6px rgba(0,0,0,.32); }
+/* A pane's own navigation (the TradeSkillMaster destination's pill bar)
+   floats at the top of the widened pane while its rows scroll under it
+   (S24). The pane scrolls itself inside 8 px of padding: the bar sticks at
+   the scroller's very top and covers that padding, opaque on the QAM's own
+   background, like .wowdeck-float-pane. */
+.wowdeck-pane-slot-open .wowdeck-pane-bar {
+  position: sticky; top: -8px; z-index: 1; background: #0e141b;
+  margin-top: -8px; padding-top: 8px; padding-bottom: 4px;
+}
 /* The destination whose pane holds focus keeps a subtle selected background:
    the destination loses Steam's focus ring when focus moves into the pane, and
    without this the list looked unselected (owner, Valve's Friends list keeps

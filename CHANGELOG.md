@@ -6,6 +6,10 @@ What's new in each version of WoWDeck Addon Manager. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- TradeSkillMaster in Get Addons has a Ledger beside Auction data. It shows when the addon last saved your trading records.
+
 ### Fixed
 
 - Low-contrast description and changelog text becomes readable while colours that already work stay unchanged.

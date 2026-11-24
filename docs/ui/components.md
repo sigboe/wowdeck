@@ -10,7 +10,8 @@ The component inventory and rules S1–S7 on reusing and styling it. The Steam d
 
 | Component / module | Purpose | Reuse rule |
 |---|---|---|
-| `TopNav` | Steam-style tab pills with Steam's glyphs; inactive tabs icon-only | Only for plugin-level tabs (S15) |
+| `TopNav` | Steam-style tab pills with Steam's glyphs; inactive tabs icon-only | Only for plugin-level tabs (S15); views inside one pane use `PillBar` |
+| `PillBar` (in `TopNav.tsx`) | The tab bar's pills without shoulder glyphs, each showing its label. The selected pill is the only focus stop. Left and Right switch views, Right on the last pill stops, and Left on the first goes on to the pane | For the views of one Get Addons destination (the TradeSkillMaster destination's Auction data and Ledger). Float it at the top of the pane (`.wowdeck-pane-bar`, S24) inside a `FocusSlot`, so the pane's Left handling sees it, and land entry focus below it. L1/R1 stay with the plugin tabs |
 | `SteamGlyph` | Steam's own controller glyph (LB/RB, L1/R1 … for the controller in use) | MUST use for any button glyph we draw (S15) |
 | `focusMemory.ts`, `FocusSlot` / `FocusRow` / `focusTarget` | Focus kept by row identity across panel rebuilds | MUST use for every QAM row (S21) |
 | `qamState.ts` | QAM tab and focus-view names outside the panel component | Use instead of new module-scope tab variables |

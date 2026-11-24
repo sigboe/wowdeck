@@ -27,6 +27,52 @@ interface Props {
 }
 
 /**
+ * Left/Right on the selected tab, the bar's only focus stop: open the
+ * neighbouring tab and put focus on it once it has mounted (guide G7).
+ * Right past the last tab is stopped; Left past the first is left to the
+ * enclosing view (`onButtonDown` bubbles there).
+ */
+function useTabSwitching(
+  tabs: { id: string }[],
+  activeId: string,
+  onSelect: (id: string) => void,
+  activeRef: RefObject<HTMLDivElement | null>,
+) {
+  // Set by Left/Right: the newly selected tab mounts as the focus stop and
+  // must take focus once Steam has registered it (guide G7).
+  const refocus = useRef(false);
+  useEffect(() => {
+    if (!refocus.current) {
+      return;
+    }
+    refocus.current = false;
+    const timer = setTimeout(() => activeRef.current?.focus(), 0);
+    return () => clearTimeout(timer);
+  }, [activeId]);
+
+  return (evt: GamepadEvent) => {
+    const button = evt.detail.button;
+    if (button !== GamepadButton.DIR_LEFT && button !== GamepadButton.DIR_RIGHT) {
+      return;
+    }
+    const next =
+      tabs[tabs.findIndex((t) => t.id === activeId) + (button === GamepadButton.DIR_LEFT ? -1 : 1)];
+    if (!next) {
+      // Rightmost: nothing beyond. Leftmost: let the press go on.
+      if (button === GamepadButton.DIR_RIGHT) {
+        evt.preventDefault();
+        evt.stopPropagation();
+      }
+      return;
+    }
+    evt.preventDefault();
+    evt.stopPropagation();
+    refocus.current = true;
+    onSelect(next.id);
+  };
+}
+
+/**
  * The plugin's tab bar, drawn like Steam's own (Library/Store) tab bar
  * (guide S15): uppercase 12 px bold pills, the selected tab on a 15 % white
  * pill, the focused tab white with dark text, and Steam's own shoulder glyphs
@@ -45,38 +91,9 @@ interface Props {
 export function TopNav({ tabs, activeId, onSelect, compact, selectedRef }: Props) {
   const ownRef = useRef<HTMLDivElement>(null);
   const activeRef = selectedRef ?? ownRef;
-  // Set by Left/Right: the newly selected tab mounts as the focus stop and
-  // must take focus once Steam has registered it (guide G7).
-  const refocus = useRef(false);
-  useEffect(() => {
-    if (!refocus.current) {
-      return;
-    }
-    refocus.current = false;
-    const timer = setTimeout(() => activeRef.current?.focus(), 0);
-    return () => clearTimeout(timer);
-  }, [activeId]);
-
-  const onTabButtonDown = (evt: GamepadEvent) => {
-    const button = evt.detail.button;
-    if (button !== GamepadButton.DIR_LEFT && button !== GamepadButton.DIR_RIGHT) {
-      return;
-    }
-    const next =
-      tabs[tabs.findIndex((t) => t.id === activeId) + (button === GamepadButton.DIR_LEFT ? -1 : 1)];
-    if (!next) {
-      // Rightmost: nothing beyond. Leftmost: let Steam leave for the icon rail.
-      if (button === GamepadButton.DIR_RIGHT) {
-        evt.preventDefault();
-        evt.stopPropagation();
-      }
-      return;
-    }
-    evt.preventDefault();
-    evt.stopPropagation();
-    refocus.current = true;
-    onSelect(next.id);
-  };
+  // Left past the first tab goes on to Steam, which moves focus out to the
+  // QAM's icon rail.
+  const onTabButtonDown = useTabSwitching(tabs, activeId, onSelect, activeRef);
 
   return (
     <Focusable
@@ -123,6 +140,54 @@ export function TopNav({ tabs, activeId, onSelect, compact, selectedRef }: Props
         })}
       </div>
       <SteamGlyph button="RightBumper" fallback="R1" />
+    </Focusable>
+  );
+}
+
+/**
+ * The plugin tab bar's look for the views inside one pane (the
+ * TradeSkillMaster destination's Auction data | Ledger): the same pills and
+ * the same one focus stop, but every pill shows its label and there are no
+ * shoulder glyphs, since L1/R1 keep switching plugin tabs. Left on the first
+ * pill bubbles to the pane, which returns to the destination list; Right on
+ * the last pill goes nowhere.
+ */
+export function PillBar({
+  tabs,
+  activeId,
+  onSelect,
+}: {
+  tabs: { id: string; label: string }[];
+  activeId: string;
+  onSelect: (id: string) => void;
+}) {
+  const activeRef = useRef<HTMLDivElement>(null);
+  const onTabButtonDown = useTabSwitching(tabs, activeId, onSelect, activeRef);
+  return (
+    <Focusable
+      className="wowdeck-pill-bar"
+      flow-children="row"
+      style={{ display: "flex", gap: "2px", alignItems: "center" }}
+    >
+      {tabs.map((t) =>
+        t.id === activeId ? (
+          <Focusable
+            key={t.id}
+            ref={activeRef}
+            className="wowdeck-tab wowdeck-tab-selected"
+            onButtonDown={onTabButtonDown}
+            // An action makes it a focus target (PC-01); A on the open view has nothing to do.
+            onActivate={() => {}}
+            noFocusRing
+          >
+            {t.label}
+          </Focusable>
+        ) : (
+          <div key={t.id} className="wowdeck-tab" onClick={() => onSelect(t.id)}>
+            {t.label}
+          </div>
+        ),
+      )}
     </Focusable>
   );
 }

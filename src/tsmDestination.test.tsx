@@ -1,6 +1,6 @@
 import { expect, mock, test, setSystemTime, beforeEach } from "bun:test";
-import type { ReactElement } from "react";
-import { act } from "react";
+import type { ReactElement, ReactNode, Ref } from "react";
+import { act, useEffect, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import { JSDOM } from "jsdom";
 import { fakeDeckyUi } from "./testing/fakeDeckyUi";
@@ -9,6 +9,7 @@ import { createFakeEngine } from "./testSupport/fakeEngine";
 import type {
   TradeSkillMasterAccount,
   TradeSkillMasterDestination,
+  TradeSkillMasterLedger,
 } from "../backend/src/api/contracts";
 import type { Addon } from "./types";
 
@@ -43,6 +44,13 @@ let holdAddons: Promise<void> | undefined;
 let qamOpens = 0;
 let cancelModal: (() => void) | undefined;
 let modalRoot: ReturnType<typeof createRoot> | undefined;
+let ledger: TradeSkillMasterLedger | Error = {
+  state: "noRecords",
+  accounts: ["MAIN"],
+  account: "MAIN",
+  recordedAt: null,
+  gameRunning: false,
+};
 
 /** What the fake account, destination and follow calls answer: one fixture for all. */
 const accountFixture = (params: { installationId?: string }) => {
@@ -96,6 +104,10 @@ const fake = createFakeEngine({
   "tradeskillmaster.account": async () => {
     await holdAccount;
     return accountFixture({}) as unknown as TradeSkillMasterAccount;
+  },
+  "tradeskillmaster.ledger": () => {
+    if (ledger instanceof Error) throw ledger;
+    return ledger;
   },
   "tradeskillmaster.destination": async (params) => {
     await holdDestination;
@@ -166,6 +178,53 @@ const fake = createFakeEngine({
   },
 });
 connectEngine(fake);
+
+/**
+ * Steam's Focusable as far as these tests need it: a node with an action
+ * takes focus, and a button press (`press`) reaches the focused node's
+ * `onButtonDown` first, then each enclosing one's, until one stops it.
+ */
+function SteamFocusable({
+  children,
+  ref,
+  className,
+  onActivate,
+  onButtonDown,
+}: {
+  children?: ReactNode;
+  ref?: Ref<HTMLDivElement>;
+  className?: string;
+  onActivate?: () => void;
+  onButtonDown?: (evt: unknown) => void;
+}) {
+  const own = useRef<HTMLDivElement | null>(null);
+  const handler = useRef(onButtonDown);
+  handler.current = onButtonDown;
+  useEffect(() => {
+    const el = own.current;
+    const listen = (e: Event) =>
+      handler.current?.({
+        detail: (e as CustomEvent).detail,
+        preventDefault: () => e.preventDefault(),
+        stopPropagation: () => e.stopPropagation(),
+      });
+    el?.addEventListener("gamepadbutton", listen);
+    return () => el?.removeEventListener("gamepadbutton", listen);
+  }, []);
+  return (
+    <div
+      ref={(el) => {
+        own.current = el;
+        if (typeof ref === "function") ref(el);
+        else if (ref) ref.current = el;
+      }}
+      className={onActivate ? ["Focusable", className].filter(Boolean).join(" ") : className}
+      tabIndex={onActivate ? -1 : undefined}
+    >
+      {children}
+    </div>
+  );
+}
 const notify = (event: { event: "tradeskillmaster.changed" }) =>
   fake.emit({ ...event, params: {} });
 mock.module("@decky/ui", () => ({
@@ -176,13 +235,16 @@ mock.module("@decky/ui", () => ({
     },
   },
   QuickAccessTab: { Decky: 3 },
-  Focusable: ({
-    children,
-    ref,
-  }: {
-    children?: import("react").ReactNode;
-    ref?: import("react").Ref<HTMLDivElement>;
-  }) => <div ref={ref}>{children}</div>,
+  GamepadButton: { DIR_LEFT: 13, DIR_RIGHT: 14 },
+  Focusable: SteamFocusable,
+  Field: (p: Parameters<typeof fakeDeckyUi.Field>[0] & { focusable?: boolean }) =>
+    p.focusable ? (
+      <div className="Focusable" tabIndex={-1}>
+        {fakeDeckyUi.Field(p)}
+      </div>
+    ) : (
+      fakeDeckyUi.Field(p)
+    ),
   DialogButton: (p: Parameters<typeof fakeDeckyUi.DialogButton>[0]) => (
     <div className="Focusable" tabIndex={p.disabled ? undefined : -1}>
       {fakeDeckyUi.DialogButton(p)}
@@ -256,6 +318,9 @@ mock.module("@decky/ui", () => ({
 const { resetFocusMemory } = await import("./focusMemory");
 const { TsmAddon } = await import("./components/TsmAddon");
 const { resetTsmReads, putTsmAccount } = await import("./tsmReads");
+const { TsmDestination, firstTsmControl } = await import("./components/TsmDestination");
+const { resetTsmView } = await import("./tsmView");
+const { Focusable, GamepadButton } = await import("@decky/ui");
 
 beforeEach(resetTsmReads);
 
@@ -858,5 +923,206 @@ test("Manage shows a failed account refresh beside retained follows and can retr
       root.unmount();
     });
     dom.window.close();
+  }
+});
+
+/**
+ * The destination in its pane, as GetAddonsTab mounts it: the pane's own
+ * button handler around it records what reaches it (Left there returns to
+ * the destination list).
+ */
+async function mountDestination(signedIn = true) {
+  const dom = new JSDOM('<div id="root"></div>');
+  Object.assign(globalThis, {
+    window: dom.window,
+    document: dom.window.document,
+    IS_REACT_ACT_ENVIRONMENT: true,
+  });
+  const container = dom.window.document.getElementById("root")!;
+  const root = createRoot(container);
+  const reachedPane: number[] = [];
+  const signIns: number[] = [];
+  const render = (on = signedIn) =>
+    act(async () =>
+      root.render(
+        <Focusable
+          onButtonDown={(evt: { detail: { button: number } }) =>
+            reachedPane.push(evt.detail.button)
+          }
+        >
+          <TsmDestination installationId="active" signedIn={on} onSignIn={() => signIns.push(1)} />
+        </Focusable>,
+      ),
+    );
+  await render();
+  /** A D-pad press on the focused node; Steam then gives its refocus a turn (G7). */
+  const press = async (button: number) => {
+    await act(async () => {
+      document.activeElement!.dispatchEvent(
+        new dom.window.CustomEvent("gamepadbutton", {
+          bubbles: true,
+          cancelable: true,
+          detail: { button },
+        }),
+      );
+    });
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
+  };
+  const selected = () => container.querySelector(".wowdeck-tab-selected") as HTMLElement | null;
+  const close = async () => {
+    await act(async () => root.unmount());
+    dom.window.close();
+  };
+  /** Leave the destination, so the next render reads it afresh. */
+  const leave = () => act(async () => root.render(<></>));
+  return { container, render, leave, press, selected, reachedPane, signIns, close };
+}
+
+test("the pill bar switches views with Left and Right, stops at the last pill and hands Left on the first to the list", async () => {
+  resetTsmView();
+  resetFocusMemory();
+  const { container, press, selected, reachedPane, close } = await mountDestination();
+  try {
+    // One focus stop: only the selected pill takes focus.
+    expect(container.querySelectorAll(".wowdeck-pill-bar .Focusable")).toHaveLength(1);
+    expect(selected()?.textContent).toBe("Auction data");
+    await act(async () => selected()!.focus());
+    await press(GamepadButton.DIR_RIGHT);
+    expect(selected()?.textContent).toBe("Ledger");
+    expect(document.activeElement).toBe(selected());
+    expect(container.textContent).toContain("Export");
+    expect(container.textContent).not.toContain("Signed in as Fixture");
+    // Right on the last pill goes nowhere, and the pane never sees it.
+    await press(GamepadButton.DIR_RIGHT);
+    expect(selected()?.textContent).toBe("Ledger");
+    await press(GamepadButton.DIR_LEFT);
+    expect(selected()?.textContent).toBe("Auction data");
+    expect(document.activeElement).toBe(selected());
+    expect(reachedPane).toEqual([]);
+    // Left on the first pill is the pane's: back to the destination list.
+    await press(GamepadButton.DIR_LEFT);
+    expect(selected()?.textContent).toBe("Auction data");
+    expect(reachedPane).toEqual([GamepadButton.DIR_LEFT]);
+  } finally {
+    await close();
+  }
+});
+
+test("Auction data opens first, entry lands on the first content row, and the last view is kept for the session", async () => {
+  resetTsmView();
+  resetFocusMemory();
+  let view = await mountDestination();
+  try {
+    expect(view.selected()?.textContent).toBe("Auction data");
+    // Today's pane, unchanged, under the bar.
+    expect(view.container.textContent).toContain("Signed in as Fixture");
+    expect(view.container.textContent).toContain("Der Abyssische Rat");
+    expect(firstTsmControl(view.container)?.textContent).toContain("Manage");
+    await act(async () =>
+      (
+        [...view.container.querySelectorAll(".wowdeck-pill-bar .wowdeck-tab")].find(
+          (p) => p.textContent === "Ledger",
+        ) as HTMLElement
+      ).click(),
+    );
+    expect(view.selected()?.textContent).toBe("Ledger");
+    await view.close();
+    // Leaving and coming back (a remount) keeps the Ledger.
+    view = await mountDestination();
+    expect(view.selected()?.textContent).toBe("Ledger");
+    expect(firstTsmControl(view.container)?.textContent).toContain("No sales, purchases or gold");
+  } finally {
+    await view.close();
+  }
+});
+
+test("signed out, Auction data offers sign-in and the Ledger still reads the records", async () => {
+  resetTsmView();
+  const { container, selected, signIns, close } = await mountDestination(false);
+  try {
+    expect(container.textContent).not.toContain("Signed in as");
+    await act(async () =>
+      [...container.querySelectorAll("button")]
+        .find((b) => b.textContent === "Sign in in Options")!
+        .click(),
+    );
+    expect(signIns).toEqual([1]);
+    await act(async () =>
+      (
+        [...container.querySelectorAll(".wowdeck-tab")].find(
+          (p) => p.textContent === "Ledger",
+        ) as HTMLElement
+      ).click(),
+    );
+    expect(selected()?.textContent).toBe("Ledger");
+    expect(container.textContent).toContain("No sales, purchases or gold recorded yet");
+  } finally {
+    await close();
+  }
+});
+
+test("the Ledger shows its freshness, the game-running line, each empty state and a disabled Export", async () => {
+  setSystemTime(new Date("2026-11-24T12:00:00Z"));
+  resetTsmView();
+  const base: TradeSkillMasterLedger = {
+    state: "noRecords",
+    accounts: ["MAIN"],
+    account: "MAIN",
+    recordedAt: Date.now() - 2 * 3_600_000,
+    gameRunning: false,
+  };
+  ledger = base;
+  const view = await mountDestination();
+  const showLedger = async () => {
+    await view.leave();
+    resetTsmReads();
+    await view.render();
+  };
+  try {
+    await act(async () =>
+      (
+        [...view.container.querySelectorAll(".wowdeck-tab")].find(
+          (p) => p.textContent === "Ledger",
+        ) as HTMLElement
+      ).click(),
+    );
+    const text = () => view.container.textContent ?? "";
+    expect(text()).toContain("Recorded at last logout · 2 hours ago");
+    expect(text()).not.toContain("/reload to include this session");
+    expect(text()).toContain("No sales, purchases or gold recorded yet");
+    const exportButton = [...view.container.querySelectorAll("button")].find((b) =>
+      b.textContent?.includes("Export"),
+    )!;
+    expect(exportButton.disabled).toBe(true);
+    expect(exportButton.textContent).toContain("Export arrives in the next update");
+
+    ledger = { ...base, gameRunning: true };
+    await showLedger();
+    expect(text()).toContain("Log out or /reload to include this session");
+
+    ledger = { ...base, state: "ready" };
+    await showLedger();
+    expect(text()).toContain("Recorded at last logout");
+    expect(text()).not.toContain("recorded yet");
+
+    ledger = { ...base, state: "noAddon", accounts: [], account: null, recordedAt: null };
+    await showLedger();
+    expect(text()).toContain("Install TradeSkillMaster to start recording");
+    expect(text()).not.toContain("Recorded at last logout");
+
+    ledger = { ...base, state: "noAccount", accounts: [], account: null, recordedAt: null };
+    await showLedger();
+    expect(text()).toContain("Nothing recorded yet");
+    expect(text()).toContain("log out or /reload");
+
+    // A failed read is an error, never an empty Ledger (A9).
+    ledger = new Error("TradeSkillMaster.lua is invalid");
+    await showLedger();
+    expect(text()).toContain("Couldn't read TradeSkillMaster's records");
+    expect(text()).not.toContain("recorded yet");
+  } finally {
+    ledger = base;
+    await view.close();
+    setSystemTime();
   }
 });

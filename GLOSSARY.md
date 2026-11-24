@@ -33,6 +33,13 @@ top of the QAM section. Navigation is clamped: L1/R1 never wrap past the first
 or last plugin tab.
 _Avoid_: tab row, pill row, browse nav bar
 
+**Pill bar**:
+The plugin tab bar's pills, without shoulder glyphs, switching the views
+inside one destination's pane: the TradeSkillMaster destination's Auction
+data and Ledger. D-pad Left and Right switch views; L1/R1 still switch
+plugin tabs.
+_Avoid_: sub-tabs, view tabs
+
 **Destination**:
 One of the Get Addons lists: Search, Latest, Popular, Manual Install, and
 the TradeSkillMaster destination while that source is on.

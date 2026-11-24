@@ -144,6 +144,12 @@ inactive tabs show only their icon: three uppercase labels overflow 268 px
   and R1 on the last do nothing; `shoulderNav.ts`). Owner decision 2026-10-20
   after trying both: with three tabs in the narrow QAM bar, wrapping is the
   more jarring of the two.
+- **Views inside a pane** (the TradeSkillMaster destination's Auction data and
+  Ledger) use the same pills in a `PillBar`. It has no shoulder glyphs, because
+  L1/R1 keep switching plugin tabs, and every pill shows its label, because the
+  widened pane has the room. D-pad Left and Right switch views. Left on the
+  first pill returns to the destination list, as it does from the rest of the
+  pane (spec #308).
 
 **S16 [PROJECT] MUST** use Steam's QAM row components as they are:
 `PanelSection` / `PanelSectionRow` with `Field`, `ToggleField`, `DropdownItem`,
