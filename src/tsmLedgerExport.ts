@@ -2,7 +2,6 @@ import { FileSelectionType, openFilePicker } from "@decky/api";
 import type { TradeSkillMasterLedger } from "../backend/src/api/contracts";
 import { holdBrowseSessionForModal, popupOpening } from "./browseSessionState";
 import { engine } from "./engineLink";
-import { backendErrorMessage } from "./errors";
 import { pickerStartPath } from "./pickerStart";
 import { createStore } from "./store";
 import { pluginToast, toastError } from "./toast";
@@ -60,7 +59,8 @@ async function pickAndExport(
     try {
       ({ folder: start } = await engine.rpc("tradeskillmaster.ledgerExportFolder", {}));
     } catch (e) {
-      backendErrorMessage(e);
+      // The picker still opens, where every picker starts.
+      console.warn("wowdeck: couldn't get Export's start folder", e);
       start = pickerStartPath();
     }
     popupOpening();

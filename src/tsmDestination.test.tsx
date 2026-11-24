@@ -1,11 +1,12 @@
-import { expect, mock, test, setSystemTime, beforeEach } from "bun:test";
+import { expect, mock, test, setSystemTime, beforeEach, spyOn } from "bun:test";
 import type { ReactElement, ReactNode, Ref } from "react";
 import { act, useEffect, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import { JSDOM } from "jsdom";
 import { fakeDeckyUi } from "./testing/fakeDeckyUi";
 import { connectEngine } from "./engineLink";
-import { createFakeEngine, engineFailure } from "./testSupport/fakeEngine";
+import { createFakeEngine, engineFailure, settle } from "./testSupport/fakeEngine";
+import { pickerStartPath } from "./pickerStart";
 import type {
   TradeSkillMasterAccount,
   TradeSkillMasterDestination,
@@ -2011,9 +2012,7 @@ test("Export picks a folder from Documents, then the remembered one, and toasts 
         .click(),
     );
     // The picker's answer, the export and its toast.
-    await act(async () => {
-      for (let i = 0; i < 5; i++) await Promise.resolve();
-    });
+    await act(settle);
   };
   try {
     await showLedger(view.container);
@@ -2067,6 +2066,80 @@ test("Export picks a folder from Documents, then the remembered one, and toasts 
     expect(rememberedFocus(browseFocusView("tsm"))).toBe(LEDGER_FOCUS.export);
   } finally {
     exportFails = false;
+    pickFolder = async () => {
+      throw new Error("cancel");
+    };
+    ledger = readyLedger;
+    await view.close();
+  }
+});
+
+test("Export says Exporting… while it runs, ignores presses until it ends, and logs a start folder it couldn't get", async () => {
+  resetTsmView();
+  resetTsmReads();
+  resetLedgerFilters();
+  resetFocusMemory();
+  resetLedgerExport();
+  exportFolder = null;
+  exportRequests.length = 0;
+  pickers.length = 0;
+  toasts.length = 0;
+  ledger = { ...readyLedger, realm: "Silvermoon" };
+  const answers = { ...fake.answers };
+  const warn = spyOn(console, "warn").mockImplementation(() => {});
+  const view = await mountDestination();
+  const button = () =>
+    view.container.querySelector<HTMLButtonElement>('[data-wowdeck-segment="export"] button')!;
+  const press = async () => {
+    await act(async () => button().click());
+    await act(settle);
+  };
+  try {
+    await showLedger(view.container);
+    // The picker open: a second press opens no second picker.
+    let choose!: (picked: { path: string }) => void;
+    pickFolder = () => new Promise((resolve) => (choose = resolve));
+    await press();
+    await press();
+    expect(pickers).toEqual([{ type: 1, start: "/home/deck/Documents" }]);
+
+    // The export running: Export says so, and a press starts nothing.
+    delete fake.answers["tradeskillmaster.ledgerExport"];
+    await act(async () => {
+      choose({ path: "/home/deck/Documents" });
+      await settle();
+    });
+    expect(button().textContent).toBe("Exporting…");
+    await press();
+    expect(pickers).toHaveLength(1);
+    expect(fake.pending("tradeskillmaster.ledgerExport")).toHaveLength(1);
+    await act(() =>
+      fake
+        .next("tradeskillmaster.ledgerExport")
+        .resolve({ path: "/home/deck/Documents/TSM_Silvermoon_2026-11-24.zip" }),
+    );
+    expect(button().textContent).toBe("Choose folder…");
+    expect(toasts).toEqual([
+      {
+        title: "Exported TradeSkillMaster records",
+        body: "Saved to /home/deck/Documents/TSM_Silvermoon_2026-11-24.zip",
+      },
+    ]);
+
+    // The engine can't say where to start: the reason is logged, and the
+    // picker starts where every picker does.
+    fake.answers["tradeskillmaster.ledgerExportFolder"] = engineFailure("internal_error", "boom");
+    pickFolder = async () => {
+      throw new Error("cancel");
+    };
+    await press();
+    expect(pickers.slice(-1)).toEqual([{ type: 1, start: pickerStartPath() }]);
+    expect(
+      warn.mock.calls.filter(([message]) => String(message).includes("Export's start folder")),
+    ).toHaveLength(1);
+  } finally {
+    Object.assign(fake.answers, answers);
+    warn.mockRestore();
     pickFolder = async () => {
       throw new Error("cancel");
     };
