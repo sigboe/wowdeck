@@ -373,6 +373,41 @@ test("a record at either edge of a period belongs to neither window, as in game"
   expect((await edges()).figures.earned.total).toBe(310);
 });
 
+test("rows count as the addon reads them: an unreadable stack size drops a row, legacy item ids join their item", async () => {
+  const call = figuresFixture({
+    "r@Silvermoon@internalData@csvSales": csv(TRADE, [
+      `i:2,1,1,300,Buyer,Hero,${NOW - DAY},Auction`,
+      // The addon writes item ids as i:<id>; older forms and trailing zeros are the same item.
+      `123,1,1,100,Buyer,Hero,${NOW - DAY},Auction`,
+      ` item:123 ,1,1,100,Buyer,Hero,${NOW - DAY},Auction`,
+      `i:123:0,1,1,100,Buyer,Hero,${NOW - DAY},Auction`,
+      `i:123,1,1,50,Buyer,Hero,${NOW - DAY},Auction`,
+      `i:0,1,1,1,Buyer,Hero,${NOW - DAY},Auction`,
+      // Dropped: a stack size that is not a number, an id beyond any item.
+      `i:2,x,1,1000,Buyer,Hero,${NOW - DAY},Auction`,
+      `i:1000000,1,1,1000,Buyer,Hero,${NOW - DAY},Auction`,
+    ]),
+  });
+  const { earned } = (await call()).figures;
+  expect(earned).toMatchObject({ total: 651, topItem: "i:123" });
+});
+
+test("an item sold at a loss is no top profit item", async () => {
+  const call = figuresFixture({
+    "r@Silvermoon@internalData@csvSales": csv(TRADE, [`i:1,1,1,80,Buyer,Hero,${NOW - DAY},Auction`]),
+    "r@Silvermoon@internalData@csvBuys": csv(TRADE, [`i:1,1,1,100,Seller,Hero,${NOW - 2 * DAY},Auction`]),
+  });
+  expect((await call()).figures.profit).toMatchObject({ total: -20, topItem: null });
+});
+
+test("a period that is not one of the Ledger's is All, even one named like an object's property", async () => {
+  const call = figuresFixture();
+  for (const period of ["constructor", "toString", "__proto__", "5D"]) {
+    const ledger = await call({ period });
+    expect([period, ledger.period, ledger.figures.earned.total]).toEqual([period, "All", 3950]);
+  }
+});
+
 test("without records the Ledger has no figures", async () => {
   const { write, call } = fixture();
   write("Interface/AddOns/TradeSkillMaster/TradeSkillMaster.toc", "## Title: TradeSkillMaster\n");

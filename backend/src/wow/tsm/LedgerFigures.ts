@@ -5,11 +5,12 @@
  * follow the TradeSkillMaster addon's in-game Dashboard (4.15.9), which is a
  * behaviour reference only, and the record format in spec #308.
  */
-import type {
-  TradeSkillMasterLedgerCharacter,
-  TradeSkillMasterLedgerFigures,
-  TradeSkillMasterLedgerFlow,
-  TradeSkillMasterLedgerPeriod,
+import {
+  TSM_LEDGER_PERIODS,
+  type TradeSkillMasterLedgerCharacter,
+  type TradeSkillMasterLedgerFigures,
+  type TradeSkillMasterLedgerFlow,
+  type TradeSkillMasterLedgerPeriod,
 } from "../../api/contracts";
 import type { LuaTable, LuaValue } from "./SavedVariables";
 
@@ -70,6 +71,27 @@ function luaNumber(text: string): number {
   const trimmed = text.trim();
   const value = trimmed === "" ? NaN : Number(trimmed);
   return Number.isFinite(value) ? value : NaN;
+}
+
+const MAX_ITEM_ID = 999_999;
+
+/**
+ * A record's item string as the addon keys it: a bare id or `item:<id>` is
+ * `i:<id>`, an id beyond any item is no item (null), and zeros at the end of
+ * a longer `i:`/`p:` string go. Other strings stay as written: the addon itself
+ * writes only `i:` and `p:` strings.
+ */
+function itemKey(text: string): string | null {
+  let item = text.trim();
+  const id = /^(?:item:)?(\d+)$/.exec(item)?.[1];
+  if (id !== undefined) item = `i:${id}`;
+  const plain = /^[ip]:(\d+)$/.exec(item);
+  if (plain) return Number(plain[1]) > MAX_ITEM_ID ? null : item;
+  if (/^i:[0-9\-:i+]+$/.test(item) || /^p:[i0-9:]+$/.test(item)) {
+    item = item.replaceAll(":0:", "::");
+    while (/:0?$/.test(item)) item = item.replace(/:0?$/, "");
+  }
+  return item === "" ? null : item;
 }
 
 /** A realm's records and an account's gold logs, located once per call. */
@@ -159,7 +181,7 @@ export function ledgerView(db: LuaTable, asked: LedgerSelection, nowMs: number, 
     kind: "character",
   })).sort((a, b) => byText(a.label, b.label) || byText(a.id, b.id));
   const character = asked.character !== undefined && named.has(asked.character) ? asked.character : null;
-  const period = (asked.period !== undefined && asked.period in PERIOD_DAYS ? asked.period : "All") as TradeSkillMasterLedgerPeriod;
+  const period = ((TSM_LEDGER_PERIODS as readonly string[]).includes(asked.period ?? "") ? asked.period : "All") as TradeSkillMasterLedgerPeriod;
 
   return {
     realms,
@@ -200,12 +222,13 @@ function figures(
   for (const [of, csvs] of data.records) {
     if (!inScope(of)) continue;
     for (const [kind, name] of [["sale", "csvSales"], ["buy", "csvBuys"]] as const) {
-      for (const [itemString, , quantityText, priceText, , player, timeText] of csvRows(csvs.get(name), RECORD_CSVS[name]!.headers)) {
+      for (const [itemText, stackText, quantityText, priceText, , player, timeText] of csvRows(csvs.get(name), RECORD_CSVS[name]!.headers)) {
+        const itemString = itemKey(itemText!);
         const quantity = luaNumber(quantityText!);
         const price = Math.floor(luaNumber(priceText!));
         const time = Math.floor(luaNumber(timeText!));
         // The addon drops a row with a field it cannot read.
-        if (!itemString || Number.isNaN(quantity) || Number.isNaN(price) || Number.isNaN(time)) continue;
+        if (itemString === null || Number.isNaN(luaNumber(stackText!)) || Number.isNaN(quantity) || Number.isNaN(price) || Number.isNaN(time)) continue;
         if (character && player !== character.name) continue;
         const value = price * quantity;
         if (range === null || (time > now - range && time < now)) {
