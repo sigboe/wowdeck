@@ -74,6 +74,7 @@ let ledger: TradeSkillMasterLedger | Error = {
   account: "MAIN",
   recordedAt: null,
   gameRunning: false,
+  retail: false,
   ...noFilters,
 };
 
@@ -1119,6 +1120,7 @@ test("the Ledger shows its freshness, the game-running line, each empty state an
     account: "MAIN",
     recordedAt: Date.now() - 2 * 3_600_000,
     gameRunning: false,
+    retail: false,
     ...noFilters,
   };
   ledger = base;
@@ -1196,6 +1198,7 @@ test("entering the remembered Ledger before its records arrive lands on its firs
     account: "MAIN",
     recordedAt: Date.now(),
     gameRunning: false,
+    retail: false,
     ...noFilters,
   };
   const view = await mountDestination();
@@ -1242,6 +1245,7 @@ test("a rebuilt pane puts focus back on the Ledger row the player was on", async
     account: "MAIN",
     recordedAt: Date.now(),
     gameRunning: false,
+    retail: false,
     ...noFilters,
   };
   let view = await mountDestination();
@@ -1290,6 +1294,7 @@ const readyLedger: TradeSkillMasterLedger = {
   account: "MAIN",
   recordedAt: Date.now(),
   gameRunning: false,
+  retail: false,
   realms: ["Argent Dawn", "Silvermoon"],
   realm: null,
   characters: [
@@ -1310,10 +1315,10 @@ const readyLedger: TradeSkillMasterLedger = {
   },
   gold: {
     points: [
-      // Midday this year, so the start reads as a day and month anywhere.
-      [Date.UTC(new Date().getFullYear(), 0, 15, 12), 1_000_000],
-      [Date.UTC(new Date().getFullYear(), 0, 16, 12), 1_500_000],
-      [Date.UTC(new Date().getFullYear(), 0, 17, 12), 1_200_000],
+      // Local midday this year, so the start reads "15 Jan" in every time zone.
+      [new Date(new Date().getFullYear(), 0, 15, 12).getTime(), 1_000_000],
+      [new Date(new Date().getFullYear(), 0, 16, 12).getTime(), 1_500_000],
+      [new Date(new Date().getFullYear(), 0, 17, 12).getTime(), 1_200_000],
     ],
     high: 20_000_000,
     low: 500_000,
@@ -1421,6 +1426,28 @@ test("the Ledger's gold graph sits between the freshness line and the grid as on
     const text = view.container.textContent ?? "";
     expect(text.indexOf("Recorded at last logout")).toBeLessThan(text.indexOf("52-week high"));
     expect(text.indexOf("Daily change")).toBeLessThan(text.indexOf("Avg daily sales"));
+    // Only Retail records gold in steps of 1,000g, and only there the graph says so.
+    expect(text).not.toContain("1,000g");
+    ledger = { ...readyLedger, retail: true };
+    await view.leave();
+    resetTsmReads();
+    await view.render();
+    const retail = view.container.querySelector<HTMLElement>(".wowdeck-ledger-gold")!;
+    expect(retail.querySelector(".wowdeck-ledger-note")?.textContent).toBe(
+      "Retail records your gold in steps of 1,000g",
+    );
+    // Inside the graph's one focus stop, under the line.
+    expect(retail.closest(".Focusable[tabindex]")!.querySelectorAll(".Focusable")).toHaveLength(0);
+
+    // A first balance logged this minute is one point: a flat line across the graph.
+    const point: [number, number] = [Date.now(), 1_000_000];
+    ledger = { ...readyLedger, gold: { ...readyLedger.gold!, points: [point] } };
+    await view.leave();
+    resetTsmReads();
+    await view.render();
+    expect(
+      view.container.querySelector(".wowdeck-ledger-gold polyline")!.getAttribute("points"),
+    ).toBe("0,36 300,36");
 
     ledger = { ...readyLedger, gold: null };
     await view.leave();

@@ -746,6 +746,11 @@ export interface TradeSkillMasterLedger {
   /** World of Warcraft is running, so this session's trades are not on disk yet. */
   gameRunning: boolean;
   /**
+   * The installation is Retail (or its test and beta clients), where the
+   * addon records gold rounded to 1,000 gold, so the graph moves in those steps.
+   */
+  retail: boolean;
+  /**
    * The shown account's realms with records, sorted: a row of a realm's
    * record CSVs (`r@<realm>`) or a point of a character's or guild's gold log
    * there. The Realm filter adds All realms.

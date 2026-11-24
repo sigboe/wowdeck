@@ -10,9 +10,13 @@ import { join } from "node:path";
 import type { GameRunning, TradeSkillMasterLedger } from "../../api/contracts";
 import { getAddonsPath } from "../installation/InstallationDetector";
 import type { WowInstallation } from "../models";
+import { WowClientType } from "../types";
 import { detectGameRunning } from "../wtf/GameProcessGuard";
 import { GOLD_LOG, hasRows, ledgerView, RECORD_CSVS, type LedgerSelection } from "./LedgerFigures";
 import { readTradeSkillMaster, safePath, savedVariables, type LuaTable, type LuaValue, type SavedVariablesReader } from "./SavedVariables";
+
+/** The clients the addon counts as Retail, where it records gold rounded to 1,000 gold. */
+const RETAIL = new Set([WowClientType.Retail, WowClientType.RetailPtr, WowClientType.RetailXPtr, WowClientType.Beta]);
 
 /** Where the game saves the addon's records for one WoW account. */
 const savedFile = (installation: WowInstallation, account: string) =>
@@ -73,11 +77,12 @@ export class TradeSkillMasterLedgerReader {
    */
   async ledger(installation: WowInstallation, account?: string, selection: LedgerSelection = {}): Promise<TradeSkillMasterLedger> {
     const gameRunning = (await this.#gameRunning()) === "running";
+    const retail = RETAIL.has(installation.clientType);
     const found = accounts(installation);
     const installed = existsSync(join(getAddonsPath(installation), "TradeSkillMaster"));
     if (found.length === 0) {
       return {
-        state: installed ? "noAccount" : "noAddon", accounts: [], account: null, recordedAt: null, gameRunning,
+        state: installed ? "noAccount" : "noAddon", accounts: [], account: null, recordedAt: null, gameRunning, retail,
         ...ledgerView(Object.create(null), selection, this.#now(), false),
       };
     }
@@ -106,6 +111,7 @@ export class TradeSkillMasterLedgerReader {
       account: chosen.name,
       recordedAt: Math.floor(chosen.mtimeMs),
       gameRunning,
+      retail,
       ...ledgerView(db(chosen.name) ?? Object.create(null), selection, this.#now(), ready),
     };
   }

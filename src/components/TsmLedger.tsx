@@ -261,10 +261,19 @@ const GRAPH_HEIGHT = 72;
 /**
  * The selection's gold over the period, as the in-game Dashboard's graph:
  * one line through the engine's samples (Retail's 1,000 g steps as
- * recorded), then the 52-week High and Low and the daily change. One focus
+ * recorded, which a note under the line names on Retail), then the 52-week
+ * High and Low and the daily change. One focus
  * stop (G3), so the D-pad scrolls past it.
  */
-function GoldGraph({ gold, now }: { gold: TradeSkillMasterLedgerGold | null; now: number }) {
+function GoldGraph({
+  gold,
+  now,
+  retail,
+}: {
+  gold: TradeSkillMasterLedgerGold | null;
+  now: number;
+  retail: boolean;
+}) {
   // The engine samples the line for the plot's laid-out width, as the addon
   // samples its own graph (a step per 3 px).
   const plot = useRef<SVGSVGElement>(null);
@@ -287,7 +296,11 @@ function GoldGraph({ gold, now }: { gold: TradeSkillMasterLedgerGold | null; now
   const y = (copper: number) =>
     high === low ? GRAPH_HEIGHT / 2 : 1 + ((high - copper) / (high - low)) * (GRAPH_HEIGHT - 2);
   const x = (ms: number) => (span === 0 ? 0 : ((ms - first) / span) * GRAPH_WIDTH);
-  const line = gold.points.map(([ms, copper]) => `${x(ms)},${y(copper)}`).join(" ");
+  // One point (a first balance logged this minute) is a flat line across.
+  const line =
+    gold.points.length === 1
+      ? `0,${y(values[0]!)} ${GRAPH_WIDTH},${y(values[0]!)}`
+      : gold.points.map(([ms, copper]) => `${x(ms)},${y(copper)}`).join(" ");
   const start = dayMonth(new Date(first), new Date(now));
   return (
     <PanelSectionRow>
@@ -315,6 +328,9 @@ function GoldGraph({ gold, now }: { gold: TradeSkillMasterLedgerGold | null; now
             />
           </svg>
           <Line label={start}>Now</Line>
+          {retail && (
+            <div className="wowdeck-ledger-note">Retail records your gold in steps of 1,000g</div>
+          )}
           <Line label="52-week high">
             <Money copper={gold.high} />
           </Line>
@@ -425,7 +441,7 @@ export function TsmLedger({ installationId }: { installationId: string }) {
           )}
           {data.state === "ready" && data.figures && (
             <>
-              <GoldGraph gold={data.gold} now={now} />
+              <GoldGraph gold={data.gold} now={now} retail={data.retail} />
               <Figures figures={data.figures} />
             </>
           )}

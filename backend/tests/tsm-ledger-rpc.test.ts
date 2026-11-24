@@ -7,6 +7,7 @@ import { providersHandlers } from "../src/api/handlers/providers";
 import { TradeSkillMasterLedgerReader } from "../src/wow/tsm/Ledger";
 import { SavedVariablesReader } from "../src/wow/tsm/SavedVariables";
 import type { WowInstallation } from "../src/wow/models";
+import { WowClientType } from "../src/wow/types";
 import type { GameRunning } from "../src/api/contracts";
 import { subset } from "./helpers/subset";
 
@@ -29,7 +30,7 @@ const empty = {
 
 function fixture() {
   const dir = mkdtempSync(join(tmpdir(), "tsm-ledger-"));
-  const installation = { id: "era", location: join(dir, "_classic_era_"), clientType: 2 } as WowInstallation;
+  const installation = { id: "era", location: join(dir, "_classic_era_"), clientType: WowClientType.ClassicEra } as WowInstallation;
   mkdirSync(installation.location, { recursive: true });
   const write = (path: string, content: string, seconds?: number) => {
     const full = join(installation.location, path);
@@ -60,13 +61,13 @@ test("without the addon or any account's records, the Ledger asks for the addon"
   const { write, call } = fixture();
   // A WoW account the addon never saved to does not count.
   write("WTF/Account/MAIN/SavedVariables/Blizzard_Settings.lua", "Settings = {}\n");
-  expect((await call()).result).toEqual({ state: "noAddon", accounts: [], account: null, recordedAt: null, gameRunning: false, ...noFilters });
+  expect((await call()).result).toEqual({ state: "noAddon", accounts: [], account: null, recordedAt: null, gameRunning: false, retail: false, ...noFilters });
 });
 
 test("with the addon installed but nothing saved yet, the Ledger has no account", async () => {
   const { write, call } = fixture();
   write("Interface/AddOns/TradeSkillMaster/TradeSkillMaster.toc", "## Title: TradeSkillMaster\n");
-  expect((await call()).result).toEqual({ state: "noAccount", accounts: [], account: null, recordedAt: null, gameRunning: false, ...noFilters });
+  expect((await call()).result).toEqual({ state: "noAccount", accounts: [], account: null, recordedAt: null, gameRunning: false, retail: false, ...noFilters });
 });
 
 test("one account is picked by itself, and a file of headers and empty gold logs has no records", async () => {
@@ -74,7 +75,7 @@ test("one account is picked by itself, and a file of headers and empty gold logs
   write("Interface/AddOns/TradeSkillMaster/TradeSkillMaster.toc", "## Title: TradeSkillMaster\n");
   write(account("MAIN"), saved(empty), 1_800_000_000);
   expect((await call()).result).toEqual({
-    state: "noRecords", accounts: ["MAIN"], account: "MAIN", recordedAt: 1_800_000_000_000, gameRunning: false, ...noFilters,
+    state: "noRecords", accounts: ["MAIN"], account: "MAIN", recordedAt: 1_800_000_000_000, gameRunning: false, retail: false, ...noFilters,
   });
   running("running");
   expect((await call()).result.gameRunning).toBe(true);
@@ -153,7 +154,7 @@ test("without the addon, records still show; files with no records ask for the a
   write(account("MAIN"), "TradeSkillMasterDB = {}\n", 1_800_000_000);
   write(account("ALT"), saved(empty), 1_800_000_500);
   expect((await call()).result).toEqual({
-    state: "noAddon", accounts: ["ALT", "MAIN"], account: "ALT", recordedAt: 1_800_000_500_000, gameRunning: false, ...noFilters,
+    state: "noAddon", accounts: ["ALT", "MAIN"], account: "ALT", recordedAt: 1_800_000_500_000, gameRunning: false, retail: false, ...noFilters,
   });
   write(account("MAIN"), saved({ ...empty, "r@Silvermoon@internalData@csvSales": JSON.stringify(`${header("r@Silvermoon@internalData@csvSales")}\n${sale}`) }), 1_800_000_000);
   expect((await call()).result).toMatchObject({ state: "ready", account: "MAIN" });
@@ -229,9 +230,9 @@ const altDb = {
   "r@Silvermoon@internalData@csvSales": csv(TRADE, [`i:7,1,1,5,Buyer,Hero,${NOW - DAY},Auction`]),
 };
 
-function figuresFixture(main: Record<string, string> = mainDb()) {
+function figuresFixture(main: Record<string, string> = mainDb(), clientType = WowClientType.ClassicEra) {
   const dir = mkdtempSync(join(tmpdir(), "tsm-ledger-figures-"));
-  const installation = { id: "era", location: join(dir, "_classic_era_"), clientType: 2 } as WowInstallation;
+  const installation = { id: "era", location: join(dir, "_classic_era_"), clientType } as WowInstallation;
   const write = (path: string, content: string, seconds: number) => {
     const full = join(installation.location, path);
     mkdirSync(join(full, ".."), { recursive: true });
@@ -625,4 +626,13 @@ test("the Warband bank is a choice whenever the addon saved its log, even with n
   // Classic Era, which has none, leaves the key an empty string: no Warband bank.
   const era = figuresFixture(goldDb({ "g@ @internalData@warbankGoldLog": '""' }));
   expect((await era()).characters.map((c: { id: string }) => c.id)).not.toContain("warbank");
+});
+
+test("a Retail installation's Ledger says so: the addon records gold there in steps of 1,000 gold", async () => {
+  for (const [type, retail] of [
+    [WowClientType.Retail, true], [WowClientType.RetailPtr, true], [WowClientType.RetailXPtr, true], [WowClientType.Beta, true],
+    [WowClientType.ClassicEra, false], [WowClientType.Classic, false], [WowClientType.Anniversary, false], [WowClientType.Forever, false],
+  ] as const) {
+    expect([WowClientType[type], (await figuresFixture(goldDb(), type)()).retail]).toEqual([WowClientType[type], retail]);
+  }
 });
