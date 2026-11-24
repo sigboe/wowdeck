@@ -139,7 +139,8 @@ export interface BarSegment {
   /** Marks the segment's wrapper (`data-wowdeck-segment`), for the pane's Left handling. */
   id: string;
   caption: string;
-  focusId: string;
+  /** Its focus-memory id; none for a segment that takes no focus (the Ledger's Export). */
+  focusId?: string;
   /** The segment's SegmentMenu, or a button (the Ledger's Export). */
   menu: ReactNode;
   /** Its share of the row; by default the segments share it equally. */
@@ -170,10 +171,17 @@ export function SegmentRow({ view, segments }: { view: string; segments: BarSegm
             data-wowdeck-segment={segment.id}
             style={{ flex: segment.flex ?? "1 1 0", minWidth: 0, position: "relative" }}
           >
-            <FocusSlot view={view} id={segment.focusId}>
-              <div style={SEGMENT_LABEL}>{segment.caption}</div>
-              {segment.menu}
-            </FocusSlot>
+            {segment.focusId === undefined ? (
+              <>
+                <div style={SEGMENT_LABEL}>{segment.caption}</div>
+                {segment.menu}
+              </>
+            ) : (
+              <FocusSlot view={view} id={segment.focusId}>
+                <div style={SEGMENT_LABEL}>{segment.caption}</div>
+                {segment.menu}
+              </FocusSlot>
+            )}
           </div>
         ))}
       </Focusable>

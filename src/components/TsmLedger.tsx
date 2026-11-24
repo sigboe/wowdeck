@@ -15,7 +15,6 @@ import { focusTarget } from "./FocusSlot";
 import { SegmentRow, type BarSegment } from "./BrowseBar";
 import { SegmentMenu } from "./SegmentMenu";
 import {
-  LEDGER_EXPORT_VALUE,
   LEDGER_HALF_VALUE,
   LEDGER_PAIR_VALUE,
   LEDGER_PERIOD_VALUE,
@@ -45,7 +44,6 @@ export const LEDGER_FOCUS = {
   error: "ledger-error",
   recorded: "ledger-recorded",
   empty: "ledger-empty",
-  export: "ledger-export",
   account: "ledger-account",
   realm: "ledger-realm",
   character: "ledger-character",
@@ -61,12 +59,11 @@ export const LEDGER_FOCUS = {
  * from the key goes to its value (GetAddonsTab's pane Left handling;
  * Steam's own row navigation skipped the sibling and left the pane, DEVICE
  * 2026-10-23). Up and Down between the rows are Steam's own. Export takes
- * focus once it works (phase 2).
+ * no focus until it works (phase 2), so it needs no entry yet.
  */
 export const LEDGER_LEFT_NEIGHBOUR: Record<string, string> = {
   [LEDGER_FOCUS.character]: LEDGER_FOCUS.realm,
   [LEDGER_FOCUS.period]: LEDGER_FOCUS.character,
-  [LEDGER_FOCUS.export]: LEDGER_FOCUS.account,
 };
 
 /** The in-game Dashboard's periods, in its order. */
@@ -76,18 +73,23 @@ const PERIODS: TradeSkillMasterLedgerPeriod[] = ["1D", "1W", "1M", "3M", "6M", "
  * The Ledger's filter bar (ADR 0002, G14): the browse bar's segments with
  * in-pane menus, floating with the pill bar (S24) in two rows. Realm,
  * Character and Period come first, once the account has records. The second
- * row holds Account, only with more than one account, and Export, disabled
- * until it works (phase 2), shown whatever the Ledger holds.
+ * row holds Account, only with more than one account, and Export, shown
+ * whatever the Ledger holds. Until Export works (phase 2) it is disabled and
+ * takes no focus: Steam's navigation stopped on the disabled button although
+ * A did nothing there (DEVICE 2026-11-24), and its text is always in view.
  */
 export function TsmLedgerFilters({ installationId }: { installationId: string }) {
   const { data } = useTsmLedger(installationId);
   const exportSegment: BarSegment = {
     id: "export",
     caption: "Export",
-    focusId: LEDGER_FOCUS.export,
     menu: (
-      <DialogButton disabled onClick={() => {}} style={{ width: "100%" }}>
-        {LEDGER_EXPORT_VALUE("Export arrives in the next update")}
+      <DialogButton disabled focusable={false} onClick={() => {}} style={{ width: "100%" }}>
+        {/* The whole sentence, wrapping beside Account (S27): an ellipsis
+            cut it to "Export arrives in the n…" (DEVICE 2026-11-24). */}
+        <span style={{ display: "block", whiteSpace: "normal" }}>
+          Export arrives in the next update
+        </span>
       </DialogButton>
     ),
   };

@@ -279,8 +279,15 @@ mock.module("@decky/ui", () => ({
     ) : (
       fakeDeckyUi.Field(p)
     ),
-  DialogButton: (p: Parameters<typeof fakeDeckyUi.DialogButton>[0]) => (
-    <div className="Focusable" tabIndex={p.disabled ? undefined : -1}>
+  // Steam's gamepad navigation still stops on a disabled DialogButton (the
+  // Ledger's disabled Export, DEVICE 2026-11-24) unless it is
+  // `focusable={false}`: the Focusable class marks a gamepad stop, tabindex
+  // what the browser can focus.
+  DialogButton: (p: Parameters<typeof fakeDeckyUi.DialogButton>[0] & { focusable?: boolean }) => (
+    <div
+      className={p.focusable === false ? undefined : "Focusable"}
+      tabIndex={p.disabled || p.focusable === false ? undefined : -1}
+    >
       {fakeDeckyUi.DialogButton(p)}
     </div>
   ),
@@ -1489,9 +1496,25 @@ test("the Ledger's bar floats two rows: Realm, Character and Period, then Accoun
     expect(exportButton()[0]!.closest(".wowdeck-pane-bar")).not.toBeNull();
     expect(exportButton()[0]!.disabled).toBe(true);
     expect(firstTsmControl(view.container)?.textContent).toContain("Recorded at last logout");
-    // Left from Export goes to Account, from Period to Character to Realm.
+    // Until it works, Export is no focus stop: Up from the recorded line
+    // reaches the filters in one press and Right from Account stops.
+    const exportSegment = () =>
+      view.container.querySelector('.wowdeck-pane-bar [data-wowdeck-segment="export"]')!;
+    expect(exportSegment().querySelector(".Focusable")).toBeNull();
+    // Its whole text shows: it wraps rather than being cut with an ellipsis.
+    const cut = (el: Element | null): boolean =>
+      !!el &&
+      el !== exportSegment() &&
+      ((el as HTMLElement).style.textOverflow === "ellipsis" ||
+        (el as HTMLElement).style.whiteSpace === "nowrap" ||
+        cut(el.parentElement));
+    // The innermost element holding the text.
+    const exportText = [...exportSegment().querySelectorAll("button, button *")]
+      .filter((el) => el.textContent === "Export arrives in the next update")
+      .pop()!;
+    expect(cut(exportText)).toBe(false);
+    // Left from Period goes to Character, from Character to Realm.
     expect(LEDGER_LEFT_NEIGHBOUR).toEqual({
-      [LEDGER_FOCUS.export]: LEDGER_FOCUS.account,
       [LEDGER_FOCUS.period]: LEDGER_FOCUS.character,
       [LEDGER_FOCUS.character]: LEDGER_FOCUS.realm,
     });

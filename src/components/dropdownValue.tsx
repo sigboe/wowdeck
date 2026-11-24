@@ -42,11 +42,10 @@ export const BAR_DROPDOWN_VALUE = ellipsisValue("calc((100vw - 348px - 60px) / 2
  * The Ledger's filter bar (TsmLedger): Realm and Character sharing a row
  * with the fixed-width Period segment, then Account sharing a row with
  * Export (and its text the width Export would take, so it stays in view).
+ * Export's own text wraps instead (TsmLedger).
  */
 export const LEDGER_PERIOD_WIDTH = 96;
 export const LEDGER_PAIR_VALUE = ellipsisValue("calc((100vw - 396px - 12px) / 2 - 56px)");
-/** Export's text: half the row less the button's padding (it has no arrow). */
-export const LEDGER_EXPORT_VALUE = ellipsisValue("calc((100vw - 396px - 12px) / 2 - 38px)");
 export const LEDGER_HALF_VALUE = ellipsisValue(
   `calc((100vw - 396px - 24px - ${LEDGER_PERIOD_WIDTH}px) / 2 - 56px)`,
 );
