@@ -15,7 +15,8 @@ import { dirname } from "node:path";
  */
 export const savedVariablesLimit = 256 * 1024 * 1024;
 
-export type LuaValue = string | number | boolean | null | LuaTable;
+/** A Lua value as SavedVariables hold it. Nil fields are absent, as in Lua. */
+export type LuaValue = string | number | boolean | LuaTable;
 export interface LuaTable { [key: string]: LuaValue }
 
 export type SavedVariablesRead =
@@ -124,7 +125,8 @@ function parse(source: string, skip: ReadonlySet<string>): Record<string, LuaVal
     pos = end + 1;
     return build ? unescape(body) : "";
   };
-  function value(depth: number, build: boolean): LuaValue {
+  /** Returns null for nil, which callers leave out. */
+  function value(depth: number, build: boolean): LuaValue | null {
     if (depth > 40) throw new Invalid();
     ws();
     const char = source[pos];
@@ -142,11 +144,13 @@ function parse(source: string, skip: ReadonlySet<string>): Record<string, LuaVal
         if (field !== undefined && source[pos] === "=" && source[pos + 1] !== "=") { key = field; pos++; }
         else if (field === undefined && source[pos] === "[" && !atLongBracket()) {
           pos++;
-          key = String(value(depth + 1, true));
+          const index = value(depth + 1, true);
+          if (index === null) throw new Invalid();
+          key = String(index);
           expect("]"); expect("=");
         } else { pos = start; key = String(index++); }
         const item = value(depth + 1, build);
-        if (build) table[key] = item;
+        if (build && item !== null) table[key] = item;
         ws();
         if (source[pos] === "," || source[pos] === ";") pos++;
         else if (source[pos] !== "}") throw new Invalid();
@@ -178,18 +182,22 @@ function parse(source: string, skip: ReadonlySet<string>): Record<string, LuaVal
     expect("=");
     const keep = !skip.has(global);
     const result = value(0, keep);
-    if (keep) globals[global] = result;
-    else delete globals[global];
+    if (result === null) delete globals[global];
+    else if (keep) globals[global] = result;
     ws();
     if (source[pos] === ";") pos++;
   }
 }
 
-interface Cached { mtimeMs: number; size: number; result: SavedVariablesRead }
+/** WoW rewrites a file at logout or /reload; a changed version changes these. */
+interface Version { mtimeMs: number; ctimeMs: number; size: number; ino: number }
+interface Cached extends Version { result: SavedVariablesRead }
+const sameVersion = (a: Version, b: Version) =>
+  a.mtimeMs === b.mtimeMs && a.ctimeMs === b.ctimeMs && a.size === b.size && a.ino === b.ino;
 
 /**
  * Reads SavedVariables files and remembers each parsed file by last-write
- * time and size, so an unchanged file is parsed once. Callers share the
+ * time and size (and inode and change time), so an unchanged file is parsed once. Callers share the
  * returned tables and must not change them.
  */
 export class SavedVariablesReader {
@@ -201,21 +209,20 @@ export class SavedVariablesReader {
     this.#skip = new Set(options.skip ?? []);
   }
   read(path: string): SavedVariablesRead {
-    if (!safePath(path)) {
-      this.#cache.delete(path);
-      try { lstatSync(path); } catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return { status: "missing" }; }
-      return { status: "unreadable" };
-    }
-    let fd: number;
-    try { fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW); }
-    catch (error) {
-      this.#cache.delete(path);
-      return { status: (error as NodeJS.ErrnoException).code === "ENOENT" ? "missing" : "unreadable" };
-    }
+    let fd: number | undefined;
     try {
+      if (!safePath(path)) {
+        this.#cache.delete(path);
+        try { lstatSync(path); } catch (error) { if (code(error) === "ENOENT") return { status: "missing" }; }
+        return { status: "unreadable" };
+      }
+      // Never open a FIFO or device: opening one can block the engine.
+      if (!lstatSync(path).isFile()) { this.#cache.delete(path); return { status: "unreadable" }; }
+      fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
       const st = fstatSync(fd);
+      const version: Version = { mtimeMs: st.mtimeMs, ctimeMs: st.ctimeMs, size: st.size, ino: st.ino };
       const cached = this.#cache.get(path);
-      if (cached && cached.mtimeMs === st.mtimeMs && cached.size === st.size) return cached.result;
+      if (cached && sameVersion(cached, version)) return cached.result;
       let result: SavedVariablesRead;
       if (!st.isFile()) result = { status: "unreadable" };
       else if (st.size > this.#limit) result = { status: "tooLarge" };
@@ -229,18 +236,23 @@ export class SavedVariablesReader {
         }
         try { result = { status: "ok", globals: parse(buffer.toString("utf8", 0, length), this.#skip) }; }
         catch (error) {
+          // RangeError: nesting deep enough to exhaust the stack.
           if (!(error instanceof Invalid) && !(error instanceof RangeError)) throw error;
           result = { status: "invalid" };
         }
       }
-      this.#cache.set(path, { mtimeMs: st.mtimeMs, size: st.size, result });
+      this.#cache.set(path, { ...version, result });
       return result;
-    } catch {
+    } catch (error) {
       this.#cache.delete(path);
+      if (code(error) === "ENOENT") return { status: "missing" };
+      console.error("[saved-variables] read failed:", code(error) ?? String(error));
       return { status: "unreadable" };
-    } finally { closeSync(fd); }
+    } finally { if (fd !== undefined) closeSync(fd); }
   }
 }
+
+const code = (error: unknown): string | undefined => (error as NodeJS.ErrnoException | undefined)?.code;
 
 /**
  * The engine's shared reader. TSMItemCacheDB holds the addon's item

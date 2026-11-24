@@ -83,7 +83,7 @@ test("an unchanged file is parsed once; a new last-write time or size parses it 
   expect(resized.status === "ok" && resized.db.a).toBe(22);
 });
 
-test("expressions, calls and symlinks are refused; nothing is evaluated", () => {
+test("expressions, calls, symlinks and pipes are refused; nothing is evaluated", () => {
   for (const content of [
     'TradeSkillMasterDB = { region = (function() return "EU" end)() }',
     'TradeSkillMasterDB = { a = os.exit() }',
@@ -97,4 +97,36 @@ test("expressions, calls and symlinks are refused; nothing is evaluated", () => 
   const link = join(mkdtempSync(join(tmpdir(), "tsm-sv-")), "TradeSkillMaster.lua");
   symlinkSync(file("TradeSkillMasterDB = {}"), link);
   expect(readTradeSkillMaster(link)).toEqual({ status: "unreadable" });
+  // Opening a named pipe for reading would wait for a writer.
+  const pipe = join(mkdtempSync(join(tmpdir(), "tsm-sv-")), "TradeSkillMaster.lua");
+  expect(Bun.spawnSync(["mkfifo", pipe]).exitCode).toBe(0);
+  expect(readTradeSkillMaster(pipe)).toEqual({ status: "unreadable" });
+});
+
+test("strings decode Lua escapes as UTF-8 bytes, and nil fields are absent", () => {
+  const result = readTradeSkillMaster(file([
+    "TradeSkillMasterDB = {",
+    '  bytes = "Caf\\195\\169 \\x41",',
+    "  raw = \"Café\",",
+    '  unicode = "\\u{E9}\\u{1F600}",',
+    '  mixed = "\\195\\169\\u{E9}",',
+    '  quotes = \'it\\\'s "x" \\\\ y\',',
+    '  skip = "a\\z   b",',
+    '  continued = "a\\',
+    'b",',
+    "  [\"gone\"] = nil,",
+    "  nil, true,",
+    "  long = [==[",
+    "a]]b]==],",
+    "}",
+    "TSMItemInfoDB = nil",
+  ].join("\n")));
+  expect(result).toEqual({ status: "ok", itemInfo: null, db: {
+    bytes: "Café A", raw: "Café", unicode: "é\u{1F600}", mixed: "éé", quotes: "it's \"x\" \\ y",
+    skip: "ab", continued: "a\nb", 2: true, long: "a]]b",
+  } });
+  for (const bad of ['"\\q"', '"\\256"', '"\\u{110000}"', '"open']) {
+    expect(readTradeSkillMaster(file(`TradeSkillMasterDB = { a = ${bad} }`))).toEqual({ status: "invalid" });
+  }
+  expect(readTradeSkillMaster(file("TradeSkillMasterDB = { [nil] = 1 }"))).toEqual({ status: "invalid" });
 });
