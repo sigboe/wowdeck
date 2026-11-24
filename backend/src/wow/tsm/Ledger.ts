@@ -19,9 +19,11 @@ import { readTradeSkillMaster, safePath, savedVariables, type LuaValue, type Sav
 /** The clients the addon counts as Retail, where it records gold rounded to 1,000 gold. */
 const RETAIL = new Set([WowClientType.Retail, WowClientType.RetailPtr, WowClientType.RetailXPtr, WowClientType.Beta]);
 
+export const LEDGER_SAVED_FILE = "TradeSkillMaster.lua";
+
 /** Where the game saves the addon's records for one WoW account. */
 const savedFile = (installation: WowInstallation, account: string) =>
-  join(installation.location, "WTF/Account", account, "SavedVariables/TradeSkillMaster.lua");
+  join(installation.location, "WTF/Account", account, "SavedVariables", LEDGER_SAVED_FILE);
 
 const recordKey = /^r@.+@internalData@(csv\w+)$/;
 const goldLogKey = /^(?:s@.+@internalData@goldLog|g@ @internalData@warbankGoldLog)$/;

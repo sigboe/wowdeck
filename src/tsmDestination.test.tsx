@@ -1186,6 +1186,58 @@ test("the Ledger shows its freshness, the game-running line, each empty state an
   }
 });
 
+test("the open Ledger reloads after a save and when WoW starts or stops", async () => {
+  setSystemTime(new Date("2026-11-24T12:00:00Z"));
+  resetTsmView();
+  resetLedgerFilters();
+  const previous = ledger;
+  const base: TradeSkillMasterLedger = {
+    state: "noRecords",
+    accounts: ["MAIN"],
+    account: "MAIN",
+    recordedAt: Date.now() - 2 * 3_600_000,
+    gameRunning: false,
+    retail: false,
+    ...noFilters,
+  };
+  ledger = base;
+  const view = await mountDestination();
+  const changed = (installationId: string) =>
+    act(async () =>
+      fake.emit({ event: "tradeskillmaster.ledgerChanged", params: { installationId } }),
+    );
+  const text = () => view.container.textContent ?? "";
+  try {
+    await showLedger(view.container);
+    expect(text()).toContain("Recorded at last logout · 2 hours ago");
+    expect(text()).not.toContain("include this session");
+    const reads = ledgerRequests.length;
+
+    ledger = { ...base, gameRunning: true };
+    await changed("inactive");
+    expect(ledgerRequests).toHaveLength(reads);
+    await changed("active");
+    expect(ledgerRequests).toHaveLength(reads + 1);
+    expect(text()).toContain("Log out or /reload to include this session");
+
+    ledger = { ...ledger, recordedAt: Date.now() - 120_000 };
+    await changed("active");
+    expect(ledgerRequests).toHaveLength(reads + 2);
+    expect(text()).toContain("Recorded at last logout · 2 minutes ago");
+    expect(text()).toContain("Log out or /reload to include this session");
+
+    ledger = { ...ledger, gameRunning: false };
+    await changed("active");
+    expect(ledgerRequests).toHaveLength(reads + 3);
+    expect(text()).toContain("Recorded at last logout · 2 minutes ago");
+    expect(text()).not.toContain("include this session");
+  } finally {
+    ledger = previous;
+    await view.close();
+    setSystemTime();
+  }
+});
+
 test("entering the remembered Ledger before its records arrive lands on its first row once they do", async () => {
   resetTsmView();
   tsmView.set("ledger");

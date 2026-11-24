@@ -2162,6 +2162,8 @@ export interface EventMap {
    * TradeSkillMaster API again; it is absent when only auction data moved.
    */
   "tradeskillmaster.changed": { account?: TradeSkillMasterAccount };
+  /** Saved Ledger records or the WoW running state changed for the active installation. */
+  "tradeskillmaster.ledgerChanged": { installationId: string };
   "addons.changed": { addonIds: string[] };
   /**
    * Update all (addons.updateAll) progress, in order: one when the total is

@@ -73,9 +73,8 @@ export function createTsmModule(deps: {
   });
   // The Ledger reads WoW's saved files only: no sign-in, no network. One key
   // per installation and filter selection (ledgerKey). A viewed Ledger reads
-  // again every minute: a period's figures move as records age past its
-  // edges, and a logout's save shows without leaving the view. An unchanged
-  // file stays parsed in the engine, so a read is a scan of its records.
+  // again when the engine reports a save or a game state change. The minute
+  // poll still moves period edges as records age and covers missed events.
   const ledger = createKeyedResource<TradeSkillMasterLedger>({
     pollMs: 60_000,
     read: (key) => {
@@ -123,6 +122,9 @@ export function createTsmModule(deps: {
     account,
     destination,
     ledger,
+    ledgerChanged({ installationId }: EventMap["tradeskillmaster.ledgerChanged"]) {
+      ledger.invalidate((key) => (JSON.parse(key) as LedgerKey).installationId === installationId);
+    },
     cleanupPreview,
     /**
      * The engine's TradeSkillMaster state moved. Auction data moves often (every
@@ -167,6 +169,7 @@ export const {
   cleanupPreview: tsmCleanupPreview,
 } = tsmModule;
 engine.events.on("tradeskillmaster.changed", tsmModule.changed);
+engine.events.on("tradeskillmaster.ledgerChanged", tsmModule.ledgerChanged);
 engine.events.on("addons.changed", tsmModule.addonsChanged);
 export const useTsmAddons = (installationId: string) =>
   useResource(tsmModule.addons, installationId);

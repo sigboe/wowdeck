@@ -17,7 +17,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { MethodMap, MethodName, OperationResult } from "./api/contracts";
 import { JsonlServer } from "./bridge/jsonl";
-import { createStateStore } from "./wow/storage/StateStore";
+import { createStateStore, type SettingsChange } from "./wow/storage/StateStore";
 import type { StageFs } from "./wow/fs/StageFs";
 import { NetworkClient } from "./wow/net/network";
 import { ProviderRegistry } from "./wow/providers/provider-registry";
@@ -31,6 +31,7 @@ import { FileProvider } from "./wow/providers/file/FileProvider";
 import { CurseForgeAuthService } from "./wow/providers/curseforge/CurseForgeKeyAuth";
 import { TradeSkillMasterData } from "./wow/tsm/TradeSkillMasterData";
 import { TradeSkillMasterLedgerReader } from "./wow/tsm/Ledger";
+import { watchLedger, type LedgerWatchOptions } from "./wow/tsm/LedgerWatch";
 import { TradeSkillMasterAuth, TradeSkillMasterProvider } from "./wow/tsm/TradeSkillMasterAuth";
 import { DownloadService } from "./wow/downloads/DownloadService";
 import { AddonService, type ServiceEvents } from "./wow/addons/AddonService";
@@ -97,6 +98,8 @@ export interface EngineConfig {
   out?: (line: string) => void;
   /** Process observation and launch asks; this machine's when unset (tests pass fake processes). */
   launchWorld?: LaunchWorld;
+  /** Ledger watcher timers and process observation, overridable in fixture tests. */
+  ledgerWatch?: LedgerWatchOptions;
   /** The filesystem state writes go through; the real one except in fault-injection tests. */
   fs?: StageFs;
   /**
@@ -349,7 +352,7 @@ export function assembleEngine(config: EngineConfig): Engine & { start(): Promis
     linkedGames,
     tsmAuth,
     tsmData,
-    tsmLedger: new TradeSkillMasterLedgerReader(),
+    tsmLedger: new TradeSkillMasterLedgerReader({ gameRunning: config.ledgerWatch?.gameRunning, now }),
     backendVersion,
     homeDir,
     store,
@@ -421,11 +424,40 @@ export function assembleEngine(config: EngineConfig): Engine & { start(): Promis
     }
   }
 
+  async function serve(input?: AsyncIterable<Uint8Array>): Promise<void> {
+    let watched: { id: string; location: string; close(): void } | undefined;
+    function watchSelection(): void {
+      const active = installationService.ensureSelection();
+      if (watched && active?.id === watched.id && active.location === watched.location) return;
+      watched?.close();
+      watched = active ? {
+        id: active.id,
+        location: active.location,
+        close: watchLedger(active, () => server.emit("tradeskillmaster.ledgerChanged", {
+          installationId: active.id,
+        }), config.ledgerWatch),
+      } : undefined;
+    }
+    const afterSettings = ({ before, after }: SettingsChange) => {
+      if (before.selectedInstallationId !== after.selectedInstallationId) watchSelection();
+    };
+    store.settingsListeners.add(afterSettings);
+    installationService.foundListeners.add(watchSelection);
+    try {
+      watchSelection();
+      await server.run(input);
+    } finally {
+      store.settingsListeners.delete(afterSettings);
+      installationService.foundListeners.delete(watchSelection);
+      watched?.close();
+    }
+  }
+
   return {
     server,
     deps,
     call: (method, params) => server.call(method, params),
-    serve: (input) => server.run(input),
+    serve,
     start,
   };
 }
