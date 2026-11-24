@@ -86,8 +86,8 @@ export function wowdeckSharedStyleCss(): string {
 .wowdeck-tab svg { width: 14px; height: 14px; }
 .wowdeck-tab-selected { background: rgba(255,255,255,.15); color: #fff; padding: 6px 14px; }
 .wowdeck-tab.gpfocus { background: #fff; color: #23262e; box-shadow: 0 3px 6px rgba(0,0,0,.32); }
-/* A pane's own navigation (the TradeSkillMaster destination's pill bar)
-   floats at the top of the widened pane while its rows scroll under it
+/* A pane's own navigation (the TradeSkillMaster destination's title row
+   with its view pills) floats at the top of the widened pane while its rows scroll under it
    (S24). The pane is pinned to the QAM viewport and scrolls itself inside
    8 px of padding, with nothing above it to attach to: the bar sticks at
    the scroller's very top and covers that padding, opaque on the QAM's own
@@ -97,8 +97,18 @@ export function wowdeckSharedStyleCss(): string {
    under them. */
 .wowdeck-pane-slot-open .wowdeck-pane-bar {
   position: sticky; top: -8px; z-index: 1; background: #0e141b;
-  margin-top: -8px; padding-top: 8px; padding-bottom: 4px;
+  margin-top: -8px; padding-top: 8px; padding-bottom: 8px;
+  /* Paints the QAM background above the bar too: scrolled rows showed
+     through a few px over the pills (DEVICE 2026-11-24). */
+  box-shadow: 0 -16px 0 0 #0e141b;
 }
+/* The title row: the destination's name in Steam's 16 px row text, its
+   views' pills right-aligned and centred on it (owner, PR #318 review). */
+.wowdeck-pane-title {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  color: ${STEAM.text}; font-size: ${STEAM_FONT.body}; line-height: 24px;
+}
+.wowdeck-pane-title > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wowdeck-pane-slot-open .wowdeck-pane-bar::after {
   content: ""; position: absolute; left: 0; right: 0; top: 100%;
   height: var(--wowdeck-fade-size, 20px); pointer-events: none;
@@ -173,7 +183,6 @@ export function wowdeckSharedStyleCss(): string {
   max-height: min(320px, calc(100vh - 180px));
   overflow-y: auto; overflow-x: hidden; padding: 4px 0;
 }
-.wowdeck-segment-menu-item { justify-content: flex-start; }
 .wowdeck-segment-menu-label {
   flex: 1; min-width: 0; text-align: left;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -188,6 +197,16 @@ export function wowdeckSharedStyleCss(): string {
 .wowdeck-ledger-line { display: flex; justify-content: space-between; gap: 12px; color: #b8bcbf; font-size: 12px; line-height: 20px; }
 .wowdeck-ledger-line .wowdeck-ledger-value { display: inline-flex; align-items: center; gap: 4px; }
 .wowdeck-ledger-item { min-width: 0; white-space: normal; overflow-wrap: anywhere; text-align: right; }
+/* Sales, Expenses and Profit as one table: the name, then Total and Per
+   day right-aligned, the caption row above using the same columns. */
+.wowdeck-ledger-flows {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) minmax(0, 1.2fr);
+  gap: 12px; align-items: center; width: 100%;
+}
+.wowdeck-ledger-flows > :not(:first-child) { justify-content: flex-end; text-align: right; }
+.wowdeck-ledger-flows > .wowdeck-ledger-value { display: inline-flex; align-items: center; gap: 4px; }
+.wowdeck-ledger-flow-name { color: #dcdedf; font-size: 16px; line-height: 20px; }
+.wowdeck-ledger-recorded { padding-bottom: 4px; }
 .wowdeck-ledger-trend { display: inline-flex; }
 .wowdeck-ledger-trend svg { width: 12px; height: 12px; }
 .wowdeck-ledger-gold > svg { display: block; width: 100%; height: 72px; margin-top: 4px; }
@@ -210,7 +229,13 @@ export function wowdeckSharedStyleCss(): string {
   gap: 12px; width: 100%; overflow-wrap: anywhere; font-variant-numeric: tabular-nums;
 }
 .wowdeck-ledger-items-columns > :not(:first-child) { text-align: right; }
-.wowdeck-ledger-items-labels { font-weight: bold; }
+/* The column labels: the Ledger's caption style, sticky over the list on
+   the dialog's own background, inset like the rows' text. */
+.wowdeck-ledger-items-labels {
+  position: sticky; top: 0; z-index: 1; background: #0e141b;
+  box-sizing: border-box; padding: 0 12px 6px;
+}
+.wowdeck-ledger-items-none { color: ${STEAM.textDisabled}; }
 .wowdeck-glyph-text {
   display: inline-flex; align-items: center; justify-content: center;
   min-width: 24px; height: 18px; padding: 0 4px; border-radius: 4px 4px 2px 2px;

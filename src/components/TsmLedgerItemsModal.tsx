@@ -6,8 +6,11 @@ import {
   DialogFooter,
   DialogHeader,
   Field,
+  GamepadButton,
   ModalRoot,
+  Navigation,
   showModal,
+  type GamepadEvent,
 } from "@decky/ui";
 import type {
   TradeSkillMasterLedger,
@@ -17,18 +20,30 @@ import { browseFocusView, holdBrowseSessionForModal } from "../browseSessionStat
 import { requestFocus } from "../focusMemory";
 import { openPanel } from "../openPanel";
 import { wowdeckSharedStyleCss } from "../sharedStyles";
-import { formatMoney } from "../text";
 import { ledgerParams } from "../tsmLedgerFilters";
 import { useTsmLedgerItems } from "../tsmReads";
+import { ledgerItemLabel, wowheadItemUrl } from "../tsmWowhead";
+import { Money } from "./Money";
 import { ScrollBuffer } from "./ScrollBuffer";
+
+/** A cell of the list: "–" for nothing, so the amounts stand out (owner, PR #318 review). */
+const Amount = ({ copper }: { copper: number }) =>
+  Math.round(copper) === 0 ? (
+    <span className="wowdeck-ledger-items-none">–</span>
+  ) : (
+    <Money copper={copper} />
+  );
 
 function LedgerItemsModal({
   params,
   filters,
+  wowhead,
   closeModal,
 }: {
   params: TradeSkillMasterLedgerItemsParams;
   filters: string;
+  /** The installation's Wowhead section (TradeSkillMasterLedger.wowhead). */
+  wowhead: string | null;
   closeModal: () => void;
 }) {
   const [offsets, setOffsets] = useState([0]);
@@ -51,6 +66,30 @@ function LedgerItemsModal({
     setOffsets(next);
   };
   const nextOffset = data?.nextOffset ?? null;
+  const previous = offsets.length > 1 ? () => changePage(offsets.slice(0, -1)) : null;
+  const next = nextOffset !== null ? () => changePage([...offsets, nextOffset]) : null;
+  // L2 and R2 turn the page from any row, as Steam's lists page with the
+  // triggers; the Previous page and Next page rows stay at the list's ends.
+  const paging = {
+    actionDescriptionMap: {
+      ...(previous && { [GamepadButton.TRIGGER_LEFT]: "Previous page" }),
+      ...(next && { [GamepadButton.TRIGGER_RIGHT]: "Next page" }),
+    },
+    onButtonDown: (evt: GamepadEvent) => {
+      const turn =
+        evt.detail.button === GamepadButton.TRIGGER_LEFT
+          ? previous
+          : evt.detail.button === GamepadButton.TRIGGER_RIGHT
+            ? next
+            : null;
+      if (turn) {
+        evt.preventDefault();
+        evt.stopPropagation();
+        turn();
+      }
+    },
+  };
+  const rows = data !== null && !error ? data.rows : [];
   return (
     <ModalRoot
       onCancel={closeModal}
@@ -64,14 +103,26 @@ function LedgerItemsModal({
         <div className="wowdeck-ledger-items-filters">{filters}</div>
       </DialogHeader>
       <DialogBody>
+        {/* The column labels stay in place while the items scroll under
+            them: outside the scroll buffer, which counts them as floating
+            over the list (S21). */}
+        {rows.length > 0 && (
+          <div className="wowdeck-ledger-items-columns wowdeck-ledger-items-labels wowdeck-ledger-caption">
+            <span>Item</span>
+            <span>Earned</span>
+            <span>Spent</span>
+            <span>Net</span>
+          </div>
+        )}
         <ScrollBuffer key={offset}>
           <DialogControlsSection>
-            {offsets.length > 1 && (
+            {previous && (
               <Field
                 focusable
                 label="Previous page"
                 onOKActionDescription="Previous page"
-                onClick={() => changePage(offsets.slice(0, -1))}
+                onClick={previous}
+                {...paging}
               />
             )}
             {error ? (
@@ -94,36 +145,41 @@ function LedgerItemsModal({
               />
             ) : (
               <>
-                <Field childrenLayout="below" childrenContainerWidth="max">
-                  <div className="wowdeck-ledger-items-columns wowdeck-ledger-items-labels">
-                    <span>Item</span>
-                    <span>Earned</span>
-                    <span>Spent</span>
-                    <span>Net</span>
-                  </div>
-                </Field>
-                {data.rows.map(({ itemString, name, earned, spent, net }, index) => (
-                  <Field
-                    key={`${index}:${itemString}`}
-                    ref={index === 0 ? firstRow : undefined}
-                    focusable
-                    childrenLayout="below"
-                    childrenContainerWidth="max"
-                  >
-                    <div className="wowdeck-ledger-items-columns">
-                      <span>{name}</span>
-                      <span>{formatMoney(earned)}</span>
-                      <span>{formatMoney(spent)}</span>
-                      <span>{formatMoney(net)}</span>
-                    </div>
-                  </Field>
-                ))}
-                {nextOffset !== null && (
+                {data.rows.map(({ itemString, name, earned, spent, net }, index) => {
+                  const url = wowheadItemUrl(wowhead, itemString);
+                  return (
+                    <Field
+                      key={`${index}:${itemString}`}
+                      ref={index === 0 ? firstRow : undefined}
+                      focusable
+                      childrenLayout="below"
+                      childrenContainerWidth="max"
+                      {...paging}
+                      // A opens the item on Wowhead in Steam's browser; the
+                      // list stays open under it, so B comes back to this
+                      // row (owner, PR #318 review). No ID or no section:
+                      // no action.
+                      {...(url && {
+                        onOKActionDescription: "Open on Wowhead",
+                        onClick: () => Navigation.NavigateToExternalWeb(url),
+                      })}
+                    >
+                      <div className="wowdeck-ledger-items-columns">
+                        <span>{ledgerItemLabel(name, itemString)}</span>
+                        <Amount copper={earned} />
+                        <Amount copper={spent} />
+                        <Amount copper={net} />
+                      </div>
+                    </Field>
+                  );
+                })}
+                {next && (
                   <Field
                     focusable
                     label="Next page"
                     onOKActionDescription="Next page"
-                    onClick={() => changePage([...offsets, nextOffset])}
+                    onClick={next}
+                    {...paging}
                   />
                 )}
               </>
@@ -158,7 +214,12 @@ export function openLedgerItems(
   ].join(" · ");
   const release = holdBrowseSessionForModal();
   const modal = showModal(
-    <LedgerItemsModal params={params} filters={filters} closeModal={() => modal.Close()} />,
+    <LedgerItemsModal
+      params={params}
+      filters={filters}
+      wowhead={ledger.wowhead}
+      closeModal={() => modal.Close()}
+    />,
     window,
     {
       strTitle: "All items",

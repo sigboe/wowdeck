@@ -29,6 +29,16 @@ export interface SegmentChoice<T> {
   label: string;
 }
 
+/** An open menu's item: label left, check at the right edge, no 160 px minimum (S6). */
+const MENU_ITEM = {
+  display: "flex",
+  alignItems: "center",
+  gap: "12px",
+  width: "100%",
+  minWidth: 0,
+  textAlign: "left",
+} as const;
+
 export function SegmentMenu<T>({
   menuLabel,
   choices,
@@ -136,7 +146,9 @@ export function SegmentMenu<T>({
         <DialogButton
           aria-label={menuLabel}
           onClick={() => (open ? close(true) : openList())}
-          style={{ display: "flex", alignItems: "center", gap: "8px", width: "100%" }}
+          // minWidth 0 (S6): Steam's 160 px minimum ran the Ledger's narrow
+          // Period button 64 px past its segment (DEVICE 2026-11-24).
+          style={{ display: "flex", alignItems: "center", gap: "8px", width: "100%", minWidth: 0 }}
         >
           {renderValue(selectedLabel)}
           <FaChevronDown style={{ flex: "none", width: "10px", color: STEAM.textMuted }} />
@@ -168,6 +180,12 @@ export function SegmentMenu<T>({
                 data-seg-index={index}
                 aria-label={choice.label}
                 className="wowdeck-segment-menu-item"
+                // Steam's button is a centred block, so the label sat
+                // centred and the check touched it ("Normal✓", DEVICE
+                // 2026-11-24). As a flex row the label fills the item from
+                // its left padding and the check ends it, as in Steam's
+                // own menus.
+                style={MENU_ITEM}
                 onGamepadFocus={() => (cursorRef.current = index)}
                 onClick={() => pick(choice)}
               >

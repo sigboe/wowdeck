@@ -5,6 +5,7 @@ import {
   dayMonth,
   formatBytes,
   formatMoney,
+  moneyParts,
   formatWhen,
   importResultLine,
   lastAutoUpdateLine,
@@ -201,4 +202,19 @@ test("formatMoney writes copper as gold, silver and copper, leaving out empty un
   expect(formatMoney(-1_050)).toBe("-10s 50c");
   expect(formatMoney(0)).toBe("0c");
   expect(formatMoney(0.4)).toBe("0c");
+});
+
+test("moneyParts splits an amount into its coins, sign apart", () => {
+  expect(moneyParts(12_345_678)).toEqual({
+    negative: false,
+    parts: [
+      { amount: "1,234", unit: "g" },
+      { amount: "56", unit: "s" },
+      { amount: "78", unit: "c" },
+    ],
+  });
+  expect(moneyParts(-3_400)).toEqual({ negative: true, parts: [{ amount: "34", unit: "s" }] });
+  expect(moneyParts(0)).toEqual({ negative: false, parts: [{ amount: "0", unit: "c" }] });
+  // Less than half a copper of loss is no loss.
+  expect(moneyParts(-0.4)).toEqual({ negative: false, parts: [{ amount: "0", unit: "c" }] });
 });

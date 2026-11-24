@@ -71,8 +71,12 @@ column with the current choice checked, A picks, B cancels. Other popups
 now; the same treatment is the agreed follow-up if their entrance replay
 bothers in use.
 
-**Ledger exception (2026-11-24, #312).** The Ledger's bar is the one place
-with two bar rows. Realm, Character and Period fill the first; the second
-holds Account, shown only with several WoW accounts, beside Export, which
-spec #308 places at the top of the Ledger. Both rows float with the pill
-bar, and entering the Ledger still lands on its first content row.
+**Ledger exception (2026-11-24, #312; revised by #319).** The Ledger has
+more controls than one bar row holds. #312 floated two rows under the pill
+bar. After reviewing it on the Deck, the owner asked for only the title
+row to float (#319). That row holds the destination's name, with the
+Auction data and Ledger pills right-aligned beside it. The Ledger's controls are now the
+first rows of the view and scroll with it. Account comes first, shown
+only with several WoW accounts. Export follows as a settings row whose
+description names what it writes. Then Realm, Character and Period share
+one browse-bar row.

@@ -52,20 +52,39 @@ export function formatBytes(bytes: number): string {
   return `${text} ${units[unit]}`;
 }
 
+/** One coin of an amount: its count as WoW writes it and its letter. */
+export interface MoneyPart {
+  amount: string;
+  unit: "g" | "s" | "c";
+}
+
+/**
+ * An amount of copper split into the coins WoW writes, empty coins left out,
+ * rounded to the copper: `negative` and at least one part ("0c" for nothing).
+ */
+export function moneyParts(copper: number): { negative: boolean; parts: MoneyPart[] } {
+  const rounded = Math.round(copper);
+  const amount = Math.abs(rounded);
+  const gold = Math.floor(amount / 10_000);
+  const silver = Math.floor(amount / 100) % 100;
+  const parts: MoneyPart[] = [
+    ...(gold > 0 ? [{ amount: gold.toLocaleString("en-US"), unit: "g" as const }] : []),
+    ...(silver > 0 ? [{ amount: String(silver), unit: "s" as const }] : []),
+    ...(amount % 100 > 0 ? [{ amount: String(amount % 100), unit: "c" as const }] : []),
+  ];
+  return {
+    negative: rounded < 0,
+    parts: parts.length === 0 ? [{ amount: "0", unit: "c" }] : parts,
+  };
+}
+
 /**
  * An amount of copper the way WoW writes money: "1,234g 56s 78c", empty
  * units left out, rounded to the copper ("0c" for nothing).
  */
 export function formatMoney(copper: number): string {
-  const rounded = Math.round(copper);
-  const amount = Math.abs(rounded);
-  const gold = Math.floor(amount / 10_000);
-  const parts = [
-    gold > 0 ? `${gold.toLocaleString("en-US")}g` : "",
-    Math.floor(amount / 100) % 100 > 0 ? `${Math.floor(amount / 100) % 100}s` : "",
-    amount % 100 > 0 ? `${amount % 100}c` : "",
-  ].filter(Boolean);
-  return parts.length === 0 ? "0c" : `${rounded < 0 ? "-" : ""}${parts.join(" ")}`;
+  const { negative, parts } = moneyParts(copper);
+  return `${negative ? "-" : ""}${parts.map((p) => p.amount + p.unit).join(" ")}`;
 }
 
 const MIN = 60_000;

@@ -376,6 +376,14 @@ Concretely:
   Addons install target and category), goes in the floating pane under the
   tab bar, never as the first row of the list (owner, 2026-10-15). Rows of
   the list itself never float.
+- **Exception: the TradeSkillMaster destination floats only its title row**
+  (owner, 2026-11-24, #319). The row holds the destination's name and its
+  views' pills, right-aligned (`.wowdeck-pane-title`). The Ledger's two
+  floating rows of controls took a fifth of the pane, and the owner asked
+  for them to scroll. Account, Export, Realm, Character and Period are therefore the
+  Ledger's first rows. The title row paints the QAM background 16 px above
+  itself, because scrolled rows showed through the scroller's padding above
+  the pills (DEVICE 2026-11-24).
 - **Full-screen pages:** Steam's tab header is the pane (S18); view-wide
   controls go in `belowHeaderTabsContent`.
 - The scroll buffer (S21) includes every such pane: Decky's title, our tab

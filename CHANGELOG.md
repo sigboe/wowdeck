@@ -8,10 +8,11 @@ What's new in each version of WoWDeck Addon Manager. The format follows
 
 ### Added
 
-- TradeSkillMaster's Ledger refreshes at logout, shows gold history, earnings, spending and a breakdown by item, and exports your records for spreadsheets.
+- TradeSkillMaster's Ledger refreshes at logout, shows gold history, earnings, spending and items you can open on Wowhead, and exports your records for spreadsheets.
 
 ### Fixed
 
+- Get Addons' Source and Category menus line up their choices on the left with the check mark at the end.
 - Low-contrast description and changelog text becomes readable while colours that already work stay unchanged.
 - Manage followed realms no longer flickers while auction data arrives.
 - After you unfollow a realm, focus moves to the next realm in the list instead of Done.

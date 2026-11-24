@@ -6,7 +6,7 @@ import { TSM_VIEWS, tsmView, type TsmView } from "../tsmView";
 import { FocusSlot } from "./FocusSlot";
 import { PillBar } from "./TopNav";
 import { TsmAddon } from "./TsmAddon";
-import { TsmLedger, TsmLedgerFilters } from "./TsmLedger";
+import { TsmLedger } from "./TsmLedger";
 
 /**
  * The pill bar's focus-memory key in the destination's browse view. Its
@@ -17,8 +17,8 @@ export const TSM_PILL_BAR = "pill-bar";
 
 /**
  * Where entering the destination puts focus: its first content row, never
- * the floating bars above it (the pill bar, the Ledger's filters), as every
- * other destination lands on its content.
+ * the floating title row and its pills, as every other destination lands
+ * on its content.
  */
 export function firstTsmControl(pane: HTMLElement): HTMLElement | null {
   return (
@@ -107,21 +107,22 @@ export function TsmDestination({
   }, []);
   return (
     <>
-      {/* Navigation floats at the top of the pane (S24): the pill bar, and
-          under it the Ledger's filters and Export. */}
+      {/* The title row floats at the top of the pane (S24): the destination's
+          name, and its views' pills right-aligned beside it (owner, PR #318
+          review). Nothing else floats; the Ledger's filters scroll with it. */}
       <div ref={barRef} className="wowdeck-pane-bar">
         <PanelSectionRow>
-          <FocusSlot view={browseFocusView("tsm")} id={TSM_PILL_BAR}>
-            <PillBar
-              tabs={TSM_VIEWS}
-              activeId={view}
-              onSelect={(id) => tsmView.set(id as TsmView)}
-            />
-          </FocusSlot>
+          <div className="wowdeck-pane-title">
+            <span>TradeSkillMaster</span>
+            <FocusSlot view={browseFocusView("tsm")} id={TSM_PILL_BAR}>
+              <PillBar
+                tabs={TSM_VIEWS}
+                activeId={view}
+                onSelect={(id) => tsmView.set(id as TsmView)}
+              />
+            </FocusSlot>
+          </div>
         </PanelSectionRow>
-        {view === "ledger" && installationId && (
-          <TsmLedgerFilters key={installationId} installationId={installationId} />
-        )}
       </div>
       {view === "ledger" ? (
         installationId && <TsmLedger key={installationId} installationId={installationId} />

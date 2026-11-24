@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useId,
   useLayoutEffect,
   useRef,
   useState,
@@ -21,14 +22,15 @@ import { requestFocus } from "../focusMemory";
 import { useTsmLedger } from "../tsmReads";
 import { ledgerPlotWidth, pickLedgerFilter } from "../tsmLedgerFilters";
 import { exportLedger, ledgerExport } from "../tsmLedgerExport";
-import { STEAM } from "../steamTheme";
+import { descriptionStyle, STEAM } from "../steamTheme";
 import { openLedgerItems } from "./TsmLedgerItemsModal";
-import { focusTarget } from "./FocusSlot";
+import { FocusSlot, focusTarget } from "./FocusSlot";
+import { Money } from "./Money";
 import { SegmentRow, type BarSegment } from "./BrowseBar";
 import { SegmentMenu } from "./SegmentMenu";
 import {
+  LEDGER_FULL_VALUE,
   LEDGER_HALF_VALUE,
-  LEDGER_PAIR_VALUE,
   LEDGER_PERIOD_VALUE,
   LEDGER_PERIOD_WIDTH,
 } from "./dropdownValue";
@@ -54,7 +56,6 @@ const EMPTY: Record<Exclude<TradeSkillMasterLedgerState, "ready">, [string, stri
 const FOCUS_VIEW = browseFocusView("tsm");
 export const LEDGER_FOCUS = {
   error: "ledger-error",
-  recorded: "ledger-recorded",
   empty: "ledger-empty",
   account: "ledger-account",
   realm: "ledger-realm",
@@ -73,69 +74,89 @@ export const LEDGER_FOCUS = {
  * Bar segments that sit beside another on their row, by focus key: Left
  * from the key goes to its value (GetAddonsTab's pane Left handling;
  * Steam's own row navigation skipped the sibling and left the pane, DEVICE
- * 2026-10-23). Up and Down between the rows are Steam's own. Left from
- * Export without Account falls through to the destination list.
+ * 2026-10-23). Up and Down between the rows are Steam's own.
  */
 export const LEDGER_LEFT_NEIGHBOUR: Record<string, string> = {
   [LEDGER_FOCUS.character]: LEDGER_FOCUS.realm,
   [LEDGER_FOCUS.period]: LEDGER_FOCUS.character,
-  [LEDGER_FOCUS.export]: LEDGER_FOCUS.account,
 };
 
 /** The in-game Dashboard's periods, in its order. */
 const PERIODS: TradeSkillMasterLedgerPeriod[] = ["1D", "1W", "1M", "3M", "6M", "1Y", "2Y", "All"];
 
 /**
- * The Ledger's filter bar (ADR 0002, G14): the browse bar's segments with
- * in-pane menus, floating with the pill bar (S24) in two rows. Realm,
- * Character and Period come first, once the account has records. The second
- * row holds Account, only with more than one account, and Export, shown
- * whatever the Ledger holds. Export writes the shown account's records for
- * the shown realm, or every realm, whatever Character and Period show.
- * Without records there (gold logs are none) it is disabled and takes no
- * focus: Steam's navigation
- * stopped on a disabled button although A did nothing there (DEVICE
- * 2026-11-24).
+ * Export as a Steam settings row (S19): what it writes as the description,
+ * the button on the right. Export writes the shown account's records for
+ * the shown realm, or every realm, whatever Character and Period show, and
+ * the description says so (owner, PR #318 review). Without records there
+ * (gold logs are none) the button is disabled and takes no focus: Steam's
+ * navigation stopped on a disabled button although A did nothing there
+ * (DEVICE 2026-11-24).
  */
-export function TsmLedgerFilters({ installationId }: { installationId: string }) {
-  const { data } = useTsmLedger(installationId);
+function ExportRow({
+  installationId,
+  ledger,
+}: {
+  installationId: string;
+  ledger: TradeSkillMasterLedger;
+}) {
   const { exporting } = useSyncExternalStore(ledgerExport.subscribe, ledgerExport.get);
-  const canExport = data?.exportable === true && data.account !== null;
-  const exportSegment: BarSegment = canExport
-    ? {
-        id: "export",
-        caption: "Export",
-        focusId: LEDGER_FOCUS.export,
-        menu: (
+  const canExport = ledger.exportable && ledger.account !== null;
+  return (
+    <PanelSectionRow>
+      <Field
+        label="Export ledger"
+        description={
+          canExport
+            ? `${ledger.realm ?? "All realms"} · every character and period`
+            : "Nothing to export yet"
+        }
+      >
+        {canExport ? (
+          <FocusSlot view={FOCUS_VIEW} id={LEDGER_FOCUS.export}>
+            <DialogButton
+              onClick={() =>
+                void exportLedger(installationId, ledger, () =>
+                  requestFocus(FOCUS_VIEW, LEDGER_FOCUS.export),
+                )
+              }
+              onOKActionDescription="Export"
+              style={{ minWidth: 0, width: "auto", padding: "10px 24px" }}
+            >
+              {exporting ? "Exporting…" : "Export"}
+            </DialogButton>
+          </FocusSlot>
+        ) : (
           <DialogButton
-            onClick={() =>
-              void exportLedger(installationId, data, () =>
-                requestFocus(FOCUS_VIEW, LEDGER_FOCUS.export),
-              )
-            }
-            onOKActionDescription="Choose folder"
-            style={{ width: "100%" }}
+            disabled
+            focusable={false}
+            onClick={() => {}}
+            style={{ minWidth: 0, width: "auto", padding: "10px 24px" }}
           >
-            {exporting ? "Exporting…" : "Choose folder…"}
+            Export
           </DialogButton>
-        ),
-      }
-    : {
-        id: "export",
-        caption: "Export",
-        menu: (
-          <DialogButton disabled focusable={false} onClick={() => {}} style={{ width: "100%" }}>
-            {/* The whole text, wrapping beside Account (S27): an ellipsis
-                cut the phase-1 text short (DEVICE 2026-11-24). */}
-            <span style={{ display: "block", whiteSpace: "normal" }}>Nothing to export yet</span>
-          </DialogButton>
-        ),
-      };
-  if (!data) {
-    return <SegmentRow view={FOCUS_VIEW} segments={[exportSegment]} />;
-  }
+        )}
+      </Field>
+    </PanelSectionRow>
+  );
+}
+
+/**
+ * The Ledger's controls, at the top of its rows and scrolling with them
+ * (owner, PR #318 review: only the title row floats): Account, only with
+ * more than one account; Export; then Realm, Character and Period as the
+ * browse bar's segments with in-pane menus (ADR 0002, G14), once the
+ * account has records.
+ */
+function LedgerControls({
+  installationId,
+  ledger,
+}: {
+  installationId: string;
+  ledger: TradeSkillMasterLedger;
+}) {
   const pick = (change: Parameters<typeof pickLedgerFilter>[2]) =>
-    pickLedgerFilter(installationId, data, change);
+    pickLedgerFilter(installationId, ledger, change);
   const account: BarSegment = {
     id: "account",
     caption: "Account",
@@ -143,9 +164,9 @@ export function TsmLedgerFilters({ installationId }: { installationId: string })
     menu: (
       <SegmentMenu
         menuLabel="Account"
-        choices={data.accounts.map((name) => ({ data: name, label: name }))}
-        selected={data.account}
-        renderValue={LEDGER_PAIR_VALUE}
+        choices={ledger.accounts.map((name) => ({ data: name, label: name }))}
+        selected={ledger.account}
+        renderValue={LEDGER_FULL_VALUE}
         onPick={(name) => pick({ account: name })}
       />
     ),
@@ -160,9 +181,9 @@ export function TsmLedgerFilters({ installationId }: { installationId: string })
           menuLabel="Realm"
           choices={[
             { data: null as string | null, label: "All realms" },
-            ...data.realms.map((realm) => ({ data: realm as string | null, label: realm })),
+            ...ledger.realms.map((realm) => ({ data: realm as string | null, label: realm })),
           ]}
-          selected={data.realm}
+          selected={ledger.realm}
           renderValue={LEDGER_HALF_VALUE}
           onPick={(realm) => pick({ realm })}
         />
@@ -177,9 +198,9 @@ export function TsmLedgerFilters({ installationId }: { installationId: string })
           menuLabel="Character"
           choices={[
             { data: null as string | null, label: "All characters" },
-            ...data.characters.map((c) => ({ data: c.id as string | null, label: c.label })),
+            ...ledger.characters.map((c) => ({ data: c.id as string | null, label: c.label })),
           ]}
-          selected={data.character}
+          selected={ledger.character}
           renderValue={LEDGER_HALF_VALUE}
           onPick={(character) => pick({ character })}
         />
@@ -194,7 +215,7 @@ export function TsmLedgerFilters({ installationId }: { installationId: string })
         <SegmentMenu
           menuLabel="Period"
           choices={PERIODS.map((period) => ({ data: period, label: period }))}
-          selected={data.period}
+          selected={ledger.period}
           renderValue={LEDGER_PERIOD_VALUE}
           onPick={(period) => pick({ period })}
         />
@@ -203,11 +224,9 @@ export function TsmLedgerFilters({ installationId }: { installationId: string })
   ];
   return (
     <>
-      {data.state === "ready" && <SegmentRow view={FOCUS_VIEW} segments={filters} />}
-      <SegmentRow
-        view={FOCUS_VIEW}
-        segments={data.accounts.length > 1 ? [account, exportSegment] : [exportSegment]}
-      />
+      {ledger.accounts.length > 1 && <SegmentRow view={FOCUS_VIEW} segments={[account]} />}
+      <ExportRow installationId={installationId} ledger={ledger} />
+      {ledger.state === "ready" && <SegmentRow view={FOCUS_VIEW} segments={filters} />}
     </>
   );
 }
@@ -242,54 +261,52 @@ function Line({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-/** Money as WoW writes it; a loss in Steam's danger colour. */
-const Money = ({ copper }: { copper: number }) => (
-  <span style={Math.round(copper) < 0 ? { color: STEAM.danger } : undefined}>
-    {formatMoney(copper)}
-  </span>
-);
-
 /**
- * Sales, Expenses or Profit, as the in-game Dashboard's rows: total with its
- * trend, the average per day and the top item. One focus stop (G3).
+ * Sales, Expenses and Profit as one table (owner, PR #318 review): a row
+ * each with its total, trend and per-day average, and its top item in grey
+ * under it. One focus stop per row (G3), under a caption row naming the
+ * columns.
  */
-function FlowPanel({
-  heading,
-  totalLabel,
-  flow,
-  upIsGood,
-  focusKey,
-}: {
-  heading: string;
-  totalLabel: string;
-  flow: TradeSkillMasterLedgerFlow;
-  upIsGood: boolean;
-  focusKey: string;
-}) {
+function FlowTable({ figures }: { figures: TradeSkillMasterLedgerFigures }) {
+  const rows: [string, TradeSkillMasterLedgerFlow, boolean, string][] = [
+    ["Sales", figures.earned, true, LEDGER_FOCUS.sales],
+    ["Expenses", figures.spent, false, LEDGER_FOCUS.expenses],
+    ["Profit", figures.profit, true, LEDGER_FOCUS.profit],
+  ];
   return (
-    <PanelSectionRow>
-      <div className="wowdeck-ledger-panel">
-        <Field
-          focusable
-          label={heading}
-          childrenLayout="below"
-          {...focusTarget(FOCUS_VIEW, focusKey)}
-        >
-          <Line label={totalLabel}>
-            <Trend change={flow.trend} upIsGood={upIsGood} />
-            <Money copper={flow.total} />
-          </Line>
-          <Line label="Per day">
-            <Money copper={flow.perDay} />
-          </Line>
-          <Line label="Top item">
-            <span className="wowdeck-ledger-item">
-              {flow.topItemName ?? flow.topItem ?? "None"}
-            </span>
-          </Line>
-        </Field>
-      </div>
-    </PanelSectionRow>
+    <>
+      <PanelSectionRow>
+        <div className="wowdeck-ledger-flows wowdeck-ledger-caption">
+          <span />
+          <span>Total</span>
+          <span>Per day</span>
+        </div>
+      </PanelSectionRow>
+      {rows.map(([heading, flow, upIsGood, focusKey]) => (
+        <PanelSectionRow key={heading}>
+          <Field
+            focusable
+            childrenLayout="below"
+            childrenContainerWidth="max"
+            {...focusTarget(FOCUS_VIEW, focusKey)}
+          >
+            <div className="wowdeck-ledger-flows">
+              <span className="wowdeck-ledger-flow-name">{heading}</span>
+              <span className="wowdeck-ledger-value">
+                <Trend change={flow.trend} upIsGood={upIsGood} />
+                <Money copper={flow.total} />
+              </span>
+              <span className="wowdeck-ledger-value">
+                <Money copper={flow.perDay} />
+              </span>
+            </div>
+            <div className="wowdeck-ledger-note">
+              Top item · {flow.topItemName ?? flow.topItem ?? "None"}
+            </div>
+          </Field>
+        </PanelSectionRow>
+      ))}
+    </>
   );
 }
 
@@ -316,6 +333,8 @@ function GoldGraph({
   // The engine samples the line for the plot's laid-out width, as the addon
   // samples its own graph (a step per 3 px).
   const plot = useRef<SVGSVGElement>(null);
+  // useId's colons are not valid in url(#…) references.
+  const fillId = `wowdeck-gold-fill${useId().replace(/:/g, "")}`;
   useLayoutEffect(() => {
     if (plot.current) ledgerPlotWidth.set(plot.current.getBoundingClientRect().width);
   });
@@ -340,6 +359,8 @@ function GoldGraph({
     gold.points.length === 1
       ? `0,${y(values[0]!)} ${GRAPH_WIDTH},${y(values[0]!)}`
       : gold.points.map(([ms, copper]) => `${x(ms)},${y(copper)}`).join(" ");
+  // The area under the line, closed along the bottom of the box.
+  const area = `${line} ${GRAPH_WIDTH},${GRAPH_HEIGHT} 0,${GRAPH_HEIGHT}`;
   const start = dayMonth(new Date(first), new Date(now));
   return (
     <PanelSectionRow>
@@ -357,6 +378,15 @@ function GoldGraph({
             viewBox={`0 0 ${GRAPH_WIDTH} ${GRAPH_HEIGHT}`}
             preserveAspectRatio="none"
           >
+            {/* A soft fill under the line in Steam's blue, fading out
+                towards the bottom (owner, PR #318 review). */}
+            <defs>
+              <linearGradient id={fillId} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stopColor={STEAM.primary} stopOpacity={0.35} />
+                <stop offset="1" stopColor={STEAM.primary} stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <polygon points={area} fill={`url(#${fillId})`} stroke="none" />
             <polyline
               points={line}
               fill="none"
@@ -389,15 +419,15 @@ function GoldGraph({
 const perDay = (items: number) => String(Math.round(items * 10) / 10);
 
 /**
- * The figures under the freshness line: the four that are not the graph's
- * in a 2×2 grid, then Sales, Expenses and Profit stacked.
+ * The figures under the graph: the four that are not the graph's in a 2×2
+ * grid, then the Sales, Expenses and Profit table.
  */
 function Figures({ figures }: { figures: TradeSkillMasterLedgerFigures }) {
-  const cells: [string, string][] = [
+  const cells: [string, ReactNode][] = [
     ["Avg daily sales", perDay(figures.dailySales)],
     ["Avg daily purchases", perDay(figures.dailyPurchases)],
-    ["Top sale", formatMoney(figures.topSale)],
-    ["Top purchase", formatMoney(figures.topPurchase)],
+    ["Top sale", <Money copper={figures.topSale} />],
+    ["Top purchase", <Money copper={figures.topPurchase} />],
   ];
   return (
     <>
@@ -413,27 +443,7 @@ function Figures({ figures }: { figures: TradeSkillMasterLedgerFigures }) {
           </div>
         </Field>
       </PanelSectionRow>
-      <FlowPanel
-        heading="Sales"
-        totalLabel="Total earned"
-        flow={figures.earned}
-        upIsGood
-        focusKey={LEDGER_FOCUS.sales}
-      />
-      <FlowPanel
-        heading="Expenses"
-        totalLabel="Total spent"
-        flow={figures.spent}
-        upIsGood={false}
-        focusKey={LEDGER_FOCUS.expenses}
-      />
-      <FlowPanel
-        heading="Profit"
-        totalLabel="Total profit"
-        flow={figures.profit}
-        upIsGood
-        focusKey={LEDGER_FOCUS.profit}
-      />
+      <FlowTable figures={figures} />
     </>
   );
 }
@@ -484,18 +494,16 @@ export function TsmLedger({ installationId }: { installationId: string }) {
       )}
       {data && !error && (
         <>
-          {/* Without the addon nothing records, so nothing is dated. */}
+          <LedgerControls installationId={installationId} ledger={data} />
+          {/* Without the addon nothing records, so nothing is dated. Plain
+              text with no focus stop (owner, PR #318 review): the controls
+              above it already bring the top of the view into sight. */}
           {data.recordedAt !== null && data.state !== "noAddon" && (
             <PanelSectionRow>
-              {/* Focusable, so the D-pad reaches the top of the view (G3). */}
-              <Field
-                focusable
-                label={`Recorded at last logout · ${formatWhen(data.recordedAt, now)}`}
-                description={
-                  data.gameRunning ? "Log out or /reload to include this session" : undefined
-                }
-                {...focusTarget(FOCUS_VIEW, LEDGER_FOCUS.recorded)}
-              />
+              <div className="wowdeck-ledger-recorded" style={descriptionStyle}>
+                <div>Recorded at last logout · {formatWhen(data.recordedAt, now)}</div>
+                {data.gameRunning && <div>Log out or /reload to include this session</div>}
+              </div>
             </PanelSectionRow>
           )}
           {data.state === "ready" && data.figures && (
