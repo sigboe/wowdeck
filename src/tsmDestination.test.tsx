@@ -66,6 +66,7 @@ const noFilters = {
   character: null,
   period: "All",
   figures: null,
+  itemCount: 0,
   gold: null,
 } as const satisfies Partial<TradeSkillMasterLedger>;
 let ledger: TradeSkillMasterLedger | Error = {
@@ -137,6 +138,7 @@ const fake = createFakeEngine({
     if (ledger instanceof Error) throw ledger;
     return echoFilters ? echoFilters(ledger, params) : ledger;
   },
+  "tradeskillmaster.ledgerItems": [],
   "tradeskillmaster.destination": async (params) => {
     await holdDestination;
     return accountFixture(params) as unknown as TradeSkillMasterDestination;
@@ -1356,6 +1358,7 @@ const readyLedger: TradeSkillMasterLedger = {
   ],
   character: null,
   period: "All",
+  itemCount: 3,
   figures: {
     earned: {
       total: 12_345_678,
@@ -1406,6 +1409,68 @@ const showLedger = (container: HTMLElement) =>
       ) as HTMLElement
     ).click(),
   );
+
+test("All items shows the filtered count and restores focus after B closes the modal", async () => {
+  resetTsmView();
+  resetTsmReads();
+  resetLedgerFilters();
+  resetFocusMemory();
+  const previousLedger = ledger;
+  const previousItems = fake.answers["tradeskillmaster.ledgerItems"];
+  ledger = { ...readyLedger, realm: "Silvermoon", period: "1M", itemCount: 2 };
+  fake.answers["tradeskillmaster.ledgerItems"] = [
+    { itemString: "i:2589", name: "Linen Cloth", earned: 300, spent: 200, net: 100 },
+    { itemString: "i:2592", name: "Wool Cloth", earned: 0, spent: 50, net: -50 },
+  ];
+  const view = await mountDestination(false);
+  const opener = () =>
+    [...view.container.querySelectorAll<HTMLElement>(".Focusable[tabindex]")].find(
+      (row) => row.textContent === "All items (2)",
+    )!;
+  try {
+    await showLedger(view.container);
+    expect(view.container.textContent).toMatch(/Profit.*All items \(2\)/);
+    const reads = fake.paramsOf("tradeskillmaster.ledgerItems").length;
+    await act(async () => {
+      opener().focus();
+      opener().querySelector("b")!.click();
+    });
+    await view.leave(); // Opening a Steam modal unmounts the pane.
+    expect(fake.paramsOf("tradeskillmaster.ledgerItems").slice(reads)).toEqual([
+      { installationId: "active", account: "MAIN", realm: "Silvermoon", period: "1M" },
+    ]);
+
+    expect(document.querySelector("h2")?.textContent).toBe(
+      "All itemsMAIN · Silvermoon · All characters · 1M",
+    );
+    const columns = [...document.querySelectorAll(".wowdeck-ledger-items-columns")];
+    expect(columns.map((row) => [...row.children].map((cell) => cell.textContent))).toEqual([
+      ["Item", "Earned", "Spent", "Net"],
+      ["Linen Cloth", "3s", "2s", "1s"],
+      ["Wool Cloth", "0c", "50c", "-50c"],
+    ]);
+    expect(columns[0]!.closest(".Focusable")).toBeNull();
+    for (const row of columns.slice(1)) {
+      const field = row.closest<HTMLElement>(".Focusable[tabindex]")!;
+      await act(async () => field.focus());
+      expect(document.activeElement).toBe(field);
+    }
+    const opens = qamOpens;
+    await act(async () => cancelModal!());
+    expect(qamOpens).toBe(opens + 1);
+    await view.render();
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
+    expect(document.activeElement).toBe(opener());
+    expect(view.selected()?.textContent).toBe("Ledger");
+  } finally {
+    await act(async () => cancelModal && modalRoot && cancelModal());
+    fake.answers["tradeskillmaster.ledgerItems"] = previousItems;
+    ledger = previousLedger;
+    await view.close();
+    resetFocusMemory();
+    resetTsmReads();
+  }
+});
 
 test("the Ledger's figures render under its freshness line: a 2×2 grid, then Sales, Expenses and Profit", async () => {
   resetTsmView();

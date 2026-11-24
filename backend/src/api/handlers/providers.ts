@@ -20,7 +20,7 @@ export interface ProvidersDeps {
   tsmAuth: Pick<TradeSkillMasterAuth, "begin" | "cancel" | "signOut" | "status">;
   tsmData: Pick<TradeSkillMasterData, "account" | "cleanupPreview" | "destination" | "refresh" | "setFollow" | "unfollow" | "wake">;
   /** The Ledger: the addon's own records, read from WoW's saved files. */
-  tsmLedger: Pick<TradeSkillMasterLedgerReader, "ledger">;
+  tsmLedger: Pick<TradeSkillMasterLedgerReader, "ledger" | "ledgerItems">;
   installationService: Pick<InstallationService, "require">;
 }
 
@@ -39,6 +39,7 @@ export function providersHandlers({ store, registry, curseForgeAuth, curseForgeP
       period: params.period,
       plotWidth: params.plotWidth,
     }),
+    "tradeskillmaster.ledgerItems": async (params) => tsmLedger.ledgerItems(installationService.require(params.installationId), params.account, params),
     "tradeskillmaster.status": async () => tsmAuth.status(),
     "tradeskillmaster.signIn": async () => tsmAuth.begin(),
     "tradeskillmaster.cancel": async () => tsmAuth.cancel(),

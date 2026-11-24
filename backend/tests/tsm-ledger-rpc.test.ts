@@ -48,8 +48,8 @@ function fixture() {
   let response: any;
   const rpc = new JsonlServer((line) => { response = JSON.parse(line); });
   rpc.handle(providersHandlers(subset({ tsmLedger: ledger, installationService: { require: () => installation } })));
-  const call = async (params: object = {}) => {
-    await rpc.handleLine(JSON.stringify({ id: 1, method: "tradeskillmaster.ledger", params: { installationId: "era", ...params } }));
+  const call = async (params: object = {}, method = "tradeskillmaster.ledger") => {
+    await rpc.handleLine(JSON.stringify({ id: 1, method, params: { installationId: "era", ...params } }));
     return response;
   };
   return { write, call, running: (state: GameRunning) => { running = state; } };
@@ -57,7 +57,7 @@ function fixture() {
 
 const account = (name: string) => `WTF/Account/${name}/SavedVariables/TradeSkillMaster.lua`;
 /** Nothing to choose and nothing to count. */
-const noFilters = { realms: [], realm: null, characters: [], character: null, period: "All", figures: null, gold: null };
+const noFilters = { realms: [], realm: null, characters: [], character: null, period: "All", itemCount: 0, figures: null, gold: null };
 
 test("without the addon or any account's records, the Ledger asks for the addon", async () => {
   const { write, call } = fixture();
@@ -195,6 +195,10 @@ test("the Ledger reads names from the saved legacy item cache and prefers an exa
   expect(figures.earned).toMatchObject({ total: 30, topItem: "i:2589:123", topItemName: "Linen Cloth" });
   expect(figures.spent).toMatchObject({ total: 5, topItem: "i:4306", topItemName: "Silk Cloth" });
   expect(figures.profit.topItemName).toBe("Linen Cloth");
+  expect((await call({}, "tradeskillmaster.ledgerItems")).result).toEqual([
+    { itemString: "i:2589:123", name: "Linen Cloth", earned: 30, spent: 0, net: 30 },
+    { itemString: "i:4306", name: "Silk Cloth", earned: 0, spent: 5, net: -5 },
+  ]);
 
   // Rewriting the same file replaces its names. Flat legacy lists also work.
   const flat = String.raw`TSMItemInfoDB = { names = "Linen Cloth\002Linen Variant", itemStrings = "i:2589\002i:2589:123" }`;
@@ -332,12 +336,45 @@ function figuresFixture(main: Record<string, string> = mainDb(), clientType = Wo
   let response: any;
   const rpc = new JsonlServer((line) => { response = JSON.parse(line); });
   rpc.handle(providersHandlers(subset({ tsmLedger: ledger, installationService: { require: () => installation } })));
-  return async (params: object = {}) => {
-    await rpc.handleLine(JSON.stringify({ id: 1, method: "tradeskillmaster.ledger", params: { installationId: "era", ...params } }));
+  return async (params: object = {}, method = "tradeskillmaster.ledger") => {
+    await rpc.handleLine(JSON.stringify({ id: 1, method, params: { installationId: "era", ...params } }));
     if (response.error) throw new Error(JSON.stringify(response.error));
     return response.result;
   };
 }
+
+test("the item RPC shares the summary's filters and counts only bought and sold items by volume", async () => {
+  const call = figuresFixture({
+    ...mainDb(),
+    "r@Silvermoon@internalData@csvBuys": csv(TRADE, [
+      ...mainBuys,
+      `i:6,1,1,800,X,Trader,${NOW - DAY},Auction`,
+    ]),
+    "r@Silvermoon@internalData@csvCancelled": csv(AUCTIONS, [`i:100,1,1,Trader,${NOW - DAY}`]),
+    "r@Silvermoon@internalData@csvExpired": csv(AUCTIONS, [`i:101,1,1,Trader,${NOW - DAY}`]),
+    "r@Silvermoon@internalData@csvSales": csv(TRADE, [
+      ...mainSales,
+      `Money Transfer,1,1,99999,X,Hero,${NOW - 3600},Trade`,
+    ]),
+  });
+  const items = (params: object = {}) => call(params, "tradeskillmaster.ledgerItems");
+  const row = (itemString: string, earned: number, spent: number) => ({
+    itemString, name: itemString, earned, spent, net: earned - spent,
+  });
+  expect(await items()).toEqual([
+    row("i:1", 2550, 2000), row("i:9", 1000, 0), row("i:6", 0, 800), row("i:2", 300, 130),
+    row("i:3", 100, 0), row("i:5", 0, 70),
+  ]);
+  expect((await call()).itemCount).toBe(6);
+  const filters = { realm: "Silvermoon", character: "Hero - Silvermoon", period: "1W" };
+  expect(await items(filters)).toEqual([row("i:1", 2000, 2000), row("i:2", 300, 120)]);
+  expect((await call(filters)).itemCount).toBe(2);
+  expect(await items({ account: "ALT" })).toEqual([row("i:7", 5, 0)]);
+  for (const character of ["warbank", "guild:Guild - Horde - Silvermoon", "Banker - Silvermoon"]) {
+    expect(await items({ character })).toEqual([]);
+    expect((await call({ character })).itemCount).toBe(0);
+  }
+});
 
 test("filter choices: realms with records, characters from records and gold logs, the Warband bank and logged guilds, All by default", async () => {
   const call = figuresFixture();
@@ -500,7 +537,7 @@ test("without records the Ledger has no figures", async () => {
   const { write, call } = fixture();
   write("Interface/AddOns/TradeSkillMaster/TradeSkillMaster.toc", "## Title: TradeSkillMaster\n");
   write(account("MAIN"), saved(empty));
-  expect((await call()).result).toMatchObject({ state: "noRecords", realms: [], characters: [], realm: null, character: null, period: "All", figures: null });
+  expect((await call()).result).toMatchObject({ state: "noRecords", realms: [], characters: [], realm: null, character: null, period: "All", itemCount: 0, figures: null });
 });
 
 // ---------------------------------------------------------------------------

@@ -774,6 +774,8 @@ export interface TradeSkillMasterLedger {
    */
   character: string | null;
   period: TradeSkillMasterLedgerPeriod;
+  /** Distinct items bought or sold for this selection. */
+  itemCount: number;
   /** The trading figures for the selection (ADR 0018); null unless `state` is ready. */
   figures: TradeSkillMasterLedgerFigures | null;
   /**
@@ -781,6 +783,24 @@ export interface TradeSkillMasterLedger {
    * null when the selection's gold logs hold no point ("No gold history").
    */
   gold: TradeSkillMasterLedgerGold | null;
+}
+/** The filters shared by the Ledger and its all-items list. */
+export interface TradeSkillMasterLedgerParams {
+  installationId: string;
+  account?: string;
+  realm?: string;
+  character?: string;
+  period?: TradeSkillMasterLedgerPeriod;
+}
+
+export interface TradeSkillMasterLedgerItem {
+  itemString: string;
+  /** The cached name, or the item string when no name is available. */
+  name: string;
+  /** Amounts in copper. */
+  earned: number;
+  spent: number;
+  net: number;
 }
 /** The Ledger's periods, as the in-game Dashboard offers them; All is the default. */
 export const TSM_LEDGER_PERIODS = ["1D", "1W", "1M", "3M", "6M", "1Y", "2Y", "All"] as const;
@@ -939,8 +959,13 @@ export interface MethodMap {
    * (absent: the addon's limit of 300 steps). Reads WoW files only.
    */
   "tradeskillmaster.ledger": {
-    params: { installationId: string; account?: string; realm?: string; character?: string; period?: TradeSkillMasterLedgerPeriod; plotWidth?: number };
+    params: TradeSkillMasterLedgerParams & { plotWidth?: number };
     result: TradeSkillMasterLedger;
+  };
+  /** Items bought or sold for the Ledger selection, highest earned plus spent first. */
+  "tradeskillmaster.ledgerItems": {
+    params: TradeSkillMasterLedgerParams;
+    result: TradeSkillMasterLedgerItem[];
   };
   "tradeskillmaster.status": { params: Record<string, never>; result: TradeSkillMasterAuthStatus };
   "tradeskillmaster.signIn": { params: Record<string, never>; result: { authorizeUrl: string } };

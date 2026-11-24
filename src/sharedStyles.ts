@@ -1,3 +1,5 @@
+import { STEAM, STEAM_FONT } from "./steamTheme";
+
 /**
  * Valve's scroll buffer (guide S21): `scroll-margin` from the variables that
  * useScrollBuffer measures and sets. Steam's focus scroller reads it. Every
@@ -190,6 +192,16 @@ export function wowdeckSharedStyleCss(): string {
 .wowdeck-ledger-trend svg { width: 12px; height: 12px; }
 .wowdeck-ledger-gold > svg { display: block; width: 100%; height: 72px; margin-top: 4px; }
 .wowdeck-ledger-note { color: #b8bcbf; font-size: 12px; line-height: 16px; }
+.wowdeck-ledger-items-modal { width: 100vw; max-width: 100vw; box-sizing: border-box; }
+.wowdeck-ledger-items-filters {
+  color: ${STEAM.textMuted}; font-size: ${STEAM_FONT.body}; overflow-wrap: anywhere;
+}
+.wowdeck-ledger-items-columns {
+  display: grid; grid-template-columns: minmax(0, 2fr) repeat(3, minmax(0, 1fr));
+  gap: 12px; width: 100%; overflow-wrap: anywhere; font-variant-numeric: tabular-nums;
+}
+.wowdeck-ledger-items-columns > :not(:first-child) { text-align: right; }
+.wowdeck-ledger-items-labels { font-weight: bold; }
 .wowdeck-glyph-text {
   display: inline-flex; align-items: center; justify-content: center;
   min-width: 24px; height: 18px; padding: 0 4px; border-radius: 4px 4px 2px 2px;

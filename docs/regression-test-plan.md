@@ -1315,3 +1315,9 @@ three times while the Ledger stayed open. The frontend and engine hashes
 start with `ae368baf` and `f8d6aef0`. The test removed the fixture, restored
 auto-update, and left the build installed. The engine tests cover storage
 recovery, debounce timing and game start and stop.
+
+### TradeSkillMaster Ledger all items (#316)
+
+| ID | Priority | Result | Steps | Expected |
+| --- | --- | --- | --- | --- |
+| LEDGER-316-1 | P1 | Pending | Select a realm and period with enough traded items to scroll. Press A on All items below Profit. Scroll down and back up, then press B. Repeat with a filter that has no trades | The row counts the items bought or sold for the selected filters. The modal spans the screen and names the active filters above the list. Each item is one focus stop. The Earned, Spent and Net columns line up, with the largest earned plus spent first. Transfers and fees are absent. With zero items the modal says there were no purchases or sales for these filters. B returns focus to All items with the same filters |

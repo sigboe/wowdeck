@@ -183,6 +183,7 @@ export interface LedgerView {
   characters: TradeSkillMasterLedgerCharacter[];
   character: string | null;
   period: TradeSkillMasterLedgerPeriod;
+  itemCount: number;
   /** Present when `withFigures` was asked for. */
   figures: TradeSkillMasterLedgerFigures | null;
   /** Present when `withFigures` was asked for and the selection has a gold log point. */
@@ -196,6 +197,18 @@ export interface LedgerView {
  */
 export function ledgerView(db: LuaTable, asked: LedgerSelection, nowMs: number, withFigures: boolean): LedgerView {
   const data = layout(db);
+  const { selected, range, ...filters } = selectTrades(data, asked);
+  const trades = withFigures ? tradeTallies(data, filters.realm, selected, range, nowMs) : null;
+  const logs = withFigures ? selectedLogs(data, filters.realm, selected, nowMs) : [];
+  return {
+    ...filters,
+    itemCount: trades ? itemKeys(trades.current).length : 0,
+    figures: trades ? figures(trades, range, logs, nowMs) : null,
+    gold: withFigures ? goldGraph(logs, range, nowMs, asked.plotWidth) : null,
+  };
+}
+
+function selectTrades(data: Layout, asked: LedgerSelection) {
   // Every realm with records: a record CSV's row or a character's or guild's gold-log point.
   const realms = [...new Set([
     ...[...data.records]
@@ -245,17 +258,19 @@ export function ledgerView(db: LuaTable, asked: LedgerSelection, nowMs: number, 
   const character = selected ? asked.character! : null;
   const period = ((TSM_LEDGER_PERIODS as readonly string[]).includes(asked.period ?? "") ? asked.period : "All") as TradeSkillMasterLedgerPeriod;
   const range = period === "All" ? null : PERIOD_DAYS[period] * SECONDS_PER_DAY;
-  const logs = withFigures ? selectedLogs(data, realm, selected ?? null, nowMs) : [];
+  return { realms, realm, characters, character, period, selected: selected ?? null, range };
+}
 
-  return {
-    realms,
-    realm,
-    characters,
-    character,
-    period,
-    figures: withFigures ? figures(data, realm, selected ?? null, range, logs, nowMs) : null,
-    gold: withFigures ? goldGraph(logs, range, nowMs, asked.plotWidth) : null,
-  };
+/** Per-item totals for the same selection and time window as the summary. */
+export function ledgerItemTotals(db: LuaTable, asked: LedgerSelection, nowMs: number) {
+  const data = layout(db);
+  const { realm, selected, range } = selectTrades(data, asked);
+  const { current } = tradeTallies(data, realm, selected, range, nowMs);
+  return itemKeys(current).map((itemString) => {
+    const earned = current.sale.perItem.get(itemString) ?? 0;
+    const spent = current.buy.perItem.get(itemString) ?? 0;
+    return { itemString, earned, spent, net: earned - spent };
+  }).sort((a, b) => (b.earned + b.spent) - (a.earned + a.spent) || byText(a.itemString, b.itemString));
 }
 
 /** One kind of record (sales or purchases) summed over a window. */
@@ -269,14 +284,19 @@ interface Tally {
 }
 const tally = (): Tally => ({ amount: 0, quantity: 0, topPrice: 0, perItem: new Map(), topItem: null });
 
-function figures(
+function itemKeys({ sale, buy }: { sale: Tally; buy: Tally }): string[] {
+  // The list is for item and battle pet strings, including their variants.
+  return [...new Set([...sale.perItem.keys(), ...buy.perItem.keys()])]
+    .filter((item) => /^[ip]:\d+(?::[0-9+i:-]+)?$/.test(item));
+}
+
+function tradeTallies(
   data: Layout,
   realm: string | null,
   selected: Choice | null,
   range: number | null,
-  logs: SelectedLog[],
   nowMs: number,
-): TradeSkillMasterLedgerFigures {
+) {
   const now = Math.floor(nowMs / 1000);
   // The Warband bank and a guild trade nothing: their figures are zero.
   const character = selected?.kind === "character" ? selected : null;
@@ -315,6 +335,15 @@ function figures(
     }
   }
 
+  return { current, previous };
+}
+
+function figures(
+  { current, previous }: ReturnType<typeof tradeTallies>,
+  range: number | null,
+  logs: SelectedLog[],
+  nowMs: number,
+): TradeSkillMasterLedgerFigures {
   // All divides by the whole days since the selection's first gold-log point, at least 1.
   const { start, end } = goldRange(logs, nowMs);
   const days = range !== null ? range / SECONDS_PER_DAY : Math.max(1, Math.ceil((end - start) / SECONDS_PER_DAY));

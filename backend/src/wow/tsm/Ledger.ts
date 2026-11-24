@@ -7,13 +7,13 @@
  */
 import { existsSync, lstatSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import type { GameRunning, TradeSkillMasterLedger } from "../../api/contracts";
+import type { GameRunning, TradeSkillMasterLedger, TradeSkillMasterLedgerItem } from "../../api/contracts";
 import { getAddonsPath } from "../installation/InstallationDetector";
 import type { WowInstallation } from "../models";
 import { WowClientType } from "../types";
 import { detectGameRunning } from "../wtf/GameProcessGuard";
 import { ledgerItemName } from "./ItemNames";
-import { GOLD_LOG, hasRows, ledgerView, RECORD_CSVS, type LedgerSelection } from "./LedgerFigures";
+import { GOLD_LOG, hasRows, ledgerItemTotals, ledgerView, RECORD_CSVS, type LedgerSelection } from "./LedgerFigures";
 import { readTradeSkillMaster, safePath, savedVariables, type LuaValue, type SavedVariablesReader } from "./SavedVariables";
 
 /** The clients the addon counts as Retail, where it records gold rounded to 1,000 gold. */
@@ -89,26 +89,10 @@ export class TradeSkillMasterLedgerReader {
         ...ledgerView(Object.create(null), selection, this.#now(), false),
       };
     }
-    const read = (name: string) => {
-      const saved = readTradeSkillMaster(savedFile(installation, name), this.#reader);
-      if (saved.status !== "ok" && saved.status !== "missing") {
-        console.error("[ledger] TradeSkillMaster.lua not readable:", saved.status);
-        throw new Error(`TradeSkillMaster.lua is ${saved.status}`);
-      }
-      return saved.status === "ok" ? saved : null;
-    };
-    const records = (name: string): boolean => {
-      const saved = read(name);
-      return saved !== null && hasRecords(saved.db);
-    };
-    const asked = found.find((a) => a.name === account);
-    // Newest first, so the usual case reads one file.
-    const newestFirst = [...found].sort((a, b) => b.mtimeMs - a.mtimeMs);
-    const chosen = asked ?? newestFirst.find((a) => records(a.name)) ?? newestFirst[0]!;
-    const saved = read(chosen.name);
+    const { chosen, saved } = this.#readAccount(installation, found, account);
     const ready = saved !== null && hasRecords(saved.db);
     // Without the addon, an empty Ledger asks for it unless another account has records.
-    const noAddon = !ready && !installed && !found.some((a) => a !== chosen && records(a.name));
+    const noAddon = !ready && !installed && !found.some((a) => a !== chosen && this.#hasRecords(installation, a.name));
     const view = ledgerView(saved?.db ?? Object.create(null), selection, this.#now(), ready);
     const itemInfo = saved?.itemInfo;
     if (view.figures && itemInfo) {
@@ -127,5 +111,39 @@ export class TradeSkillMasterLedgerReader {
       retail,
       ...view,
     };
+  }
+
+  ledgerItems(installation: WowInstallation, account?: string, selection: LedgerSelection = {}): TradeSkillMasterLedgerItem[] {
+    const found = accounts(installation);
+    if (found.length === 0) return [];
+    const { saved } = this.#readAccount(installation, found, account);
+    if (!saved) return [];
+    const cache = saved.itemInfo;
+    return ledgerItemTotals(saved.db, selection, this.#now()).map((item) => ({
+      ...item,
+      name: (cache && ledgerItemName(cache, item.itemString)) ?? item.itemString,
+    }));
+  }
+
+  #read(installation: WowInstallation, name: string) {
+    const saved = readTradeSkillMaster(savedFile(installation, name), this.#reader);
+    if (saved.status !== "ok" && saved.status !== "missing") {
+      console.error("[ledger] TradeSkillMaster.lua not readable:", saved.status);
+      throw new Error(`TradeSkillMaster.lua is ${saved.status}`);
+    }
+    return saved.status === "ok" ? saved : null;
+  }
+
+  #hasRecords(installation: WowInstallation, name: string): boolean {
+    const saved = this.#read(installation, name);
+    return saved !== null && hasRecords(saved.db);
+  }
+
+  #readAccount(installation: WowInstallation, found: ReturnType<typeof accounts>, account?: string) {
+    const asked = found.find((a) => a.name === account);
+    // Newest first, so the usual case reads one file.
+    const newestFirst = [...found].sort((a, b) => b.mtimeMs - a.mtimeMs);
+    const chosen = asked ?? newestFirst.find((a) => this.#hasRecords(installation, a.name)) ?? newestFirst[0]!;
+    return { chosen, saved: this.#read(installation, chosen.name) };
   }
 }

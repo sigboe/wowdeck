@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "re
 import { DialogButton, Field, PanelSectionRow } from "@decky/ui";
 import { FaCaretDown, FaCaretUp } from "react-icons/fa";
 import type {
+  TradeSkillMasterLedger,
   TradeSkillMasterLedgerFigures,
   TradeSkillMasterLedgerFlow,
   TradeSkillMasterLedgerGold,
@@ -12,6 +13,7 @@ import { browseFocusView } from "../browseSessionState";
 import { useTsmLedger } from "../tsmReads";
 import { ledgerPlotWidth, pickLedgerFilter } from "../tsmLedgerFilters";
 import { STEAM } from "../steamTheme";
+import { openLedgerItems } from "./TsmLedgerItemsModal";
 import { focusTarget } from "./FocusSlot";
 import { SegmentRow, type BarSegment } from "./BrowseBar";
 import { SegmentMenu } from "./SegmentMenu";
@@ -54,6 +56,7 @@ export const LEDGER_FOCUS = {
   sales: "ledger-sales",
   expenses: "ledger-expenses",
   profit: "ledger-profit",
+  items: "ledger-items",
 } as const;
 
 /**
@@ -402,6 +405,26 @@ function Figures({ figures }: { figures: TradeSkillMasterLedgerFigures }) {
   );
 }
 
+function AllItemsRow({
+  installationId,
+  ledger,
+}: {
+  installationId: string;
+  ledger: TradeSkillMasterLedger;
+}) {
+  return (
+    <PanelSectionRow>
+      <Field
+        focusable
+        label={`All items (${ledger.itemCount})`}
+        onOKActionDescription="View items"
+        onClick={() => openLedgerItems(installationId, ledger, LEDGER_FOCUS.items)}
+        {...focusTarget(FOCUS_VIEW, LEDGER_FOCUS.items)}
+      />
+    </PanelSectionRow>
+  );
+}
+
 /**
  * The Ledger (GLOSSARY): what the TradeSkillMaster addon recorded for the
  * active installation, read from the game's saved settings. It needs no
@@ -446,6 +469,7 @@ export function TsmLedger({ installationId }: { installationId: string }) {
             <>
               <GoldGraph gold={data.gold} now={now} retail={data.retail} />
               <Figures figures={data.figures} />
+              <AllItemsRow installationId={installationId} ledger={data} />
             </>
           )}
           {data.state !== "ready" && (

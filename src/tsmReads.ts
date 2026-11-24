@@ -11,6 +11,8 @@ import type {
   TradeSkillMasterAuthStatus,
   TradeSkillMasterDestination,
   TradeSkillMasterLedger,
+  TradeSkillMasterLedgerItem,
+  TradeSkillMasterLedgerParams,
 } from "../backend/src/api/contracts";
 import { useResource } from "./useResource";
 import {
@@ -20,7 +22,7 @@ import {
   settleLedgerFilters,
   type LedgerFilters,
 } from "./tsmLedgerFilters";
-import { useRef, useSyncExternalStore } from "react";
+import { useEffect, useRef, useSyncExternalStore } from "react";
 
 /**
  * What the TradeSkillMaster views read from the engine, one keyed resource
@@ -97,6 +99,15 @@ export function createTsmModule(deps: {
     },
     clock: deps.clock,
   });
+  const ledgerItems = createKeyedResource<TradeSkillMasterLedgerItem[]>({
+    read: (key) =>
+      deps.rpc("tradeskillmaster.ledgerItems", JSON.parse(key) as TradeSkillMasterLedgerParams),
+    errorText: (e) => {
+      backendErrorMessage(e);
+      return "Couldn't load Ledger items";
+    },
+    clock: deps.clock,
+  });
   const cleanupPreview = createKeyedResource<TradeSkillMasterAccount["follows"]>({
     read: (installationId) => deps.rpc("tradeskillmaster.cleanupPreview", { installationId }),
     errorText: (e) => {
@@ -122,8 +133,12 @@ export function createTsmModule(deps: {
     account,
     destination,
     ledger,
+    ledgerItems,
     ledgerChanged({ installationId }: EventMap["tradeskillmaster.ledgerChanged"]) {
-      ledger.invalidate((key) => (JSON.parse(key) as LedgerKey).installationId === installationId);
+      const matches = (key: string) =>
+        (JSON.parse(key) as LedgerKey).installationId === installationId;
+      ledger.invalidate(matches);
+      ledgerItems.invalidate(matches);
     },
     cleanupPreview,
     /**
@@ -197,6 +212,12 @@ export function useTsmLedger(installationId: string) {
   }
   return { ...snapshot, data: snapshot.data ?? last.current };
 }
+export function useTsmLedgerItems(params: TradeSkillMasterLedgerParams) {
+  const key = JSON.stringify(params);
+  const snapshot = useResource(tsmModule.ledgerItems, key);
+  useEffect(() => () => tsmModule.ledgerItems.forget(key), [key]);
+  return snapshot;
+}
 export const useTsmCleanupPreview = (installationId: string) =>
   useResource(tsmCleanupPreview, installationId);
 
@@ -219,6 +240,7 @@ export function resetTsmReads(): void {
     tsmCleanupPreview,
     tsmModule.addons,
     tsmModule.ledger,
+    tsmModule.ledgerItems,
   ]) {
     resource.retainOnly([]);
   }
