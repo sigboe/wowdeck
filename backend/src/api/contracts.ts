@@ -751,14 +751,25 @@ export interface TradeSkillMasterLedger {
   realm: string | null;
   /**
    * The Character filter's choices for the realm shown: each character of
-   * the records' `player` column and of the gold logs, sorted by label.
+   * the records' `player` column and of the gold logs, sorted by label,
+   * then the Warband bank and each guild of the realm shown with a gold log,
+   * guilds sorted by label. The Warband bank is a choice under every realm.
    */
   characters: TradeSkillMasterLedgerCharacter[];
-  /** The character shown (a `characters` id); null is All characters (also when the one asked for is not a choice). */
+  /**
+   * The choice shown (a `characters` id); null is All characters (also when
+   * the one asked for is not a choice). The Warband bank or a guild shows
+   * only its gold log, and its trading figures are zero.
+   */
   character: string | null;
   period: TradeSkillMasterLedgerPeriod;
   /** The trading figures for the selection (ADR 0018); null unless `state` is ready. */
   figures: TradeSkillMasterLedgerFigures | null;
+  /**
+   * The selection's gold graph (ADR 0018); null unless `state` is ready, and
+   * null when the selection's gold logs hold no point ("No gold history").
+   */
+  gold: TradeSkillMasterLedgerGold | null;
 }
 /** The Ledger's periods, as the in-game Dashboard offers them; All is the default. */
 export const TSM_LEDGER_PERIODS = ["1D", "1W", "1M", "3M", "6M", "1Y", "2Y", "All"] as const;
@@ -769,9 +780,33 @@ export interface TradeSkillMasterLedgerCharacter {
    * records hold it (the records' `player` column carries no realm).
    */
   id: string;
-  /** The name, with ` - <Realm>` under All realms when the account has several realms. */
+  /** The name, with ` - <Realm>` under All realms when the account has several realms; "Warband bank" for the Warband bank. */
   label: string;
-  kind: "character";
+  /**
+   * A character, the account-wide Warband bank (id `warbank`) or a guild
+   * (id `guild:<Guild> - <Faction> - <Realm>`): the addon logs a guild's
+   * gold while one of the player's characters leads it.
+   */
+  kind: "character" | "warbank" | "guild";
+}
+/**
+ * The selection's gold over time, as the in-game Dashboard's graph and
+ * summary show it: the sum of the selected gold logs, each carrying its last
+ * balance forward and counting zero before its first point.
+ */
+export interface TradeSkillMasterLedgerGold {
+  /**
+   * `[ms since the epoch, copper]`, oldest first, from the period's start
+   * (or the first point, whichever is later) to now, sampled as the addon's
+   * graph samples it: at most about 150 points.
+   */
+  points: [number, number][];
+  /** The highest balance of the last 52 weeks, sampled every 6 hours and now. */
+  high: number;
+  /** The lowest balance of the last 52 weeks, sampled the same way. */
+  low: number;
+  /** Now minus 24 hours ago, or minus the first point when that is later. */
+  dailyChange: number;
 }
 /** Earned, spent or profit over the selection, in copper. */
 export interface TradeSkillMasterLedgerFlow {

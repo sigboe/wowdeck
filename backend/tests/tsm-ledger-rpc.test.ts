@@ -54,7 +54,7 @@ function fixture() {
 
 const account = (name: string) => `WTF/Account/${name}/SavedVariables/TradeSkillMaster.lua`;
 /** Nothing to choose and nothing to count. */
-const noFilters = { realms: [], realm: null, characters: [], character: null, period: "All", figures: null };
+const noFilters = { realms: [], realm: null, characters: [], character: null, period: "All", figures: null, gold: null };
 
 test("without the addon or any account's records, the Ledger asks for the addon", async () => {
   const { write, call } = fixture();
@@ -256,7 +256,7 @@ function figuresFixture(main: Record<string, string> = mainDb()) {
   };
 }
 
-test("filter choices: realms with records, characters from records and gold logs, All by default", async () => {
+test("filter choices: realms with records, characters from records and gold logs, the Warband bank and logged guilds, All by default", async () => {
   const call = figuresFixture();
   const all = await call();
   expect(all).toMatchObject({ state: "ready", account: "MAIN", realm: null, character: null, period: "All" });
@@ -268,10 +268,15 @@ test("filter choices: realms with records, characters from records and gold logs
     { id: "Hero - Argent Dawn", label: "Hero - Argent Dawn", kind: "character" },
     { id: "Hero - Silvermoon", label: "Hero - Silvermoon", kind: "character" },
     { id: "Trader - Silvermoon", label: "Trader - Silvermoon", kind: "character" },
+    // Then the account-wide Warband bank and each guild with a gold log.
+    { id: "warbank", label: "Warband bank", kind: "warbank" },
+    { id: "guild:Guild - Horde - Silvermoon", label: "Guild - Silvermoon", kind: "guild" },
   ]);
   const silvermoon = await call({ realm: "Silvermoon" });
   expect(silvermoon.realm).toBe("Silvermoon");
-  expect(silvermoon.characters.map((c: { label: string }) => c.label)).toEqual(["Alt", "Banker", "Hero", "Trader"]);
+  expect(silvermoon.characters.map((c: { label: string }) => c.label)).toEqual(["Alt", "Banker", "Hero", "Trader", "Warband bank", "Guild"]);
+  // The Warband bank counts under every realm; a guild only under its own.
+  expect((await call({ realm: "Argent Dawn" })).characters.map((c: { id: string }) => c.id)).toEqual(["Hero - Argent Dawn", "warbank"]);
   expect((await call({ period: "1M" })).period).toBe("1M");
 });
 
@@ -413,4 +418,132 @@ test("without records the Ledger has no figures", async () => {
   write("Interface/AddOns/TradeSkillMaster/TradeSkillMaster.toc", "## Title: TradeSkillMaster\n");
   write(account("MAIN"), saved(empty));
   expect((await call()).result).toMatchObject({ state: "noRecords", realms: [], characters: [], realm: null, character: null, period: "All", figures: null });
+});
+
+// ---------------------------------------------------------------------------
+// The gold graph: the addon's GoldTracker and Dashboard (4.15.9) as the reference.
+
+const HOUR = 3600;
+/** Gold logs on Silvermoon, Argent Dawn, the Warband bank and a Silvermoon guild; a sale on each realm. */
+const goldDb = (extra: Record<string, string> = {}) => ({
+  "r@Silvermoon@internalData@csvSales": csv(TRADE, [`i:1,1,1,10,Buyer,Trader,${NOW - DAY},Auction`]),
+  "r@Argent Dawn@internalData@csvSales": csv(TRADE, [`i:1,1,1,5,Buyer,Hero,${NOW - DAY},Auction`]),
+  "s@Hero - Horde - Silvermoon@internalData@goldLog": csv(GOLD, [`${minute(12 * HOUR)},1000`, `${minute(6 * HOUR)},3000`]),
+  "s@Alt - Horde - Silvermoon@internalData@goldLog": csv(GOLD, [`${minute(3 * HOUR)},500`]),
+  "s@Hero - Alliance - Argent Dawn@internalData@goldLog": csv(GOLD, [`${minute(3 * DAY)},7`]),
+  "g@ @internalData@warbankGoldLog": csv(GOLD, [`${minute(2 * DAY)},10000`]),
+  "f@Horde - Silvermoon@internalData@guildGoldLog": `{ ["Guild"] = ${csv(GOLD, [`${minute(18 * HOUR)},200`])} }`,
+  ...extra,
+});
+/** The points where the graph's value changes, with the first: [seconds before NOW, copper]. */
+const steps = (points: [number, number][]) =>
+  points
+    .filter(([, copper], i) => i === 0 || copper !== points[i - 1]![1])
+    .map(([ms, copper]) => [NOW - ms / 1000, copper]);
+
+test("the graph sums the selection's gold logs, carries each forward and counts a log as zero before its first point", async () => {
+  const call = figuresFixture(goldDb());
+  const realm = (await call({ realm: "Silvermoon", period: "1D" })).gold;
+  // Every Silvermoon character and guild, and the Warband bank: Argent Dawn's Hero does not count.
+  expect(steps(realm.points)).toEqual([
+    [DAY, 10000],
+    [18 * HOUR, 10200],
+    [12 * HOUR, 11200],
+    [6 * HOUR, 13200],
+    [3 * HOUR, 13700],
+  ]);
+  // The day from its start to now, sampled as the addon's graph samples it.
+  expect(realm.points.length).toBe(145);
+  expect(realm.points.at(-1)).toEqual([NOW * 1000, 13700]);
+  // All realms adds Argent Dawn's Hero, whose balance carries forward from 3 days ago.
+  expect(steps((await call({ period: "1D" })).gold.points)[0]).toEqual([DAY, 10007]);
+});
+
+test("one character, the Warband bank or a guild graphs only its own log; the bank and a guild trade nothing", async () => {
+  const call = figuresFixture(goldDb());
+  const hero = await call({ character: "Hero - Silvermoon", period: "1D" });
+  // A period starts no earlier than the selection's first point, as in game.
+  expect(steps(hero.gold.points)).toEqual([[12 * HOUR, 1000], [6 * HOUR, 3000]]);
+  expect(steps((await call({ character: "warbank", period: "1D" })).gold.points)).toEqual([[DAY, 10000]]);
+  const guild = await call({ character: "guild:Guild - Horde - Silvermoon", period: "1D" });
+  expect(guild.character).toBe("guild:Guild - Horde - Silvermoon");
+  expect(steps(guild.gold.points)).toEqual([[18 * HOUR, 200]]);
+  // The Warband bank and a guild show zero trading figures, whatever the realm sold.
+  for (const character of ["warbank", "guild:Guild - Horde - Silvermoon"]) {
+    const { figures } = await call({ character });
+    expect([character, figures.earned.total, figures.spent.total, figures.dailySales, figures.topSale]).toEqual([character, 0, 0, 0, 0]);
+  }
+  // Under another realm a guild is no choice, so the selection falls back to All characters.
+  expect((await call({ realm: "Argent Dawn", character: "guild:Guild - Horde - Silvermoon" })).character).toBeNull();
+});
+
+test("a selection without a gold log point has no gold history", async () => {
+  const call = figuresFixture(goldDb({ "s@Trader - Horde - Silvermoon@internalData@goldLog": csv(GOLD, []) }));
+  const trader = await call({ character: "Trader - Silvermoon" });
+  expect(trader).toMatchObject({ state: "ready", character: "Trader - Silvermoon", gold: null });
+  expect(trader.figures.earned.total).toBe(10);
+});
+
+test("52-week High and Low sample every 6 hours of the last 52 weeks and now; the daily change is now minus 24 hours ago", async () => {
+  const call = figuresFixture(goldDb({
+    "s@Hero - Horde - Silvermoon@internalData@goldLog": csv(GOLD, [
+      `${minute(400 * DAY)},9000`, // before the 52 weeks (364 days): no high
+      `${minute(399 * DAY)},10`, // carried into the 52 weeks: the low
+      `${minute(200 * DAY)},5000`, // the high
+      `${minute(200 * DAY - HOUR)},99999`, // between two samples: never seen
+      `${minute(200 * DAY - 2 * HOUR)},5000`,
+      `${minute(100 * DAY)},20`,
+      `${minute(30 * HOUR)},300`, // the balance 24 hours ago
+      `${minute(HOUR)},1000`, // now
+    ]),
+  }));
+  const hero = await call({ character: "Hero - Silvermoon" });
+  expect(hero.gold).toMatchObject({ high: 5000, low: 10, dailyChange: 700 });
+  // The summary does not follow the period.
+  expect((await call({ character: "Hero - Silvermoon", period: "1D" })).gold).toMatchObject({ high: 5000, low: 10, dailyChange: 700 });
+  // A log younger than a day changes from its first point, not from zero.
+  const young = figuresFixture(goldDb({ "s@Alt - Horde - Silvermoon@internalData@goldLog": csv(GOLD, [`${minute(2 * HOUR)},500`, `${minute(HOUR)},800`]) }));
+  expect((await young({ character: "Alt - Silvermoon" })).gold).toMatchObject({ high: 800, low: 500, dailyChange: 300 });
+});
+
+test("All graphs from the selection's first point to now, sampled as the addon's graph", async () => {
+  const call = figuresFixture(goldDb());
+  const { points } = (await call()).gold;
+  // Argent Dawn's Hero logged first, 3 days ago.
+  expect(points[0]).toEqual([(NOW - 3 * DAY) * 1000, 7]);
+  expect(points.at(-1)).toEqual([NOW * 1000, 13707]);
+  // 3 days over 300 steps is 864 s, a whole minute up 900 s; the addon keeps
+  // every second step (1,800 s apart) more than a step from the end: 144, then now.
+  expect(points.length).toBe(145);
+});
+
+test("a character's or the Warband bank's misread balances are dropped as the addon drops them; a guild's are not", async () => {
+  const BIG = 6_000 * 10_000; // above the 5,000 gold a zero must sit between to be a misread
+  const log = csv(GOLD, [`${minute(4 * HOUR)},${BIG}`, `${minute(3 * HOUR)},0`, `${minute(2 * HOUR)},${BIG}`]);
+  const call = figuresFixture(goldDb({
+    "s@Hero - Horde - Silvermoon@internalData@goldLog": log,
+    "g@ @internalData@warbankGoldLog": csv(GOLD, [`${minute(4 * HOUR)},5`, `${minute(3 * HOUR)},${1_000_000_000_001}`]),
+    "f@Horde - Silvermoon@internalData@guildGoldLog": `{ ["Guild"] = ${log} }`,
+  }));
+  expect(steps((await call({ character: "Hero - Silvermoon", period: "1D" })).gold.points)).toEqual([[4 * HOUR, BIG]]);
+  // Above 100 million gold is no Warband bank balance.
+  expect(steps((await call({ character: "warbank", period: "1D" })).gold.points)).toEqual([[4 * HOUR, 5]]);
+  expect(steps((await call({ character: "guild:Guild - Horde - Silvermoon", period: "1D" })).gold.points)).toEqual([
+    [4 * HOUR, BIG], [3 * HOUR, 0], [2 * HOUR, BIG],
+  ]);
+});
+
+test("a guild none of the player's characters is in, last logged over 30 days ago, counts only until its last entry", async () => {
+  const guild = (lastUpdate: number, member?: string) => ({
+    "f@Horde - Silvermoon@internalData@guildGoldLog": `{ ["Guild"] = ${csv(GOLD, [`${minute(60 * DAY)},200`, `${minute(40 * DAY)},300`])} }`,
+    "f@Horde - Silvermoon@internalData@guildGoldLogLastUpdate": `{ ["Guild"] = ${lastUpdate} }`,
+    ...(member ? { "f@Horde - Silvermoon@internalData@characterGuilds": `{ [${JSON.stringify(member)}] = "Guild" }` } : {}),
+  });
+  const gold = async (db: Record<string, string>) =>
+    steps((await figuresFixture(goldDb(db))({ character: "guild:Guild - Horde - Silvermoon" })).gold.points);
+  // Left: from its last entry on, it counts nothing.
+  expect(await gold(guild(NOW - 31 * DAY))).toEqual([[60 * DAY, 200], [40 * DAY, 0]]);
+  // Still led by a character with a gold log, or updated within 30 days: it carries forward.
+  expect(await gold(guild(NOW - 31 * DAY, "Hero"))).toEqual([[60 * DAY, 200], [40 * DAY, 300]]);
+  expect(await gold(guild(NOW - 29 * DAY))).toEqual([[60 * DAY, 200], [40 * DAY, 300]]);
 });

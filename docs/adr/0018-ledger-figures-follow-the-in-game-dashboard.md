@@ -27,6 +27,12 @@ The rules this pins down:
   length, except for All. It sums the character, Warband bank and guild gold
   logs and carries each balance forward. The addon logs a guild only while
   one of the player's characters leads it.
+- The graph treats each log as the addon loads it. A log counts as zero
+  before its first point. A period's graph starts at the selection's first
+  point when that is later than the period's start. Like the addon, the
+  graph drops misread balances from character and Warband bank logs. A guild none of
+  the player's characters is in, last logged more than 30 days ago, counts
+  only until its last entry.
 
 Two additions have no in-game equivalent, and the community clients set
 their pattern. The Ledger picks one WoW account at a time, as every
@@ -38,6 +44,12 @@ daily sales only. The Ledger also shows average daily purchases, counted
 the same way, and a top item for profit: the item with the highest earned
 minus spent in the period, or none when no item comes out ahead. A Realm
 filter is a Ledger addition too.
+
+The in-game graph ticks characters, guilds and the Warband bank on and off
+in one list. The Ledger's Character filter picks one of them, or all. The
+Warband bank and each guild with a gold log are choices of their own. Picking
+one shows its gold, and the trading figures show zero, because neither one
+trades.
 
 All realms counts every realm with records, in full. The Dashboard counts
 fewer records. It covers the realm you are logged in on and its connected

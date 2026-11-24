@@ -10,8 +10,10 @@ import {
   type TradeSkillMasterLedgerCharacter,
   type TradeSkillMasterLedgerFigures,
   type TradeSkillMasterLedgerFlow,
+  type TradeSkillMasterLedgerGold,
   type TradeSkillMasterLedgerPeriod,
 } from "../../api/contracts";
+import { goldGraph, goldLog, goldRange, MAX_CHARACTER_COPPER, MAX_WARBANK_COPPER, type SelectedLog } from "./LedgerGold";
 import type { LuaTable, LuaValue } from "./SavedVariables";
 
 const SECONDS_PER_DAY = 86_400;
@@ -39,11 +41,16 @@ export const RECORD_CSVS: Record<string, { headers: string[]; player: number }> 
 const recordKey = /^r@(.+)@internalData@(csv\w+)$/;
 const characterLogKey = /^s@(.+)@internalData@goldLog$/;
 const guildLogKey = /^f@(.+)@internalData@guildGoldLog$/;
+const characterGuildsKey = /^f@(.+)@internalData@characterGuilds$/;
+const guildUpdateKey = /^f@(.+)@internalData@guildGoldLogLastUpdate$/;
 const warbankLogKey = "g@ @internalData@warbankGoldLog";
 /** `Name - Faction - Realm`, read the way the addon reads it. */
-const characterKey = /^(.+) - .+ - (.+)$/;
+const characterKey = /^(.+) - (.+) - (.+)$/;
 /** `Faction - Realm`. */
-const factionRealm = /^.+? - (.+)$/;
+const factionRealm = /^(.+?) - (.+)$/;
+/** The addon stops counting a guild none of the player's characters is in once its last entry is this old. */
+const STALE_GUILD = 30 * SECONDS_PER_DAY;
+const WARBANK = "warbank";
 
 /**
  * The rows of a CSV the way the addon decodes it: the first line must be one
@@ -98,15 +105,21 @@ function itemKey(text: string): string | null {
 interface Layout {
   /** Realm → its record CSVs by name. */
   records: Map<string, Map<string, LuaValue>>;
-  /** Character logs: name, realm and CSV. */
-  characterLogs: { name: string; realm: string; log: LuaValue }[];
-  /** Guild logs: realm and CSV. */
-  guildLogs: { realm: string; log: LuaValue }[];
+  /** Character logs: name, faction, realm and CSV. */
+  characterLogs: { name: string; faction: string; realm: string; log: LuaValue }[];
+  /** Guild logs: name, faction, realm and CSV. */
+  guildLogs: { name: string; faction: string; realm: string; log: LuaValue }[];
   warbankLog: LuaValue | undefined;
+  /** `Faction - Realm` → character name → the guild it is in. */
+  characterGuilds: Map<string, LuaTable>;
+  /** `Faction - Realm` → guild → when its gold was last logged, in seconds. */
+  guildUpdates: Map<string, LuaTable>;
 }
 
 function layout(db: LuaTable): Layout {
-  const result: Layout = { records: new Map(), characterLogs: [], guildLogs: [], warbankLog: db[warbankLogKey] };
+  const result: Layout = {
+    records: new Map(), characterLogs: [], guildLogs: [], warbankLog: db[warbankLogKey], characterGuilds: new Map(), guildUpdates: new Map(),
+  };
   for (const [key, value] of Object.entries(db)) {
     let match = recordKey.exec(key);
     if (match && RECORD_CSVS[match[2]!]) {
@@ -118,17 +131,33 @@ function layout(db: LuaTable): Layout {
     match = characterLogKey.exec(key);
     const character = match && characterKey.exec(match[1]!);
     if (character) {
-      result.characterLogs.push({ name: character[1]!, realm: character[2]!, log: value });
+      result.characterLogs.push({ name: character[1]!, faction: character[2]!, realm: character[3]!, log: value });
       continue;
     }
+    if (typeof value !== "object") continue;
     match = guildLogKey.exec(key);
-    if (match && typeof value === "object") {
-      const realm = factionRealm.exec(match[1]!)?.[1];
-      if (realm) for (const log of Object.values(value)) result.guildLogs.push({ realm, log });
+    const guilds = match && factionRealm.exec(match[1]!);
+    if (guilds) {
+      for (const [name, log] of Object.entries(value)) result.guildLogs.push({ name, faction: guilds[1]!, realm: guilds[2]!, log });
+      continue;
     }
+    match = characterGuildsKey.exec(key);
+    if (match) {
+      result.characterGuilds.set(match[1]!, value);
+      continue;
+    }
+    match = guildUpdateKey.exec(key);
+    if (match) result.guildUpdates.set(match[1]!, value);
   }
   return result;
 }
+
+/** What the Character filter selects: a character, the Warband bank or a guild. */
+type Choice =
+  | { kind: "character"; name: string; realm: string }
+  | { kind: "warbank" }
+  | { kind: "guild"; name: string; faction: string; realm: string };
+const guildId = (g: { name: string; faction: string; realm: string }) => `guild:${g.name} - ${g.faction} - ${g.realm}`;
 
 const byText = (a: string, b: string) => a.localeCompare(b, "en");
 const characterId = (name: string, realm: string) => `${name} - ${realm}`;
@@ -147,6 +176,8 @@ export interface LedgerView {
   period: TradeSkillMasterLedgerPeriod;
   /** Present when `withFigures` was asked for. */
   figures: TradeSkillMasterLedgerFigures | null;
+  /** Present when `withFigures` was asked for and the selection has a gold log point. */
+  gold: TradeSkillMasterLedgerGold | null;
 }
 
 /**
@@ -174,14 +205,33 @@ export function ledgerView(db: LuaTable, asked: LedgerSelection, nowMs: number, 
     }
   }
   for (const { name, realm: of, log } of data.characterLogs) if (hasRows(log, GOLD_LOG)) add(name, of);
-  const severalRealms = new Set([...named.values()].map((c) => c.realm)).size > 1;
+  // The Warband bank under every realm, and the realm's guilds with a gold log.
+  const others = new Map<string, Choice>();
+  if (hasRows(data.warbankLog, GOLD_LOG)) others.set(WARBANK, { kind: "warbank" });
+  const guilds = data.guildLogs.filter((g) => (realm === null || g.realm === realm) && hasRows(g.log, GOLD_LOG));
+  const severalRealms = new Set([...named.values(), ...guilds].map((c) => c.realm)).size > 1;
+  const label = (name: string, of: string) => (realm === null && severalRealms ? `${name} - ${of}` : name);
   const characters = [...named].map(([id, c]): TradeSkillMasterLedgerCharacter => ({
     id,
-    label: realm === null && severalRealms ? id : c.name,
+    label: label(c.name, c.realm),
     kind: "character",
   })).sort((a, b) => byText(a.label, b.label) || byText(a.id, b.id));
-  const character = asked.character !== undefined && named.has(asked.character) ? asked.character : null;
+  if (others.has(WARBANK)) characters.push({ id: WARBANK, label: "Warband bank", kind: "warbank" });
+  const guildChoices = guilds.map((g): TradeSkillMasterLedgerCharacter => {
+    others.set(guildId(g), { kind: "guild", name: g.name, faction: g.faction, realm: g.realm });
+    return { id: guildId(g), label: label(g.name, g.realm), kind: "guild" };
+  }).sort((a, b) => byText(a.label, b.label) || byText(a.id, b.id));
+  characters.push(...guildChoices);
+  const choice = (id: string | undefined): Choice | undefined => {
+    if (id === undefined) return undefined;
+    const c = named.get(id);
+    return c ? { kind: "character", ...c } : others.get(id);
+  };
+  const selected = choice(asked.character);
+  const character = selected ? asked.character! : null;
   const period = ((TSM_LEDGER_PERIODS as readonly string[]).includes(asked.period ?? "") ? asked.period : "All") as TradeSkillMasterLedgerPeriod;
+  const range = period === "All" ? null : PERIOD_DAYS[period] * SECONDS_PER_DAY;
+  const logs = withFigures ? selectedLogs(data, realm, selected ?? null, nowMs) : [];
 
   return {
     realms,
@@ -189,7 +239,8 @@ export function ledgerView(db: LuaTable, asked: LedgerSelection, nowMs: number, 
     characters,
     character,
     period,
-    figures: withFigures ? figures(data, realm, character === null ? null : named.get(character)!, period, nowMs) : null,
+    figures: withFigures ? figures(data, realm, selected ?? null, range, logs, nowMs) : null,
+    gold: withFigures ? goldGraph(logs, range, nowMs) : null,
   };
 }
 
@@ -207,13 +258,16 @@ const tally = (): Tally => ({ amount: 0, quantity: 0, topPrice: 0, perItem: new 
 function figures(
   data: Layout,
   realm: string | null,
-  character: { name: string; realm: string } | null,
-  period: TradeSkillMasterLedgerPeriod,
+  selected: Choice | null,
+  range: number | null,
+  logs: SelectedLog[],
   nowMs: number,
 ): TradeSkillMasterLedgerFigures {
   const now = Math.floor(nowMs / 1000);
-  const range = period === "All" ? null : PERIOD_DAYS[period] * SECONDS_PER_DAY;
-  const inScope = (of: string) => (character ? of === character.realm : realm === null || of === realm);
+  // The Warband bank and a guild trade nothing: their figures are zero.
+  const character = selected?.kind === "character" ? selected : null;
+  const inScope = (of: string) =>
+    selected === null ? realm === null || of === realm : character !== null && of === character.realm;
 
   // Sales and purchases only, from every source; both windows are open at
   // both ends, and All has no window and no previous period.
@@ -247,7 +301,9 @@ function figures(
     }
   }
 
-  const days = range !== null ? range / SECONDS_PER_DAY : daysSinceFirstGold(data, realm, character, nowMs);
+  // All divides by the whole days since the selection's first gold-log point, at least 1.
+  const { start, end } = goldRange(logs, nowMs);
+  const days = range !== null ? range / SECONDS_PER_DAY : Math.max(1, Math.ceil((end - start) / SECONDS_PER_DAY));
   const { sale, buy } = current;
   let profitItem: string | null = null;
   let profitBest = 0;
@@ -276,34 +332,39 @@ function figures(
 }
 
 /**
- * All's divisor: whole days from the first point of the selection's gold
- * logs to now, at least 1. One character selects its own log; All
- * characters select the realm's character and guild logs (every realm's
- * under All realms) and the account-wide Warband bank log.
+ * The selection's gold logs, as the addon loads them: one character selects
+ * its own log; All characters select the realm's character and guild logs
+ * (every realm's under All realms) and the account-wide Warband bank log.
+ * Character and Warband bank logs are cleaned of misread balances. A guild
+ * none of the player's characters is in, logged last over 30 days ago,
+ * counts only until its last entry.
  */
-function daysSinceFirstGold(
-  data: Layout,
-  realm: string | null,
-  character: { name: string; realm: string } | null,
-  nowMs: number,
-): number {
-  const now = Math.floor(nowMs / 60_000) * 60;
-  const logs: LuaValue[] = [];
-  if (character) {
-    for (const log of data.characterLogs) if (log.name === character.name && log.realm === character.realm) logs.push(log.log);
-  } else {
-    const inScope = (of: string) => realm === null || of === realm;
-    for (const log of data.characterLogs) if (inScope(log.realm)) logs.push(log.log);
-    for (const log of data.guildLogs) if (inScope(log.realm)) logs.push(log.log);
-    if (data.warbankLog !== undefined) logs.push(data.warbankLog);
+function selectedLogs(data: Layout, realm: string | null, selected: Choice | null, nowMs: number): SelectedLog[] {
+  const logs: SelectedLog[] = [];
+  const inScope = (of: string) => realm === null || of === realm;
+  const characters = data.characterLogs.filter((c) =>
+    selected === null ? inScope(c.realm) : selected.kind === "character" && c.name === selected.name && c.realm === selected.realm);
+  for (const c of characters) logs.push({ log: goldLog(csvRows(c.log, GOLD_LOG), MAX_CHARACTER_COPPER) });
+  if ((selected === null || selected.kind === "warbank") && data.warbankLog !== undefined) {
+    logs.push({ log: goldLog(csvRows(data.warbankLog, GOLD_LOG), MAX_WARBANK_COPPER) });
   }
-  let start = now;
-  for (const log of logs) {
-    for (const [minute] of csvRows(log, GOLD_LOG)) {
-      const first = luaNumber(minute!);
-      if (!Number.isNaN(first)) start = Math.min(start, first * 60);
-      break;
-    }
+  const guilds = data.guildLogs.filter((g) =>
+    selected === null ? inScope(g.realm) : selected.kind === "guild" && guildId(g) === guildId(selected));
+  if (guilds.length === 0) return logs;
+  // A guild is current while a character with a gold log is in it, on any realm (by name, as the addon keys guilds).
+  const current = new Set<LuaValue>();
+  for (const c of data.characterLogs) {
+    const guild = data.characterGuilds.get(`${c.faction} - ${c.realm}`)?.[c.name];
+    if (guild !== undefined) current.add(guild);
   }
-  return Math.max(1, Math.ceil((now - start) / SECONDS_PER_DAY));
+  const stale = Math.floor(nowMs / 1000) - STALE_GUILD;
+  for (const g of guilds) {
+    const log = goldLog(csvRows(g.log, GOLD_LOG));
+    const last = log.minutes.at(-1);
+    const updated = data.guildUpdates.get(`${g.faction} - ${g.realm}`)?.[g.name];
+    const lastEntry = last === undefined ? Infinity : last * 60;
+    const ended = !current.has(g.name) && Math.max(lastEntry, typeof updated === "number" ? updated : 0) < stale;
+    logs.push(ended ? { log, until: lastEntry } : { log });
+  }
+  return logs;
 }

@@ -66,6 +66,7 @@ const noFilters = {
   character: null,
   period: "All",
   figures: null,
+  gold: null,
 } as const satisfies Partial<TradeSkillMasterLedger>;
 let ledger: TradeSkillMasterLedger | Error = {
   state: "noRecords",
@@ -1307,6 +1308,7 @@ const readyLedger: TradeSkillMasterLedger = {
     topSale: 1_000,
     topPurchase: 2_000_000,
   },
+  gold: null,
 };
 
 const segment = (container: HTMLElement, name: string) =>
