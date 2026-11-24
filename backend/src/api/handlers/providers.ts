@@ -37,6 +37,7 @@ export function providersHandlers({ store, registry, curseForgeAuth, curseForgeP
       realm: params.realm,
       character: params.character,
       period: params.period,
+      plotWidth: params.plotWidth,
     }),
     "tradeskillmaster.status": async () => tsmAuth.status(),
     "tradeskillmaster.signIn": async () => tsmAuth.begin(),

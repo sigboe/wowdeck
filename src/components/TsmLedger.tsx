@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { DialogButton, Field, PanelSectionRow } from "@decky/ui";
 import { FaCaretDown, FaCaretUp } from "react-icons/fa";
 import type {
@@ -10,7 +10,7 @@ import type {
 } from "../../backend/src/api/contracts";
 import { browseFocusView } from "../browseSessionState";
 import { useTsmLedger } from "../tsmReads";
-import { pickLedgerFilter } from "../tsmLedgerFilters";
+import { ledgerPlotWidth, pickLedgerFilter } from "../tsmLedgerFilters";
 import { STEAM } from "../steamTheme";
 import { focusTarget } from "./FocusSlot";
 import { SegmentRow, type BarSegment } from "./BrowseBar";
@@ -265,6 +265,12 @@ const GRAPH_HEIGHT = 72;
  * stop (G3), so the D-pad scrolls past it.
  */
 function GoldGraph({ gold, now }: { gold: TradeSkillMasterLedgerGold | null; now: number }) {
+  // The engine samples the line for the plot's laid-out width, as the addon
+  // samples its own graph (a step per 3 px).
+  const plot = useRef<SVGSVGElement>(null);
+  useLayoutEffect(() => {
+    if (plot.current) ledgerPlotWidth.set(plot.current.getBoundingClientRect().width);
+  });
   if (!gold) {
     return (
       <PanelSectionRow>
@@ -293,6 +299,7 @@ function GoldGraph({ gold, now }: { gold: TradeSkillMasterLedgerGold | null; now
       >
         <div className="wowdeck-ledger-gold">
           <svg
+            ref={plot}
             role="img"
             aria-label={`Gold from ${start} to now, between ${formatMoney(low)} and ${formatMoney(high)}`}
             viewBox={`0 0 ${GRAPH_WIDTH} ${GRAPH_HEIGHT}`}

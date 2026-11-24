@@ -12,7 +12,8 @@ const DAY = 86_400;
 /** The summary's High and Low look back 52 weeks, one sample every 6 hours. */
 const STATS_PERIOD = 52 * 7 * DAY;
 const STATS_SAMPLE = 6 * 3600;
-/** The addon's graph plots at most this many steps across its range. */
+/** The addon's graph plots a step per this many pixels of its width, and at most MAX_PLOT_POINTS steps. */
+const PX_PER_STEP = 3;
 const MAX_PLOT_POINTS = 300;
 const COPPER_PER_GOLD = 10_000;
 /** A zero between two balances above 5,000 gold is a misread, and the addon drops it. */
@@ -123,9 +124,15 @@ export function goldRange(logs: SelectedLog[], nowMs: number): { start: number; 
 
 /**
  * The graph and summary for `logs` over the period of `rangeSeconds` (null
- * is All) at `nowMs`; null when no log holds a point.
+ * is All) at `nowMs`, sampled for a plot `plotWidth` CSS px wide (absent,
+ * or not a width: MAX_PLOT_POINTS steps); null when no log holds a point.
  */
-export function goldGraph(logs: SelectedLog[], rangeSeconds: number | null, nowMs: number): TradeSkillMasterLedgerGold | null {
+export function goldGraph(
+  logs: SelectedLog[],
+  rangeSeconds: number | null,
+  nowMs: number,
+  plotWidth?: number,
+): TradeSkillMasterLedgerGold | null {
   if (!logs.some(({ log }) => log.minutes.length > 0)) return null;
   const { start, end } = goldRange(logs, nowMs);
   // All spans the whole range; a period ends now and starts no earlier than the range.
@@ -133,11 +140,14 @@ export function goldGraph(logs: SelectedLog[], rangeSeconds: number | null, nowM
   const zoomStart = rangeSeconds === null ? start : Math.max(now - rangeSeconds, start);
   const zoomEnd = rangeSeconds === null ? end : now;
 
-  // The addon's sampling: the first and last time, and between them a time
-  // more than one step past the last kept one and more than a step from the end.
+  // The addon's sampling: a step per 3 px of the plot up to 300 steps, a
+  // whole minute long; the first and last time, and between them a time more
+  // than one step past the last kept one and more than a step from the end.
   // Every time is a whole second, so the step is a whole minute of at least
   // one, and the loop ends after at most `steps` of them.
-  const step = Math.max(MINUTE, Math.ceil((zoomEnd - zoomStart) / MAX_PLOT_POINTS / MINUTE) * MINUTE);
+  const width = typeof plotWidth === "number" && Number.isFinite(plotWidth) && plotWidth > 0 ? plotWidth : Infinity;
+  const plotSteps = Math.min(width / PX_PER_STEP, MAX_PLOT_POINTS);
+  const step = Math.max(MINUTE, Math.ceil((zoomEnd - zoomStart) / plotSteps / MINUTE) * MINUTE);
   const steps = Math.ceil((zoomEnd - zoomStart) / step);
   const points: [number, number][] = [];
   let kept: number | undefined;

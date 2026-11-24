@@ -97,8 +97,33 @@ export function ledgerParams(filters: LedgerFilters) {
   };
 }
 
-/** Every installation back to All (tests). */
+/**
+ * The gold graph's plot width in CSS px, as last laid out; the engine samples
+ * the graph for it. Undefined until a graph is laid out: the engine's default.
+ * One for every installation, since the pane is as wide for each.
+ */
+let plotWidth: number | undefined;
+const widthListeners = new Set<() => void>();
+
+export const ledgerPlotWidth = {
+  get: (): number | undefined => plotWidth,
+  subscribe(listener: () => void): () => void {
+    widthListeners.add(listener);
+    return () => widthListeners.delete(listener);
+  },
+  /** The graph was laid out `width` px wide; a width of zero is no layout. */
+  set(width: number): void {
+    const rounded = Math.round(width);
+    if (!(rounded > 0) || rounded === plotWidth) return;
+    plotWidth = rounded;
+    for (const listener of [...widthListeners]) listener();
+  },
+};
+
+/** Every installation back to All, and no graph laid out (tests). */
 export function resetLedgerFilters(): void {
   byInstallation.clear();
+  plotWidth = undefined;
   for (const listener of [...listeners]) listener();
+  for (const listener of [...widthListeners]) listener();
 }

@@ -16,6 +16,7 @@ import { useResource } from "./useResource";
 import {
   ledgerFilters,
   ledgerParams,
+  ledgerPlotWidth,
   settleLedgerFilters,
   type LedgerFilters,
 } from "./tsmLedgerFilters";
@@ -28,9 +29,10 @@ import { useRef, useSyncExternalStore } from "react";
  */
 const ACCOUNT_KEY = "account";
 
-/** The Ledger resource's key for an installation and a filter selection. */
-const ledgerKey = (installationId: string, filters: LedgerFilters) =>
-  JSON.stringify({ installationId, filters });
+/** The Ledger resource's key for an installation, a filter selection and the graph's plot width. */
+const ledgerKey = (installationId: string, filters: LedgerFilters, plotWidth?: number) =>
+  JSON.stringify({ installationId, filters, plotWidth });
+type LedgerKey = { installationId: string; filters: LedgerFilters; plotWidth?: number };
 
 export function createTsmModule(deps: {
   rpc: Rpc;
@@ -77,20 +79,18 @@ export function createTsmModule(deps: {
   const ledger = createKeyedResource<TradeSkillMasterLedger>({
     pollMs: 60_000,
     read: (key) => {
-      const { installationId, filters } = JSON.parse(key) as {
-        installationId: string;
-        filters: LedgerFilters;
-      };
-      return deps.rpc("tradeskillmaster.ledger", { installationId, ...ledgerParams(filters) });
+      const { installationId, filters, plotWidth } = JSON.parse(key) as LedgerKey;
+      return deps.rpc("tradeskillmaster.ledger", {
+        installationId,
+        ...ledgerParams(filters),
+        ...(plotWidth !== undefined ? { plotWidth } : {}),
+      });
     },
     onData: (key, data) => {
-      const { installationId, filters } = JSON.parse(key) as {
-        installationId: string;
-        filters: LedgerFilters;
-      };
+      const { installationId, filters, plotWidth } = JSON.parse(key) as LedgerKey;
       const settled = settleLedgerFilters(installationId, filters, data);
       // The answer is already the settled selection's: no second read.
-      if (settled) ledger.put(ledgerKey(installationId, settled), data);
+      if (settled) ledger.put(ledgerKey(installationId, settled, plotWidth), data);
     },
     errorText: (e) => {
       backendErrorMessage(e);
@@ -177,15 +177,17 @@ export const useTsmAccount = () => useResource(account, ACCOUNT_KEY);
 export const useTsmDestination = (installationId: string) =>
   useResource(tsmDestination, installationId);
 /**
- * The Ledger for the installation's current filters. While another
- * selection reads, `data` stays the last answer this view showed, so the
- * filter bar and the figures stay in place instead of flashing empty.
+ * The Ledger for the installation's current filters, its graph sampled for
+ * the plot width laid out last. While another selection or width reads,
+ * `data` stays the last answer this view showed, so the filter bar and the
+ * figures stay in place instead of flashing empty.
  */
 export function useTsmLedger(installationId: string) {
   const filters = useSyncExternalStore(ledgerFilters.subscribe, () =>
     ledgerFilters.get(installationId),
   );
-  const snapshot = useResource(tsmModule.ledger, ledgerKey(installationId, filters));
+  const plotWidth = useSyncExternalStore(ledgerPlotWidth.subscribe, ledgerPlotWidth.get);
+  const snapshot = useResource(tsmModule.ledger, ledgerKey(installationId, filters, plotWidth));
   const last = useRef<TradeSkillMasterLedger | null>(null);
   if (snapshot.data) {
     last.current = snapshot.data;

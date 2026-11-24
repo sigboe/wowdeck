@@ -1439,6 +1439,36 @@ test("the Ledger's gold graph sits between the freshness line and the grid as on
   }
 });
 
+test("the Ledger asks for its gold graph sampled for the graph's own width", async () => {
+  resetTsmView();
+  resetTsmReads();
+  resetLedgerFilters();
+  ledger = readyLedger;
+  ledgerRequests.length = 0;
+  const view = await mountDestination();
+  // The plot as wide as the QAM lays it out (jsdom lays out nothing).
+  const svg = view.container.ownerDocument.defaultView!.SVGElement.prototype;
+  const rect = svg.getBoundingClientRect;
+  svg.getBoundingClientRect = function () {
+    return { ...rect.call(this), width: 270.4 };
+  };
+  try {
+    await showLedger(view.container);
+    // The first read has no width yet; once the graph is laid out, it reads for its width.
+    expect(ledgerRequests[0]).toEqual({ installationId: "active", period: "All" });
+    expect(ledgerRequests[ledgerRequests.length - 1]).toEqual({
+      installationId: "active",
+      period: "All",
+      plotWidth: 270,
+    });
+    expect(view.container.querySelector(".wowdeck-ledger-gold polyline")).not.toBeNull();
+  } finally {
+    svg.getBoundingClientRect = rect;
+    resetLedgerFilters();
+    await view.close();
+  }
+});
+
 test("the Ledger's filters float with the pill bar, open in the pane, and reset Realm on another account", async () => {
   resetTsmView();
   resetTsmReads();

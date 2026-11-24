@@ -173,6 +173,8 @@ export interface LedgerSelection {
   realm?: string;
   character?: string;
   period?: string;
+  /** The gold graph's plot width in CSS px; absent, the addon's step limit alone. */
+  plotWidth?: number;
 }
 
 export interface LedgerView {
@@ -252,7 +254,7 @@ export function ledgerView(db: LuaTable, asked: LedgerSelection, nowMs: number, 
     character,
     period,
     figures: withFigures ? figures(data, realm, selected ?? null, range, logs, nowMs) : null,
-    gold: withFigures ? goldGraph(logs, range, nowMs) : null,
+    gold: withFigures ? goldGraph(logs, range, nowMs, asked.plotWidth) : null,
   };
 }
 

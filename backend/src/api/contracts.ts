@@ -804,7 +804,8 @@ export interface TradeSkillMasterLedgerGold {
   /**
    * `[ms since the epoch, copper]`, oldest first, from the period's start
    * (or the first point, whichever is later) to now, sampled as the addon's
-   * graph samples it: at most about 150 points.
+   * graph samples a plot of the asked width: a step per 3 px, at most 300
+   * steps, keeping every second step and the last (at most about 150 points).
    */
   points: [number, number][];
   /** The highest balance of the last 52 weeks, sampled every 6 hours and now. */
@@ -926,10 +927,12 @@ export interface MethodMap {
   /**
    * The Ledger of the installation's WoW account (`account`, or the
    * engine's pick) for a realm and character (absent: All) and a period
-   * (absent: All). Reads WoW files only.
+   * (absent: All). `plotWidth` is the gold graph's plot width in CSS px:
+   * the graph samples it as the addon's graph samples a plot that wide
+   * (absent: the addon's limit of 300 steps). Reads WoW files only.
    */
   "tradeskillmaster.ledger": {
-    params: { installationId: string; account?: string; realm?: string; character?: string; period?: TradeSkillMasterLedgerPeriod };
+    params: { installationId: string; account?: string; realm?: string; character?: string; period?: TradeSkillMasterLedgerPeriod; plotWidth?: number };
     result: TradeSkillMasterLedger;
   };
   "tradeskillmaster.status": { params: Record<string, never>; result: TradeSkillMasterAuthStatus };

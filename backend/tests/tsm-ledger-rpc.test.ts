@@ -506,15 +506,24 @@ test("52-week High and Low sample every 6 hours of the last 52 weeks and now; th
   expect((await young({ character: "Alt - Silvermoon" })).gold).toMatchObject({ high: 800, low: 500, dailyChange: 300 });
 });
 
-test("All graphs from the selection's first point to now, sampled as the addon's graph", async () => {
+test("All graphs from the selection's first point to now, sampled as the addon's graph samples a plot of the given width", async () => {
   const call = figuresFixture(goldDb());
   const { points } = (await call()).gold;
   // Argent Dawn's Hero logged first, 3 days ago.
   expect(points[0]).toEqual([(NOW - 3 * DAY) * 1000, 7]);
   expect(points.at(-1)).toEqual([NOW * 1000, 13707]);
-  // 3 days over 300 steps is 864 s, a whole minute up 900 s; the addon keeps
-  // every second step (1,800 s apart) more than a step from the end: 144, then now.
+  // Without a width, at most 300 steps: 3 days over 300 is 864 s, a whole
+  // minute up 900 s; the addon keeps every second step (1,800 s apart) more
+  // than a step from the end: 144, then now.
   expect(points.length).toBe(145);
+  // A plot 270 px wide takes a step per 3 px, 90 steps: 2,880 s each, every
+  // second one kept up to two steps from the end (45), then now.
+  const narrow = (await call({ plotWidth: 270 })).gold.points;
+  expect(narrow.length).toBe(46);
+  expect(narrow[1]).toEqual([(NOW - 3 * DAY + 5760) * 1000, 7]);
+  expect(narrow.at(-1)).toEqual([NOW * 1000, 13707]);
+  // A plot wider than 900 px still plots at most 300 steps.
+  expect((await call({ plotWidth: 1800 })).gold.points.length).toBe(145);
 });
 
 test("a character's or the Warband bank's misread balances are dropped as the addon drops them; a guild's are not", async () => {
