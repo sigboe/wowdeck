@@ -1308,4 +1308,10 @@ auto-update, and left the tested build installed.
 
 | ID | Priority | Result | Steps | Expected |
 | --- | --- | --- | --- | --- |
-| LEDGER-315-1 | P1 | Not run | Make a trade with TradeSkillMaster installed. Start a logout countdown outside a rested area, then open the QAM on the Ledger before it finishes. Keep the Ledger open through character selection. Then quit WoW | The recorded time and figures update within a few seconds. The logout or reload hint stays while WoW is at character selection and goes away when WoW closes |
+| LEDGER-315-1 | P1 | Partial. DEVICE, Deck, 2026-11-24. Three fixture saves produced one visible update 330 ms after the last save. The earned total changed from 1g to 4g, the recorded line changed to just now, and focus stayed on the line. Live logout and quit remain to be checked. | Make a trade with TradeSkillMaster installed. Start a logout countdown outside a rested area, then open the QAM on the Ledger before it finishes. Keep the Ledger open through character selection. Then quit WoW | The recorded time and figures update within a few seconds. The logout or reload hint stays while WoW is at character selection and goes away when WoW closes |
+
+The Deck test used a temporary Forever account and replaced its saved file
+three times while the Ledger stayed open. The frontend and engine hashes
+start with `ae368baf` and `f8d6aef0`. The test removed the fixture, restored
+auto-update, and left the build installed. The engine tests cover storage
+recovery, debounce timing and game start and stop.

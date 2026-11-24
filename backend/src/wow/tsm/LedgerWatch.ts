@@ -39,6 +39,13 @@ function isDirectory(path: string): boolean {
   try { return lstatSync(path).isDirectory(); } catch { return false; }
 }
 
+function directoryIdentity(path: string): string | null {
+  try {
+    const stat = lstatSync(path, { bigint: true });
+    return stat.isDirectory() ? `${stat.dev}:${stat.ino}` : null;
+  } catch { return null; }
+}
+
 function watchFailed(reason: string): void {
   console.error(JSON.stringify({ component: "ledger-watch", reason }));
 }
@@ -49,7 +56,8 @@ export function watchLedger(
   changed: () => void,
   { clock = systemClock, watchDirectory: subscribe = watchDirectory, gameRunning = detectGameRunning }: LedgerWatchOptions = {},
 ): () => void {
-  const watchers = new Set<ReturnType<WatchDirectory>>();
+  const watchers = new Map<string, { identity: string; subscription: ReturnType<WatchDirectory> }>();
+  let retryTree = false;
   let closed = false;
   let debounce: unknown;
   let processPoll: unknown;
@@ -70,7 +78,7 @@ export function watchLedger(
   }
 
   function closeWatchers(): void {
-    for (const watcher of watchers) watcher.close();
+    for (const { subscription } of watchers.values()) subscription.close();
     watchers.clear();
   }
 
@@ -79,33 +87,40 @@ export function watchLedger(
   // so a new account or an entire WTF tree is noticed on the first save.
   function bindTree(): void {
     closeWatchers();
+    retryTree = false;
     const listen = (dir: string, affects: (name: string) => boolean, rebind = true) => {
-      if (!isDirectory(dir)) return false;
+      const identity = directoryIdentity(dir);
+      if (identity === null) return false;
       try {
         const watcher = subscribe(
           dir,
           (name) => {
-            if (watchers.has(watcher) && (name === null || affects(name))) {
+            if (watchers.get(dir)?.subscription === watcher && (name === null || affects(name))) {
               saved(rebind);
             }
           },
           () => {
-            if (watchers.delete(watcher)) {
+            if (watchers.get(dir)?.subscription === watcher) {
+              retryTree = true;
+              watchers.delete(dir);
               watcher.close();
               watchFailed("watch-lost");
             }
           },
         );
-        watchers.add(watcher);
+        watchers.set(dir, { identity, subscription: watcher });
       } catch {
+        retryTree = true;
         watchFailed("watch-unavailable");
       }
       return true;
     };
 
     const parent = dirname(location);
-    if (!safePath(parent)) return;
-    listen(parent, (name) => name === basename(location));
+    if (!safePath(parent) || !listen(parent, (name) => name === basename(location))) {
+      retryTree = true;
+      return;
+    }
     if (!listen(location, (name) => name === "WTF")) return;
     const wtf = join(location, "WTF");
     if (!listen(wtf, (name) => name === "Account")) return;
@@ -124,8 +139,20 @@ export function watchLedger(
       }
     } catch {
       // WoW or a settings restore can replace the tree during enumeration.
-      // The parent watch notices the replacement and binds to the new tree.
+      retryTree = true;
     }
+  }
+
+  // A directory watch follows its original inode. Mounts and replacements
+  // above that directory can leave it attached without a notification.
+  function recoverTree(): boolean {
+    const previous = new Map([...watchers].map(([path, { identity }]) => [path, identity]));
+    if (!retryTree && [...previous].every(([path, identity]) => directoryIdentity(path) === identity)) {
+      return false;
+    }
+    bindTree();
+    return previous.size !== watchers.size ||
+      [...watchers].some(([path, { identity }]) => previous.get(path) !== identity);
   }
 
   async function pollGame(): Promise<void> {
@@ -137,11 +164,13 @@ export function watchLedger(
       watchFailed("process-check-failed");
     }
     if (closed) return;
-    const moved = wasRunning !== undefined && wasRunning !== running;
+    const recovered = recoverTree();
+    // The RPC can read a different state while this first check is pending.
+    const moved = wasRunning !== running;
     wasRunning = running;
     processPoll = clock.setTimeout(pollGame, GAME_POLL_MS);
     // A save already queued will read the game state along with the records.
-    if (moved && debounce === undefined) changed();
+    if ((moved || recovered) && debounce === undefined) changed();
   }
 
   bindTree();
