@@ -15,8 +15,11 @@ The rules this pins down:
   That includes Money Transfer, Postage, Repair Bill, Garrison and Crafting
   Order. Gold mailed between your own characters therefore never inflates
   the totals.
-- Average per day divides by the selected period. For All, it divides by the
-  days from the first gold-log point to now.
+- Average per day divides by the selected period: 1, 7, 30, 91, 183, 365 or
+  730 days. For All, it divides by the whole days from the first point of
+  the selected gold logs to now, at least 1. A period counts the records
+  strictly after its start and strictly before now, so a record at either
+  edge falls in neither period.
 - Average daily sales and purchases count items sold or bought, not records.
 - Top sale and top purchase are the highest price per item.
 - The graph shows the 52-week high and low and the change over the last 24
@@ -29,6 +32,12 @@ Two additions have no in-game equivalent, and the community clients set
 their pattern. The Ledger picks one WoW account at a time, as every
 reference app does. It lists totals per item as Earned, Spent and Net. Net is
 earned minus spent; the addon reserves "profit" for an item's resale profit.
+
+The Dashboard shows a top item for sales and expenses and an average of
+daily sales only. The Ledger also shows average daily purchases, counted
+the same way, and a top item for profit: the item with the highest earned
+minus spent in the period, or none when no item comes out ahead. A Realm
+filter is a Ledger addition too; the Dashboard counts every realm's records.
 
 ## Considered options
 
