@@ -721,6 +721,26 @@ export interface TradeSkillMasterDestination {
   realms: { id: number; name: string; auctionHouseType: string; followed: boolean; owned: boolean; declined: boolean; updated: number | null }[];
   regions: { id: number; name: string; updated: number | null }[];
 }
+/**
+ * Why the Ledger has nothing to show, or "ready" when it has records:
+ * `noAddon`, no account has a TradeSkillMaster.lua and the addon is not
+ * installed; `noAccount`, the addon is installed but no account has saved
+ * one yet; `noRecords`, the account's file holds no sales, purchases,
+ * income, expenses, expirations, cancellations or gold log points.
+ */
+export type TradeSkillMasterLedgerState = "noAddon" | "noAccount" | "noRecords" | "ready";
+/** The Ledger of one WoW account of an installation (GLOSSARY: Ledger). */
+export interface TradeSkillMasterLedger {
+  state: TradeSkillMasterLedgerState;
+  /** The installation's WoW accounts (`WTF/Account/<name>`) holding a TradeSkillMaster.lua, by name. */
+  accounts: string[];
+  /** The account shown: the one asked for, else the only one, else the one written last; null without accounts. */
+  account: string | null;
+  /** When the game last wrote the account's TradeSkillMaster.lua, in ms since the epoch; null without accounts. */
+  recordedAt: number | null;
+  /** World of Warcraft is running, so this session's trades are not on disk yet. */
+  gameRunning: boolean;
+}
 export interface TradeSkillMasterAuthStatus {
   state: "off" | "signingIn" | "signedIn" | "signedOut";
   tier?: "free" | "gold" | "platinum";
@@ -800,6 +820,8 @@ export interface MethodMap {
   "tradeskillmaster.wake": { params: Record<string, never>; result: void };
   "tradeskillmaster.setFollow": { params: { installationId: string; realmId: number; auctionHouseType: string; followed: boolean }; result: TradeSkillMasterDestination };
   "tradeskillmaster.destination": { params: { installationId: string }; result: TradeSkillMasterDestination };
+  /** The Ledger of the installation's WoW account (`account`, or the engine's pick). Reads WoW files only. */
+  "tradeskillmaster.ledger": { params: { installationId: string; account?: string }; result: TradeSkillMasterLedger };
   "tradeskillmaster.status": { params: Record<string, never>; result: TradeSkillMasterAuthStatus };
   "tradeskillmaster.signIn": { params: Record<string, never>; result: { authorizeUrl: string } };
   "tradeskillmaster.cancel": { params: Record<string, never>; result: TradeSkillMasterAuthStatus };
