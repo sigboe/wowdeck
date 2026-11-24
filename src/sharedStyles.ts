@@ -192,6 +192,16 @@ export function wowdeckSharedStyleCss(): string {
 .wowdeck-ledger-trend svg { width: 12px; height: 12px; }
 .wowdeck-ledger-gold > svg { display: block; width: 100%; height: 72px; margin-top: 4px; }
 .wowdeck-ledger-note { color: #b8bcbf; font-size: 12px; line-height: 16px; }
+/* A modal as wide as the screen: pass the class as ModalRoot's className.
+   ModalRoot puts that className on Steam's dialog box, next to the plain
+   classes GenericDialogBase and DialogContent. Steam sizes that box 660 px
+   wide with a two-class rule (ModalPosition > GamepadDialogContent), and
+   bAllowFullSize does not change it (660 px on the 854 px Deck, DEVICE
+   2026-11-24). Three classes win, and 100% fills Steam's modal area inside
+   its 24 px padding. INFERRED from Steam's sp.js and sp.css, not yet
+   measured on a Deck. If Steam renames those classes, the modal falls back
+   to 660 px and nothing else changes. */
+.GenericDialogBase.DialogContent.wowdeck-full-width-modal { width: 100%; }
 .wowdeck-ledger-items-filters {
   color: ${STEAM.textMuted}; font-size: ${STEAM_FONT.body}; overflow-wrap: anywhere;
 }

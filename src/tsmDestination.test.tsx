@@ -1547,7 +1547,7 @@ test("All items pages native focus rows and refreshes only the opened filters", 
   }
 });
 
-test("All items lands on its first item once a page of more than 40 arrives", async () => {
+test("All items opens full width and lands on its first item once a page of more than 40 arrives", async () => {
   resetTsmView();
   resetTsmReads();
   resetLedgerFilters();
@@ -1585,6 +1585,13 @@ test("All items lands on its first item once a page of more than 40 arrives", as
       opener().querySelector("b")!.click();
     });
     await view.leave(); // Opening a Steam modal unmounts the pane.
+
+    // The dialog spans the screen: Steam's 660 px box takes our full-width class.
+    const dialog = document.querySelector<HTMLElement>("[data-modal-root]")!;
+    expect(dialog.classList.contains("wowdeck-full-width-modal")).toBe(true);
+    expect(dialog.querySelector("style")?.textContent).toMatch(
+      /\.wowdeck-full-width-modal\s*\{[^}]*width: 100%/,
+    );
 
     // While reading, focus holds the top of the list, not Close at the
     // bottom: the header stays in view once the rows push Close down.

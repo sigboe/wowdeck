@@ -52,7 +52,12 @@ function LedgerItemsModal({
   };
   const nextOffset = data?.nextOffset ?? null;
   return (
-    <ModalRoot onCancel={closeModal} closeModal={closeModal} bAllowFullSize>
+    <ModalRoot
+      onCancel={closeModal}
+      closeModal={closeModal}
+      bAllowFullSize
+      className="wowdeck-full-width-modal"
+    >
       <style>{wowdeckSharedStyleCss()}</style>
       <DialogHeader>
         All items

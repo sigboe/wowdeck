@@ -50,6 +50,15 @@ changes; the values are Valve's to change.
 | Toggle | 38 x 22 rail, 22 px white knob, on `#1a9fff`, focus ring `#67707b` |
 | Success / warning accents | Steam's `#59bf40` (positive) and `#ef806c` (danger text); ours come from `steamTheme.ts` (S20) |
 
+A modal that must be as wide as the screen passes
+`className="wowdeck-full-width-modal"` to `ModalRoot`. ModalRoot puts that
+class on Steam's dialog box, and the rule in `src/sharedStyles.ts` sets the
+box to the full width of Steam's modal area, inside its 24 px padding. The
+box keeps Steam's frame, padding and footer. `bAllowFullSize` alone leaves
+the box 660 px wide (DEVICE, Deck, 2026-11-24, LEDGER-316-1). The class
+mapping comes from reading Steam's `sp.js` and `sp.css` (INFERRED) and still
+needs a measurement on the Deck. The Ledger's All items modal uses it.
+
 **S8 [PROJECT] MUST** build a modal from Steam's own dialog components
 (`ModalRoot` with `DialogHeader`, `DialogBody`, `DialogBodyText`,
 `DialogControlsSection`, `DialogControlsSectionHeader`, `DialogFooter`,
