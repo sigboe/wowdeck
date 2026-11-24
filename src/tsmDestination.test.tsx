@@ -45,6 +45,19 @@ let qamOpens = 0;
 let cancelModal: (() => void) | undefined;
 let modalRoot: ReturnType<typeof createRoot> | undefined;
 let holdLedger: Promise<void> | undefined;
+const ledgerRequests: unknown[] = [];
+/** When set, the fake Ledger answers with the selection asked for, as the engine would. */
+let echoFilters:
+  | ((
+      ledger: TradeSkillMasterLedger,
+      params: {
+        account?: string;
+        realm?: string;
+        character?: string;
+        period?: TradeSkillMasterLedger["period"];
+      },
+    ) => TradeSkillMasterLedger)
+  | undefined;
 /** A Ledger with nothing to choose and nothing to count. */
 const noFilters = {
   realms: [],
@@ -116,10 +129,11 @@ const fake = createFakeEngine({
     await holdAccount;
     return accountFixture({}) as unknown as TradeSkillMasterAccount;
   },
-  "tradeskillmaster.ledger": async () => {
+  "tradeskillmaster.ledger": async (params) => {
+    ledgerRequests.push(params);
     await holdLedger;
     if (ledger instanceof Error) throw ledger;
-    return ledger;
+    return echoFilters ? echoFilters(ledger, params) : ledger;
   },
   "tradeskillmaster.destination": async (params) => {
     await holdDestination;
@@ -343,6 +357,7 @@ const { resetTsmReads, putTsmAccount } = await import("./tsmReads");
 const { TsmDestination, firstTsmControl, focusTsmEntry } =
   await import("./components/TsmDestination");
 const { resetTsmView, tsmView } = await import("./tsmView");
+const { resetLedgerFilters } = await import("./tsmLedgerFilters");
 const { Focusable, GamepadButton } = await import("@decky/ui");
 
 beforeEach(resetTsmReads);
@@ -1255,6 +1270,192 @@ test("the pill bar ends in Valve's scroll fade once the pane has scrolled under 
     await scroll(0);
     expect(bar.hasAttribute("data-wowdeck-scrolled")).toBe(false);
   } finally {
+    await view.close();
+  }
+});
+
+/** A ready Ledger of two accounts, two realms and a few characters. */
+const readyLedger: TradeSkillMasterLedger = {
+  state: "ready",
+  accounts: ["ALT", "MAIN"],
+  account: "MAIN",
+  recordedAt: Date.now(),
+  gameRunning: false,
+  realms: ["Argent Dawn", "Silvermoon"],
+  realm: null,
+  characters: [
+    { id: "Hero - Argent Dawn", label: "Hero - Argent Dawn", kind: "character" },
+    { id: "Hero - Silvermoon", label: "Hero - Silvermoon", kind: "character" },
+    { id: "Trader - Silvermoon", label: "Trader - Silvermoon", kind: "character" },
+  ],
+  character: null,
+  period: "All",
+  figures: {
+    earned: { total: 12_345_678, perDay: 301_114.1, topItem: "i:2589", trend: null },
+    spent: { total: 2_000_050, perDay: 48_781.7, topItem: "i:2592", trend: null },
+    profit: { total: 10_345_628, perDay: 252_332.4, topItem: "i:4306", trend: null },
+    dailySales: 3.66,
+    dailyPurchases: 0.04,
+    topSale: 1_000,
+    topPurchase: 2_000_000,
+  },
+};
+
+const segment = (container: HTMLElement, name: string) =>
+  container.querySelector<HTMLButtonElement>(`.wowdeck-pane-bar button[aria-label="${name}"]`);
+const showLedger = (container: HTMLElement) =>
+  act(async () =>
+    (
+      [...container.querySelectorAll(".wowdeck-tab")].find(
+        (p) => p.textContent === "Ledger",
+      ) as HTMLElement
+    ).click(),
+  );
+
+test("the Ledger's figures render under its freshness line: a 2×2 grid, then Sales, Expenses and Profit", async () => {
+  resetTsmView();
+  resetTsmReads();
+  resetLedgerFilters();
+  resetFocusMemory();
+  ledger = readyLedger;
+  const view = await mountDestination();
+  try {
+    await showLedger(view.container);
+    const text = view.container.textContent ?? "";
+    // Entry still lands on the first content row, below the floating bars.
+    expect(firstTsmControl(view.container)?.textContent).toContain("Recorded at last logout");
+    const grid = view.container.querySelector(".wowdeck-ledger-grid")!;
+    expect([...grid.children].map((cell) => cell.textContent)).toEqual([
+      "Avg daily sales3.7",
+      "Avg daily purchases0",
+      "Top sale10s",
+      "Top purchase200g",
+    ]);
+    const panels = [...view.container.querySelectorAll(".wowdeck-ledger-panel")].map(
+      (panel) => panel.textContent,
+    );
+    expect(panels).toEqual([
+      "SalesTotal earned1,234g 56s 78cPer day30g 11s 14cTop itemi:2589",
+      "ExpensesTotal spent200g 50cPer day4g 87s 82cTop itemi:2592",
+      "ProfitTotal profit1,034g 56s 28cPer day25g 23s 32cTop itemi:4306",
+    ]);
+    // The freshness line comes first, then the grid, then the panels.
+    expect(text.indexOf("Recorded at last logout")).toBeLessThan(text.indexOf("Avg daily sales"));
+    expect(text.indexOf("Top purchase")).toBeLessThan(text.indexOf("Total earned"));
+    // All has no previous period, so no trend.
+    expect(view.container.querySelector(".wowdeck-ledger-trend")).toBeNull();
+
+    // A period trends: up is good for sales and profit, and bad for expenses.
+    const week = readyLedger.figures!;
+    ledger = {
+      ...readyLedger,
+      period: "1W",
+      figures: {
+        ...week,
+        earned: { ...week.earned, trend: 5 },
+        spent: { ...week.spent, trend: 5 },
+        profit: { ...week.profit, trend: -5 },
+      },
+    };
+    await view.leave();
+    resetTsmReads();
+    await view.render();
+    const trends = [...view.container.querySelectorAll(".wowdeck-ledger-trend")];
+    expect(trends.map((t) => t.getAttribute("aria-label"))).toEqual([
+      "Up from the previous period",
+      "Up from the previous period",
+      "Down from the previous period",
+    ]);
+    expect(trends.map((t) => t.getAttribute("data-good"))).toEqual(["true", "false", "false"]);
+  } finally {
+    ledger = readyLedger;
+    await view.close();
+  }
+});
+
+test("the Ledger's filters float with the pill bar, open in the pane, and reset Realm on another account", async () => {
+  resetTsmView();
+  resetTsmReads();
+  resetLedgerFilters();
+  ledger = readyLedger;
+  echoFilters = (shown, params) => ({
+    ...shown,
+    account: params.account ?? shown.account,
+    realm: params.realm ?? null,
+    // The engine keeps a character only where it is a choice.
+    character:
+      params.character && shown.characters.some((c) => c.id === params.character)
+        ? params.character
+        : null,
+    period: params.period ?? "All",
+  });
+  ledgerRequests.length = 0;
+  const view = await mountDestination();
+  const pick = async (menu: string, choice: string) => {
+    await act(async () => segment(view.container, menu)!.click());
+    const entry = view.container.querySelector<HTMLButtonElement>(
+      `.wowdeck-pane-bar .wowdeck-segment-menu button[aria-label="${choice}"]`,
+    );
+    expect([menu, choice, entry !== null]).toEqual([menu, choice, true]);
+    await act(async () => entry!.click());
+  };
+  const values = () =>
+    ["Account", "Realm", "Character", "Period"].map(
+      (name) => segment(view.container, name)?.textContent ?? null,
+    );
+  try {
+    await showLedger(view.container);
+    expect(values()).toEqual(["MAIN", "All realms", "All characters", "All"]);
+    // Every period the in-game Dashboard offers, in its order.
+    await act(async () => segment(view.container, "Period")!.click());
+    expect(
+      [...view.container.querySelectorAll(".wowdeck-segment-menu button")].map(
+        (b) => b.textContent,
+      ),
+    ).toEqual(["1D", "1W", "1M", "3M", "6M", "1Y", "2Y", "All"]);
+    await act(async () =>
+      view.container
+        .querySelector<HTMLButtonElement>('.wowdeck-segment-menu button[aria-label="1M"]')!
+        .click(),
+    );
+    await pick("Realm", "Silvermoon");
+    await pick("Character", "Hero - Silvermoon");
+    expect(values()).toEqual(["MAIN", "Silvermoon", "Hero - Silvermoon", "1M"]);
+    expect(ledgerRequests[ledgerRequests.length - 1]).toEqual({
+      installationId: "active",
+      account: "MAIN",
+      realm: "Silvermoon",
+      character: "Hero - Silvermoon",
+      period: "1M",
+    });
+    // Another account: Realm back to All, Character kept while it exists there.
+    await pick("Account", "ALT");
+    expect(ledgerRequests[ledgerRequests.length - 1]).toEqual({
+      installationId: "active",
+      account: "ALT",
+      character: "Hero - Silvermoon",
+      period: "1M",
+    });
+    expect(values()).toEqual(["ALT", "All realms", "Hero - Silvermoon", "1M"]);
+    // Gone from the account: All characters.
+    ledger = { ...readyLedger, characters: [] };
+    await pick("Account", "MAIN");
+    expect(values()).toEqual(["MAIN", "All realms", "All characters", "1M"]);
+
+    // The selection outlives the panel (a modal or a QAM close rebuilds it).
+    await view.leave();
+    await view.render();
+    expect(values()).toEqual(["MAIN", "All realms", "All characters", "1M"]);
+
+    // One account: no Account filter.
+    ledger = { ...readyLedger, accounts: ["MAIN"] };
+    await view.leave();
+    resetTsmReads();
+    await view.render();
+    expect(values()).toEqual([null, "All realms", "All characters", "1M"]);
+  } finally {
+    echoFilters = undefined;
+    ledger = readyLedger;
     await view.close();
   }
 });

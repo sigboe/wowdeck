@@ -149,16 +149,20 @@ _Avoid_: detail pane, chat pane, sidebar
 The single picker row of the pane: one self-contained component rendered above
 the result lists. It decides which of its segments exist for the active
 destination (Popular → Source, Category; Latest → Source; Search, Manual
-Install and TradeSkillMaster have no bar), draws them in the fixed order
+Install and Auction data have no bar), draws them in the fixed order
 Source then Category, and hides
 whatever the current sources cannot act on — disappearing entirely when
-nothing can be chosen. There is at most one bar row, ever; entering a
-destination lands focus on the first result row, never the bar.
+nothing can be chosen. There is at most one bar row, ever, except in the
+Ledger. Its filter bar uses the same segments and gives Account, shown only
+with several WoW accounts, a row of its own above Realm, Character and
+Period. Entering a destination lands focus on the first result row, never
+the bar.
 _Avoid_: picker row, filter row, toolbar, Source menu
 
 **Segment**:
 One of the browse bar's items: the Source segment (switches catalogue) or the
-Category segment (narrows the active source's list). Segments close up to the
+Category segment (narrows the active source's list); in the Ledger, the
+Account, Realm, Character and Period segments. Segments close up to the
 left when one of them is hidden. A segment's choices open in an in-pane menu
 (a list inside the pane, never a Steam popup — ADR 0002 revision 2026-10-24).
 A category is the active source's content grouping with provider-specific

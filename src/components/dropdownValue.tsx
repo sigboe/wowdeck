@@ -38,3 +38,13 @@ export const QAM_DROPDOWN_BELOW_VALUE = ellipsisValue("200px");
  * the 12 px gap — less the button's padding and arrow.
  */
 export const BAR_DROPDOWN_VALUE = ellipsisValue("calc((100vw - 348px - 60px) / 2 - 56px)");
+/**
+ * The Ledger's filter bar (TsmLedger): Account alone on its row, then Realm
+ * and Character sharing a row with the fixed-width Period segment.
+ */
+export const LEDGER_PERIOD_WIDTH = 96;
+export const LEDGER_WIDE_VALUE = ellipsisValue("calc(100vw - 396px - 56px)");
+export const LEDGER_HALF_VALUE = ellipsisValue(
+  `calc((100vw - 396px - 24px - ${LEDGER_PERIOD_WIDTH}px) / 2 - 56px)`,
+);
+export const LEDGER_PERIOD_VALUE = ellipsisValue(`${LEDGER_PERIOD_WIDTH - 56}px`);

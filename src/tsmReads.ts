@@ -13,6 +13,13 @@ import type {
   TradeSkillMasterLedger,
 } from "../backend/src/api/contracts";
 import { useResource } from "./useResource";
+import {
+  ledgerFilters,
+  ledgerParams,
+  settleLedgerFilters,
+  type LedgerFilters,
+} from "./tsmLedgerFilters";
+import { useRef, useSyncExternalStore } from "react";
 
 /**
  * What the TradeSkillMaster views read from the engine, one keyed resource
@@ -20,6 +27,10 @@ import { useResource } from "./useResource";
  * guarding its own request. The account-wide reads share one key.
  */
 const ACCOUNT_KEY = "account";
+
+/** The Ledger resource's key for an installation and a filter selection. */
+const ledgerKey = (installationId: string, filters: LedgerFilters) =>
+  JSON.stringify({ installationId, filters });
 
 export function createTsmModule(deps: {
   rpc: Rpc;
@@ -58,9 +69,25 @@ export function createTsmModule(deps: {
     },
     clock: deps.clock,
   });
-  // The Ledger reads WoW's saved files only: no sign-in, no network.
+  // The Ledger reads WoW's saved files only: no sign-in, no network. One key
+  // per installation and filter selection (ledgerKey).
   const ledger = createKeyedResource<TradeSkillMasterLedger>({
-    read: (installationId) => deps.rpc("tradeskillmaster.ledger", { installationId }),
+    read: (key) => {
+      const { installationId, filters } = JSON.parse(key) as {
+        installationId: string;
+        filters: LedgerFilters;
+      };
+      return deps.rpc("tradeskillmaster.ledger", { installationId, ...ledgerParams(filters) });
+    },
+    onData: (key, data) => {
+      const { installationId, filters } = JSON.parse(key) as {
+        installationId: string;
+        filters: LedgerFilters;
+      };
+      const settled = settleLedgerFilters(installationId, filters, data);
+      // The answer is already the settled selection's: no second read.
+      if (settled) ledger.put(ledgerKey(installationId, settled), data);
+    },
     errorText: (e) => {
       backendErrorMessage(e);
       return "Couldn't read TradeSkillMaster's records";
@@ -145,8 +172,22 @@ export const putTsmAccount = (data: TradeSkillMasterAccount) => account.put(ACCO
 export const useTsmAccount = () => useResource(account, ACCOUNT_KEY);
 export const useTsmDestination = (installationId: string) =>
   useResource(tsmDestination, installationId);
-export const useTsmLedger = (installationId: string) =>
-  useResource(tsmModule.ledger, installationId);
+/**
+ * The Ledger for the installation's current filters. While another
+ * selection reads, `data` stays the last answer this view showed, so the
+ * filter bar and the figures stay in place instead of flashing empty.
+ */
+export function useTsmLedger(installationId: string) {
+  const filters = useSyncExternalStore(ledgerFilters.subscribe, () =>
+    ledgerFilters.get(installationId),
+  );
+  const snapshot = useResource(tsmModule.ledger, ledgerKey(installationId, filters));
+  const last = useRef<TradeSkillMasterLedger | null>(null);
+  if (snapshot.data) {
+    last.current = snapshot.data;
+  }
+  return { ...snapshot, data: snapshot.data ?? last.current };
+}
 export const useTsmCleanupPreview = (installationId: string) =>
   useResource(tsmCleanupPreview, installationId);
 

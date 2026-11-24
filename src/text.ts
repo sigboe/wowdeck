@@ -52,6 +52,22 @@ export function formatBytes(bytes: number): string {
   return `${text} ${units[unit]}`;
 }
 
+/**
+ * An amount of copper the way WoW writes money: "1,234g 56s 78c", empty
+ * units left out, rounded to the copper ("0c" for nothing).
+ */
+export function formatMoney(copper: number): string {
+  const rounded = Math.round(copper);
+  const amount = Math.abs(rounded);
+  const gold = Math.floor(amount / 10_000);
+  const parts = [
+    gold > 0 ? `${gold.toLocaleString("en-US")}g` : "",
+    Math.floor(amount / 100) % 100 > 0 ? `${Math.floor(amount / 100) % 100}s` : "",
+    amount % 100 > 0 ? `${amount % 100}c` : "",
+  ].filter(Boolean);
+  return parts.length === 0 ? "0c" : `${rounded < 0 ? "-" : ""}${parts.join(" ")}`;
+}
+
 const MIN = 60_000;
 const HOUR = 60 * MIN;
 const DAY = 24 * HOUR;

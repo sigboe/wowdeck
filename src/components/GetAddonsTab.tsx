@@ -1,6 +1,7 @@
 import { TsmIcon } from "../icons/TsmIcon";
 import { TSM_ADDON_ACTION, TSM_REFRESH } from "./TsmAddon";
 import { focusTsmEntry, TsmDestination } from "./TsmDestination";
+import { LEDGER_LEFT_NEIGHBOUR } from "./TsmLedger";
 import { tsmSession, tsmOptionsSources, tsmDestinationVisible } from "../tsmSession";
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { FaClock, FaFileArchive, FaFire, FaSearch } from "react-icons/fa";
@@ -88,7 +89,10 @@ const NO_PROVIDERS: ProviderInfo[] = [];
  * Left from the key goes to its value. Our pane Left handler stops the press
  * before Steam's own row navigation sees it.
  */
-const PANE_LEFT_NEIGHBOUR: Record<string, string> = { [TSM_REFRESH]: TSM_ADDON_ACTION };
+const PANE_LEFT_NEIGHBOUR: Record<string, string> = {
+  [TSM_REFRESH]: TSM_ADDON_ACTION,
+  ...LEDGER_LEFT_NEIGHBOUR,
+};
 
 export function GetAddonsTab({
   installations,

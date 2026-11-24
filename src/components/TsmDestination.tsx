@@ -6,7 +6,7 @@ import { TSM_VIEWS, tsmView, type TsmView } from "../tsmView";
 import { FocusSlot } from "./FocusSlot";
 import { PillBar } from "./TopNav";
 import { TsmAddon } from "./TsmAddon";
-import { TsmLedger } from "./TsmLedger";
+import { TsmLedger, TsmLedgerFilters } from "./TsmLedger";
 
 /**
  * The pill bar's focus-memory key in the destination's browse view. Its
@@ -17,13 +17,14 @@ export const TSM_PILL_BAR = "pill-bar";
 
 /**
  * Where entering the destination puts focus: its first content row, never
- * the pill bar above it (as every other destination lands on its content).
+ * the floating bars above it (the pill bar, the Ledger's filters), as every
+ * other destination lands on its content.
  */
 export function firstTsmControl(pane: HTMLElement): HTMLElement | null {
   return (
     [...pane.querySelectorAll<HTMLElement>("button.Focusable, .Focusable[tabindex]")].find(
       (e) =>
-        !e.closest(".wowdeck-pill-bar") &&
+        !e.closest(".wowdeck-pane-bar") &&
         !(e as HTMLButtonElement).disabled &&
         !e.classList.contains("Disabled"),
     ) ?? null
@@ -106,7 +107,8 @@ export function TsmDestination({
   }, []);
   return (
     <>
-      {/* Navigation floats at the top of the pane (S24). */}
+      {/* Navigation floats at the top of the pane (S24): the pill bar, and
+          under it the Ledger's filters. */}
       <div ref={barRef} className="wowdeck-pane-bar">
         <PanelSectionRow>
           <FocusSlot view={browseFocusView("tsm")} id={TSM_PILL_BAR}>
@@ -117,6 +119,9 @@ export function TsmDestination({
             />
           </FocusSlot>
         </PanelSectionRow>
+        {view === "ledger" && installationId && (
+          <TsmLedgerFilters key={installationId} installationId={installationId} />
+        )}
       </div>
       {view === "ledger" ? (
         installationId && <TsmLedger key={installationId} installationId={installationId} />

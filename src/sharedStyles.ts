@@ -176,6 +176,17 @@ export function wowdeckSharedStyleCss(): string {
   flex: 1; min-width: 0; text-align: left;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+/* The Ledger's figures (TsmLedger): the in-game Dashboard's summary as a
+   2×2 grid of a caption over a value, and its Sales, Expenses and Profit
+   rows as label-left, value-right lines. Captions are Steam's 12 px muted
+   description text; values its 16 px body text. */
+.wowdeck-ledger-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; }
+.wowdeck-ledger-caption { color: #b8bcbf; font-size: 12px; line-height: 16px; text-transform: uppercase; letter-spacing: .5px; }
+.wowdeck-ledger-value { color: #dcdedf; font-size: 16px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.wowdeck-ledger-line { display: flex; justify-content: space-between; gap: 12px; color: #b8bcbf; font-size: 12px; line-height: 20px; }
+.wowdeck-ledger-line .wowdeck-ledger-value { display: inline-flex; align-items: center; gap: 4px; }
+.wowdeck-ledger-trend { display: inline-flex; }
+.wowdeck-ledger-trend svg { width: 12px; height: 12px; }
 .wowdeck-glyph-text {
   display: inline-flex; align-items: center; justify-content: center;
   min-width: 24px; height: 18px; padding: 0 4px; border-radius: 4px 4px 2px 2px;

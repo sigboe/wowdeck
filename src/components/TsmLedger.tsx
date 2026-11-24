@@ -1,10 +1,26 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { ButtonItem, Field, PanelSectionRow } from "@decky/ui";
-import type { TradeSkillMasterLedgerState } from "../../backend/src/api/contracts";
+import { FaCaretDown, FaCaretUp } from "react-icons/fa";
+import type {
+  TradeSkillMasterLedgerFigures,
+  TradeSkillMasterLedgerFlow,
+  TradeSkillMasterLedgerPeriod,
+  TradeSkillMasterLedgerState,
+} from "../../backend/src/api/contracts";
 import { browseFocusView } from "../browseSessionState";
 import { useTsmLedger } from "../tsmReads";
+import { pickLedgerFilter } from "../tsmLedgerFilters";
+import { STEAM } from "../steamTheme";
 import { FocusSlot, focusTarget } from "./FocusSlot";
-import { formatWhen } from "../text";
+import { SegmentRow, type BarSegment } from "./BrowseBar";
+import { SegmentMenu } from "./SegmentMenu";
+import {
+  LEDGER_HALF_VALUE,
+  LEDGER_PERIOD_VALUE,
+  LEDGER_PERIOD_WIDTH,
+  LEDGER_WIDE_VALUE,
+} from "./dropdownValue";
+import { formatMoney, formatWhen } from "../text";
 
 /** What an empty Ledger says, by the engine's reason. */
 const EMPTY: Record<Exclude<TradeSkillMasterLedgerState, "ready">, [string, string]> = {
@@ -29,7 +45,246 @@ export const LEDGER_FOCUS = {
   recorded: "ledger-recorded",
   empty: "ledger-empty",
   export: "ledger-export",
+  account: "ledger-account",
+  realm: "ledger-realm",
+  character: "ledger-character",
+  period: "ledger-period",
+  averages: "ledger-averages",
+  sales: "ledger-sales",
+  expenses: "ledger-expenses",
+  profit: "ledger-profit",
 } as const;
+
+/**
+ * Filter segments that sit beside another on the bar's row, by focus key:
+ * Left from the key goes to its value (GetAddonsTab's pane Left handling;
+ * Steam's own row navigation skipped the sibling and left the pane, DEVICE
+ * 2026-10-23). Account has a row of its own.
+ */
+export const LEDGER_LEFT_NEIGHBOUR: Record<string, string> = {
+  [LEDGER_FOCUS.character]: LEDGER_FOCUS.realm,
+  [LEDGER_FOCUS.period]: LEDGER_FOCUS.character,
+};
+
+/** The in-game Dashboard's periods, in its order. */
+const PERIODS: TradeSkillMasterLedgerPeriod[] = ["1D", "1W", "1M", "3M", "6M", "1Y", "2Y", "All"];
+
+/**
+ * The Ledger's filter bar (ADR 0002, G14): the browse bar's segments with
+ * in-pane menus, floating with the pill bar (S24). Account shows only with
+ * more than one account, on a row of its own; Realm, Character and Period
+ * show once the account has records.
+ */
+export function TsmLedgerFilters({ installationId }: { installationId: string }) {
+  const { data } = useTsmLedger(installationId);
+  if (!data) {
+    return null;
+  }
+  const pick = (change: Parameters<typeof pickLedgerFilter>[2]) =>
+    pickLedgerFilter(installationId, data, change);
+  const account: BarSegment = {
+    id: "account",
+    caption: "Account",
+    focusId: LEDGER_FOCUS.account,
+    menu: (
+      <SegmentMenu
+        menuLabel="Account"
+        choices={data.accounts.map((name) => ({ data: name, label: name }))}
+        selected={data.account}
+        renderValue={LEDGER_WIDE_VALUE}
+        onPick={(name) => pick({ account: name })}
+      />
+    ),
+  };
+  const filters: BarSegment[] = [
+    {
+      id: "realm",
+      caption: "Realm",
+      focusId: LEDGER_FOCUS.realm,
+      menu: (
+        <SegmentMenu
+          menuLabel="Realm"
+          choices={[
+            { data: null as string | null, label: "All realms" },
+            ...data.realms.map((realm) => ({ data: realm as string | null, label: realm })),
+          ]}
+          selected={data.realm}
+          renderValue={LEDGER_HALF_VALUE}
+          onPick={(realm) => pick({ realm })}
+        />
+      ),
+    },
+    {
+      id: "character",
+      caption: "Character",
+      focusId: LEDGER_FOCUS.character,
+      menu: (
+        <SegmentMenu
+          menuLabel="Character"
+          choices={[
+            { data: null as string | null, label: "All characters" },
+            ...data.characters.map((c) => ({ data: c.id as string | null, label: c.label })),
+          ]}
+          selected={data.character}
+          renderValue={LEDGER_HALF_VALUE}
+          onPick={(character) => pick({ character })}
+        />
+      ),
+    },
+    {
+      id: "period",
+      caption: "Period",
+      focusId: LEDGER_FOCUS.period,
+      flex: `0 0 ${LEDGER_PERIOD_WIDTH}px`,
+      menu: (
+        <SegmentMenu
+          menuLabel="Period"
+          choices={PERIODS.map((period) => ({ data: period, label: period }))}
+          selected={data.period}
+          renderValue={LEDGER_PERIOD_VALUE}
+          onPick={(period) => pick({ period })}
+        />
+      ),
+    },
+  ];
+  return (
+    <>
+      {data.accounts.length > 1 && <SegmentRow view={FOCUS_VIEW} segments={[account]} />}
+      {data.state === "ready" && <SegmentRow view={FOCUS_VIEW} segments={filters} />}
+    </>
+  );
+}
+
+/** A trend against the previous period: an arrow by shape and colour (S13). */
+function Trend({ change, upIsGood }: { change: number | null; upIsGood: boolean }) {
+  if (change === null || change === 0) {
+    return null;
+  }
+  const up = change > 0;
+  const Arrow = up ? FaCaretUp : FaCaretDown;
+  return (
+    <span
+      className="wowdeck-ledger-trend"
+      role="img"
+      aria-label={up ? "Up from the previous period" : "Down from the previous period"}
+      data-good={String(up === upIsGood)}
+      style={{ color: up === upIsGood ? STEAM.positive : STEAM.danger }}
+    >
+      <Arrow />
+    </span>
+  );
+}
+
+/** A line of a panel: its label on the left, its value on the right. */
+function Line({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="wowdeck-ledger-line">
+      <span>{label}</span>
+      <span className="wowdeck-ledger-value">{children}</span>
+    </div>
+  );
+}
+
+/** Money as WoW writes it; a loss in Steam's danger colour. */
+const Money = ({ copper }: { copper: number }) => (
+  <span style={Math.round(copper) < 0 ? { color: STEAM.danger } : undefined}>
+    {formatMoney(copper)}
+  </span>
+);
+
+/**
+ * Sales, Expenses or Profit, as the in-game Dashboard's rows: total with its
+ * trend, the average per day and the top item. One focus stop (G3).
+ */
+function FlowPanel({
+  heading,
+  totalLabel,
+  flow,
+  upIsGood,
+  focusKey,
+}: {
+  heading: string;
+  totalLabel: string;
+  flow: TradeSkillMasterLedgerFlow;
+  upIsGood: boolean;
+  focusKey: string;
+}) {
+  return (
+    <PanelSectionRow>
+      <div className="wowdeck-ledger-panel">
+        <Field
+          focusable
+          label={heading}
+          childrenLayout="below"
+          {...focusTarget(FOCUS_VIEW, focusKey)}
+        >
+          <Line label={totalLabel}>
+            <Trend change={flow.trend} upIsGood={upIsGood} />
+            <Money copper={flow.total} />
+          </Line>
+          <Line label="Per day">
+            <Money copper={flow.perDay} />
+          </Line>
+          {/* The raw item string until the Ledger reads item names. */}
+          <Line label="Top item">{flow.topItem ?? "None"}</Line>
+        </Field>
+      </div>
+    </PanelSectionRow>
+  );
+}
+
+/** Items per day, as the Dashboard rounds them: one decimal. */
+const perDay = (items: number) => String(Math.round(items * 10) / 10);
+
+/**
+ * The figures under the freshness line: the four that are not the graph's
+ * in a 2×2 grid, then Sales, Expenses and Profit stacked.
+ */
+function Figures({ figures }: { figures: TradeSkillMasterLedgerFigures }) {
+  const cells: [string, string][] = [
+    ["Avg daily sales", perDay(figures.dailySales)],
+    ["Avg daily purchases", perDay(figures.dailyPurchases)],
+    ["Top sale", formatMoney(figures.topSale)],
+    ["Top purchase", formatMoney(figures.topPurchase)],
+  ];
+  return (
+    <>
+      <PanelSectionRow>
+        <Field focusable childrenLayout="below" {...focusTarget(FOCUS_VIEW, LEDGER_FOCUS.averages)}>
+          <div className="wowdeck-ledger-grid">
+            {cells.map(([label, value]) => (
+              <div key={label}>
+                <div className="wowdeck-ledger-caption">{label}</div>
+                <div className="wowdeck-ledger-value">{value}</div>
+              </div>
+            ))}
+          </div>
+        </Field>
+      </PanelSectionRow>
+      <FlowPanel
+        heading="Sales"
+        totalLabel="Total earned"
+        flow={figures.earned}
+        upIsGood
+        focusKey={LEDGER_FOCUS.sales}
+      />
+      <FlowPanel
+        heading="Expenses"
+        totalLabel="Total spent"
+        flow={figures.spent}
+        upIsGood={false}
+        focusKey={LEDGER_FOCUS.expenses}
+      />
+      <FlowPanel
+        heading="Profit"
+        totalLabel="Total profit"
+        flow={figures.profit}
+        upIsGood
+        focusKey={LEDGER_FOCUS.profit}
+      />
+    </>
+  );
+}
 
 /**
  * The Ledger (GLOSSARY): what the TradeSkillMaster addon recorded for the
@@ -71,6 +326,7 @@ export function TsmLedger({ installationId }: { installationId: string }) {
               />
             </PanelSectionRow>
           )}
+          {data.state === "ready" && data.figures && <Figures figures={data.figures} />}
           {data.state !== "ready" && (
             <PanelSectionRow>
               <Field

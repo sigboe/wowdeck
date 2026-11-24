@@ -4,6 +4,7 @@ import {
   dayAndTime,
   dayMonth,
   formatBytes,
+  formatMoney,
   formatWhen,
   importResultLine,
   lastAutoUpdateLine,
@@ -189,4 +190,15 @@ describe("updateAllRow (#253)", () => {
   test("a blank name leaves the line empty", () => {
     expect(updateAllRow(step({ done: 1, addonName: "  " }), "installation").addon).toBe("");
   });
+});
+
+test("formatMoney writes copper as gold, silver and copper, leaving out empty units", () => {
+  expect(formatMoney(12_345_678)).toBe("1,234g 56s 78c");
+  expect(formatMoney(2_000_050)).toBe("200g 50c");
+  expect(formatMoney(1_000)).toBe("10s");
+  // Averages are rounded to the copper.
+  expect(formatMoney(301_114.1)).toBe("30g 11s 14c");
+  expect(formatMoney(-1_050)).toBe("-10s 50c");
+  expect(formatMoney(0)).toBe("0c");
+  expect(formatMoney(0.4)).toBe("0c");
 });

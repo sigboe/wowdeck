@@ -1230,6 +1230,21 @@ For automated coverage, `backend/tests/tsm-ledger-rpc.test.ts` drives
 `src/tsmDestination.test.tsx` drives the pill bar, the kept view, entry
 focus and the Ledger's lines with the fake engine.
 
+### TradeSkillMaster Ledger: filters and figures (#312)
+
+| ID | Priority | Result | Steps | Expected |
+| --- | --- | --- | --- | --- |
+| LEDGER-312-1 | P1 | Not run | Open the Ledger of an account with records and press Right into the pane. Scroll the figures down and back up | Focus lands on the recorded line, not on a filter. Realm, Character and Period float under the pill bar while the rows scroll under them, and a focused row never rests under them. Under the recorded line come a grid of Avg daily sales, Avg daily purchases, Top sale and Top purchase, then the Sales, Expenses and Profit panels. Each is one focus stop |
+| LEDGER-312-2 | P1 | Not run | Press Up to the filters. Open Realm, Character and Period in turn, move through each list and pick an entry; open one more and press B. Press Left from Period, from Character and from Realm | Each list opens inside the pane, not as a Steam popup, with the current choice checked. A pick closes it, puts focus back on its button and updates the figures without the bar flashing away; B closes it the same way. Period lists 1D, 1W, 1M, 3M, 6M, 1Y, 2Y and All. Left moves Period to Character to Realm, and Left on Realm returns to the destination list |
+| LEDGER-312-3 | P1 | Not run | Compare the Ledger with the in-game Dashboard (`/tsm`, Dashboard) for All characters and for one character, with Period All and 1M, after a logout | Total, per day, top item and trend arrows for Sales, Expenses and Profit, Avg daily sales, Top sale and Top purchase match the Dashboard, rounded to the copper. Mail between your own characters, postage and repair bills never change a total. Top items show item strings such as `i:2589` until item names arrive |
+| LEDGER-312-4 | P2 | Not run | In an installation with two WoW accounts, pick a realm and a character, then switch Account, then switch back. Close and reopen the QAM | Account shows on its own row above the other filters. Another account resets Realm to All realms and keeps the character only if that account has one with that name and realm. The filters survive the QAM closing. With one account there is no Account filter |
+| LEDGER-312-5 | P2 | Not run | With characters on two realms, one sharing a name with a character on the other realm, look at Character under All realms and under each realm | Under All realms each character carries its realm ("Hero - Silvermoon"); under one realm only that realm's characters show, by name. A character that only traded, without a gold log, is listed too |
+
+`backend/tests/tsm-ledger-rpc.test.ts` asserts every figure rule of ADR 0018
+with an injected clock, and the filter choices and resets.
+`src/tsmDestination.test.tsx` drives the filters and the figure layout with
+the fake engine.
+
 ### Sign-in and key-entry keyboard dismissal
 
 With Steam's keyboard open, complete or cancel TradeSkillMaster sign-in.
