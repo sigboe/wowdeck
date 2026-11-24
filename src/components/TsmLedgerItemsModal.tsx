@@ -35,7 +35,10 @@ function LedgerItemsModal({
   const offset = offsets[offsets.length - 1]!;
   const { data, error } = useTsmLedgerItems({ ...params, offset });
   const firstRow = useRef<HTMLDivElement>(null);
-  const focusPage = useRef(false);
+  // Each page, the first one included, lands on its first row when it
+  // arrives. Steam's dialog takes focus as it opens, often before the first
+  // page: without this, focus stayed where it took it (DEVICE 2026-11-24).
+  const focusPage = useRef(true);
   useEffect(() => {
     if (focusPage.current && firstRow.current) {
       focusPage.current = false;
@@ -69,7 +72,11 @@ function LedgerItemsModal({
             {error ? (
               <Field ref={firstRow} focusable label={error} />
             ) : data === null ? (
-              <Field label="Reading Ledger items…" />
+              // A focus stop, so Steam's dialog takes focus here at the top
+              // of the list. With only Close to take, focus sat on Close
+              // under a full page and the header scrolled out of view
+              // (DEVICE 2026-11-24).
+              <Field focusable label="Reading Ledger items…" />
             ) : data.rows.length === 0 ? (
               <Field
                 ref={firstRow}

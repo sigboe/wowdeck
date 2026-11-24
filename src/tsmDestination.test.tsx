@@ -301,15 +301,30 @@ mock.module("@decky/ui", () => ({
       {fakeDeckyUi.ButtonItem(p)}
     </div>
   ),
-  ModalRoot: ({
+  // Steam's dialog takes focus as it opens: its first focus stop, unless
+  // something inside already took it. Its `className` lands on the dialog box.
+  ModalRoot: function ModalRoot({
     children,
     onCancel,
+    className,
   }: {
     children?: import("react").ReactNode;
     onCancel(): void;
-  }) => {
+    className?: string;
+  }) {
     cancelModal = onCancel;
-    return <div>{children}</div>;
+    const root = useRef<HTMLDivElement>(null);
+    useEffect(() => {
+      const el = root.current;
+      if (el && !el.contains(document.activeElement)) {
+        el.querySelector<HTMLElement>(".Focusable[tabindex]")?.focus();
+      }
+    }, []);
+    return (
+      <div ref={root} className={className} data-modal-root="">
+        {children}
+      </div>
+    );
   },
   ConfirmModal: (p: {
     children?: import("react").ReactNode;
@@ -1523,6 +1538,77 @@ test("All items pages native focus rows and refreshes only the opened filters", 
     expect(document.activeElement).toBe(opener());
     expect(view.selected()?.textContent).toBe("Ledger");
   } finally {
+    await act(async () => cancelModal && modalRoot && cancelModal());
+    fake.answers["tradeskillmaster.ledgerItems"] = previousItems;
+    ledger = previousLedger;
+    await view.close();
+    resetFocusMemory();
+    resetTsmReads();
+  }
+});
+
+test("All items lands on its first item once a page of more than 40 arrives", async () => {
+  resetTsmView();
+  resetTsmReads();
+  resetLedgerFilters();
+  resetFocusMemory();
+  const previousLedger = ledger;
+  const previousItems = fake.answers["tradeskillmaster.ledgerItems"];
+  ledger = { ...readyLedger, realm: "Silvermoon", period: "1M", itemCount: 55 };
+  const items = Array.from({ length: 55 }, (_, i) => ({
+    itemString: `i:${i + 1}`,
+    name: `Item ${i + 1}`,
+    earned: 55 - i,
+    spent: 0,
+    net: 55 - i,
+  }));
+  // The rows arrive after Steam's dialog has taken focus, as on the Deck
+  // with the real item cache.
+  let release = () => {};
+  let held = new Promise<void>((resolve) => (release = resolve));
+  fake.answers["tradeskillmaster.ledgerItems"] = async ({ offset = 0 }) => {
+    await held;
+    return { rows: items.slice(offset, offset + 40), nextOffset: offset ? null : 40 };
+  };
+  const view = await mountDestination(false);
+  const opener = () =>
+    [...view.container.querySelectorAll<HTMLElement>(".Focusable[tabindex]")].find(
+      (row) => row.textContent === "All items (55)",
+    )!;
+  const focused = () => document.activeElement?.textContent ?? "";
+  const firstItem = () =>
+    document.querySelectorAll(".wowdeck-ledger-items-columns")[1]?.closest(".Focusable");
+  try {
+    await showLedger(view.container);
+    await act(async () => {
+      opener().focus();
+      opener().querySelector("b")!.click();
+    });
+    await view.leave(); // Opening a Steam modal unmounts the pane.
+
+    // While reading, focus holds the top of the list, not Close at the
+    // bottom: the header stays in view once the rows push Close down.
+    expect(focused()).toBe("Reading Ledger items…");
+    await act(async () => release());
+    expect(firstItem()).not.toBeNull();
+    expect(document.activeElement).toBe(firstItem()!);
+    expect(focused()).toContain("Item 1");
+
+    // A page turn reads the same way and lands on its first item too.
+    held = new Promise<void>((resolve) => (release = resolve));
+    const next = [...document.querySelectorAll<HTMLElement>(".Focusable[tabindex]")].find(
+      (row) => row.textContent === "Next page",
+    )!;
+    await act(async () => {
+      next.focus();
+      next.querySelector("b")!.click();
+    });
+    expect(document.body.textContent).toContain("Reading Ledger items…");
+    await act(async () => release());
+    expect(document.activeElement).toBe(firstItem()!);
+    expect(focused()).toContain("Item 41");
+  } finally {
+    release();
     await act(async () => cancelModal && modalRoot && cancelModal());
     fake.answers["tradeskillmaster.ledgerItems"] = previousItems;
     ledger = previousLedger;
