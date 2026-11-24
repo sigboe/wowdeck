@@ -30,24 +30,26 @@ export const ledgerFilters = {
 };
 
 /**
- * A filter picked in the bar. The next request starts from what the Ledger
- * shows (the engine's effective selection, so a filter it dropped stays
- * dropped) plus the pick. Another account resets Realm to All and keeps
- * Character; the engine keeps it only if that account has it.
+ * A filter picked in the bar. The next request starts from the bar's own
+ * selection, so a pick made before the last one's answer arrives builds on
+ * it; a filter the engine dropped is already gone from it
+ * (settleLedgerFilters). The account is the shown one until the bar picks
+ * one. Another account resets Realm to All and keeps Character; the engine
+ * keeps it only if that account has it.
  */
 export function pickLedgerFilter(
   installationId: string,
-  shown: Pick<TradeSkillMasterLedger, "account" | "realm" | "character" | "period">,
+  shown: Pick<TradeSkillMasterLedger, "account">,
   pick: Partial<Omit<LedgerFilters, "account">> | { account: string },
 ): void {
+  const current = ledgerFilters.get(installationId);
+  const account = current.account ?? shown.account ?? undefined;
   const next: LedgerFilters = {
-    ...(shown.account !== null ? { account: shown.account } : {}),
-    realm: shown.realm,
-    character: shown.character,
-    period: shown.period,
+    ...current,
+    ...(account !== undefined ? { account } : {}),
     ...pick,
   };
-  if ("account" in pick && pick.account !== shown.account) {
+  if ("account" in pick && pick.account !== account) {
     next.realm = null;
   }
   byInstallation.set(installationId, next);
