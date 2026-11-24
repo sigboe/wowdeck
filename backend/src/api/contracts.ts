@@ -1013,7 +1013,8 @@ export interface MethodMap {
    * taken). One `TSM_<realm>_<dataset>_<date>.csv` per realm and dataset
    * (Sales, Buys, Income, Expense, Expired, Cancelled): UTF-8 with a BOM, the
    * stored header and rows with an `itemName` column after `itemString`.
-   * Realm names are made safe for file names; the date is the UTC day. The
+   * Realm names are made safe for file names (`_2`, `_3`, … tell apart
+   * realms whose safe names are the same); the date is the UTC day. The
    * ZIP is written beside its final name and renamed into place, so a failed
    * export leaves no file. On success the engine remembers `folder`
    * (PluginSettings.tsmLedgerExportFolder). WoW files are only read.

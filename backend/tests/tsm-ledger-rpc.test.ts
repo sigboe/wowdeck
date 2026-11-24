@@ -1008,6 +1008,31 @@ test("Export refuses a realm without records, and the Ledger says whether the sh
   expect(readdirSync(folder)).toEqual([]);
 });
 
+test("Export keeps realms apart whose safe names are the same, ignoring case as Windows does", async () => {
+  const { file, exportTo } = exportFixture();
+  const expired = (quantity: number) => csv(AUCTIONS, [`i:2589,1,${quantity},Hero,${NOW}`]);
+  writeFileSync(file, saved({
+    "r@Bad:X@internalData@csvExpired": expired(1),
+    "r@Bad/X@internalData@csvExpired": expired(2),
+    "r@bad_x@internalData@csvExpired": expired(3),
+    // Its own name is the first suffix the others would take.
+    "r@Bad_X_2@internalData@csvExpired": expired(4),
+  }));
+  const path = (await exportTo()).result.path;
+  const zip = await readZip(path);
+  const quantities = Object.fromEntries(Object.entries(zip)
+    .filter(([name]) => name.includes("_Expired_"))
+    .map(([name, text]) => [name, Number(text.split("\n")[1]!.split(",")[3])]));
+  // Realms in the Realm filter's order; the first keeps its name.
+  expect(quantities).toEqual({
+    "TSM_bad_x_Expired_2026-11-24.csv": 3,
+    "TSM_Bad_X_2_Expired_2026-11-24.csv": 4,
+    "TSM_Bad_X_3_Expired_2026-11-24.csv": 1,
+    "TSM_Bad_X_4_Expired_2026-11-24.csv": 2,
+  });
+  expect(Object.keys(zip)).toHaveLength(24);
+});
+
 test("Export's folder picker starts in Documents, created when missing, then in the remembered folder", async () => {
   const { home, folder, call, exportTo } = exportFixture();
   expect((await call("tradeskillmaster.ledgerExportFolder")).result).toEqual({ folder: join(home, "Documents") });

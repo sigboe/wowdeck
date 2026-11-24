@@ -72,13 +72,40 @@ export function exportCsv(stored: string, itemInfo: LuaTable | null): string {
   }).join("\n");
 }
 
+/**
+ * Each realm's name in the export's file names, in `realms`' order: its safe
+ * name, or, when an earlier realm's safe name is the same, the safe name with
+ * `_2`, `_3`, … (the first number no realm's own safe name is), so no two
+ * realms share a file. Names that differ only in case count as the same:
+ * Windows and macOS would unpack them onto one file.
+ */
+export function realmFileNames(realms: string[]): Map<string, string> {
+  const key = (name: string) => name.toLowerCase();
+  const safe = realms.map(safeRealmName);
+  const own = new Set(safe.map(key));
+  const taken = new Set<string>();
+  const names = new Map<string, string>();
+  realms.forEach((realm, index) => {
+    const base = safe[index]!;
+    let name = base;
+    for (let n = 2; taken.has(key(name)); n++) {
+      name = `${base}_${n}`;
+      if (own.has(key(name))) name = base; // another realm's own name: try the next number
+    }
+    taken.add(key(name));
+    names.set(realm, name);
+  });
+  return names;
+}
+
 /** The export's files, built one at a time as the ZIP writer asks for them. */
 function* exportFiles(db: LuaTable, itemInfo: LuaTable | null, realms: string[], date: string): Generator<ZipFile> {
+  const fileNames = realmFileNames(realms);
   for (const realm of realms) {
     for (const dataset of DATASETS) {
       const stored = db[`r@${realm}@internalData@csv${dataset}`];
       const csv = typeof stored === "string" ? exportCsv(stored, itemInfo) : "";
-      yield { name: `TSM_${safeRealmName(realm)}_${dataset}_${date}.csv`, data: utf8.encode(BOM + csv) };
+      yield { name: `TSM_${fileNames.get(realm)!}_${dataset}_${date}.csv`, data: utf8.encode(BOM + csv) };
     }
   }
 }
