@@ -1839,6 +1839,16 @@ test("the Ledger's filters float with the pill bar, open in the pane, and reset 
       character: "Hero - Silvermoon",
       period: "1M",
     });
+    // The account already shown is no change: Realm and Character stay.
+    await pick("Account", "MAIN");
+    expect(values()).toEqual(["MAIN", "Silvermoon", "Hero - Silvermoon", "1M"]);
+    expect(ledgerRequests[ledgerRequests.length - 1]).toEqual({
+      installationId: "active",
+      account: "MAIN",
+      realm: "Silvermoon",
+      character: "Hero - Silvermoon",
+      period: "1M",
+    });
     // Another account: Realm back to All, Character kept while it exists there.
     await pick("Account", "ALT");
     expect(ledgerRequests[ledgerRequests.length - 1]).toEqual({
