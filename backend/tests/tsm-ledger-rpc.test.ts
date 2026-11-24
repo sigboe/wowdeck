@@ -81,37 +81,80 @@ test("one account is picked by itself, and a file of headers and empty gold logs
   expect((await call()).result.gameRunning).toBe(false);
 });
 
+const sale = "i:2589,1,20,15,Bob,Hero,1700000000,Auction";
+const header = (key: string) => JSON.parse(empty[key as keyof typeof empty]) as string;
+
 test("any recorded row or gold log point makes the Ledger ready", async () => {
-  const records: Record<string, string> = {
-    sale: "r@Silvermoon@internalData@csvSales",
-    buy: "r@Silvermoon@internalData@csvBuys",
-    income: "r@Silvermoon@internalData@csvIncome",
-    expense: "r@Silvermoon@internalData@csvExpense",
-    expired: "r@Silvermoon@internalData@csvExpired",
-    cancelled: "r@Silvermoon@internalData@csvCancelled",
-    gold: "s@Hero - Horde - Silvermoon@internalData@goldLog",
-    warbank: "g@ @internalData@warbankGoldLog",
+  const records: Record<string, [string, string]> = {
+    sale: ["r@Silvermoon@internalData@csvSales", sale],
+    buy: ["r@Silvermoon@internalData@csvBuys", sale],
+    income: ["r@Silvermoon@internalData@csvIncome", "Money Transfer,1000,Alt,Hero,1700000000"],
+    expense: ["r@Silvermoon@internalData@csvExpense", "Postage,30,Alt,Hero,1700000000"],
+    expired: ["r@Silvermoon@internalData@csvExpired", "i:2589,1,20,Hero,1700000000"],
+    cancelled: ["r@Silvermoon@internalData@csvCancelled", "i:2589,1,20,Hero,1700000000"],
+    gold: ["s@Hero - Horde - Silvermoon@internalData@goldLog", "29000000,100"],
   };
-  for (const [name, key] of Object.entries(records)) {
+  for (const [name, [key, row]] of Object.entries(records)) {
     const { write, call } = fixture();
-    write(account("MAIN"), saved({ ...empty, [key]: '"header\\n1,2"' }));
+    write(account("MAIN"), saved({ ...empty, [key]: JSON.stringify(`${header(key)}\n${row}`) }));
     expect([name, (await call()).result.state]).toEqual([name, "ready"]);
   }
-  const { write, call } = fixture();
-  write(account("MAIN"), saved({ ...empty, "f@Horde - Silvermoon@internalData@guildGoldLog": '{ ["Guild"] = "minute,copper\\n29000000,100" }' }));
-  expect((await call()).result.state).toBe("ready");
+  for (const [name, value] of Object.entries({
+    warbank: ["g@ @internalData@warbankGoldLog", '"minute,copper\\n29000000,100"'],
+    guild: ["f@Horde - Silvermoon@internalData@guildGoldLog", '{ ["Guild"] = "minute,copper\\n29000000,100" }'],
+    // Older files name the other player buyer or seller.
+    olderSales: ["r@Silvermoon@internalData@csvSales", JSON.stringify(`itemString,stackSize,quantity,price,buyer,player,time,source\n${sale}`)],
+  })) {
+    const { write, call } = fixture();
+    write(account("MAIN"), saved({ ...empty, [value[0]!]: value[1]! }));
+    expect([name, (await call()).result.state]).toEqual([name, "ready"]);
+  }
 });
 
-test("several accounts: the one asked for, else the one written last; the addon's absence hides nothing", async () => {
+test("rows the addon would not read are no records: a wrong field count ends a CSV, an unknown header drops it", async () => {
+  for (const csv of [
+    `${header("r@Silvermoon@internalData@csvSales")}\n1,2\n${sale}`,
+    `${header("r@Silvermoon@internalData@csvSales")}\n\n${sale}`,
+    `itemString,price\n1,2`,
+  ]) {
+    const { write, call } = fixture();
+    write("Interface/AddOns/TradeSkillMaster/TradeSkillMaster.toc", "## Title: TradeSkillMaster\n");
+    write(account("MAIN"), saved({ ...empty, "r@Silvermoon@internalData@csvSales": JSON.stringify(csv) }));
+    expect([csv, (await call()).result.state]).toEqual([csv, "noRecords"]);
+  }
+});
+
+test("several accounts: the one asked for, else the newest with records, else the newest", async () => {
   const { write, call } = fixture();
   write(account("ALT"), saved(empty), 1_800_000_500);
   write(account("MAIN"), saved({ ...empty, "g@ @internalData@warbankGoldLog": '"minute,copper\\n29000000,100"' }), 1_800_000_000);
+  write(account("OLD"), saved({ ...empty, "g@ @internalData@warbankGoldLog": '"minute,copper\\n29000000,100"' }), 1_700_000_000);
   // An account folder without the addon's file is not an account of the Ledger.
   write("WTF/Account/NONE/SavedVariables/Other.lua", "Other = {}\n");
-  expect((await call()).result).toMatchObject({ state: "noRecords", accounts: ["ALT", "MAIN"], account: "ALT", recordedAt: 1_800_000_500_000 });
-  expect((await call({ account: "MAIN" })).result).toMatchObject({ state: "ready", account: "MAIN", recordedAt: 1_800_000_000_000 });
+  // An empty account written last does not hide an older account's records;
+  // the time is the shown account's, which dates the records on screen.
+  expect((await call()).result).toMatchObject({ state: "ready", accounts: ["ALT", "MAIN", "OLD"], account: "MAIN", recordedAt: 1_800_000_000_000 });
+  expect((await call({ account: "ALT" })).result).toMatchObject({ state: "noRecords", account: "ALT", recordedAt: 1_800_000_500_000 });
   // An account that is gone falls back to the engine's pick.
-  expect((await call({ account: "GONE" })).result).toMatchObject({ account: "ALT" });
+  expect((await call({ account: "GONE" })).result).toMatchObject({ account: "MAIN" });
+
+  // Without records anywhere, the account written last.
+  const none = fixture();
+  none.write("Interface/AddOns/TradeSkillMaster/TradeSkillMaster.toc", "## Title: TradeSkillMaster\n");
+  none.write(account("ALT"), saved(empty), 1_800_000_000);
+  none.write(account("MAIN"), saved(empty), 1_800_000_500);
+  expect((await none.call()).result).toMatchObject({ state: "noRecords", account: "MAIN", recordedAt: 1_800_000_500_000 });
+});
+
+test("without the addon, records still show; files with no records ask for the addon", async () => {
+  const { write, call } = fixture();
+  write(account("MAIN"), "TradeSkillMasterDB = {}\n", 1_800_000_000);
+  write(account("ALT"), saved(empty), 1_800_000_500);
+  expect((await call()).result).toEqual({
+    state: "noAddon", accounts: ["ALT", "MAIN"], account: "ALT", recordedAt: 1_800_000_500_000, gameRunning: false,
+  });
+  write(account("MAIN"), saved({ ...empty, "r@Silvermoon@internalData@csvSales": JSON.stringify(`${header("r@Silvermoon@internalData@csvSales")}\n${sale}`) }), 1_800_000_000);
+  expect((await call()).result).toMatchObject({ state: "ready", account: "MAIN" });
 });
 
 test("a file that is not plain saved data is an error, not an empty Ledger", async () => {

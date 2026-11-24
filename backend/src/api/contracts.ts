@@ -723,10 +723,12 @@ export interface TradeSkillMasterDestination {
 }
 /**
  * Why the Ledger has nothing to show, or "ready" when it has records:
- * `noAddon`, no account has a TradeSkillMaster.lua and the addon is not
- * installed; `noAccount`, the addon is installed but no account has saved
- * one yet; `noRecords`, the account's file holds no sales, purchases,
- * income, expenses, expirations, cancellations or gold log points.
+ * `noAddon`, the addon is not installed and no account's file has records;
+ * `noAccount`, the addon is installed but no account has saved a
+ * TradeSkillMaster.lua yet; `noRecords`, the shown account's file holds no
+ * sales, purchases, income, expenses, expirations, cancellations or gold log
+ * points the addon would read. A file holding only headers, or an empty
+ * TradeSkillMasterDB, has no records.
  */
 export type TradeSkillMasterLedgerState = "noAddon" | "noAccount" | "noRecords" | "ready";
 /** The Ledger of one WoW account of an installation (GLOSSARY: Ledger). */
@@ -734,9 +736,12 @@ export interface TradeSkillMasterLedger {
   state: TradeSkillMasterLedgerState;
   /** The installation's WoW accounts (`WTF/Account/<name>`) holding a TradeSkillMaster.lua, by name. */
   accounts: string[];
-  /** The account shown: the one asked for, else the only one, else the one written last; null without accounts. */
+  /**
+   * The account shown: the one asked for, else the one written last whose
+   * file has records, else the one written last; null without accounts.
+   */
   account: string | null;
-  /** When the game last wrote the account's TradeSkillMaster.lua, in ms since the epoch; null without accounts. */
+  /** When the game last wrote the shown account's TradeSkillMaster.lua (it dates the records shown), in ms since the epoch; null without accounts. */
   recordedAt: number | null;
   /** World of Warcraft is running, so this session's trades are not on disk yet. */
   gameRunning: boolean;
