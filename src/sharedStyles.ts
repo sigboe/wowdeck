@@ -235,12 +235,13 @@ export function wowdeckSharedStyleCss(): string {
 /* The column labels: the Ledger's caption style, sticky over the list on
    the dialog's own background, inset like the rows' text. */
 .wowdeck-ledger-items-labels {
-  position: sticky; top: 0; z-index: 1; background: #0e141b;
+  /* The dialog's scroller has 24 px of top padding, and top: 0 stuck the
+     labels 24 px below its edge with scrolled rows showing above ITEM.
+     A shadow over that strip covered the dialog header at the top of the
+     list (DEVICE 2026-11-24, #319). -24px sticks them at the scroller's
+     edge, as .wowdeck-pane-bar does, and leaves them in place unscrolled. */
+  position: sticky; top: -24px; z-index: 1; background: #0e141b;
   box-sizing: border-box; padding: 0 12px 6px;
-  /* The dialog's scroller has 24 px of top padding, so the labels stick
-     24 px below its edge; paint that strip too, or scrolled rows show
-     through above ITEM (DEVICE 2026-11-24, #319). */
-  box-shadow: 0 -24px 0 0 #0e141b;
 }
 .wowdeck-ledger-items-none { color: ${STEAM.textDisabled}; }
 .wowdeck-glyph-text {
