@@ -48,3 +48,30 @@ Character menu. CDP `seek` jumps then moved focus out of it while it stayed
 drawn over the graph (shots 03 to 05). B from inside the menu closed it.
 This is a test-driver artefact; pad navigation alone would not leave the
 menu.
+
+## 1D recheck
+
+DEVICE, 25 November 2026, method UI. The build is the uncommitted working
+tree of `feat/308-ledger` on HEAD `23700e8`, a frontend change to
+`src/tsmGoldAxes.ts` that gives a day or less hour labels whatever the plot
+width. `deck up` deployed only `index.js`. The deployed `dist/index.js`
+SHA-256 matches the local build:
+`b10542ad5ceaaeb66a5ac09ee7986f26768f1cea40b1805a0af4d02d5a59dc86`.
+The fixtures and the narrow QAM are the same as above. The run chose each
+period from the Period menu and measured the x-axis labels with a DOM probe
+in the QAM document.
+
+| Installation | Period | x-axis labels (left to right, px) | Overlap | Past an edge |
+| --- | --- | --- | --- | --- |
+| Forever (plot 392 to 830) | 1D | 18:00 (392 to 426), 00:00 (510 to 545), 06:00 (620 to 654), 12:00 (729 to 764) | no | no |
+| Forever | 1W | Thu, Sat, Mon, Wed | no | no |
+| Forever | All | 10 Nov, 14 Nov, 18 Nov, 22 Nov | no | no |
+| Classic Era (plot 417 to 830) | 1D | 18:00 (417 to 451), 00:00 (527 to 562), 06:00 (630 to 665), 12:00 (734 to 768) | no | no |
+| Classic Era | 1W | Thu, Sat, Mon, Wed | no | no |
+| Classic Era | All | May 2026, Jul 2026, Sep 2026, Nov 2026 | no | no |
+
+Result: **passed.** 1D now labels every six hours on both installations, the
+failed part of claim 1 above. 1W and All match the first run. Screenshots
+of the two 1D graphs are in the session scratchpad `1d/`. The run left the
+Deck on Forever with Period All on both installations, the tested build
+installed, autoUpdate back on and the tunnel closed.
