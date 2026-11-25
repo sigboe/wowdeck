@@ -239,3 +239,22 @@ export function startPluginExitWatch(pluginName: string): () => void {
     }
   };
 }
+
+/**
+ * Decky shows this plugin's page (its active plugin is ours). Read during the
+ * QAM's render (qamExpandHook), so it only reads. Same reach as
+ * startPluginExitWatch; unreachable, it reports true and the caller's other
+ * checks decide.
+ */
+export function deckyShowsPlugin(pluginName: string): boolean {
+  try {
+    const state = (window as { DeckyPluginLoader?: { deckyState?: DeckyStateReach | null } })
+      .DeckyPluginLoader?.deckyState;
+    if (typeof state?.publicState !== "function") {
+      return true;
+    }
+    return state.publicState().activePlugin?.name === pluginName;
+  } catch {
+    return true;
+  }
+}

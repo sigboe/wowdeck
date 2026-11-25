@@ -4,9 +4,13 @@
  * finds them: exported on the webpack Steam client, in module scope on the
  * Vite one) and the QAM CSS module (`ViewPlaceholder`, `Expanded`: found by
  * its readable keys on webpack, from Decky 4's `quickAccessMenuClasses` on
- * Vite). Both lookups: `steamLookup.ts`.
+ * Vite). Both lookups: `steamLookup.ts`. Steam's QAM tab:
+ * `SteamUIStore.WindowStore.GamepadUIMainWindowInstance.MenuStore
+ * .GetQuickAccessTab()` (DEVICE
+ * 2026-11-25: 999, Decky's tab, with WoWDeck showing).
  * Fails as: either missing -> `init` false, `live` stays false and Get Addons
  * keeps its collapsed layout (qamWidening), one console warning. Never throws.
+ * An unreadable QAM tab counts as Decky's: the owner's own check still holds.
  * Kill switch: the automatic fallback above; there is no user setting.
  */
 
@@ -16,6 +20,8 @@ import { afterPatch, getReactRoot } from "@decky/ui";
 import { steamLookup } from "../steamLookup";
 import {
   sharedQamExpandState,
+  showsDeckyTab,
+  type QamExpandOwner,
   type QamExpandState,
   withExpanded,
   wrapExpandable,
@@ -34,6 +40,7 @@ import {
  *
  *     const hook = new QamExpandHook();
  *     hook.init();             // at plugin load
+ *     hook.setOwner(owner);    // whose page may show it wide (qamExpand.ts)
  *     hook.setExpanded(true);  // the QAM slides wide; false slides it back
  *     hook.deinit();           // at unload
  *
@@ -42,6 +49,11 @@ import {
  * for its own reasons keeps the class. A Steam build that renders the QAM
  * differently mounts no wrapped node: `live` stays false and the caller keeps
  * its collapsed layout.
+ *
+ * Like Valve's `qamFriendsExpanded && activeTab == Friends`, each render
+ * shows `Expanded` only while Steam's QAM shows Decky's tab and the owner says
+ * its page is showing. Steam renders the QAM on every open and tab change, so
+ * a want left set by a missed close can't widen another page.
  */
 export class QamExpandHook {
   private readonly state = sharedQamExpandState();
@@ -97,9 +109,21 @@ export class QamExpandHook {
     }
   }
 
+  /**
+   * The page that may show the QAM wide. Steam's QAM tab must be Decky's as
+   * well; that half is checked here.
+   */
+  setOwner(owner: QamExpandOwner): void {
+    this.state.setOwner({
+      showing: () => showsDeckyTab(steamQamTab()) && owner.showing(),
+      left: () => owner.left(),
+    });
+  }
+
   /** Unpatch; the QAM collapses first so nothing is left slid out. */
   deinit(): void {
     this.state.setExpanded(false);
+    this.state.setOwner(null);
     for (const patch of this.patches) {
       try {
         patch.unpatch();
@@ -259,12 +283,50 @@ function ExpandableView({
   state: QamExpandState;
   classes: QamViewClasses;
 }) {
-  const expanded = useSyncExternalStore(state.subscribe, state.getSnapshot);
+  const wanted = useSyncExternalStore(state.subscribe, state.getSnapshot);
+  const expanded = useSyncExternalStore(state.subscribe, () => state.getRendered());
   // Layout effect: counted before any tab content's effects ask for `live`.
   useLayoutEffect(() => state.mounted(), [state]);
+  // Valve's SetQuickAccessTab: the QAM shows another page, so the want ends
+  // and the next visit to the owner's page starts collapsed.
+  useLayoutEffect(() => {
+    if (wanted && !expanded) {
+      state.ownerLeft();
+    }
+  }, [state, wanted, expanded]);
   return expanded
     ? cloneElement(element, { className: withExpanded(element.props.className, classes) })
     : element;
+}
+
+interface SteamMenuStore {
+  GetQuickAccessTab?: () => unknown;
+  m_eQuickAccessTab?: unknown;
+}
+
+/** The tab Steam's QAM shows, or undefined when this Steam build hides it. */
+function steamQamTab(): number | undefined {
+  try {
+    const store = (
+      window as {
+        SteamUIStore?: {
+          ActiveWindowInstance?: { MenuStore?: SteamMenuStore } | null;
+          WindowStore?: { GamepadUIMainWindowInstance?: { MenuStore?: SteamMenuStore } | null };
+        };
+      }
+    ).SteamUIStore;
+    // The window Decky's tab lives in, as Decky's Router reaches it; while a
+    // game runs, the active window can be an overlay with its own menus.
+    const menu = (store?.WindowStore?.GamepadUIMainWindowInstance ?? store?.ActiveWindowInstance)
+      ?.MenuStore;
+    const tab =
+      typeof menu?.GetQuickAccessTab === "function"
+        ? menu.GetQuickAccessTab()
+        : menu?.m_eQuickAccessTab;
+    return typeof tab === "number" ? tab : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 let warned = false;

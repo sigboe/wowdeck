@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import {
+  DECKY_QAM_TAB,
   QamExpandState,
   sharedQamExpandState,
+  showsDeckyTab,
   takesExpanded,
   withExpanded,
   wrapExpandable,
@@ -119,6 +121,43 @@ describe("the expand state", () => {
     expect(state.live).toBe(false);
   });
 
+  test("renders expanded only while the owner's page shows, read on every render", () => {
+    // Valve: `qamFriendsExpanded && activeTab == Friends`.
+    const state = new QamExpandState();
+    let page = "browse";
+    let left = 0;
+    state.setOwner({ showing: () => page === "browse", left: () => left++ });
+    expect(state.getRendered()).toBe(false);
+    state.setExpanded(true);
+    expect(state.getRendered()).toBe(true);
+    page = "installed";
+    expect(state.getSnapshot()).toBe(true);
+    expect(state.getRendered()).toBe(false);
+    state.ownerLeft();
+    expect(left).toBe(1);
+  });
+
+  test("without an owner, or with one that throws, renders what is wanted", () => {
+    const state = new QamExpandState();
+    state.setExpanded(true);
+    expect(state.getRendered()).toBe(true);
+    state.setOwner({
+      showing: () => {
+        throw new Error("reach changed");
+      },
+      left: () => {},
+    });
+    expect(state.getRendered()).toBe(true);
+  });
+
+  test("setting the owner re-renders the wrapped nodes", () => {
+    const state = new QamExpandState();
+    let calls = 0;
+    state.subscribe(() => calls++);
+    state.setOwner(null);
+    expect(calls).toBe(1);
+  });
+
   test("a wrapper mounted before a plugin reload follows the reloaded plugin", () => {
     // Steam keeps the QAM's rendered tree across a reload while the QAM is
     // open, so the wrapper the old plugin mounted stays on screen (DEVICE
@@ -134,5 +173,73 @@ describe("the expand state", () => {
     expect(after.live).toBe(true);
     after.setExpanded(true);
     expect(expanded).toBe(true);
+  });
+});
+
+/** QamExpandState as 1.3.0 shipped it: what a Decky update without a Steam restart finds. */
+class ReleasedQamExpandState {
+  private expandedNow = false;
+  private mountedCount = 0;
+  private readonly listeners = new Set<() => void>();
+  readonly subscribe = (listener: () => void): (() => void) => {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  };
+  readonly getSnapshot = (): boolean => this.expandedNow;
+  setExpanded(expanded: boolean): void {
+    if (this.expandedNow === expanded) return;
+    this.expandedNow = expanded;
+    for (const listener of [...this.listeners]) listener();
+  }
+  mounted(): () => void {
+    this.mountedCount++;
+    return () => {
+      this.mountedCount--;
+    };
+  }
+  get live(): boolean {
+    return this.mountedCount > 0;
+  }
+}
+
+describe("the shared state after an update without a Steam restart", () => {
+  test("the previous build's object gains this build's methods and keeps its wrapper", () => {
+    // DEVICE 2026-11-25: `setOwner is not a function` stopped the plugin load.
+    const store = { [Symbol.for("wowdeck.qamExpandState")]: new ReleasedQamExpandState() };
+    const before = store[Symbol.for("wowdeck.qamExpandState")]!;
+    let seen = before.getSnapshot();
+    before.subscribe(() => (seen = before.getSnapshot()));
+    const unmountOld = before.mounted();
+    before.setExpanded(false); // the old plugin's deinit
+
+    const after = sharedQamExpandState(store);
+    expect(after as unknown).toBe(before);
+    expect(after.live).toBe(true);
+    let page = "browse";
+    after.setOwner({ showing: () => page === "browse", left: () => {} });
+    after.setExpanded(true);
+    expect(seen).toBe(true);
+    expect(after.getRendered()).toBe(true);
+    page = "installed";
+    expect(after.getRendered()).toBe(false);
+    unmountOld();
+    expect(after.live).toBe(false);
+    expect(sharedQamExpandState(store)).toBe(after);
+  });
+
+  test("an object of an unknown shape is replaced", () => {
+    const store = { [Symbol.for("wowdeck.qamExpandState")]: { expandedNow: "yes" } };
+    const state = sharedQamExpandState(store);
+    expect(state).toBeInstanceOf(QamExpandState);
+    expect(state.getRendered()).toBe(false);
+  });
+});
+
+describe("Steam's QAM tab", () => {
+  test("Decky's tab, or an unreadable one, may show the wide QAM", () => {
+    expect(showsDeckyTab(DECKY_QAM_TAB)).toBe(true);
+    expect(showsDeckyTab(undefined)).toBe(true);
+    expect(showsDeckyTab(3)).toBe(false); // Friends
+    expect(showsDeckyTab(4)).toBe(false); // Settings
   });
 });

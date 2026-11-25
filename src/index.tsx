@@ -44,7 +44,11 @@ import { steamLaunch } from "./steamLaunchActions";
 import { settingsStore } from "./settings";
 import { linkedGamesStore } from "./linkedGames";
 import { startHomeBadge } from "./steamDom/homeBadge";
-import { startPluginExitWatch, startQamVisibilityWatch } from "./steamDom/qamVisibility";
+import {
+  deckyShowsPlugin,
+  startPluginExitWatch,
+  startQamVisibilityWatch,
+} from "./steamDom/qamVisibility";
 import { setQamExpander, stopQamWidening } from "./steamDom/qamWidening";
 import { QamExpandHook } from "./steamDom/qamExpandHook";
 import { createPanelShoulderNavigation } from "./shoulderNav";
@@ -347,6 +351,14 @@ export default definePlugin(() => {
   // load and hand the service the hook.
   const qamExpand = new QamExpandHook();
   qamExpand.init();
+  // Valve's rule for Friends: wide only while the page that asked is showing.
+  // Get Addons is the only page that widens. A leaked modal hold can keep the
+  // want set past a QAM close, and this keeps it from widening My Addons,
+  // Options or another plugin.
+  qamExpand.setOwner({
+    showing: () => qamState.tab === "browse" && deckyShowsPlugin(PLUGIN_NAME),
+    left: leaveBrowseSession,
+  });
   setQamExpander(qamExpand);
 
   // Once per plugin load (Decky startup, reload, update): Content() remounts

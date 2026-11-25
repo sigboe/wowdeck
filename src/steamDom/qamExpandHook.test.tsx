@@ -71,3 +71,58 @@ test("the first patch refreshes an already open webpack QAM while it stays mount
     dom.window.close();
   }
 });
+
+test("like Friends, the QAM renders wide only on the owner's page in Decky's tab", async () => {
+  const dom = new JSDOM('<div id="root"></div>');
+  const previous = { window: globalThis.window, document: globalThis.document };
+  globalThis.window = dom.window as unknown as Window & typeof globalThis;
+  globalThis.document = dom.window.document;
+  const menu = { tab: 999, GetQuickAccessTab: () => menu.tab };
+  (window as unknown as { SteamUIStore: unknown }).SteamUIStore = {
+    WindowStore: { GamepadUIMainWindowInstance: { MenuStore: menu } },
+  };
+  const globals = globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean };
+  globals.IS_REACT_ACT_ENVIRONMENT = true;
+  const container = document.getElementById("root")!;
+  const root = createRoot(container);
+  const hook = new QamExpandHook();
+  let page = "browse";
+  let left = 0;
+  const wide = () => container.firstElementChild?.classList.contains(classes.Expanded);
+  try {
+    expect(hook.init()).toBe(true);
+    hook.setOwner({
+      showing: () => page === "browse",
+      left: () => {
+        left++;
+        hook.setExpanded(false);
+      },
+    });
+    await act(() => root.render(<BrowserView active />));
+    await act(() => hook.setExpanded(true));
+    expect(wide()).toBe(true);
+
+    // Steam switches the QAM to Friends: its renderer renders again.
+    menu.tab = 3;
+    await act(() => root.render(<BrowserView active={false} />));
+    expect(wide()).toBe(false);
+    expect(left).toBe(1);
+
+    // A want left set (a missed close) reopens on another WoWDeck page.
+    menu.tab = 999;
+    await act(() => hook.setExpanded(true));
+    left = 0;
+    page = "installed";
+    await act(() => root.render(<BrowserView active />));
+    expect(wide()).toBe(false);
+    expect(left).toBe(1);
+  } finally {
+    await act(() => {
+      root.unmount();
+      hook.deinit();
+    });
+    Object.assign(globalThis, previous);
+    delete globals.IS_REACT_ACT_ENVIRONMENT;
+    dom.window.close();
+  }
+});
