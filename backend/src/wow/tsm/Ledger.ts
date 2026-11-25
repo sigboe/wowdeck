@@ -12,15 +12,17 @@ import type {
   TradeSkillMasterLedger,
   TradeSkillMasterLedgerExportParams,
   TradeSkillMasterLedgerItem,
+  TradeSkillMasterLedgerItemSort,
   TradeSkillMasterLedgerItemsPage,
   TradeSkillMasterLedgerItemsParams,
 } from "../../api/contracts";
+import { TSM_LEDGER_ITEM_SORTS } from "../../api/contracts";
 import { getAddonsPath } from "../installation/InstallationDetector";
 import type { WowInstallation } from "../models";
 import { NotFoundError } from "../errors";
 import { WowClientType } from "../types";
 import { detectGameRunning } from "../wtf/GameProcessGuard";
-import { ledgerItemName } from "./ItemNames";
+import { ledgerItemName, ledgerItemQuality } from "./ItemNames";
 import { wowheadSection } from "./Wowhead";
 import { exportable, writeLedgerExport, type ZipWrite } from "./LedgerExport";
 import { GOLD_LOG, hasRows, ledgerItemTotals, ledgerView, RECORD_CSVS, type LedgerSelection } from "./LedgerFigures";
@@ -34,8 +36,43 @@ const RETAIL = new Set([WowClientType.Retail, WowClientType.RetailPtr, WowClient
 const ITEM_PAGE_ROWS = 40;
 const ITEM_PAGE_BYTES = 64 * 1024;
 
+type ItemTotals = ReturnType<typeof ledgerItemTotals>;
+
+// English collation, as the Ledger's other lists: the engine knows no game locale.
+const byText = new Intl.Collator("en").compare;
+const itemId = (itemString: string) => Number(/^[ip]:(\d+)/.exec(itemString)?.[1] ?? Infinity);
+
+/**
+ * `items` (in volume order, ties by item string) sorted by `sort`. Ties keep
+ * that order. A name sort sorts by the cached name; items without one
+ * follow the named items in either direction, by item ID.
+ */
+function sortItems(
+  items: ItemTotals,
+  itemInfo: LuaTable | null,
+  sort: TradeSkillMasterLedgerItemSort,
+  descending: boolean,
+): ItemTotals {
+  const direction = descending ? -1 : 1;
+  if (sort === "name") {
+    const named = items.map((item) => ({ item, name: itemInfo ? ledgerItemName(itemInfo, item.itemString) : undefined }));
+    return named.sort((a, b) => {
+      if (a.name === undefined || b.name === undefined) {
+        if (a.name !== b.name) return a.name === undefined ? 1 : -1;
+        // Same ID: the volume order stands, as for any tie.
+        return itemId(a.item.itemString) - itemId(b.item.itemString);
+      }
+      return direction * byText(a.name, b.name);
+    }).map(({ item }) => item);
+  }
+  if (sort === "volume" && descending) return items;
+  const value = sort === "volume" ? (item: ItemTotals[number]) => item.earned + item.spent : (item: ItemTotals[number]) => item[sort];
+  // Array sort is stable: equal values keep the volume order.
+  return [...items].sort((a, b) => direction * (value(a) - value(b)));
+}
+
 function itemPage(
-  items: ReturnType<typeof ledgerItemTotals>,
+  items: ItemTotals,
   itemInfo: LuaTable | null,
   offset: number,
 ): TradeSkillMasterLedgerItemsPage {
@@ -45,13 +82,13 @@ function itemPage(
   for (; index < items.length && rows.length < ITEM_PAGE_ROWS; index++) {
     const item = items[index]!;
     const name = (itemInfo && ledgerItemName(itemInfo, item.itemString)) ?? item.itemString;
-    let row = { ...item, name };
+    let row: TradeSkillMasterLedgerItem = { ...item, name, quality: ledgerItemQuality(itemInfo, item.itemString) };
     let size = Buffer.byteLength(JSON.stringify(row));
     // A malformed record/cache can hold a single string larger than the page.
     // Keep its amounts and its place in the list, with a shortened label.
     if (size + 2 > ITEM_PAGE_BYTES) {
       const shorten = (text: string) => text.length > 1024 ? text.slice(0, 1024) + "…" : text;
-      row = { ...item, itemString: shorten(item.itemString), name: shorten(name) };
+      row = { ...row, itemString: shorten(item.itemString), name: shorten(name) };
       size = Buffer.byteLength(JSON.stringify(row));
     }
     const comma = rows.length > 0 ? 1 : 0;
@@ -113,7 +150,13 @@ export class TradeSkillMasterLedgerReader {
   #items?: {
     db: LuaTable;
     key: string;
-    totals: ReturnType<typeof ledgerItemTotals>;
+    totals: ItemTotals;
+  };
+  // The same totals in the order last asked for.
+  #sorted?: {
+    totals: ItemTotals;
+    sort: string;
+    rows: ItemTotals;
   };
   constructor(options: {
     gameRunning?: () => Promise<GameRunning>;
@@ -177,6 +220,10 @@ export class TradeSkillMasterLedgerReader {
 
   ledgerItems(installation: WowInstallation, params: TradeSkillMasterLedgerItemsParams): TradeSkillMasterLedgerItemsPage {
     const { account, exact = false, realm, character, period, offset = 0 } = params;
+    const sort = (TSM_LEDGER_ITEM_SORTS as readonly string[]).includes(params.sort ?? "")
+      ? params.sort!
+      : "volume";
+    const descending = typeof params.descending === "boolean" ? params.descending : sort !== "name";
     const found = accounts(installation);
     const asked = found.find((a) => a.name === account);
     if (found.length === 0 || (exact && !asked)) return { rows: [], nextOffset: null };
@@ -188,7 +235,12 @@ export class TradeSkillMasterLedgerReader {
     if (this.#items?.db !== saved.db || this.#items.key !== key) {
       this.#items = { db: saved.db, key, totals: ledgerItemTotals(saved.db, params, now, exact) };
     }
-    return itemPage(this.#items.totals, saved.itemInfo, Number.isSafeInteger(offset) && offset >= 0 ? offset : 0);
+    const { totals } = this.#items;
+    const sortKey = `${sort}:${descending}`;
+    if (this.#sorted?.totals !== totals || this.#sorted.sort !== sortKey) {
+      this.#sorted = { totals, sort: sortKey, rows: sortItems(totals, saved.itemInfo, sort, descending) };
+    }
+    return itemPage(this.#sorted.rows, saved.itemInfo, Number.isSafeInteger(offset) && offset >= 0 ? offset : 0);
   }
 
   /**

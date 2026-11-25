@@ -807,11 +807,27 @@ export interface TradeSkillMasterLedgerParams {
   period?: TradeSkillMasterLedgerPeriod;
 }
 
+/**
+ * What All items sorts by: `volume` is earned plus spent, the list's usual
+ * order; `name` is the name the list shows.
+ */
+export const TSM_LEDGER_ITEM_SORTS = ["volume", "name", "sold", "earned", "bought", "spent", "net"] as const;
+export type TradeSkillMasterLedgerItemSort = (typeof TSM_LEDGER_ITEM_SORTS)[number];
+
 export interface TradeSkillMasterLedgerItemsParams extends TradeSkillMasterLedgerParams {
   /** Keep the opened selection. Missing named filters produce an empty list. */
   exact?: boolean;
   /** Start of the page, from the preceding page's nextOffset. Defaults to zero. */
   offset?: number;
+  /**
+   * The order of the whole list, applied before paging. Absent: volume.
+   * Ties fall back to volume, highest first, then to the item string. A name
+   * sort compares names in English collation and puts items without a
+   * cached name after the named ones in either direction, by item ID.
+   */
+  sort?: TradeSkillMasterLedgerItemSort;
+  /** Highest (Z) first. Absent: true, except for `name` (A to Z first). */
+  descending?: boolean;
 }
 
 export interface TradeSkillMasterLedgerItemsPage {
@@ -843,10 +859,19 @@ export interface TradeSkillMasterLedgerItem {
   itemString: string;
   /** The cached name, or the item string when no name is available. Oversized strings may be shortened for display. */
   name: string;
+  /** Items sold and bought: quantities summed over the records, as the Dashboard's daily counts sum them. */
+  sold: number;
+  bought: number;
   /** Amounts in copper. */
   earned: number;
   spent: number;
   net: number;
+  /**
+   * WoW's item quality (0 Poor … 8 WoW Token): a battle pet's from its item
+   * string, else the addon's current item cache. Null when unknown (no
+   * cached quality, or the older cache format, which stores none).
+   */
+  quality: number | null;
 }
 /** The Ledger's periods, as the in-game Dashboard offers them; All is the default. */
 export const TSM_LEDGER_PERIODS = ["1D", "1W", "1M", "3M", "6M", "1Y", "2Y", "All"] as const;
