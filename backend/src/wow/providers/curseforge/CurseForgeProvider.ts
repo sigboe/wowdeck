@@ -24,6 +24,8 @@
  * - files[] is ordered stable-first (channel asc, then file id desc) so
  *   the engine's files[0] convention equals upstream's
  *   getLatestFile(Stable).
+ * - Search also asks a punctuated query with its punctuation as spaces
+ *   (searchByQuery).
  */
 
 import type { NetworkClient } from "../../net/network";
@@ -463,22 +465,26 @@ export class CurseForgeProvider extends AddonProvider {
 
   // ---- AddonProvider surface ----
 
+  /**
+   * Deviation from upstream: a query with punctuation is also asked with
+   * its punctuation as spaces, and those answers come first. CurseForge's
+   * searchFilter finds nothing for some exact names ("LibSharedMedia-3.0",
+   * "CallbackHandler-1.0") and only unrelated projects for others
+   * ("LibCustomGlow-1.0"), while the spaced form finds the project
+   * (DEVICE 2026-11-25).
+   */
   override async searchByQuery(query: string, installation: WowInstallation): Promise<AddonSearchResult[]> {
     return this.withAuthReporting(async () => {
-      const response = await this.network.getJson<CfSearchModsResponse>(`${this.baseUrl}/mods/search`, {
-        headers: this.requireHeaders(),
-        trustedHostsForHeaders: CURSEFORGE_TRUSTED_HOSTS,
-        query: {
-          gameId: "1",
-          searchFilter: query,
-          sortField: "1", // Featured (upstream default)
-          sortOrder: "desc",
-          index: "0",
-          gameVersionTypeId: String(gameVersionTypeIdFor(installation.clientType)),
-        },
-      });
+      const spaced = query.replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+      const filters = spaced && spaced !== query.trim() ? [spaced, query] : [query];
+      const answers = await Promise.all(filters.map((filter) => this.searchMods(filter, installation)));
+      const seen = new Set<number>();
       const results: AddonSearchResult[] = [];
-      for (const addon of response?.data ?? []) {
+      for (const addon of answers.flat()) {
+        if (seen.has(addon.id)) {
+          continue;
+        }
+        seen.add(addon.id);
         const files = this.getLatestFiles(addon, installation.clientType);
         if (!files.length) {
           continue;
@@ -490,6 +496,23 @@ export class CurseForgeProvider extends AddonProvider {
       }
       return results;
     });
+  }
+
+  /** One GET /v1/mods/search by name, as upstream's getSearchResults asks it. */
+  private async searchMods(searchFilter: string, installation: WowInstallation): Promise<CfAddon[]> {
+    const response = await this.network.getJson<CfSearchModsResponse>(`${this.baseUrl}/mods/search`, {
+      headers: this.requireHeaders(),
+      trustedHostsForHeaders: CURSEFORGE_TRUSTED_HOSTS,
+      query: {
+        gameId: "1",
+        searchFilter,
+        sortField: "1", // Featured (upstream default)
+        sortOrder: "desc",
+        index: "0",
+        gameVersionTypeId: String(gameVersionTypeIdFor(installation.clientType)),
+      },
+    });
+    return response?.data ?? [];
   }
 
   override async getById(addonId: string, installation: WowInstallation): Promise<AddonSearchResult | undefined> {
