@@ -171,19 +171,29 @@ describe("streaming zip extraction", () => {
 
   test("an addon of many large files extracts without holding it in memory", async () => {
     // 40 entries of about 600 kB compressed took more than 2 GiB with one worker per entry.
-    const files: Record<string, Uint8Array> = { "Foo/Foo.toc": TOC };
+    // node:zlib deflates them in a third of the time fflate's zipSync takes.
+    const entries: RawEntry[] = [{ name: "Foo/Foo.toc", content: TOC }];
     for (let i = 0; i < 40; i++) {
-      files[`Foo/media/texture${i}.blp`] = halfCompressible(1_200_000, i + 1);
+      const content = halfCompressible(1_200_000, i + 1);
+      entries.push({ name: `Foo/media/texture${i}.blp`, content, deflated: deflateRawSync(content) });
     }
-    const { zipPath, dest } = fixture("many-large", zipSync(files));
-    const before = process.resourceUsage().maxRSS;
-    const result = await extractArchive(zipPath, dest);
-    const grownMiB = (process.resourceUsage().maxRSS - before) / 1024;
-    expect(result.fileCount).toBe(41);
-    expect(result.totalBytes).toBe(TOC.length + 40 * 1_200_000);
+    const { zipPath, dest } = fixture("many-large", rawZip(entries));
+    // In a child: the runner's own high-water mark, raised by earlier tests, would hide the growth.
+    const run = Bun.spawnSync([process.execPath, join(import.meta.dir, "helpers/extract-peak.ts"), zipPath, dest]);
+    if (run.exitCode !== 0) {
+      throw new Error(`extract-peak exited ${run.exitCode}: ${run.stderr.toString()}`);
+    }
+    const { grownKiB, fileCount, totalBytes } = JSON.parse(run.stdout.toString()) as {
+      grownKiB: number;
+      fileCount: number;
+      totalBytes: number;
+    };
+    expect(fileCount).toBe(41);
+    expect(totalBytes).toBe(TOC.length + 40 * 1_200_000);
     expect(readFileSync(join(dest, "Foo/media/texture39.blp")).equals(halfCompressible(1_200_000, 40))).toBe(true);
-    expect(grownMiB).toBeLessThan(256);
-  });
+    // The streaming extractor grows by about 22 MiB; the whole-archive unzip by about 1.6 GiB.
+    expect(grownKiB / 1024).toBeLessThan(256);
+  }, 30_000);
 
   for (const stored of [false, true]) {
     test(`entries with a data descriptor read their sizes from the central directory (${stored ? "stored" : "deflated"})`, async () => {
