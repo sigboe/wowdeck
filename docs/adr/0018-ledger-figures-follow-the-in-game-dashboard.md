@@ -35,6 +35,20 @@ The rules this pins down:
   more than 30 days ago, counts only until its last entry. The addon only
   sees the realm it runs on, so a guild with the same name elsewhere never
   keeps it counting.
+- The graph's axes follow the Dashboard's (addon 4.15.9,
+  `LibTSMUI/Source/Components/Display/Graph.lua`). The gold range runs from
+  the lowest balance rounded down to a round step, to a third of a step
+  past the highest, rounded up. Gridlines sit at round amounts and stay at
+  least 32 px apart. Dates come by month, day, weekday or two hours,
+  depending on how much time the plot's width covers, and stay at least
+  92 px apart. The labels use the project's date format, so a day reads
+  "10 Nov" where the game writes "Nov 10".
+- The line is green when the period ends at or above where it started, and
+  red when it ends lower, as in game.
+- On Retail, amounts round as the Dashboard writes them
+  (`LibTSMUtil/Source/UI/Money.lua`). Daily change, Top sale and Top
+  purchase round to whole gold. Every other amount of 1g or more rounds to
+  the silver. Other games show every copper.
 
 Two additions have no in-game equivalent, and the community clients set
 their pattern. The Ledger picks one WoW account at a time, as every

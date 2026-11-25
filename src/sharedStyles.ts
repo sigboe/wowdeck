@@ -212,7 +212,17 @@ export function wowdeckSharedStyleCss(): string {
 .wowdeck-ledger-export { margin-bottom: 8px; }
 .wowdeck-ledger-trend { display: inline-flex; }
 .wowdeck-ledger-trend svg { width: 12px; height: 12px; }
-.wowdeck-ledger-gold > svg { display: block; width: 100%; height: 72px; margin-top: 4px; }
+/* The gold graph as the in-game Dashboard draws it: gold labels in a
+   column as wide as the widest, the plot with its gridlines, and the dates
+   under the plot. Labels sit absolutely at the offsets tsmGoldAxes gives. */
+.wowdeck-ledger-graph { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 4px; margin-top: 4px; }
+.wowdeck-ledger-graph > svg { display: block; width: 100%; overflow: visible; }
+.wowdeck-ledger-yaxis, .wowdeck-ledger-xaxis { position: relative; color: #b8bcbf; font-size: 12px; line-height: 16px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.wowdeck-ledger-yaxis > span { position: absolute; right: 0; }
+.wowdeck-ledger-yaxis > .wowdeck-ledger-axis-sizer { position: static; display: block; height: 0; overflow: hidden; visibility: hidden; }
+.wowdeck-ledger-xaxis { height: 16px; margin-top: 2px; margin-bottom: 4px; }
+.wowdeck-ledger-xaxis > span { position: absolute; top: 0; }
+.wowdeck-ledger-gridline { opacity: .5; }
 .wowdeck-ledger-note { color: #b8bcbf; font-size: 12px; line-height: 16px; }
 /* A modal as wide as the screen: pass the class as ModalRoot's className.
    ModalRoot puts that className on Steam's dialog box, next to the plain

@@ -1909,12 +1909,23 @@ test("the Ledger's figures render under its freshness line: a 2×2 grid, then a 
     resetTsmReads();
     await view.render();
     const trends = [...view.container.querySelectorAll(".wowdeck-ledger-trend")];
+    // Each row's trend stands beside its total and its per-day amount, as in game.
     expect(trends.map((t) => t.getAttribute("aria-label"))).toEqual([
       "Up from the previous period",
       "Up from the previous period",
+      "Up from the previous period",
+      "Up from the previous period",
+      "Down from the previous period",
       "Down from the previous period",
     ]);
-    expect(trends.map((t) => t.getAttribute("data-good"))).toEqual(["true", "false", "false"]);
+    expect(trends.map((t) => t.getAttribute("data-good"))).toEqual([
+      "true",
+      "true",
+      "false",
+      "false",
+      "false",
+      "false",
+    ]);
   } finally {
     ledger = readyLedger;
     await view.close();
@@ -1937,11 +1948,26 @@ test("the Ledger's gold graph sits between the freshness line and the grid as on
     expect(stop.querySelectorAll(".Focusable")).toHaveLength(0);
     const line = graph.querySelector("polyline")!;
     expect(line.getAttribute("points")!.trim().split(/\s+/)).toHaveLength(3);
+    // 100g to 120g ends above its start: green, as the in-game graph colours it.
+    expect(line.getAttribute("stroke")).toBe("#59bf40");
     expect(graph.querySelector("svg")!.getAttribute("aria-label")).toBe(
       "Gold from 15 Jan to now, between 100g and 150g",
     );
+    // The in-game graph's axes: 100g to 150g pads to 100g to 160g with a
+    // gridline every 32 px of the 96 px plot, and two days of 300 px are
+    // labelled by weekday at each midnight.
+    expect(
+      [
+        ...graph.querySelectorAll(".wowdeck-ledger-yaxis > span:not(.wowdeck-ledger-axis-sizer)"),
+      ].map((l) => l.textContent),
+    ).toEqual(["100g", "120g", "140g", "160g"]);
+    expect(graph.querySelectorAll(".wowdeck-ledger-gridline")).toHaveLength(4);
+    const weekday = (day: number) =>
+      new Date(new Date().getFullYear(), 0, day).toLocaleDateString("en-GB", { weekday: "short" });
+    expect(
+      [...graph.querySelectorAll(".wowdeck-ledger-xaxis > span")].map((l) => l.textContent),
+    ).toEqual([weekday(16), weekday(17)]);
     expect([...stop.querySelectorAll(".wowdeck-ledger-line")].map((l) => l.textContent)).toEqual([
-      "15 JanNow",
       "52-week high2,000g",
       "52-week low50g",
       "Daily change-30g",
@@ -1951,18 +1977,59 @@ test("the Ledger's gold graph sits between the freshness line and the grid as on
     expect(text.indexOf("Daily change")).toBeLessThan(text.indexOf("Avg daily sales"));
     // Only Retail records gold in steps of 1,000g, and only there the graph says so.
     expect(text).not.toContain("1,000g");
-    ledger = { ...readyLedger, retail: true };
+    // A period that ends below its start is red.
+    const [a, b, c] = readyLedger.gold!.points;
+    ledger = {
+      ...readyLedger,
+      gold: {
+        ...readyLedger.gold!,
+        points: [c!, b!, a!].map(([, copper], i) => [[a, b, c][i]![0], copper]) as [
+          number,
+          number,
+        ][],
+      },
+    };
+    await view.leave();
+    resetTsmReads();
+    await view.render();
+    expect(
+      view.container.querySelector(".wowdeck-ledger-gold polyline")!.getAttribute("stroke"),
+    ).toBe("#ef806c");
+
+    ledger = {
+      ...readyLedger,
+      retail: true,
+      gold: { ...readyLedger.gold!, high: 20_012_345, dailyChange: -317_000 },
+    };
     await view.leave();
     resetTsmReads();
     await view.render();
     const retail = view.container.querySelector<HTMLElement>(".wowdeck-ledger-gold")!;
+    // Retail rounds as the in-game Dashboard does: the summary to whole gold,
+    // every other amount of 1g or more to the silver.
+    expect([...retail.querySelectorAll(".wowdeck-ledger-line")].map((l) => l.textContent)).toEqual([
+      "52-week high2,001g 23s",
+      "52-week low50g",
+      "Daily change-32g",
+    ]);
+    expect(
+      [...view.container.querySelectorAll(".wowdeck-ledger-grid .wowdeck-ledger-value")].map(
+        (v) => v.textContent,
+      ),
+    ).toEqual(["3.7", "0", "0c", "200g"]);
+    expect(
+      [
+        ...view.container.querySelectorAll(".wowdeck-ledger-flows:not(.wowdeck-ledger-caption)"),
+      ].map((r) => r.textContent),
+    ).toEqual(["Sales1,234g 57s30g 11s", "Expenses200g 1s4g 88s", "Profit1,034g 56s25g 23s"]);
     expect(retail.querySelector(".wowdeck-ledger-note")?.textContent).toBe(
       "Retail records your gold in steps of 1,000g",
     );
     // Inside the graph's one focus stop, under the line.
     expect(retail.closest(".Focusable[tabindex]")!.querySelectorAll(".Focusable")).toHaveLength(0);
 
-    // A first balance logged this minute is one point: a flat line across the graph.
+    // A first balance logged this minute is one point: a flat line across the
+    // graph's bottom, a step of gold under its top gridline.
     const point: [number, number] = [Date.now(), 1_000_000];
     ledger = { ...readyLedger, gold: { ...readyLedger.gold!, points: [point] } };
     await view.leave();
@@ -1970,7 +2037,7 @@ test("the Ledger's gold graph sits between the freshness line and the grid as on
     await view.render();
     expect(
       view.container.querySelector(".wowdeck-ledger-gold polyline")!.getAttribute("points"),
-    ).toBe("0,36 300,36");
+    ).toBe("0,96 300,96");
 
     ledger = { ...readyLedger, gold: null };
     await view.leave();
