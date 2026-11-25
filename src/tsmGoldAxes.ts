@@ -9,7 +9,9 @@
  * range to a round step that fits the plot's height and draws a gridline
  * only where one fits a label's spacing from the last. The time axis picks
  * months, days or two-hour steps from how much time a label's spacing
- * covers, and labels in the project's date format (C10).
+ * covers, and labels in the project's date format (C10). One departure:
+ * a day or less always gets hours (owner, 2026-11-25), where the addon's
+ * rule needs a plot over 552 px wide for them and the QAM's is about 430.
  */
 
 const COPPER_PER_GOLD = 10_000;
@@ -145,12 +147,14 @@ function markLabel(time: number, spacing: number): string {
  * The time axis from `start` to `end` (epoch ms) on a plot `plotWidth` px
  * wide. The time one label's spacing covers picks the marks: the first of
  * each month above 14 days, each midnight above 4 hours, else every two
- * hours. A mark gets a label only more than a label's spacing right of the
- * last one labelled. Local time, as the game shows it.
+ * hours, and every two hours for a day or less whatever the width. A mark
+ * gets a label only more than a label's spacing right of the last one
+ * labelled. Local time, as the game shows it.
  */
 export function goldXAxis(start: number, end: number, plotWidth: number): GoldXTick[] {
   if (!(plotWidth > 0) || !(end > start)) return [];
-  const spacing = (X_LABEL_SPACING / plotWidth) * (end - start);
+  const covered = (X_LABEL_SPACING / plotWidth) * (end - start);
+  const spacing = end - start <= DAY_MS ? Math.min(covered, DAY_MS / 6) : covered;
   const ticks: GoldXTick[] = [];
   let previous = -Infinity;
   for (let at = nextMark(start, spacing); at <= end;) {

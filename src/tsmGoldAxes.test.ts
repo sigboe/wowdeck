@@ -88,6 +88,14 @@ describe("goldXAxis", () => {
     expect(year.every((label) => /^[A-Z][a-z]{2} 2026$/.test(label))).toBe(true);
   });
 
+  test("labels a day in hours even on a plot too narrow for the addon's rule", () => {
+    // The QAM's plot on the Deck (DEVICE 2026-11-25): the addon would show one weekday.
+    const day = goldXAxis(at(10, 24, 12, 2), at(10, 25, 12, 2), 430).map((t) => t.label);
+    expect(day).toEqual(["14:00", "20:00", "02:00", "08:00"]);
+    // Past a day the addon's rule holds.
+    expect(goldXAxis(at(10, 24, 12), at(10, 25, 13), 430).map((t) => t.label)).toEqual(["Wed"]);
+  });
+
   test("keeps the edge labels inside the plot and draws none without a span or a width", () => {
     const ticks = goldXAxis(at(10, 9, 23), at(10, 25, 1), 260);
     expect(ticks[0]!.align).toBe("start");

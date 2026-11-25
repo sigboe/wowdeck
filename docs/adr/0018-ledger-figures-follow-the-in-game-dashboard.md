@@ -41,7 +41,9 @@ The rules this pins down:
   past the highest, rounded up. Gridlines sit at round amounts and stay at
   least 32 px apart. Dates come by month, day, weekday or two hours,
   depending on how much time the plot's width covers, and stay at least
-  92 px apart. The labels use the project's date format, so a day reads
+  92 px apart. A period of a day or less always shows hours. The game's
+  rule shows hours only on a plot wider than 552 px, and the QAM's plot is
+  about 430 px, where a day got one weekday. The labels use the project's date format, so a day reads
   "10 Nov" where the game writes "Nov 10".
 - The line is green when the period ends at or above where it started, and
   red when it ends lower, as in game.
