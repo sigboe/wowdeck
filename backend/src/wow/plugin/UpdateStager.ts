@@ -370,15 +370,18 @@ export class UpdateStager {
     );
   }
 
-  /** Remove our staging files older than a day; a cancelled prompt leaves one behind. */
+  /**
+   * Remove our staging files older than a day; a cancelled prompt leaves
+   * one behind, and an engine stopped mid-download its `.part` file.
+   */
   #sweepStale(current: string): void {
     try {
       for (const name of readdirSync(this.tempDir)) {
-        if (!/^wowdeck-update-.*\.zip$/.test(name)) {
+        if (!/^wowdeck-update-.*\.zip(\.part)?$/.test(name)) {
           continue;
         }
         const path = join(this.tempDir, name);
-        if (path === current) {
+        if (path === current || path === `${current}.part`) {
           continue;
         }
         try {

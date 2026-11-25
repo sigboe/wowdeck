@@ -11,6 +11,7 @@ What's new in each version of WoWDeck Addon Manager. The format follows
 - Low-contrast description and changelog text becomes readable while colours that already work stay unchanged.
 - Manage followed realms no longer flickers while auction data arrives.
 - After you unfollow a realm, focus moves to the next realm in the list instead of Done.
+- Addons with many large files, such as media packs, install and update instead of failing partway with an error.
 
 ## [1.3.0] - 2026-11-22
 

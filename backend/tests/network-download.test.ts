@@ -4,7 +4,7 @@
  * stand on these.
  */
 import { afterAll, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { NetworkClient } from "../src/wow/net/network";
 
@@ -68,7 +68,38 @@ describe("NetworkClient.downloadToFile", () => {
 
       await expect(download).rejects.toThrow();
       expect(existsSync(path)).toBe(false);
+      expect(readdirSync(ROOT).filter((name) => name.startsWith("aborted"))).toEqual([]);
       expect(requests).toBe(1);
+    } finally {
+      server.stop(true);
+    }
+  });
+
+  test("a body sent in pieces lands on disk whole, with no part file left", async () => {
+    mkdirSync(ROOT, { recursive: true });
+    const pieces = Array.from({ length: 20 }, (_, i) => new Uint8Array(50_000).fill(i));
+    const server = Bun.serve({
+      port: 0,
+      fetch: () =>
+        new Response(
+          new ReadableStream({
+            async start(controller) {
+              for (const piece of pieces) {
+                controller.enqueue(piece);
+                await Promise.resolve();
+              }
+              controller.close();
+            },
+          }),
+        ),
+    });
+    try {
+      const path = join(ROOT, "pieces.zip");
+      const bytes = await new NetworkClient().downloadToFile(`http://localhost:${server.port}/z`, path);
+
+      expect(bytes).toBe(1_000_000);
+      expect(readFileSync(path).equals(Buffer.concat(pieces))).toBe(true);
+      expect(readdirSync(ROOT).filter((name) => name.startsWith("pieces"))).toEqual(["pieces.zip"]);
     } finally {
       server.stop(true);
     }

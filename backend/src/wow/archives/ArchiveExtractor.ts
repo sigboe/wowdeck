@@ -3,7 +3,8 @@
  *
  * Replaces WowUp's yauzl/adm-zip usage (AGENTS.md: reimplement with a
  * zip-slip guard). The format comes from the file's first bytes, never its
- * name. Zip is decoded in-process with fflate (MIT). RAR and 7z (WF-09:
+ * name. Zip is decoded in-process with fflate (MIT), one entry at a time
+ * and straight to disk (ZipFile.ts). RAR and 7z (WF-09:
  * addons hosted as a direct link are sometimes packed that way) are
  * unpacked by the host's 7-Zip or unrar, which SteamOS ships; the engine
  * carries no RAR decoder of its own (the UnRAR licence is not GPL-compatible).
@@ -17,11 +18,11 @@
  * - never executes anything from the archive (the host tool only unpacks)
  */
 
-import { unzip } from "fflate";
 import { lstat, open, readdir } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { joinWithin, isSafeArchiveEntryPath, createDirectory, removeDirectory } from "../fs/safe-fs";
 import { InstallError } from "../errors";
+import { readZipEntries, writeZipEntry, ZipFormatError } from "./ZipFile";
 
 export interface ExtractResult {
   /** Top-level directory names created (addon folders); top-level files are not listed. */
@@ -118,33 +119,37 @@ export async function extractArchive(archivePath: string, destinationDir: string
 }
 
 async function extractZipInProcess(zipPath: string, destinationDir: string): Promise<void> {
-  const data = new Uint8Array(await Bun.file(zipPath).arrayBuffer());
-
-  const entries = await new Promise<Map<string, Uint8Array>>((resolve, reject) => {
-    const collected = new Map<string, Uint8Array>();
-    unzip(data, (err, unzipped) => {
-      if (err) {
-        console.error(`[extract] zip is corrupt: ${err.message ?? String(err)}`);
-        reject(new InstallError("The archive is damaged. Try again"));
-        return;
-      }
-      for (const [path, content] of Object.entries(unzipped)) {
-        collected.set(path, content);
-      }
-      resolve(collected);
-    });
-  });
-
-  await createDirectory(destinationDir);
-  for (const [entryPath, content] of entries) {
-    if (entryPath.endsWith("/") || entryPath.endsWith("\\")) {
-      continue;
+  const damaged = (err: unknown): never => {
+    if (!(err instanceof ZipFormatError)) {
+      throw err;
     }
-    if (!isSafeArchiveEntryPath(entryPath)) {
-      console.error(`[extract] unsafe archive entry rejected: ${entryPath.replace(/[^\x20-\x7e]/g, "?")}`);
-      throw new InstallError("The archive contains unsafe files and was rejected");
+    console.error(`[extract] zip is corrupt: ${err.message}`);
+    throw new InstallError("The archive is damaged. Try again");
+  };
+  const fh = await open(zipPath, "r");
+  try {
+    const entries = await readZipEntries(fh).catch(damaged);
+    const files = entries.filter((entry) => !entry.name.endsWith("/") && !entry.name.endsWith("\\"));
+    // Every name is checked before the first file is written.
+    for (const { name } of files) {
+      if (!isSafeArchiveEntryPath(name)) {
+        console.error(`[extract] unsafe archive entry rejected: ${name.replace(/[^\x20-\x7e]/g, "?")}`);
+        throw new InstallError("The archive contains unsafe files and was rejected");
+      }
     }
-    await Bun.write(joinWithin(destinationDir, ...entryPath.replace(/\\/g, "/").split("/")), content);
+    await createDirectory(destinationDir);
+    const directories = new Set<string>();
+    for (const entry of files) {
+      const target = joinWithin(destinationDir, ...entry.name.replace(/\\/g, "/").split("/"));
+      const directory = dirname(target);
+      if (!directories.has(directory)) {
+        await createDirectory(directory);
+        directories.add(directory);
+      }
+      await writeZipEntry(fh, entry, target).catch(damaged);
+    }
+  } finally {
+    await fh.close();
   }
 }
 
