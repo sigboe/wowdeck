@@ -245,12 +245,16 @@ function SteamFocusable({
   className,
   onActivate,
   onButtonDown,
+  onOKActionDescription,
+  actionDescriptionMap,
 }: {
   children?: ReactNode;
   ref?: Ref<HTMLDivElement>;
   className?: string;
   onActivate?: () => void;
   onButtonDown?: (evt: unknown) => void;
+  onOKActionDescription?: string;
+  actionDescriptionMap?: Record<number, string>;
 }) {
   const own = useRef<HTMLDivElement | null>(null);
   const handler = useRef(onButtonDown);
@@ -275,6 +279,10 @@ function SteamFocusable({
       }}
       className={onActivate ? ["Focusable", className].filter(Boolean).join(" ") : className}
       tabIndex={onActivate ? -1 : undefined}
+      onClick={onActivate}
+      data-ok={onOKActionDescription}
+      data-l2={actionDescriptionMap?.[7]}
+      data-r2={actionDescriptionMap?.[8]}
     >
       {children}
     </div>
@@ -293,6 +301,8 @@ function FocusField({
   onGamepadFocus,
   onButtonDown,
   onOKActionDescription,
+  onOptionsButton,
+  onOptionsActionDescription,
   actionDescriptionMap,
 }: {
   children?: ReactNode;
@@ -300,19 +310,26 @@ function FocusField({
   onGamepadFocus?: () => void;
   onButtonDown?: (evt: unknown) => void;
   onOKActionDescription?: string;
+  /** Y, as Steam calls it for the focused node. */
+  onOptionsButton?: () => void;
+  onOptionsActionDescription?: string;
   actionDescriptionMap?: Record<number, string>;
 }) {
   const own = useRef<HTMLDivElement | null>(null);
   const handler = useRef(onButtonDown);
   handler.current = onButtonDown;
+  const options = useRef(onOptionsButton);
+  options.current = onOptionsButton;
   useEffect(() => {
     const el = own.current;
-    const listen = (e: Event) =>
+    const listen = (e: Event) => {
+      if ((e as CustomEvent).detail?.button === 4) options.current?.();
       handler.current?.({
         detail: (e as CustomEvent).detail,
         preventDefault: () => e.preventDefault(),
         stopPropagation: () => e.stopPropagation(),
       });
+    };
     el?.addEventListener("gamepadbutton", listen);
     return () => el?.removeEventListener("gamepadbutton", listen);
   }, []);
@@ -321,6 +338,7 @@ function FocusField({
       className="Focusable"
       tabIndex={-1}
       data-ok={onOKActionDescription}
+      data-y={onOptionsActionDescription}
       data-l2={actionDescriptionMap?.[7]}
       data-r2={actionDescriptionMap?.[8]}
       ref={(el) => {
@@ -345,7 +363,15 @@ mock.module("@decky/ui", () => ({
     NavigateToExternalWeb: (url: string) => webPages.push(url),
   },
   QuickAccessTab: { Decky: 3 },
-  GamepadButton: { TRIGGER_LEFT: 7, TRIGGER_RIGHT: 8, DIR_LEFT: 13, DIR_RIGHT: 14 },
+  GamepadButton: {
+    OPTIONS: 4,
+    TRIGGER_LEFT: 7,
+    TRIGGER_RIGHT: 8,
+    DIR_UP: 9,
+    DIR_DOWN: 10,
+    DIR_LEFT: 13,
+    DIR_RIGHT: 14,
+  },
   Focusable: SteamFocusable,
   // A focusable Field is itself the focus target: its ref, Steam's
   // onGamepadFocus when it takes focus, and its own button presses.
@@ -356,6 +382,8 @@ mock.module("@decky/ui", () => ({
       onGamepadFocus?: () => void;
       onButtonDown?: (evt: unknown) => void;
       onOKActionDescription?: string;
+      onOptionsButton?: () => void;
+      onOptionsActionDescription?: string;
       actionDescriptionMap?: Record<number, string>;
     },
   ) =>
@@ -1551,17 +1579,47 @@ test("All items pages native focus rows and refreshes only the opened filters", 
   const previousItems = fake.answers["tradeskillmaster.ledgerItems"];
   ledger = { ...readyLedger, realm: "Silvermoon", period: "1M", itemCount: 41 };
   const firstPage = [
-    { itemString: "i:2589", name: "Linen Cloth", earned: 300, spent: 200, net: 100 },
-    { itemString: "i:2592", name: "Wool Cloth", earned: 0, spent: 50, net: -50 },
+    {
+      itemString: "i:2589",
+      name: "Linen Cloth",
+      earned: 300,
+      spent: 200,
+      net: 100,
+      sold: 0,
+      bought: 0,
+      quality: null,
+    },
+    {
+      itemString: "i:2592",
+      name: "Wool Cloth",
+      earned: 0,
+      spent: 50,
+      net: -50,
+      sold: 0,
+      bought: 0,
+      quality: null,
+    },
     ...Array.from({ length: 38 }, (_, i) => ({
       itemString: `i:${i + 1}`,
       name: `Item ${i + 1}`,
       earned: 1,
       spent: 0,
       net: 1,
+      sold: 1,
+      bought: 0,
+      quality: null,
     })),
   ];
-  const lastItem = { itemString: "i:4306", name: "Silk Cloth", earned: 1, spent: 0, net: 1 };
+  const lastItem = {
+    itemString: "i:4306",
+    name: "Silk Cloth",
+    earned: 1,
+    spent: 0,
+    net: 1,
+    sold: 0,
+    bought: 0,
+    quality: null,
+  };
   let realmExists = true;
   fake.answers["tradeskillmaster.ledgerItems"] = ({ exact, realm, offset }) => {
     if (!realmExists && exact && realm === "Silvermoon") return { rows: [], nextOffset: null };
@@ -1604,11 +1662,10 @@ test("All items pages native focus rows and refreshes only the opened filters", 
         .slice(0, 3)
         .map((row) => [...row.children].map((cell) => cell.textContent)),
     ).toEqual([
-      ["Item", "Earned", "Spent", "Net"],
-      ["Linen Cloth", "3s", "2s", "1s"],
-      ["Wool Cloth", "–", "50c", "-50c"],
+      ["Item", "Sold", "Earned", "Bought", "Spent", "Net"],
+      ["Linen Cloth", "–", "3s", "–", "2s", "1s"],
+      ["Wool Cloth", "–", "–", "–", "50c", "-50c"],
     ]);
-    expect(columns()[0]!.closest(".Focusable")).toBeNull();
     for (const row of columns().slice(1)) {
       const field = row.closest<HTMLElement>(".Focusable[tabindex]")!;
       await act(async () => field.focus());
@@ -1675,14 +1732,52 @@ test("All items opens an item on Wowhead with A, names unnamed items by ID and p
   fake.answers["tradeskillmaster.ledgerItems"] = ({ offset }) =>
     offset === 40
       ? {
-          rows: [{ itemString: "i:4306", name: "Silk Cloth", earned: 1, spent: 0, net: 1 }],
+          rows: [
+            {
+              itemString: "i:4306",
+              name: "Silk Cloth",
+              earned: 1,
+              spent: 0,
+              net: 1,
+              sold: 0,
+              bought: 0,
+              quality: null,
+            },
+          ],
           nextOffset: null,
         }
       : {
           rows: [
-            { itemString: "i:2589", name: "Linen Cloth", earned: 300, spent: 0, net: 300 },
-            { itemString: "i:286742", name: "i:286742", earned: 0, spent: 70, net: -70 },
-            { itemString: "p:39:1:3", name: "p:39:1:3", earned: 5, spent: 0, net: 5 },
+            {
+              itemString: "i:2589",
+              name: "Linen Cloth",
+              earned: 300,
+              spent: 0,
+              net: 300,
+              sold: 0,
+              bought: 0,
+              quality: null,
+            },
+            {
+              itemString: "i:286742",
+              name: "i:286742",
+              earned: 0,
+              spent: 70,
+              net: -70,
+              sold: 0,
+              bought: 0,
+              quality: null,
+            },
+            {
+              itemString: "p:39:1:3",
+              name: "p:39:1:3",
+              earned: 5,
+              spent: 0,
+              net: 5,
+              sold: 0,
+              bought: 0,
+              quality: null,
+            },
           ],
           nextOffset: 40,
         };
@@ -1767,6 +1862,223 @@ test("All items opens an item on Wowhead with A, names unnamed items by ID and p
   }
 });
 
+/** WCAG contrast of two `#rrggbb` colours. */
+function contrast(a: string, b: string): number {
+  const luminance = (hex: string) =>
+    [1, 3, 5]
+      .map((i) => parseInt(hex.slice(i, i + 2), 16) / 255)
+      .map((v) => (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4))
+      .reduce((y, v, i) => y + v * [0.2126, 0.7152, 0.0722][i]!, 0);
+  const [light, dark] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+  return (light! + 0.05) / (dark! + 0.05);
+}
+const hex = (rgb: string) =>
+  "#" +
+  rgb
+    .match(/\d+/g)!
+    .map((v) => Number(v).toString(16).padStart(2, "0"))
+    .join("");
+
+test("All items sorts by its header: Up, Y and the D-pad reach it, A cycles a column, and Wowhead keeps the sort", async () => {
+  resetTsmView();
+  resetTsmReads();
+  resetLedgerFilters();
+  resetFocusMemory();
+  const previousLedger = ledger;
+  const previousItems = fake.answers["tradeskillmaster.ledgerItems"];
+  ledger = { ...readyLedger, itemCount: 41, wowhead: "classic" };
+  const row = (itemString: string, name: string, quality: number | null) => ({
+    itemString,
+    name,
+    sold: 0,
+    earned: 0,
+    bought: 0,
+    spent: 0,
+    net: 0,
+    quality,
+  });
+  const firstPage = [
+    { ...row("i:2589", "Linen Cloth", 1), sold: 1234, earned: 300, net: 300 },
+    { ...row("i:4306", "Silk Cloth", 0), bought: 2, spent: 50, net: -50 },
+    ...[2, 3, 4, 5, 6, 7, 8].map((quality) => row(`i:${quality}`, `Quality ${quality}`, quality)),
+    row("i:9", "Item 9", null),
+    ...Array.from({ length: 30 }, (_, i) => row(`i:${100 + i}`, `Item ${100 + i}`, 1)),
+  ];
+  fake.answers["tradeskillmaster.ledgerItems"] = ({ offset }) =>
+    offset === 40
+      ? { rows: [row("i:200", "Last", 1)], nextOffset: null }
+      : { rows: firstPage, nextOffset: 40 };
+  const view = await mountDestination(false);
+  const items = () =>
+    [...document.querySelectorAll<HTMLElement>("[data-modal-root] .Focusable[tabindex]")].filter(
+      (r) => r.querySelector(".wowdeck-ledger-items-columns"),
+    );
+  const header = () => [
+    ...document.querySelectorAll<HTMLElement>(".wowdeck-ledger-items-labels .Focusable[tabindex]"),
+  ];
+  const cell = (label: string) => header().find((c) => c.textContent?.startsWith(label))!;
+  const focused = () => document.activeElement;
+  // A on a header cell: it has focus, as Steam sends A to the focused node.
+  const choose = (label: string) =>
+    act(async () => {
+      cell(label).focus();
+      cell(label).click();
+    });
+  const press = (el: HTMLElement, button: number) =>
+    act(async () => {
+      el.dispatchEvent(
+        new window.CustomEvent("gamepadbutton", { detail: { button }, cancelable: true }),
+      );
+    });
+  const { DIR_UP, DIR_DOWN, DIR_LEFT, DIR_RIGHT, OPTIONS, TRIGGER_LEFT, TRIGGER_RIGHT } =
+    GamepadButton as unknown as Record<string, number>;
+  const requests = () => fake.paramsOf("tradeskillmaster.ledgerItems");
+  const lastRequest = () => {
+    // The filters stay as opened; only the page and the sort change.
+    const all = requests();
+    const { offset, sort, descending } = all[all.length - 1]!;
+    return { offset, ...(sort && { sort, descending }) };
+  };
+  const arrows = () => header().map((c) => c.textContent);
+  const opener = () =>
+    [...view.container.querySelectorAll<HTMLElement>(".Focusable[tabindex]")].find(
+      (r) => r.textContent === "All items (41)",
+    )!;
+  const open = async () => {
+    await view.render();
+    await act(async () => {
+      opener().focus();
+      opener().querySelector("b")!.click();
+    });
+    await view.leave();
+  };
+  try {
+    await showLedger(view.container);
+    await open();
+
+    // Six columns: counts beside their amounts, "–" for nothing.
+    const cells = (r: Element) =>
+      [...r.querySelector(".wowdeck-ledger-items-columns")!.children].map((c) => c.textContent);
+    expect(arrows()).toEqual(["Item", "Sold", "Earned", "Bought", "Spent", "Net"]);
+    expect(cells(items()[0]!)).toEqual(["Linen Cloth", "1,234", "3s", "–", "–", "3s"]);
+    expect(cells(items()[1]!)).toEqual(["Silk Cloth", "–", "–", "2", "50c", "-50c"]);
+
+    // Every rarity colour reads on its row (#23262e, DEVICE 2026-11-25); one
+    // that doesn't on Steam's focus highlight (#383a41 measured, #3d4450
+    // documented) turns white with focus. Unknown quality: the usual text.
+    for (const item of items().slice(0, 10)) {
+      const name = item.querySelector<HTMLElement>(".wowdeck-ledger-items-name")!;
+      if (item.textContent?.startsWith("Item 9")) {
+        expect(name.style.color).toBe("");
+        continue;
+      }
+      const colour = hex(name.style.color);
+      expect([colour, contrast(colour, "#23262e") >= 4.5]).toEqual([colour, true]);
+      expect([colour, name.classList.contains("wowdeck-ledger-items-name-focus")]).toEqual([
+        colour,
+        Math.min(contrast(colour, "#383a41"), contrast(colour, "#3d4450")) < 4.5,
+      ]);
+    }
+
+    // Up from the first item reaches the header, on Item while unsorted.
+    expect(focused()).toBe(items()[0]!);
+    expect(header()).toHaveLength(6);
+    await press(items()[0]!, DIR_UP);
+    expect(focused()).toBe(cell("Item"));
+    // Left and Right stop at both ends.
+    await press(cell("Item"), DIR_LEFT);
+    expect(focused()).toBe(cell("Item"));
+    for (let i = 0; i < 6; i++) await press(focused() as HTMLElement, DIR_RIGHT);
+    expect(focused()).toBe(cell("Net"));
+    // Down leads into the list.
+    await press(cell("Net"), DIR_DOWN);
+    expect(focused()).toBe(items()[0]!);
+    // Y on any item jumps to the header; Steam's hint names it Sort.
+    expect(items()[5]!.getAttribute("data-y")).toBe("Sort");
+    await press(items()[5]!, OPTIONS);
+    expect(focused()).toBe(cell("Item"));
+
+    // A cycles a column: highest first, lowest first, off. Focus stays on
+    // the header and the list goes back to page 1.
+    await press(cell("Item"), TRIGGER_RIGHT);
+    expect(lastRequest()).toEqual({ offset: 40 });
+    expect(cell("Earned").getAttribute("data-ok")).toBe("Sort");
+    await choose("Earned");
+    expect(lastRequest()).toEqual({ offset: 0, sort: "earned", descending: true });
+    expect(arrows()).toEqual(["Item", "Sold", "Earned ▼", "Bought", "Spent", "Net"]);
+    expect(focused()).toBe(cell("Earned"));
+    await choose("Earned");
+    expect(lastRequest()).toEqual({ offset: 0, sort: "earned", descending: false });
+    expect(arrows()).toEqual(["Item", "Sold", "Earned ▲", "Bought", "Spent", "Net"]);
+    await choose("Earned");
+    expect(lastRequest()).toEqual({ offset: 0 });
+    expect(arrows()).toEqual(["Item", "Sold", "Earned", "Bought", "Spent", "Net"]);
+    expect(focused()).toBe(cell("Earned"));
+    // Item starts A to Z; another column starts at its own first state.
+    await choose("Item");
+    expect(lastRequest()).toEqual({ offset: 0, sort: "name", descending: false });
+    expect(arrows()[0]).toBe("Item ▲");
+    await choose("Sold");
+    expect(lastRequest()).toEqual({ offset: 0, sort: "sold", descending: true });
+    expect(arrows()).toEqual(["Item", "Sold ▼", "Earned", "Bought", "Spent", "Net"]);
+
+    // Y lands on the sorted column.
+    await press(items()[3]!, OPTIONS);
+    expect(focused()).toBe(cell("Sold"));
+
+    // L2 and R2 page from the header. With Previous page shown, Down goes
+    // there and Up from it comes back.
+    await press(cell("Sold"), TRIGGER_RIGHT);
+    expect(lastRequest()).toEqual({ offset: 40, sort: "sold", descending: true });
+    const previous = () =>
+      [...document.querySelectorAll<HTMLElement>(".Focusable[tabindex]")].find(
+        (r) => r.textContent === "Previous page",
+      )!;
+    await press(cell("Sold"), DIR_DOWN);
+    expect(focused()).toBe(previous());
+    await press(previous(), DIR_UP);
+    expect(focused()).toBe(cell("Sold"));
+    await press(cell("Sold"), TRIGGER_LEFT);
+    expect(lastRequest()).toEqual({ offset: 0, sort: "sold", descending: true });
+
+    // Back from Wowhead, the list comes back sorted, on the same page and item.
+    const openOnWowhead = (item: HTMLElement) =>
+      act(async () => item.querySelector<HTMLElement>(".wowdeck-ledger-items-columns")!.click());
+    await openOnWowhead(items()[1]!);
+    expect(webPages[webPages.length - 1]).toBe("https://www.wowhead.com/classic/item=4306");
+    await open();
+    expect(lastRequest()).toEqual({ offset: 0, sort: "sold", descending: true });
+    expect(arrows()[1]).toBe("Sold ▼");
+    expect(focused()).toBe(items()[1]!);
+    await press(items()[1]!, TRIGGER_RIGHT);
+    await openOnWowhead(items()[0]!);
+    expect(webPages[webPages.length - 1]).toBe("https://www.wowhead.com/classic/item=200");
+    await open();
+    expect(lastRequest()).toEqual({ offset: 40, sort: "sold", descending: true });
+    expect(arrows()[1]).toBe("Sold ▼");
+    expect(focused()).toBe(items()[0]!);
+
+    // B from the header closes the list and returns to All items; the next
+    // open starts in the usual order.
+    await press(items()[0]!, OPTIONS);
+    expect(focused()).toBe(cell("Sold"));
+    await act(async () => cancelModal!());
+    await view.render();
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
+    expect(document.activeElement).toBe(opener());
+    await open();
+    expect(lastRequest()).toEqual({ offset: 0 });
+    expect(arrows()).toEqual(["Item", "Sold", "Earned", "Bought", "Spent", "Net"]);
+  } finally {
+    await act(async () => cancelModal && modalRoot && cancelModal());
+    fake.answers["tradeskillmaster.ledgerItems"] = previousItems;
+    ledger = previousLedger;
+    await view.close();
+    resetFocusMemory();
+    resetTsmReads();
+  }
+});
+
 test("All items opens full width and lands on its first item once a page of more than 40 arrives", async () => {
   resetTsmView();
   resetTsmReads();
@@ -1781,6 +2093,9 @@ test("All items opens full width and lands on its first item once a page of more
     earned: 55 - i,
     spent: 0,
     net: 55 - i,
+    sold: 1,
+    bought: 0,
+    quality: null,
   }));
   // The rows arrive after Steam's dialog has taken focus, as on the Deck
   // with the real item cache.

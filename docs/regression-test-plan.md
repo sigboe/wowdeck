@@ -1403,3 +1403,17 @@ The engine tests check the Wowhead section for every client and version
 in `backend/tests/tsm-wowhead.test.ts`. The frontend tests in
 `src/tsmDestination.test.tsx` check the links, the item names, the
 trigger paging, the coin colours and the table.
+
+### TradeSkillMaster Ledger: sort All items (#323)
+
+| ID | Priority | Result | Steps | Expected |
+| --- | --- | --- | --- | --- |
+| LEDGER-323-1 | P1 | Not run | Open All items with more than 40 items. Press Up from the first item, move along the header with Left and Right, and press A on Earned three times. Press Y on an item further down, then press A on Item. Turn a page with R2 from the header, then press Down and Up | Up reaches the header. Left and Right stop at Item and Net, and Steam rings its bell once there and on Up from the header. Focus stays on Earned after each A. The first A sorts highest first with a down arrow, the second lowest first with an up arrow, and the third returns the usual order with no arrow. Every A shows page 1 scrolled to the top. Y lands on the sorted column. Item sorts A to Z, with unnamed items last. The header stays at the top while the items scroll, and focus never lands under it. Down from the header goes to Previous page, and Up from Previous page comes back |
+| LEDGER-323-2 | P1 | Not run | Sort All items by Sold, press A on an item to open it on Wowhead, go back and press A on All items. Then close the list with B and open it again | The list comes back sorted by Sold, on the same page with focus on that item. After B, the next open is in the usual order |
+| LEDGER-323-3 | P1 | Not run | Open All items with items of several rarities and with the largest amounts the account has. Record the widest row. Focus a rare, an epic and a legendary item | Item, Sold, Earned, Bought, Spent and Net fit the dialog. Every amount stays on one line in gold, silver and copper, and long names wrap instead. Names show their rarity colour and read clearly on the dialog. A poor, rare, epic or legendary name turns white while its row has focus |
+
+The engine tests in `backend/tests/tsm-ledger-rpc.test.ts` check the
+Sold and Bought counts, quality from the item cache and from battle pet
+item strings, and every sort in both directions across pages. The
+frontend tests in `src/tsmDestination.test.tsx` check the header's focus,
+the sort cycle, the Wowhead round trip and each colour's contrast.

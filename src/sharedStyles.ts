@@ -237,11 +237,28 @@ export function wowdeckSharedStyleCss(): string {
 .wowdeck-ledger-items-filters {
   color: ${STEAM.textMuted}; font-size: ${STEAM_FONT.body}; overflow-wrap: anywhere;
 }
+/* Item | Sold | Earned | Bought | Spent | Net. The list measures one set of
+   tracks for the header and its rows (--wowdeck-ledger-items-tracks): Item
+   takes what is left and wraps, the rest fit their widest cell on one line. */
 .wowdeck-ledger-items-columns {
-  display: grid; grid-template-columns: minmax(0, 2fr) repeat(3, minmax(0, 1fr));
-  gap: 12px; width: 100%; overflow-wrap: anywhere; font-variant-numeric: tabular-nums;
+  display: grid;
+  grid-template-columns: var(--wowdeck-ledger-items-tracks, minmax(0, 1fr) repeat(5, max-content));
+  gap: 12px; width: 100%; font-variant-numeric: tabular-nums;
 }
-.wowdeck-ledger-items-columns > :not(:first-child) { text-align: right; }
+.wowdeck-ledger-items-columns > :first-child { min-width: 0; overflow-wrap: anywhere; }
+.wowdeck-ledger-items-columns > :not(:first-child) { text-align: right; white-space: nowrap; }
+/* A rarity colour under 4.5:1 on Steam's focus highlight (#3d4450) turns
+   white on the focused row (spec #323). */
+.gpfocus .wowdeck-ledger-items-name-focus, .Focusable:focus .wowdeck-ledger-items-name-focus { color: ${STEAM.header} !important; }
+/* A column header: a focus stop that sorts, white with dark text when
+   focused as Steam's tab pills are (S15), its text kept clear of the
+   highlight's edges (S27). */
+.wowdeck-ledger-items-sort {
+  padding: 2px 6px; border-radius: 4px; white-space: nowrap; cursor: pointer;
+  transition: background-color .1s ease, color .1s ease;
+}
+.wowdeck-ledger-items-sort.gpfocus { background: ${STEAM.header}; color: ${STEAM.row}; }
+.wowdeck-ledger-items-arrow-room::after { content: " ▼"; visibility: hidden; }
 /* The column labels: the Ledger's caption style, sticky over the list on
    the dialog's own background, inset like the rows' text. */
 .wowdeck-ledger-items-labels {
@@ -251,7 +268,8 @@ export function wowdeckSharedStyleCss(): string {
      list (DEVICE 2026-11-24, #319). -24px sticks them at the scroller's
      edge, as .wowdeck-pane-bar does, and leaves them in place unscrolled. */
   position: sticky; top: -24px; z-index: 1; background: #0e141b;
-  box-sizing: border-box; padding: 0 12px 6px;
+  /* 12 px like the rows' text, less each header cell's own 6 px. */
+  box-sizing: border-box; padding: 0 6px 6px;
 }
 .wowdeck-ledger-items-none { color: ${STEAM.textDisabled}; }
 .wowdeck-glyph-text {
