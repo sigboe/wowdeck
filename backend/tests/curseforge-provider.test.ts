@@ -161,6 +161,21 @@ describe("CurseForge provider", () => {
     expect(recorded.gets[0]).toContain("sortField=1");
   });
 
+  // CurseForge answered "LibCustomGlow-1.0" with ten unrelated projects and
+  // "LibCustomGlow 1 0" with the library alone (2026-11-25, Retail).
+  test("a punctuated name is also asked with spaces, those answers first, each project once", async () => {
+    const glow = cfAddon({ id: 1, name: "LibCustomGlow" });
+    const noise = cfAddon({ id: 2, name: "NutCounter" });
+    const { net, recorded } = fakeNet({
+      search: { "searchFilter=LibCustomGlow-1.0": [noise, glow], "searchFilter=LibCustomGlow+1+0": [glow] },
+    });
+    const provider = new CurseForgeProvider(net, () => key);
+
+    const results = await provider.searchByQuery("LibCustomGlow-1.0", retail);
+    expect(results.map((r) => r.name)).toEqual(["LibCustomGlow", "NutCounter"]);
+    expect(recorded.gets).toHaveLength(2);
+  });
+
   test("labels each game version with the client its type id names", async () => {
     const addon = cfAddon({
       id: 77,
