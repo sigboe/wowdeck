@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { computeWowUpFingerprints, scanWowUpFolder } from "../src/wow/addons/FingerprintScanner";
 import { compareTwoStrings } from "../src/wow/utils/string";
 import { getGameVersion } from "../src/wow/utils/gameversion";
@@ -40,6 +42,44 @@ describe("WowUp fingerprint scanner", () => {
     expect(fpB.fileCount).toBe(2);
     // identical structure, different bytes -> different md5 inputs
     expect(fpA.fingerprint).not.toBe(fpB.fingerprint);
+  });
+
+  test("a file bigger than one read chunk hashes like the whole file", async () => {
+    const dir = "/tmp/opencode/wowdeck-tests/fp-chunks/Chunked";
+    rmSync(dir, { recursive: true, force: true });
+    mkdirSync(dir, { recursive: true });
+    const toc = "## Title: Chunked\nData.lua\n";
+    // not a multiple of any power-of-two chunk size
+    const data = Buffer.alloc(3 * 1024 * 1024 + 12345, "Data[1] = { name = 'entry' }\n");
+    writeFileSync(join(dir, "Chunked.toc"), toc);
+    writeFileSync(join(dir, "Data.lua"), data);
+    const md5 = (bytes: string | Uint8Array) => new Bun.CryptoHasher("md5").update(bytes).digest("hex");
+    const result = await scanWowUpFolder(dir);
+    expect(result.fileCount).toBe(2);
+    expect(result.fingerprint).toBe(md5([md5(toc), md5(data)].sort().join("")));
+  });
+
+  test("large TOC-loaded files are hashed without holding them in memory", () => {
+    // DEVICE 2026-11-25: every scan after an install or update check
+    // jumped the engine from about 110 to 200-340 MiB. Each TOC-loaded
+    // file was read whole to hash it, eight at a time, and read whole
+    // again as text to look for includes only TOCs and XML files have.
+    const dir = "/tmp/opencode/wowdeck-tests/fp-memory/BigData";
+    rmSync(dir, { recursive: true, force: true });
+    mkdirSync(dir, { recursive: true });
+    const names = ["A", "B", "C", "D"].map((n) => `Data${n}.lua`);
+    writeFileSync(join(dir, "BigData.toc"), `## Title: BigData\n${names.join("\n")}\n`);
+    const chunk = Buffer.alloc(24 * 1024 * 1024, "Data[1] = { name = 'entry', value = 1 }\n");
+    for (const name of names) {
+      writeFileSync(join(dir, name), chunk);
+    }
+    const run = Bun.spawnSync([process.execPath, join(import.meta.dir, "helpers/fingerprint-peak.ts"), dir]);
+    expect(run.exitCode).toBe(0);
+    const { grownKiB, fileCount } = JSON.parse(run.stdout.toString()) as { grownKiB: number; fileCount: number };
+    rmSync(dir, { recursive: true, force: true });
+    expect(fileCount).toBe(5);
+    // 96 MiB of files; reading them whole grew the process by more than that
+    expect(grownKiB / 1024).toBeLessThan(32);
   });
 
   test("computeWowUpFingerprints attaches results to folders", async () => {
