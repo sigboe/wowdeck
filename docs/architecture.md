@@ -60,6 +60,12 @@ unchanged. `main.py` answers a few methods itself (`get_status`,
 via `decky.emit`, declared in `BridgeEventMap`. `tools/test_main_bridge.py`
 fails when `main.py`'s methods or events stop matching the contract.
 
+`main.py` is the only writer of the engine's stdin. When stdin closes, the
+plugin process is gone, so the engine exits after giving requests in flight
+two seconds to finish. Otherwise an engine left behind by a reload keeps
+running beside the new one and writes to the same data folder. A stopped
+backend (unload, uninstall) refuses to start another engine.
+
 The plugin connects Decky's adapter (`src/services/backend.ts`) once, when it
 loads. Tests connect the typed fake (`src/testSupport/fakeEngine.ts`), which
 answers each call at once or holds it until the test answers. Stores take

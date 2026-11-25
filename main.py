@@ -137,6 +137,11 @@ class BackendProcess:
         async with self._lock:
             if self.running:
                 return
+            if self._stopping:
+                # Stopped for unload or uninstall: a call that arrives while
+                # Decky tears the plugin down must not start an engine the
+                # plugin no longer supervises. `_main` builds a new backend.
+                raise BackendError("engine_stopped", "Engine stopped")
             now = time.monotonic()
             since_last = now - self._last_start
             if since_last < RESTART_MIN_DELAY:
