@@ -56,6 +56,8 @@ Two additions have no in-game equivalent, and the community clients set
 their pattern. The Ledger picks one WoW account at a time, as every
 reference app does. It lists totals per item as Earned, Spent and Net. Net is
 earned minus spent; the addon reserves "profit" for an item's resale profit.
+Beside them, Sold and Bought count the items sold and bought, summed as the
+Dashboard sums its daily sales and purchases (#323).
 
 The Dashboard shows a top item for sales and expenses and an average of
 daily sales only. The Ledger also shows average daily purchases, counted

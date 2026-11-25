@@ -203,8 +203,9 @@ test("the Ledger reads names from the saved legacy item cache and prefers an exa
   expect(figures.spent).toMatchObject({ total: 5, topItem: "i:4306", topItemName: "Silk Cloth" });
   expect(figures.profit.topItemName).toBe("Linen Cloth");
   expect((await call({}, "tradeskillmaster.ledgerItems")).result.rows).toEqual([
-    { itemString: "i:2589:123", name: "Linen Cloth", earned: 30, spent: 0, net: 30 },
-    { itemString: "i:4306", name: "Silk Cloth", earned: 0, spent: 5, net: -5 },
+    // The legacy cache stores no quality.
+    { itemString: "i:2589:123", name: "Linen Cloth", sold: 2, earned: 30, bought: 0, spent: 0, net: 30, quality: null },
+    { itemString: "i:4306", name: "Silk Cloth", sold: 0, earned: 0, bought: 1, spent: 5, net: -5, quality: null },
   ]);
 
   // Rewriting the same file replaces its names. Flat legacy lists also work.
@@ -230,6 +231,37 @@ test("the Ledger reads top item names from the Deck's modern item cache", async 
   const { figures } = (await call()).result;
   expect(figures.earned).toMatchObject({ total: 30, topItem: "i:2589:123", topItemName: "Linen Cloth" });
   expect(figures.spent).toMatchObject({ total: 5, topItem: "i:2730", topItemName: "Green Hills of Stranglethorn - Page 6" });
+});
+
+test("All items reads each item's quality from the modern item cache, a battle pet's from its item string", async () => {
+  const { write, call } = fixture();
+  const data = readFileSync(new URL("./fixtures/tsm/ledger-item-names-modern.b64", import.meta.url), "utf8");
+  // Prices set the order: one item per quality the capture holds, a variant
+  // of a cached item, a battle pet the cache lacks and an uncached item.
+  const sales = ["i:2589", "i:3041:123", "i:10623", "i:122284", "p:39:1:3", "i:999999"]
+    .map((item, index) => `${item},1,1,${100 - index},Bob,Hero,${NOW},Auction`);
+  write(account("MAIN"), saved({ ...empty, "r@Silvermoon@internalData@csvSales": csv(TRADE, sales) }) + `TSMItemInfoDB = { data = "${data}" }`, NOW);
+  const rows = (await call({}, "tradeskillmaster.ledgerItems")).result.rows;
+  expect(rows.map(({ itemString, name, quality }: { itemString: string; name: string; quality: number | null }) => [itemString, name, quality])).toEqual([
+    ["i:2589", "Linen Cloth", 1],
+    ["i:3041:123", "\"Mage-Eye\" Blunderbuss", 2],
+    ["i:10623", "Winter's Bite", 3],
+    ["i:122284", "WoW Token", 8],
+    ["p:39:1:3", "p:39:1:3", 3],
+    ["i:999999", "i:999999", null],
+  ]);
+});
+
+test("a battle pet's item string wins over its cached quality, and an entry without a name has no quality", async () => {
+  const { write, call } = fixture();
+  const sales = ["p:40:25:2", "i:2589"].map((item, index) => `${item},1,1,${10 - index},Bob,Hero,${NOW},Auction`);
+  const fields = (quality: number) => [0, 0, 0, 0, 0, 0, 0, 0, quality, 0, 0, 0, -1];
+  const cache = deflateRawSync(encode(["p:40:25:2", "Pet", ...fields(4), "i:2589", "", ...fields(3)])).toString("base64");
+  write(account("MAIN"), saved({ ...empty, "r@Silvermoon@internalData@csvSales": csv(TRADE, sales) }) + `TSMItemInfoDB = { data = "${cache}" }`, NOW);
+  expect((await call({}, "tradeskillmaster.ledgerItems")).result.rows).toMatchObject([
+    { itemString: "p:40:25:2", name: "Pet", quality: 2 },
+    { itemString: "i:2589", name: "i:2589", quality: null },
+  ]);
 });
 
 test("the Ledger joins nested legacy lists independently of their chunk boundaries", async () => {
@@ -365,22 +397,59 @@ test("the item RPC shares the summary's filters and counts only bought and sold 
     ]),
   });
   const items = async (params: object = {}) => (await call(params, "tradeskillmaster.ledgerItems")).rows;
-  const row = (itemString: string, earned: number, spent: number) => ({
-    itemString, name: itemString, earned, spent, net: earned - spent,
+  // Sold and Bought count items, not records: a stack of 20 is 20.
+  const row = (itemString: string, earned: number, spent: number, sold: number, bought: number) => ({
+    itemString, name: itemString, sold, earned, bought, spent, net: earned - spent, quality: null,
   });
   expect(await items()).toEqual([
-    row("i:1", 2550, 2000), row("i:9", 1000, 0), row("i:6", 0, 800), row("i:2", 300, 130),
-    row("i:3", 100, 0), row("i:5", 0, 70),
+    row("i:1", 2550, 2000, 22, 10), row("i:9", 1000, 0, 1, 0), row("i:6", 0, 800, 0, 1), row("i:2", 300, 130, 10, 4),
+    row("i:3", 100, 0, 4, 0), row("i:5", 0, 70, 0, 1),
   ]);
   expect((await call()).itemCount).toBe(6);
   const filters = { realm: "Silvermoon", character: "Hero - Silvermoon", period: "1W" };
-  expect(await items(filters)).toEqual([row("i:1", 2000, 2000), row("i:2", 300, 120)]);
+  expect(await items(filters)).toEqual([row("i:1", 2000, 2000, 20, 10), row("i:2", 300, 120, 10, 3)]);
   expect((await call(filters)).itemCount).toBe(2);
-  expect(await items({ account: "ALT" })).toEqual([row("i:7", 5, 0)]);
+  expect(await items({ account: "ALT" })).toEqual([row("i:7", 5, 0, 1, 0)]);
   for (const character of ["warbank", "guild:Guild - Horde - Silvermoon", "Banker - Silvermoon"]) {
     expect(await items({ character })).toEqual([]);
     expect((await call({ character })).itemCount).toBe(0);
   }
+});
+
+test("All items sorts the whole list by any column in either direction, ties by volume then item string", async () => {
+  const { write, call } = fixture();
+  // item: sold, earned, bought, spent, net, volume
+  // A i:10 Bolt: 5, 50, 0, 0, 50, 50; B i:20 apple: 1, 50, 2, 20, 30, 70
+  // C i:30 Cloth: 0, 0, 3, 90, -90, 90; D i:5 (no name): 2, 50, 0, 0, 50, 50
+  // E i:40 (no name): 0, 0, 1, 50, -50, 50; F i:20:1 apple: 1, 50, 0, 0, 50, 50
+  const sale = (item: string, quantity: number, price: number) => `${item},1,${quantity},${price},Bob,Hero,${NOW},Auction`;
+  const letters = new Map([["i:10", "A"], ["i:20", "B"], ["i:30", "C"], ["i:5", "D"], ["i:40", "E"], ["i:20:1", "F"]]);
+  const names = String.raw`TSMItemInfoDB = { names = "Bolt\002apple\002Cloth\002apple", itemStrings = "i:10\002i:20\002i:30\002i:20:1" }`;
+  write(account("MAIN"), saved({
+    ...empty,
+    "r@Silvermoon@internalData@csvSales": csv(TRADE, [sale("i:10", 5, 10), sale("i:20", 1, 50), sale("i:5", 2, 25), sale("i:20:1", 1, 50)]),
+    "r@Silvermoon@internalData@csvBuys": csv(TRADE, [sale("i:20", 2, 10), sale("i:30", 3, 30), sale("i:40", 1, 50)]),
+  }) + names, NOW);
+  const order = async (params: object) =>
+    (await call(params, "tradeskillmaster.ledgerItems")).result.rows.map((row: { itemString: string }) => letters.get(row.itemString)).join("");
+  expect(await order({})).toBe("CBAFED");
+  const expected: Record<string, [string, string]> = {
+    volume: ["CBAFED", "AFEDBC"],
+    sold: ["ADBFCE", "CEBFDA"],
+    earned: ["BAFDCE", "CEBAFD"],
+    bought: ["CBEAFD", "AFDEBC"],
+    spent: ["CEBAFD", "AFDBEC"],
+    net: ["AFDBEC", "CEBAFD"],
+    // Z to A, then A to Z; unnamed items last both ways, by item ID.
+    name: ["CABFDE", "BFACDE"],
+  };
+  for (const [sort, [descending, ascending]] of Object.entries(expected)) {
+    expect([sort, await order({ sort, descending: true })]).toEqual([sort, descending]);
+    expect([sort, await order({ sort, descending: false })]).toEqual([sort, ascending]);
+  }
+  // A column's first state: A to Z for names, highest first for the rest.
+  expect(await order({ sort: "name" })).toBe("BFACDE");
+  expect(await order({ sort: "net" })).toBe("AFDBEC");
 });
 
 test("a four-realm Ledger fits the Python bridge's JSONL limit", async () => {
@@ -414,23 +483,27 @@ test("item pages split by serialized UTF-8 bytes and still reach every row in or
     "r@Silvermoon@internalData@csvSales": csv(TRADE, ids.map((id, index) =>
       `${id},1,1,${ids.length - index},Bob,Hero,${NOW},Auction`)),
   }) + cache, NOW);
-  const read = (offset: number) => call({ account: "MAIN", offset }, "tradeskillmaster.ledgerItems");
-  let offset: number | null = 0;
-  const seen: string[] = [];
-  while (offset !== null) {
-    const { result } = await read(offset);
-    expect(result.rows.length).toBeGreaterThan(0);
-    expect(result.rows.length).toBeLessThan(40);
-    expect(lineBytes()).toBeLessThan(65 * 1024); // 64 KiB rows plus the reply envelope
-    if (offset === 0) {
-      expect(result.rows[0]).toMatchObject({ itemString: ids[0], earned: ids.length, name: "雪".repeat(1024) + "…" });
-      expect(result.rows[1].name).toBe(longName);
+  const pages = async (sort: object) => {
+    let offset: number | null = 0;
+    const seen: string[] = [];
+    while (offset !== null) {
+      const { result } = await call({ account: "MAIN", offset, ...sort }, "tradeskillmaster.ledgerItems");
+      expect(result.rows.length).toBeGreaterThan(0);
+      expect(result.rows.length).toBeLessThan(40);
+      expect(lineBytes()).toBeLessThan(65 * 1024); // 64 KiB rows plus the reply envelope
+      if (offset === 0 && !("sort" in sort)) {
+        expect(result.rows[0]).toMatchObject({ itemString: ids[0], earned: ids.length, name: "雪".repeat(1024) + "…" });
+        expect(result.rows[1].name).toBe(longName);
+      }
+      seen.push(...result.rows.map((row: { itemString: string }) => row.itemString));
+      expect(result.nextOffset).toBe(seen.length < ids.length ? seen.length : null);
+      offset = result.nextOffset;
     }
-    seen.push(...result.rows.map((row: { itemString: string }) => row.itemString));
-    expect(result.nextOffset).toBe(seen.length < ids.length ? seen.length : null);
-    offset = result.nextOffset;
-  }
-  expect(seen).toEqual(ids);
+    return seen;
+  };
+  expect(await pages({})).toEqual(ids);
+  // The sort covers every page, not each page on its own.
+  expect(await pages({ sort: "earned", descending: false })).toEqual([...ids].reverse());
 });
 
 test("a Ledger item refresh keeps the filters that were open", async () => {

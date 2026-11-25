@@ -270,7 +270,9 @@ export function ledgerItemTotals(db: LuaTable, asked: LedgerSelection, nowMs: nu
   return itemKeys(current).map((itemString) => {
     const earned = current.sale.perItem.get(itemString) ?? 0;
     const spent = current.buy.perItem.get(itemString) ?? 0;
-    return { itemString, earned, spent, net: earned - spent };
+    const sold = current.sale.perItemQuantity.get(itemString) ?? 0;
+    const bought = current.buy.perItemQuantity.get(itemString) ?? 0;
+    return { itemString, sold, earned, bought, spent, net: earned - spent };
   }).sort((a, b) => (b.earned + b.spent) - (a.earned + a.spent) || byText(a.itemString, b.itemString));
 }
 
@@ -281,9 +283,11 @@ interface Tally {
   /** The highest price per item. */
   topPrice: number;
   perItem: Map<string, number>;
+  /** Items per item string, summed as `quantity` is. */
+  perItemQuantity: Map<string, number>;
   topItem: string | null;
 }
-const tally = (): Tally => ({ amount: 0, quantity: 0, topPrice: 0, perItem: new Map(), topItem: null });
+const tally = (): Tally => ({ amount: 0, quantity: 0, topPrice: 0, perItem: new Map(), perItemQuantity: new Map(), topItem: null });
 
 function itemKeys({ sale, buy }: { sale: Tally; buy: Tally }): string[] {
   // The list is for item and battle pet strings, including their variants.
@@ -327,6 +331,7 @@ function tradeTallies(
           t.topPrice = Math.max(t.topPrice, price);
           const itemTotal = (t.perItem.get(itemString) ?? 0) + value;
           t.perItem.set(itemString, itemTotal);
+          t.perItemQuantity.set(itemString, (t.perItemQuantity.get(itemString) ?? 0) + quantity);
           // The first item to reach the highest total stays on top, as in game.
           if (t.topItem === null || itemTotal > t.perItem.get(t.topItem)!) t.topItem = itemString;
         } else if (range !== null && time > now - 2 * range && time < now - range) {
