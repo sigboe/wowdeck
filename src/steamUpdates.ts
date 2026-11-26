@@ -15,6 +15,8 @@ export type Summary = { installationId: string; displayName: string; updates: nu
 export interface SteamUpdatesState {
   summary: Summary | null;
   checking: boolean;
+  /** When the last check this session finished; null before one (the game-page box's "Checked …"). */
+  checkedAt: number | null;
 }
 
 export interface SteamUpdatesDeps {
@@ -44,7 +46,11 @@ export interface SteamUpdates {
 
 export function createSteamUpdates(deps: SteamUpdatesDeps): SteamUpdates {
   const { rpc, toast, toastError } = deps;
-  const store = createStore<SteamUpdatesState>({ summary: null, checking: false });
+  const store = createStore<SteamUpdatesState>({
+    summary: null,
+    checking: false,
+    checkedAt: null,
+  });
   let lastCheckAt = 0;
   let inFlight: Promise<void> | null = null;
   const patch = store.patch;
@@ -69,7 +75,7 @@ export function createSteamUpdates(deps: SteamUpdatesDeps): SteamUpdates {
           refresh: true,
           manual: opts.toast,
         });
-        patch({ summary: installations });
+        patch({ summary: installations, checkedAt: deps.now() });
         if (opts.toast) {
           toast("Checked for addon updates", updateSummaryText(installations));
         }

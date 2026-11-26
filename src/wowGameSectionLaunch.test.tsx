@@ -54,22 +54,27 @@ async function showSection(settings: Partial<PluginSettings> = {}) {
     root.render(<WowGameSection appId={42} attachLaunch={() => () => {}} />);
   });
   const addonSection = () => container.querySelector(".wowdeck-game-section")!;
-  const buttons = () => [...addonSection().querySelectorAll("button")].map((b) => b.textContent);
-  const retry = () =>
-    [...addonSection().querySelectorAll("button")].find((button) => button.textContent === "Retry");
+  const all = () => [...addonSection().querySelectorAll<HTMLElement>("[role=button]")];
+  const buttons = () => all().map((b) => b.textContent);
+  const retry = () => all().find((button) => button.textContent === "Retry");
   return { fake, addonSection, buttons, retry };
 }
 
 const setLaunchMenu = (fake: FakeEngine, on: boolean) =>
   saveSetting(settingsStore, fake, { steamLaunchMenu: on });
 
-test("a linked page offers Retry for a failed launch read", async () => {
+const inert = (b: HTMLElement | undefined) => b?.getAttribute("aria-disabled") === "true";
+
+test("a failed launch read gets a box of its own with Retry", async () => {
   const { fake, addonSection, retry } = await showSection();
+  expect(addonSection().querySelectorAll(".wowdeck-page-box")).toHaveLength(1);
   await act(async () => fake.next("launch.state").fail(new Error("bridge disconnected")));
-  expect(addonSection().textContent).toContain("Couldn't check WoW launch status");
-  expect(retry()?.disabled).toBe(false);
+  const boxes = addonSection().querySelectorAll(".wowdeck-page-box");
+  expect(boxes).toHaveLength(2);
+  expect(boxes[1]!.textContent).toContain("Couldn't check WoW launch status");
+  expect(inert(retry())).toBe(false);
   await act(async () => retry()?.click());
-  expect(retry()?.disabled).toBe(true);
+  expect(inert(retry())).toBe(true);
   await act(async () => fake.next("launch.state").resolve({ state: null }));
   expect(retry()).toBeUndefined();
 });
@@ -79,22 +84,24 @@ test("a linked page with no launch state (DroidDeck owns Play) shows no launch l
   await act(async () => fake.next("launch.state").resolve({ state: null }));
   expect(addonSection().textContent).toContain("WoW addons");
   expect(addonSection().textContent).not.toContain("launch");
-  expect(buttons()).toEqual(["Check for updates", "Open"]);
+  expect(buttons()).toEqual(["Check for updates", "My Addons"]);
 });
 
 test("with Choose the WoW version from Play off, the section reads no launch state and shows no launch lines", async () => {
   const { fake, addonSection, buttons } = await showSection({ steamLaunchMenu: false });
   expect(fake.paramsOf("launch.state")).toEqual([]);
   expect(addonSection().textContent).not.toContain("launch");
-  expect(buttons()).toEqual(["Check for updates", "Open"]);
+  expect(buttons()).toEqual(["Check for updates", "My Addons"]);
 
-  // Turning it on with the page open starts the read; off again drops its lines.
+  // Turning it on with the page open starts the read (no line while it
+  // reads); off again drops the launch box.
   await setLaunchMenu(fake, true);
-  expect(addonSection().textContent).toContain("Checking WoW launch status…");
+  expect(fake.paramsOf("launch.state")).toHaveLength(1);
+  expect(addonSection().textContent).not.toContain("launch");
   await act(async () => fake.next("launch.state").fail(new Error("bridge disconnected")));
   expect(buttons()).toContain("Retry");
 
   await setLaunchMenu(fake, false);
   expect(addonSection().textContent).not.toContain("launch");
-  expect(buttons()).toEqual(["Check for updates", "Open"]);
+  expect(buttons()).toEqual(["Check for updates", "My Addons"]);
 });
