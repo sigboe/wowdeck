@@ -48,18 +48,21 @@ const Count = ({ count }: { count: number }) =>
   );
 
 /**
- * The Item cell: a slot for the item's icon, then the name in its rarity
- * colour (unknown keeps the row's text colour). The slot stays empty until
- * the icons have a source, and an empty slot takes no room. The column
- * widths are measured from what the cells hold, so an icon there widens
- * Item by itself.
+ * The slot for the item's icon, left of the name and the figures and as
+ * tall as both lines (owner, PR #318 review). It stays empty until the
+ * icons have a source (#335), and an empty slot takes no room. An icon there
+ * narrows only the empty Item track under the name: the figure columns
+ * keep their widths and stay under their labels.
  */
-function ItemCell({ item }: { item: TradeSkillMasterLedgerItem }) {
+function ItemIcon(_: { item: TradeSkillMasterLedgerItem }): ReactNode {
+  return null;
+}
+
+/** The item's name in its rarity colour; unknown keeps the row's text colour. */
+function ItemName({ item }: { item: TradeSkillMasterLedgerItem }) {
   const colour = itemQualityColour(item.quality);
-  const icon: ReactNode = null;
   return (
     <span className="wowdeck-ledger-items-item">
-      {icon}
       <span
         className={
           colour?.whiteOnFocus
@@ -104,8 +107,9 @@ const HEADER_CELL_PADDING_PX = 6;
 /**
  * Each row is its own Steam Field, so each is its own grid. One set of
  * column widths for the header and every row of the page keeps them
- * aligned: Item takes what is left and wraps; every other column is as wide
- * as its widest cell on one line. Measured from the cells' inline content,
+ * aligned: Item takes what is left (its label above, a row's name on the
+ * line over the figures); every other column is as wide as its widest cell
+ * on one line. Measured from the cells' inline content,
  * which keeps its natural width whatever its column's width.
  */
 function useColumnWidths(table: RefObject<HTMLDivElement | null>, deps: unknown[]) {
@@ -461,26 +465,37 @@ function LedgerItems({
                             onClick: () => openOnWowhead(url, itemString),
                           })}
                         >
+                          {/* The name on a line of its own, then the five
+                              figures in the header's columns: at the pane's
+                              width an Item column beside them was 56 px and
+                              broke names mid-word (DEVICE 2026-11-26,
+                              LEDGER-PILL-3; owner's pick). */}
                           <div
-                            className="wowdeck-ledger-items-columns"
+                            className="wowdeck-ledger-items-row"
                             {...{ [ITEM_ATTRIBUTE]: itemString }}
                           >
-                            <ItemCell item={item} />
-                            <span>
-                              <Count count={sold} />
-                            </span>
-                            <span>
-                              <Amount copper={earned} />
-                            </span>
-                            <span>
-                              <Count count={bought} />
-                            </span>
-                            <span>
-                              <Amount copper={spent} />
-                            </span>
-                            <span>
-                              <Amount copper={net} />
-                            </span>
+                            <ItemIcon item={item} />
+                            <div className="wowdeck-ledger-items-lines">
+                              <ItemName item={item} />
+                              <div className="wowdeck-ledger-items-columns">
+                                <span />
+                                <span>
+                                  <Count count={sold} />
+                                </span>
+                                <span>
+                                  <Amount copper={earned} />
+                                </span>
+                                <span>
+                                  <Count count={bought} />
+                                </span>
+                                <span>
+                                  <Amount copper={spent} />
+                                </span>
+                                <span>
+                                  <Amount copper={net} />
+                                </span>
+                              </div>
+                            </div>
                           </div>
                         </Field>
                       </PanelSectionRow>

@@ -226,7 +226,8 @@ export function wowdeckSharedStyleCss(): string {
 .wowdeck-dashboard-note { color: #b8bcbf; font-size: 12px; line-height: 16px; }
 /* Item | Sold | Earned | Bought | Spent | Net. The list measures one set of
    tracks for the header and its rows (--wowdeck-ledger-items-tracks): Item
-   takes what is left and wraps, the rest fit their widest cell on one line. */
+   takes what is left, the rest fit their widest cell on one line. A row's
+   Item track is empty: its name sits on the line above. */
 .wowdeck-ledger-items-columns {
   display: grid;
   grid-template-columns: var(--wowdeck-ledger-items-tracks, minmax(0, 1fr) repeat(5, max-content));
@@ -272,9 +273,14 @@ export function wowdeckSharedStyleCss(): string {
   color: #b8bcbf; font-size: 12px; line-height: 16px; text-transform: uppercase; letter-spacing: .5px;
   box-sizing: border-box; width: calc(100% + 12px); margin: 0 -6px; padding: 0 0 6px;
 }
-/* The Item cell: the icon slot, then the name, which wraps. */
-.wowdeck-ledger-items-item { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
-.wowdeck-ledger-items-item > .wowdeck-ledger-items-name { min-width: 0; overflow-wrap: anywhere; }
+/* An item row: the icon slot (empty for now, then no room) as tall as the
+   row, beside its two lines. The name, which wraps only between words
+   unless a word is wider than the pane, then the figures under it in the
+   header's columns. */
+.wowdeck-ledger-items-row { display: flex; align-items: stretch; gap: 8px; width: 100%; min-width: 0; }
+.wowdeck-ledger-items-lines { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.wowdeck-ledger-items-item { min-width: 0; }
+.wowdeck-ledger-items-item > .wowdeck-ledger-items-name { overflow-wrap: break-word; }
 .wowdeck-ledger-count { padding-bottom: 4px; }
 .wowdeck-ledger-items-none { color: ${STEAM.textDisabled}; }
 .wowdeck-glyph-text {

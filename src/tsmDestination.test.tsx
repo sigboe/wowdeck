@@ -1702,9 +1702,24 @@ test("the Ledger lists its items in the pane, pages them in native focus rows an
         .map((row) => [...row.children].map((cell) => cell.textContent)),
     ).toEqual([
       ["Item", "Sold", "Earned", "Bought", "Spent", "Net"],
-      ["Linen Cloth", "–", "3s", "–", "2s", "1s"],
-      ["Wool Cloth", "–", "–", "–", "50c", "-50c"],
+      ["", "–", "3s", "–", "2s", "1s"],
+      ["", "–", "–", "–", "50c", "-50c"],
     ]);
+    // A row's name sits on its own line above its figures, whose Item
+    // column stays empty (DEVICE 2026-11-26, LEDGER-PILL-3).
+    expect(
+      columns()
+        .slice(1, 3)
+        .map((row) => [...row.parentElement!.children].map((part) => part.className)),
+    ).toEqual([
+      ["wowdeck-ledger-items-item", "wowdeck-ledger-items-columns"],
+      ["wowdeck-ledger-items-item", "wowdeck-ledger-items-columns"],
+    ]);
+    expect(
+      columns()
+        .slice(1, 3)
+        .map((row) => row.previousElementSibling!.textContent),
+    ).toEqual(["Linen Cloth", "Wool Cloth"]);
     // The column header sticks under the title row, above the rows.
     expect(view.container.querySelector(".wowdeck-ledger-items-head")).not.toBeNull();
     for (const row of columns().slice(1)) {
@@ -1968,14 +1983,19 @@ test("the Ledger sorts by its header: Up, Y and the D-pad reach it, A cycles a c
     await showLedger(view.container);
 
     // Six columns: counts beside their amounts, "–" for nothing.
-    const cells = (r: Element) =>
-      [...r.querySelector(".wowdeck-ledger-items-columns")!.children].map((c) => c.textContent);
+    const cells = (r: Element) => [
+      r.querySelector(".wowdeck-ledger-items-name")!.textContent,
+      ...[...r.querySelector(".wowdeck-ledger-items-columns")!.children]
+        .slice(1)
+        .map((c) => c.textContent),
+    ];
     expect(arrows()).toEqual(["Item", "Sold", "Earned", "Bought", "Spent", "Net"]);
     expect(cells(items()[0]!)).toEqual(["Linen Cloth", "1,234", "3s", "–", "–", "3s"]);
     expect(cells(items()[1]!)).toEqual(["Silk Cloth", "–", "–", "2", "50c", "-50c"]);
-    // The Item cell keeps a slot for the item's icon: empty, and no room taken.
-    const item = items()[0]!.querySelector(".wowdeck-ledger-items-item")!;
-    expect([...item.children].map((c) => c.className)).toEqual(["wowdeck-ledger-items-name"]);
+    // The row keeps a slot for the item's icon beside both lines: empty,
+    // and no room taken.
+    const row = items()[0]!.querySelector(".wowdeck-ledger-items-row")!;
+    expect([...row.children].map((c) => c.className)).toEqual(["wowdeck-ledger-items-lines"]);
 
     // Every rarity colour reads on its row (#23262e, DEVICE 2026-11-25); one
     // that doesn't on Steam's focus highlight (#383a41 measured, #3d4450
