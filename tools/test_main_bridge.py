@@ -21,6 +21,7 @@ import sys
 import tempfile
 import types
 import unittest
+from unittest import mock
 from pathlib import Path
 from typing import Any
 
@@ -314,6 +315,114 @@ class EnsureExecutableTest(unittest.TestCase):
 
     def test_a_missing_binary_is_left_to_the_start_to_report(self) -> None:
         main._ensure_executable("/nonexistent/wowdeck")
+
+# Answers every request line with a null result, as a live engine would.
+FAKE_ENGINE = """#!/usr/bin/env python3
+import json, sys
+for line in sys.stdin:
+    print(json.dumps({"id": json.loads(line)["id"], "result": None}), flush=True)
+"""
+
+
+class StoppedEngineTests(unittest.TestCase):
+    """A stopped backend (plugin unload) never starts another engine."""
+
+    def test_a_request_after_stop_starts_no_engine(self) -> None:
+        async def scenario() -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                binary = os.path.join(tmp, "engine")
+                Path(binary).write_text(FAKE_ENGINE)
+                os.chmod(binary, 0o755)
+                main.decky.DECKY_PLUGIN_RUNTIME_DIR = tmp  # type: ignore[attr-defined]
+                main.decky.DECKY_USER_HOME = tmp  # type: ignore[attr-defined]
+                backend = main.BackendProcess(binary)
+                backend._last_start = -main.RESTART_MIN_DELAY  # no restart pacing in the test
+                self.assertIsNone(await backend.request("system.getStatus"))
+                backend.stop()
+                # A frontend call that arrives while Decky unloads the plugin:
+                # an engine started now would outlive the plugin.
+                backend._last_start = -main.RESTART_MIN_DELAY
+                try:
+                    with self.assertRaises(main.BackendError) as raised:
+                        await backend.request("system.getStatus")
+                    self.assertEqual(raised.exception.code, "engine_stopped")
+                    self.assertFalse(backend.running)
+                finally:
+                    backend.stop()
+
+        asyncio.run(scenario())
+
+
+# A stand-in engine: says "ready" once its signal setup is done, then idles.
+_ENGINE = "import time; print('ready', flush=True); time.sleep(60)"
+_ENGINE_IGNORING_SIGTERM = (
+    "import signal, time; signal.signal(signal.SIGTERM, signal.SIG_IGN); "
+    "print('ready', flush=True); time.sleep(60)"
+)
+
+
+def _kill_quietly(pid: int) -> None:
+    with contextlib.suppress(ProcessLookupError):
+        os.kill(pid, 9)
+
+
+def _has_exited(pid: int) -> bool:
+    """True once `pid` has exited, reaped or not (WNOWAIT leaves it to asyncio)."""
+    try:
+        info = os.waitid(os.P_PID, pid, os.WEXITED | os.WNOHANG | os.WNOWAIT)
+    except ChildProcessError:
+        return True
+    return info is not None
+
+
+class ShutdownTests(unittest.TestCase):
+    """Decky v3.3.1 starves the plugin's event loop once it asks the plugin
+    to stop (decky-loader#975): `_unload` gets no loop turn after its first
+    real suspension, and Decky SIGKILLs the plugin 5 s later (#331). So the
+    shutdown hooks must finish in one step, with the engine already gone.
+    The test drives the coroutine one step without giving the loop a turn,
+    as Decky's starved loop does."""
+
+    def run_hook_in_one_step(self, hook: str, engine: str) -> int:
+        async def scenario() -> tuple[bool, int, Any]:
+            backend = main.BackendProcess("/nonexistent")
+            backend.proc = await asyncio.create_subprocess_exec(
+                sys.executable, "-c", engine,
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+            )
+            pid = backend.proc.pid
+            self.addCleanup(_kill_quietly, pid)
+            assert backend.proc.stdout is not None
+            self.assertEqual(await backend.proc.stdout.readline(), b"ready\n")
+            plugin = main.Plugin()
+            plugin.backend = backend
+            step = getattr(plugin, hook)()
+            try:
+                step.send(None)
+            except StopIteration:
+                finished = True
+            else:
+                finished = False
+                step.close()
+            return finished, pid, backend.proc
+
+        finished, pid, proc_after = asyncio.run(scenario())
+        self.assertTrue(finished, f"{hook} suspended; under Decky it would never resume")
+        self.assertIsNone(proc_after)
+        self.assertTrue(_has_exited(pid), "the engine was still running after the hook")
+        return pid
+
+    def test_unload_stops_the_engine_without_suspending(self) -> None:
+        self.run_hook_in_one_step("_unload", _ENGINE)
+
+    def test_uninstall_stops_the_engine_without_suspending(self) -> None:
+        self.run_hook_in_one_step("_uninstall", _ENGINE)
+
+    def test_an_engine_ignoring_sigterm_is_killed(self) -> None:
+        with mock.patch.object(main, "ENGINE_STOP_TIMEOUT", 0.3):
+            self.run_hook_in_one_step("_unload", _ENGINE_IGNORING_SIGTERM)
+
 
 if __name__ == "__main__":
     unittest.main()

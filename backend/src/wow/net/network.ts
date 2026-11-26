@@ -1,5 +1,6 @@
 /** Fetch-based network client for providers (replaces WowUp's NetworkInterface + DownloadService). */
 
+import { open, rename, rm } from "node:fs/promises";
 import { ProviderError } from "../errors";
 
 export interface RequestOptions {
@@ -207,8 +208,10 @@ export class NetworkClient {
 
   /**
    * Stream a download to a file, reporting progress after every chunk.
-   * Returns the byte count written. Nothing is written unless the whole
-   * body arrived; an abort (`signal`) fails it at once.
+   * Returns the byte count written. The body goes to disk as it arrives
+   * (a `.part` file beside the destination), so a large download is never
+   * held in memory. The destination appears only once the whole body
+   * arrived; an abort (`signal`) fails it at once.
    */
   async downloadToFile(
     url: string,
@@ -220,29 +223,38 @@ export class NetworkClient {
     const length = Number.parseInt(res.headers.get("content-length") ?? "", 10);
     const total = Number.isSafeInteger(length) && length >= 0 ? length : null;
     let received = 0;
-    const chunks: Uint8Array[] = [];
-    if (res.body) {
-      const reader = res.body.getReader();
+    const partPath = `${destinationPath}.part`;
+    const part = await open(partPath, "w");
+    try {
+      const reader = res.body?.getReader();
       try {
         for (;;) {
           if (options.signal?.aborted) {
             throw new NetworkError(`download of ${redactUrl(url)} aborted`, undefined, url);
           }
-          const { done, value } = await reader.read();
-          if (done) break;
-          if (value) {
-            chunks.push(value);
-            received += value.length;
+          const chunk = await reader?.read().catch((err: unknown) => {
+            throw new NetworkError(`download of ${redactUrl(url)} failed: ${String(err)}`, undefined, url);
+          });
+          if (!chunk || chunk.done) break;
+          if (chunk.value) {
+            for (let written = 0; written < chunk.value.length; ) {
+              written += (await part.write(chunk.value, written, chunk.value.length - written)).bytesWritten;
+            }
+            received += chunk.value.length;
             onProgress?.(received, total);
           }
         }
       } catch (err) {
-        void reader.cancel().catch(() => {});
-        if (err instanceof NetworkError) throw err;
-        throw new NetworkError(`download of ${redactUrl(url)} failed: ${String(err)}`, undefined, url);
+        void reader?.cancel().catch(() => {});
+        throw err;
       }
+      await part.close();
+      await rename(partPath, destinationPath);
+    } catch (err) {
+      await part.close().catch(() => {});
+      await rm(partPath, { force: true }).catch(() => {});
+      throw err;
     }
-    await Bun.write(destinationPath, Buffer.concat(chunks.map((c) => Buffer.from(c))));
     return received;
   }
 

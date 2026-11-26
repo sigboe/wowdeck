@@ -118,6 +118,15 @@ the branch down to a few meaningful commits with imperative subjects
 (interactive rebase; one commit is fine for a small PR). Never mention this policy in commit
 messages or PR descriptions — the owner asks for it per PR.
 
+A PR from an outside contributor keeps their commits as they made them:
+squash, reword or re-author them only when the owner says so for that PR.
+Your fixes go on top as separate commits. Credit the PR author in the
+merge commit, even when their commits name only their coding agent: merge
+with `gh pr merge <n> --merge --body` (the T3 merge tool takes no message)
+and end the body with
+`Co-authored-by: <name> <<id>+<login>@users.noreply.github.com>`, where
+`gh api users/<login> --jq .id` gives the id.
+
 After a PR merges into `next`, run `make tidy` (dry run; `APPLY=1`
 removes). Never decide by hand whether a branch is merged. Worktree
 placement and the verdicts: `docs/development.md` "Branches and worktrees".

@@ -4,11 +4,14 @@
  *          wowup-electron/app/file.utils.ts (hashFile/hashString, md5)
  * Commit: 4fdae600d94ad7dd187a6bc93b517e657100b01a
  * Modified: yes — lodash/rxjs/electron-log removed (native equivalents,
- *   bounded concurrency); hashes via Bun.CryptoHasher; paths relative to
- *   the scanned folder.
+ *   bounded concurrency); hashes via Bun.CryptoHasher, a file read in
+ *   chunks rather than whole; only TOC and XML files are read as text for
+ *   includes (upstream reads every file and finds none in the others);
+ *   paths relative to the scanned folder.
  * See docs/wowup-provenance.md.
  */
 
+import { open } from "node:fs/promises";
 import { basename, dirname, extname, join } from "node:path";
 import type { AddonFolder, AddonScanResult } from "../models";
 import { listDirectory } from "../fs/safe-fs";
@@ -55,9 +58,29 @@ const bindingsXmlRegex = /^[^/\\]+[/\\]Bindings\.xml$/i;
 const bindingsXmlIncludesRegex = /<(?:Include|Script)\s+file=["']((?:(?<!\.\.).)+)["']\s*\/>/gi;
 const bindingsXmlCommentsRegex = /<!--.*?-->/gis;
 
+/**
+ * How much of a file one hash read holds. Addon data files run to tens of
+ * MiB (quest databases, voice-over tables) and eight are hashed at a time:
+ * read whole, a scan held them all at once (DEVICE 2026-11-25).
+ */
+const HASH_CHUNK_BYTES = 256 * 1024;
+
 async function md5File(path: string): Promise<string> {
   const hasher = new Bun.CryptoHasher("md5");
-  hasher.update(new Uint8Array(await Bun.file(path).arrayBuffer()));
+  const handle = await open(path, "r");
+  try {
+    const { size } = await handle.stat();
+    const buffer = new Uint8Array(Math.max(1, Math.min(size, HASH_CHUNK_BYTES)));
+    for (;;) {
+      const { bytesRead } = await handle.read(buffer, 0, buffer.length, null);
+      if (bytesRead === 0) {
+        break;
+      }
+      hasher.update(buffer.subarray(0, bytesRead));
+    }
+  } finally {
+    await handle.close();
+  }
   return hasher.digest("hex");
 }
 
@@ -184,6 +207,10 @@ async function processIncludeFile(fileMap: Map<string, string>, matchingFileList
   }
   matchingFileList.push(nativePath);
 
+  // Only TOC and XML files include others; a Lua file is hashed, not read.
+  if (!INCLUDING_EXTENSIONS.has(extname(nativePath))) {
+    return;
+  }
   let input = await Bun.file(nativePath).text();
   input = removeComments(nativePath, input);
 
@@ -202,6 +229,9 @@ async function processIncludeFile(fileMap: Map<string, string>, matchingFileList
     await processIncludeFile(fileMap, matchingFileList, fileName);
   }
 }
+
+/** The extensions `getFileInclusionMatches` finds includes in. */
+const INCLUDING_EXTENSIONS = new Set([".xml", ".toc"]);
 
 function removeComments(fileInfo: string, fileContent: string): string {
   switch (extname(fileInfo)) {

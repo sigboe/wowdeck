@@ -246,6 +246,10 @@ describe("UpdateStager.stage", () => {
     const stale = join(ROOT, "wowdeck-update-0.1.0.zip");
     writeFileSync(stale, pluginZip("0.1.0"));
     utimesSync(stale, new Date(Date.now() - 25 * 60 * 60 * 1000), new Date(Date.now() - 25 * 60 * 60 * 1000));
+    // What an engine stopped mid-download leaves.
+    const stalePart = join(ROOT, "wowdeck-update-0.1.2.zip.part");
+    writeFileSync(stalePart, pluginZip("0.1.2").subarray(0, 100));
+    utimesSync(stalePart, new Date(Date.now() - 25 * 60 * 60 * 1000), new Date(Date.now() - 25 * 60 * 60 * 1000));
     const fresh = join(ROOT, "wowdeck-update-0.1.5.zip");
     writeFileSync(fresh, pluginZip("0.1.5"));
 
@@ -253,6 +257,7 @@ describe("UpdateStager.stage", () => {
     const { stager } = makeStager(() => zip);
     await stager.stage();
     expect(existsSync(stale)).toBe(false);
+    expect(existsSync(stalePart)).toBe(false);
     expect(existsSync(fresh)).toBe(true);
     rmSync(fresh, { force: true });
     rmSync(join(ROOT, "wowdeck-update-0.2.0.zip"), { force: true });
