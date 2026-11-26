@@ -164,8 +164,8 @@ the top of Options with the **Update** button.
 - Updates addons automatically if you turn it on. It is off by default
   and never runs while WoW is running.
 - Shows waiting addon updates on WoW's game page in the Steam library,
-  with Update all, Check for updates and Open buttons. Link the game in
-  Options first.
+  under Play. Update all there shows its progress, and My Addons opens the
+  plugin. Link the game in Options first.
 - Follows a release channel (Stable, Beta or Alpha) per addon on
   CurseForge and WowUp Hub.
 - Imports and exports addon lists in WowUp's export format.
