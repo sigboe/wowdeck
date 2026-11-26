@@ -503,6 +503,60 @@ describe("addon session: list reads", () => {
     expect(session.get().updatingAll).toBeNull();
   });
 
+  test("Update all runs once at a time: a second press, from any view, starts nothing (#252)", async () => {
+    let finish!: (value: { operations: [] }) => void;
+    const { session, fake } = await harness({
+      "addons.list": { addons: [] },
+      "addons.updateAll": () => new Promise((resolve) => (finish = resolve)),
+    });
+    const run = session.actions.updateAll("all");
+    session.updateAllProgress({ done: 1, total: 3, failed: 0, addonName: "Details" });
+    // My Addons' ≡ or this installation's Update all while the band's run goes on.
+    await session.actions.updateAll("installation");
+    await session.actions.updateAll("all");
+    expect(fake.paramsOf("addons.updateAll")).toEqual([{ allInstallations: true }]);
+    expect(session.get().updatingAll).toEqual({
+      scope: "all",
+      progress: { done: 1, total: 3, failed: 0, addonName: "Details" },
+    });
+    finish({ operations: [] });
+    await run;
+    expect(session.get().updatingAll).toBeNull();
+    // Once it has ended, Update all starts again.
+    fake.answers["addons.updateAll"] = { operations: [] };
+    await session.actions.updateAll("installation");
+    expect(fake.paramsOf("addons.updateAll")).toHaveLength(2);
+  });
+
+  test("Update all's progress stays until the update summary has been read again (#252)", async () => {
+    const seen: string[] = [];
+    const log: string[] = [];
+    const fake = createFakeEngine(
+      {
+        "installations.list": { installations: [installation("i1", true)] },
+        "installations.recoveryStatus": engineFailure("not_ready"),
+        "addons.list": { addons: [] },
+        "addons.updateAll": new Error("engine went away"),
+      },
+      {},
+      log,
+    );
+    const session = createAddonSession({
+      rpc: fake.rpc,
+      toast: () => {},
+      toastError: (title) => seen.push(`error ${title}`),
+      autoUpdateOn: () => false,
+      afterUpdateAll: async () => {
+        seen.push(`summary ${session.get().updatingAll?.scope ?? "cleared"}`);
+      },
+    });
+    await session.reloadInstallations();
+    await session.actions.updateAll("all");
+    // A failed run too: its error, then the summary while the bar still shows.
+    expect(seen).toEqual(["error Couldn't update addons", "summary all"]);
+    expect(session.get().updatingAll).toBeNull();
+  });
+
   test("a row stays busy while another action on it runs, past an earlier read", async () => {
     const releases: (() => void)[] = [];
     const h = await harness({

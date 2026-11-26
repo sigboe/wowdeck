@@ -1,4 +1,4 @@
-import { STEAM, STEAM_FONT } from "./steamTheme";
+import { STEAM, STEAM_FONT, STEAM_PAGE_BOX as BOX } from "./steamTheme";
 
 /**
  * Valve's scroll buffer (guide S21): `scroll-margin` from the variables that
@@ -56,6 +56,47 @@ export const QAM_MOTION_CSS = `.wowdeck-pane-slot {
      the collapsed QAM because the slot has no width there. */
   border-left: 1px solid rgba(0, 0, 0, 0.6);
 }`;
+
+/**
+ * The boxes we add to Steam's game page (#252), in Steam's feedback-box
+ * look (STEAM_PAGE_BOX). Each line has a fixed height and the bar sits in
+ * the text column's reserved bottom padding, so the box is one height in
+ * every state. Buttons are Focusables like Steam's own, focused white with
+ * black text; an inert one stays focusable and fades.
+ */
+export const STEAM_PAGE_BOX_CSS = `.wowdeck-page-box {
+  display: flex; flex-direction: row; align-items: center;
+  margin: ${BOX.margin}; padding: ${BOX.padding}; background: ${BOX.background};
+}
+.wowdeck-page-box-text {
+  position: relative; flex: 1 1 auto; min-width: 30%; padding: ${BOX.textPadding};
+  color: ${BOX.text}; font-size: ${STEAM_FONT.body};
+}
+.wowdeck-page-box-line {
+  display: flex; align-items: center; gap: 6px; height: 23px; line-height: 23px;
+  white-space: nowrap; overflow: hidden;
+}
+.wowdeck-page-box-line > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.wowdeck-page-box-line b { font-weight: 700; }
+.wowdeck-page-box-count { color: ${BOX.count}; font-weight: 700; }
+.wowdeck-page-box-detail { color: ${STEAM.textMuted}; }
+.wowdeck-page-box-error { color: ${STEAM.danger}; }
+.wowdeck-page-box-track {
+  position: absolute; left: 10px; right: 30px; bottom: 9px; height: 4px;
+  border-radius: 2px; overflow: hidden; background: rgba(103, 112, 123, 0.35);
+}
+.wowdeck-page-box-fill { height: 100%; background: ${STEAM.primary}; }
+.wowdeck-page-box-button {
+  box-sizing: border-box; flex-shrink: 0; margin: ${BOX.buttonMargin};
+  padding: ${BOX.buttonPadding}; border-radius: ${BOX.buttonRadius};
+  font-size: ${STEAM_FONT.body}; white-space: nowrap; text-align: center;
+  color: ${BOX.text}; background: ${BOX.buttonSecondary}; outline: none;
+  transition: background-color .2s ease-out, color .2s ease-out, opacity .2s ease-out;
+}
+.wowdeck-page-box-primary { background: ${BOX.buttonPrimary}; }
+.wowdeck-page-box-inert { opacity: .45; }
+.wowdeck-page-box-button.gpfocus { background: ${BOX.focusBackground}; color: ${BOX.focusText}; opacity: 1; }
+.wowdeck-page-box-inert.gpfocus { color: ${STEAM.textDisabled}; }`;
 
 /** For modals, which render in another document than the QAM panel. */
 export function wowupModalStyleCss(): string {

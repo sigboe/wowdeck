@@ -581,18 +581,19 @@ page audit clean.
 
 **S34 [PROJECT] MUST** keep anything we add to Steam's own pages invisible
 when it cannot be added safely, and never take Steam's focus. What: the
-"WoW addons" band (BEYOND-05) sits between the hero and the Play block and
-starts unfocused (Play keeps the page's first focus; Up reaches our
-buttons). The band, the tile badge and our Play button show only on linked
+"WoW addons" box (BEYOND-05, #252) sits under Steam's Play bar, where Steam
+puts its own Deck feedback box, in that box's measured look (device-notes
+§8.4h). It starts unfocused (Play keeps the page's first focus; Down
+reaches our buttons) and keeps one height in every state. The box, the tile badge and our Play button show only on linked
 games (GLOSSARY: Linked game) and only while Show in Steam is on. Until the
 settings and the linked games have both loaded, they show nothing.
 Why: it lives on Steam's React internals; a Steam update can move them
 (protondb-decky, which used the same patch, is archived). How:
 `steamGamePage.tsx` patches `/library/app/:appid` like protondb-decky and
-game-glance (renderFunc → `createReactTreePatcher` → splice into
-`appDetailsClasses.InnerContainer` at index 1), every step in a guard that
-logs once and leaves the page as Steam drew it, keyed so a re-render never
-adds a second band. State it needs comes from module scope (the QAM is
+game-glance. In renderFunc's output it finds the context provider whose
+`value` is the page's Play section component, and wraps that component to
+put our section after the Play bar. Every step is in a guard that logs once and leaves the
+page as Steam drew it, keyed so a re-render never adds a second box. State it needs comes from module scope (the QAM is
 closed there). The engine decides which games are linked
 (`linkedGames.get`). `linkedGames.ts` holds its answer, and the engine's
 `linkedGames.changed` event keeps it current. Nothing in `src/` works this

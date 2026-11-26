@@ -24,7 +24,8 @@ mock.module("@decky/api", () => ({
   routerHook: { addPatch: () => ({}), removePatch: () => {} },
 }));
 
-const { LinkedWowGameSection } = await import("./steamGamePage");
+const { LinkedWowGameSection, insertAfterPlayBar, createPlaySectionWrapper } =
+  await import("./steamGamePage");
 const { settingsStore } = await import("./settings");
 const { linkedGamesStore, shownLinkedGames } = await import("./linkedGames");
 
@@ -125,4 +126,55 @@ test("the linked games say who owns Play, from linkedGames.get and linkedGames.c
     }),
   );
   expect(linkedGamesStore.get().playOwner).toBe("wowdeck");
+});
+
+test("the section goes after Steam's Play bar and cloud status, where Steam puts its feedback box", () => {
+  const overview = { appid: 42 };
+  const playBar = { key: null, props: { overview } };
+  const cloud = { key: null, props: { overview } };
+  const feedback = { key: null, props: {} };
+  const tabs = { key: null, props: { className: "tabs" } };
+  const section = { key: "wowdeck-game-section", props: {} };
+  const children: unknown[] = [playBar, cloud, feedback, tabs];
+  expect(insertAfterPlayBar(children, section)).toBe(true);
+  expect(children).toEqual([playBar, cloud, section, feedback, tabs]);
+
+  // A render again replaces it in place, never adds a second.
+  const again = { key: "wowdeck-game-section", props: { again: true } };
+  expect(insertAfterPlayBar(children, again)).toBe(true);
+  expect(children).toEqual([playBar, cloud, again, feedback, tabs]);
+
+  // Children that don't start with the Play bar are left as Steam drew them.
+  const other: unknown[] = [feedback, tabs];
+  expect(insertAfterPlayBar(other, section)).toBe(false);
+  expect(other).toEqual([feedback, tabs]);
+  expect(insertAfterPlayBar(undefined, section)).toBe(false);
+});
+
+test("the Play section wrapper adds the section to Steam's output and keeps one identity per component", () => {
+  const steam = (props: { overview: { appid: number } }) => ({
+    props: {
+      children: [
+        { key: null, props: { overview: props.overview } },
+        { key: null, props: {} },
+      ],
+    },
+  });
+  const added: number[] = [];
+  const wrap = createPlaySectionWrapper((appId) => {
+    added.push(appId);
+    return appId === 42 ? { key: "wowdeck-game-section", props: {} } : null;
+  });
+  const wrapped = wrap(steam);
+  expect(wrap(steam)).toBe(wrapped);
+
+  const page = wrapped({ overview: { appid: 42 } });
+  expect(page.props.children.map((c: { key: unknown }) => c.key)).toEqual([
+    null,
+    "wowdeck-game-section",
+    null,
+  ]);
+  // Another game's page gets nothing.
+  expect(wrapped({ overview: { appid: 7 } }).props.children).toHaveLength(2);
+  expect(added).toEqual([42, 7]);
 });

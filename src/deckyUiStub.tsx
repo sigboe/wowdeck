@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { ReactNode, Ref } from "react";
 
 /**
  * Stand-ins for the Steam controls @decky/ui finds at runtime, for the
@@ -18,7 +18,23 @@ export const deckyUiStub = {
     </section>
   ),
   PanelSectionRow: box,
-  Focusable: box,
+  // Our own Focusable buttons (SteamPageBox): class, role and A as a click.
+  Focusable: ({
+    children,
+    className,
+    role,
+    "aria-disabled": ariaDisabled,
+    onActivate,
+  }: Kids & {
+    className?: string;
+    role?: string;
+    "aria-disabled"?: boolean;
+    onActivate?: () => void;
+  }) => (
+    <div className={className} role={role} aria-disabled={ariaDisabled} onClick={onActivate}>
+      {children}
+    </div>
+  ),
   DialogBody: box,
   ModalRoot: box,
   DialogControlsSection: ({ children }: Kids) => <section>{children}</section>,
@@ -30,8 +46,14 @@ export const deckyUiStub = {
     disabled,
     "aria-label": ariaLabel,
     onClick,
-  }: Kids & { disabled?: boolean; "aria-label"?: string; onClick?: () => void }) => (
-    <button disabled={disabled} aria-label={ariaLabel} onClick={onClick}>
+    ref,
+  }: Kids & {
+    disabled?: boolean;
+    "aria-label"?: string;
+    onClick?: () => void;
+    ref?: Ref<HTMLButtonElement>;
+  }) => (
+    <button ref={ref} disabled={disabled} aria-label={ariaLabel} onClick={onClick}>
       {children}
     </button>
   ),
@@ -108,6 +130,9 @@ export const deckyUiStub = {
   TextField: ({ "aria-label": ariaLabel }: { "aria-label"?: string }) =>
     ariaLabel ? <input aria-label={ariaLabel} /> : null,
   Spinner: () => <span role="progressbar" />,
+  ProgressBar: ({ nProgress }: { nProgress: number }) => (
+    <div role="progressbar" aria-valuenow={nProgress} />
+  ),
   // Steam's ProgressBarWithInfo is itself a Field row: its label and B action.
   ProgressBarWithInfo: ({
     label,

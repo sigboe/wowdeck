@@ -268,3 +268,48 @@ page loaded. B popped back to `/library/app/<id>`, the page behind it.
 to open the QAM again on the item the player opened (S21). Without the
 history object, the player opens the QAM themselves, and entering the
 TradeSkillMaster destination lands on the item once.
+
+## 8.4h Steam's game page: the feedback box and the Play section (2026-11-26)
+
+Measured on the owner's Deck at handheld resolution: 854×534 CSS px at
+device pixel ratio 1.5 (DEVICE, CDP computed styles and stylesheet rules,
+2026-11-26). The reference was Baldur's Gate 3's page, which shows Steam's
+Deck feedback box ("Valve's testing indicates that … is Verified on Steam
+Deck").
+
+The Play section is one container. Its children are the Play bar (80 px,
+padding 16 px 24 px), the Steam Cloud status (30 px), a slot for the
+feedback box and the tabs. A non-Steam game shows no cloud status and no
+feedback box, so on WoW's page the slot is empty and 0 px tall.
+
+| Part | Value |
+| --- | --- |
+| Box | `display: flex`, centred; `margin: 10px 24px`; `padding: 0 10px`; background `rgba(103, 112, 123, 0.2)`; square corners |
+| Text column | `flex-grow: 1`; `min-width: 30%`; `padding: 10px 30px 10px 10px`; 16 px; white; another 10 px under the text |
+| Highlight | `#59bf40`, weight 700 (the "Verified") |
+| Button | `#40afff`; radius 2 px; `padding: 10px 24px`; `margin: 0 5px`; 16 px white text; 43.3 px tall; background and colour ease out over 0.2 s |
+| Button, grey variant | `#67707b` |
+| Button, focused | white background, black text |
+
+The box's CSS module loads with the page and is missing from Decky's class
+map, so our code can't look up its hashed class names at runtime.
+`STEAM_PAGE_BOX` in `src/steamTheme.ts` copies the values.
+
+How the page draws the Play section (Steam client of that date, React
+fibers read over CDP):
+
+- The route's renderFunc returns a context provider whose child is the
+  page. The provider's `value` is the component that draws the Play
+  section, and the page renders it through `useContext`.
+- Between the two sits the page body, a MobX observer class. After its
+  first render it renders from a non-writable `render` on the instance,
+  so a patch on its prototype applies only once. Patching through it left
+  the section out.
+
+`src/steamGamePage.tsx` therefore wraps the provider's `value` (#252).
+
+Stable Steam (the webpack client with Decky 3, on DroidDeck) builds the
+page the same way: the same provider with a function component as its
+`value`, and the same four children in the Play section. With the PR #337
+build the box sat in the same slot at 76 px, and focus moved the same way
+(DEVICE 2026-11-26, CDP and real pad presses through `droiddeckctl`).

@@ -56,3 +56,28 @@ export const descriptionStyle = {
 /** Our Details card gradient, shared with text contrast measurement. */
 export const DETAILS_CARD_COLOURS = ["rgb(37, 40, 46)", "rgb(66, 69, 76)"] as const;
 export const DETAILS_CARD_GRADIENT = `radial-gradient(at left top in srgb, ${DETAILS_CARD_COLOURS[1]}, ${DETAILS_CARD_COLOURS[0]})`;
+
+/**
+ * Steam's feedback box on a Steam game's page ("Valve's testing indicates
+ * that … is Verified on Steam Deck"), measured from its computed styles and
+ * CSS rules on the Deck (DEVICE 2026-11-26, Baldur's Gate 3's page; guide
+ * device-notes §8.4h). The WoW addons box copies it: its class module loads
+ * with the page, so it is not in Decky's class map to borrow at runtime.
+ */
+export const STEAM_PAGE_BOX = {
+  background: "rgba(103, 112, 123, 0.2)",
+  margin: "10px 24px",
+  padding: "0 10px",
+  /** The text column: Steam's padding, plus a row for our bar below it. */
+  textPadding: "10px 30px 20px 10px",
+  text: "#ffffff",
+  /** Steam's "Verified" green, bold. */
+  count: STEAM.positive,
+  buttonPrimary: "#40afff",
+  buttonSecondary: STEAM.textDisabled,
+  buttonPadding: "10px 24px",
+  buttonMargin: "0 5px",
+  buttonRadius: "2px",
+  focusBackground: "#ffffff",
+  focusText: "#000000",
+} as const;
