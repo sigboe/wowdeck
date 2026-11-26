@@ -1214,6 +1214,75 @@ Automated coverage uses the typed fake engine and manual clock in
 `src/tsmSignIn.test.ts` and `src/tsmModule.test.ts`. Real browser authentication
 still needs the owner's credentials.
 
+### TradeSkillMaster Ledger: pill bar and empty states (#311)
+
+| ID | Priority | Result | Steps | Expected |
+| --- | --- | --- | --- | --- |
+| LEDGER-311-1 | P1 | Passed (Deck, 2026-11-24) | Signed in, focus the TradeSkillMaster destination and press Right. Scroll the Auction data rows down and back up | Focus lands on Manage, not on the pills. The title row shows "TradeSkillMaster" on the left and the Auction data and Ledger pills on the right, with Auction data selected. It stays at the top of the pane while the rows scroll under it, and nothing shows above it. Once the rows scroll, a fade shows under it. Going up, the focused row never rests under the title row or its fade |
+| LEDGER-311-2 | P1 | Passed (Deck, 2026-11-24) | Press Up to the pill bar, then Right, Right, Left, Left. Then press L1 and R1 from the bar | Right opens the Ledger. The second Right does nothing. Left returns to Auction data, and Left on it puts focus on the TradeSkillMaster destination row with the QAM still widened. L1 and R1 switch plugin tabs |
+| LEDGER-311-3 | P1 | Passed (Deck, 2026-11-24); Right before the read finishes is unreachable on device | Open the Ledger, go back to the destination list, close and reopen the QAM, then enter the destination again with Right right away | The Ledger is still selected. Focus lands on its first row as soon as the records are read, and never stays on the destination list |
+| LEDGER-311-4 | P1 | Passed (Deck, 2026-11-24); WoW running was simulated by a stand-in `Wow.exe` process | Open the Ledger with WoW closed, then with WoW running. Repeat in an installation without the addon, one where the addon is installed but no character has logged out yet, and one whose file has no records | "Recorded at last logout · …ago", plus "Log out or /reload to include this session" while WoW runs. The empty installations say "Install TradeSkillMaster to start recording" with no recorded line, "Nothing recorded yet" and "No sales, purchases or gold recorded yet". The Export row is disabled and says export arrives in the next update |
+| LEDGER-311-5 | P1 | Partial (Deck, 2026-11-24): source off and on passed; signed out untested | Sign out of TradeSkillMaster and open the Ledger. Then turn the source off and on in Options | The Ledger works signed out, and Auction data offers sign-in. The destination disappears with the source and comes back with it. WoW's saved files are unchanged |
+| LEDGER-311-6 | P2 | Passed (Deck, 2026-11-24) with a synthetic second account | In an installation with two WoW accounts, log out last on the account without TradeSkillMaster records. Then remove the addon folder but keep the other account's file | The Ledger shows the account with records, and its recorded time is that account's last logout. With the addon removed it still shows those records rather than asking to install the addon |
+| LEDGER-311-7 | P2 | Partial (Deck, 2026-11-24): nothing in the Ledger opens a menu; dropdown and Manage menu return focus | Open the Ledger, move to its recorded line, open a dropdown menu or modal elsewhere in the QAM that rebuilds the panel, and return | Focus comes back to the Ledger's recorded line, not to the pill bar |
+
+For automated coverage, `backend/tests/tsm-ledger-rpc.test.ts` drives
+`tradeskillmaster.ledger` against fixture WTF trees, and
+`src/tsmDestination.test.tsx` drives the pill bar, the kept view, entry
+focus and the Ledger's lines with the fake engine.
+
+### TradeSkillMaster Ledger: filters and figures (#312)
+
+| ID | Priority | Result | Steps | Expected |
+| --- | --- | --- | --- | --- |
+| LEDGER-312-1 | P1 | Passed (Deck, 2026-11-24) | Open the Ledger of an account with records and press Right into the pane. Scroll the figures down and back up | Focus lands on the first control: Account with several accounts, else Export. From the top come Account (only with several accounts), the Export ledger row, then Realm, Character and Period, then the recorded line as plain grey text. All of them scroll away with the figures; only the title row stays. Under the recorded line come the gold graph, a grid of Avg daily sales, Avg daily purchases, Top sale and Top purchase, then a table of Sales, Expenses and Profit with Total and Per day columns, each row one focus stop with its top item in grey under it |
+| LEDGER-312-2 | P1 | Partial (Deck, 2026-11-24): picking another Character or Period not tried | From the graph press Up until the pills. Open Realm, Character and Period in turn, move through each list and pick an entry; open one more and press B. Press Left from Period, from Character and from Realm | Up passes the recorded line by, then lands on the filter row, Export, Account when shown, and the pills. Each list opens inside the pane, not as a Steam popup, with the current choice checked. A pick closes it, puts focus back on its button and updates the figures; B closes it the same way. Period lists 1D, 1W, 1M, 3M, 6M, 1Y, 2Y and All. Left moves Period to Character to Realm, and Left on Realm returns to the destination list |
+| LEDGER-312-3 | P1 | Passed (Deck, 2026-11-24) against an independent calculation from the saved file (Classic Era, Soulseeker, All characters and one character, All, 1M and 3M); the in-game Dashboard comparison is untested | Log in on a realm, then log out. In the Ledger pick that realm and compare it with the in-game Dashboard (`/tsm`, Dashboard) seen on that realm, for All characters and for one character, with Period All and 1M | Rounded to the copper, these match the Dashboard: total, per day, top item and trend arrow of Sales and of Expenses; total, per day and trend arrow of Profit; Avg daily sales, Top sale and Top purchase. The Dashboard has no top profit item and no Avg daily purchases, so those have nothing to compare. Mail between your own characters, postage and repair bills never change a total. All realms can differ from the Dashboard, as ADR 0018 explains |
+| LEDGER-312-4 | P2 | Passed (Deck, 2026-11-24) with a synthetic second account, before Export stopped taking focus; Right from Account and Export's text beside Account are untested since | In an installation with two WoW accounts, pick a realm and a character, then switch Account, then quickly pick Account and then Period before the figures change. Press Up and Down between the bar's rows, Right and Left from Account. Close and reopen the QAM | Account sits on the second row, left of Export, and Export's whole text is in view, on two lines if it needs them. Another account resets Realm to All realms and keeps the character only if that account has one with that name and realm. The quick second pick keeps the account picked first. Up and Down move between Account, the filter row and the pill bar; Right on Account stays there, since Export takes no focus; Left on Account returns to the destination list. The filters survive the QAM closing. With one account there is no Account filter and Export has the row to itself |
+| LEDGER-312-5 | P2 | Passed (Deck, 2026-11-24) with a synthetic second account | With characters on two realms, one sharing a name with a character on the other realm, look at Character under All realms and under each realm | Under All realms each character carries its realm ("Hero - Silvermoon"); under one realm only that realm's characters show, by name. A character that only traded, without a gold log, is listed too |
+| LEDGER-312-6 | P2 | See LEDGER-315-1 | Leave the Ledger open on Period 1D while WoW runs, then log out of the character | The figures include the session's sales and purchases |
+
+`backend/tests/tsm-ledger-rpc.test.ts` asserts every figure rule of ADR 0018
+with an injected clock, the filter choices and resets, and the rows the addon
+drops or merges.
+`src/tsmDestination.test.tsx` drives the filters and the figure layout with
+the fake engine.
+
+### TradeSkillMaster Ledger: gold graph (#313)
+
+| ID | Priority | Result | Steps | Expected |
+| --- | --- | --- | --- | --- |
+| LEDGER-313-1 | P1 | Passed. DEVICE, Deck, 2026-11-24. The D-pad moved from the recorded line to Gold to the grid and back. The chart had one focus stop. Rechecked with the axes on 2026-11-25: Down from Period reached Gold, then the grid, and Up came back the same way. | Open the Ledger of an account with gold logs and press Down from the recorded line through the figures, then back up | The gold graph sits between the recorded line and the grid of averages: a line under "Gold" with its axes, then 52-week high, 52-week low and Daily change. The graph is one focus stop, and Down moves on to the grid |
+| LEDGER-313-2 | P1 | Partial. DEVICE, Deck, 2026-11-24. A Forever fixture matched the expected balance steps and all three summary values for All and 1M. The live Dashboard comparison still needs a player login. The rounding note still needs a Retail installation with gold history. | Log in on a realm and log out. In the Ledger pick that realm, then All characters and one character, with Period All and 1M, and compare with the in-game Dashboard's graph and summary on that realm | The line has the Dashboard graph's shape over the same days. 52-week high, 52-week low and Daily change match the Dashboard's 52W HIGH, 52W LOW and DAILY CHANGE. On Retail the line moves in steps of 1,000 g, as the addon records it, and a note under the line says "Retail records your gold in steps of 1,000g". Other games show no note. Connected realms and the region-wide option can make one realm differ, as ADR 0018 explains |
+| LEDGER-313-3 | P2 | Partial. DEVICE, Deck, 2026-11-24. A Forever fixture showed the bank on every test realm and the guild on its own realm. Each selection graphed its own balance and showed zero trading figures. The Retail setup remains to be checked. | On Retail, with a guild a character leads, open Character under All realms and under each realm. Pick Warband bank, then the guild | Character lists the characters, then Warband bank under every realm, then each guild under its own realm. Picking Warband bank or a guild graphs only its gold, and the grid and the Sales, Expenses and Profit panels show zero |
+| LEDGER-313-4 | P2 | Passed on Forever and Classic Era. DEVICE, Deck, 2026-11-24. On Forever, the trading-only character and the empty Warband bank each showed one "No gold history" focus stop before the figures. Classic Era exposed no bank in the engine response. Retail remains to be checked. | Pick a character that traded but never logged gold. On Forever, pick Warband bank before the Warband bank has a logged balance | The graph's place says "No gold history" and is one focus stop; the figures still follow. Warband bank is listed on Forever and Retail even before it logs a balance, never on Classic Era |
+| LEDGER-313-5 | P2 | Passed. DEVICE, Deck, 2026-11-25, Forever and Classic Era, with All, 1Y, 1M, 1W and 1D. The in-game comparison is untested. See `docs/hardware/2026-11-25-ledger-axes/`. Rechecked 1D the same day: hours every six hours (18:00, 00:00, 06:00, 12:00) on both. | Open the Ledger of an account whose gold spans a few weeks. Pick Period All, then 1W and 1D, and compare each with the in-game Dashboard's graph at the same period | Gold amounts sit left of the line on faint gridlines at round amounts, as in game. The plot reaches past the highest balance, and a gridline shows only where it has room: gold from 0g to 4g gets gridlines at 0g, 2g and 4g. Dates sit under the line, picked by how much time 92 px of the plot covers: months above 14 days, days above 2 days, weekdays above 4 hours, else hours. In the QAM's plot of about 430 px that gives days ("10 Nov") over a few weeks, weekdays over a week and months over a year. A day or less always shows hours, every six hours in the QAM ("14:00", "20:00"), though the game shows hours there only on a wider plot. No label overlaps another or runs past the graph's edges |
+| LEDGER-313-6 | P2 | Passed. DEVICE, Deck, 2026-11-25. Every real period was green. Red was seen on a 1M result reversed in memory, since no selection on the Deck loses gold. | Open the Ledger with a period where gold ended higher than it started, then one where it ended lower | The line and the fill under it are green when gold ended at or above its start, and red when it ended lower, the same colour the in-game graph uses for that period |
+| LEDGER-313-7 | P2 | Not run. The Deck has no Retail installation (2026-11-25). | On Retail, open the Ledger of an account with sales and purchases and compare the figures with the in-game Dashboard at the same period | Daily change, Top sale and Top purchase show whole gold. The 52-week high and low and the Sales, Expenses and Profit totals and per-day amounts show no copper from 1g on. Every figure matches the Dashboard's. Classic Era and Forever keep their copper |
+| LEDGER-313-8 | P2 | Passed. DEVICE, Deck, 2026-11-25, Forever 1W and Classic Era 1Y, with Sales at 1,618g 48s 44c uncut. | In the narrow QAM, pick Period 1W on an account with sales and purchases in both this week and last, including a total of 1,000g or more | Sales, Expenses and Profit each show the same trend arrow beside Total and beside Per day, as the in-game Dashboard does. Neither column cuts off its amount |
+
+The Deck ran `f7d2711` from `feat/308-ledger`. The local frontend
+and engine files matched the Deck copies. Their SHA-256 hashes start with
+`295b6146` and `d8d49690`.
+The test used the selected Forever installation and a temporary synthetic
+account there. In the fixture's Silvermoon realm, the All characters
+balance rose from 10,000 to 13,700 copper and the single character's
+balance rose from 1,000 to 3,000 copper. Both periods returned the expected
+52-week high, low and daily change. The test removed the temporary account,
+returned the filters to All, and restored auto-update. The tested build
+stayed installed. The test left the running WoW session alone.
+
+`backend/tests/tsm-ledger-rpc.test.ts` asserts each gold rule against the
+addon with an injected clock: the sum and carry-forward, zero before a log's
+first point, the sampling, the 52-week High and Low, the daily change, the
+balances the addon drops on load, and guilds it stops counting.
+`src/tsmDestination.test.tsx` covers the graph's place, its single focus
+stop, its axes and "No gold history". `src/tsmGoldAxes.test.ts` checks the
+axes against the addon's rules: the padded gold range, gridline spacing,
+the gold label format, and the month, day, weekday and hour dates.
+`src/tsmLedgerMoney.test.ts` checks Retail's rounding, and
+`src/tsmDestination.test.tsx` the line's colour and the rounded figures.
+
 ### Sign-in and key-entry keyboard dismissal
 
 With Steam's keyboard open, complete or cancel TradeSkillMaster sign-in.
@@ -1224,3 +1293,149 @@ the view externally. Each exit closes the keyboard. A rejected key keeps
 entry open for correction. Deterministic tests cover terminal sign-in
 states, key save, explicit close and unmount. Human keyboard verification
 on the Deck remains required.
+
+### TradeSkillMaster Ledger item names (#314)
+
+| ID | Priority | Result | Steps | Expected |
+| --- | --- | --- | --- | --- |
+| LEDGER-314-1 | P1 | Partial. DEVICE, Deck, 2026-11-24, automated D-pad and DOM probes. All three panels showed names and fell back to item strings after cache corruption. A long name wrapped within a 300 px row. The signed-out hardware pass remains open. | Open the Ledger while signed out of TradeSkillMaster. Pick a realm and period with known top items. In a temporary test account, try the same records with a missing or corrupt item cache | Sales, Expenses and Profit show the cached names. Long names wrap within the panel. With no usable cache, the same figures appear with item strings such as `i:2589` |
+
+The RPC tests use three public item names from the Deck's Classic Era
+legacy cache and the original encoded item cache from TSM 4.15.9 on
+Forever. The modern fixture holds 7,569 item metadata rows. It includes
+only the `TSMItemInfoDB.data` literal. The destination test checks the
+names on all three panels.
+
+The Deck test used a temporary Forever account with synthetic trades and
+the real modern item cache. A corrupt cache kept the same earned, spent
+and profit totals. The Deck also returned names from the real Classic Era
+legacy cache through RPC. The frontend and engine hashes start with
+`e07247ed` and `412de91d`. The test removed the temporary account, restored
+auto-update, and left the tested build installed.
+
+### TradeSkillMaster Ledger live freshness (#315)
+
+| ID | Priority | Result | Steps | Expected |
+| --- | --- | --- | --- | --- |
+| LEDGER-315-1 | P1 | Pass. DEVICE, Deck, 2026-11-24. Three fixture saves produced one visible update 330 ms after the last save. The earned total changed from 1g to 4g, the recorded line changed to just now, and focus stayed on the line. In a real Forever session on build `afaa82d`, the owner logged out to character selection. The Ledger showed the logout save's time and the hint "Log out or /reload to include this session". After WoW exited, the hint was gone. | Make a trade with TradeSkillMaster installed. Start a logout countdown outside a rested area, then open the QAM on the Ledger before it finishes. Keep the Ledger open through character selection. Then quit WoW | The recorded time and figures update within a few seconds. The logout or reload hint stays while WoW is at character selection and goes away when WoW closes |
+
+The Deck test used a temporary Forever account and replaced its saved file
+three times while the Ledger stayed open. The frontend and engine hashes
+start with `ae368baf` and `f8d6aef0`. The test removed the fixture, restored
+auto-update, and left the build installed. The engine tests cover storage
+recovery, debounce timing and game start and stop.
+
+In the live session the QAM was closed at the logout save, so that check
+shows the result, not the update arriving. The recorded time on screen, in
+the engine and on the saved file was the same to the millisecond. Exit game
+from the Steam menu closes the QAM within about 4 seconds, so nobody can see
+the hint clear while the Ledger stays open. When the Ledger opened
+again, it showed no hint, and the engine reported the game stopped.
+
+### TradeSkillMaster Ledger all items (#316)
+
+| ID | Priority | Result | Steps | Expected |
+| --- | --- | --- | --- | --- |
+| LEDGER-316-1 | P1 | Passed. DEVICE, Deck, 2026-11-24, commit 19a6993, pad, DOM probes and a focus recorder. Recheck of the two findings from afaa82d. With 55 items for one realm, all characters and period All, the dialog was 806 px wide on the 854 px screen. The list was scrolled to the top, with the filters line at y 114 inside the view. Focus went to "Reading Ledger items…", then 40 ms later to the first item, and never to Close. Earned, Spent and Net stayed on one line in 139 px columns, with no cell overflowing on page 1. Next page showed the other 15 items and focused the first of them. Previous page focused the first item, and B returned focus to All items (55). On a realm with only gold history, All items (0) showed "No items bought or sold for these filters", and B returned to it. The counts for 1D and for a character without trades, the order, and the absence of transfers and fees are from the afaa82d run | Select a realm and period with more than 40 traded items. Press A on All items below Profit. Scroll to Next page and press A. Go back with Previous page, then press B. Repeat with a filter that has no trades | The row counts the items bought or sold for the selected filters. The modal spans the screen inside Steam's modal padding and names the opened filters above the list, in view when it opens. Focus lands on the first item once the items arrive, never on Close. Earned, Spent and Net fit beside the item names. Items are ordered by earned plus spent, highest first. Each item is one focus stop, and turning a page focuses its first item. Transfers and fees are absent. A filter with zero trades shows an empty message. B returns focus to All items |
+
+The RPC tests cover a four-realm fixture with 55,000 items per realm and
+check the JSONL reply against the bridge limit. They also follow pages
+with long UTF-8 names to the end and check that a missing account, realm
+or character leaves the opened scope empty. The destination test checks
+page focus, the frozen filter header after a save and focus on return.
+It also holds the first page until the dialog has taken focus and checks
+that focus moves to the first item, that the dialog carries the
+full-width class, and that re-picking the shown account keeps Realm.
+
+The Deck test used a temporary Forever account with 55 traded items, the
+real modern item cache, and income and expense entries for money
+transfers, postage and repairs. None of those entries appeared in the
+list, and the 55 rows matched the expected order. The frontend and engine
+hashes start with `1758d9d8` and `ece09dac`. The test removed the account,
+restored auto-update, and left the tested build installed.
+
+### TradeSkillMaster Ledger export (#317)
+
+| ID | Priority | Result | Steps | Expected |
+| --- | --- | --- | --- | --- |
+| LEDGER-317-1 | P1 | Passed. DEVICE, Deck, 2026-11-24, commit 19a6993, pad, DOM probes, toast capture and the ZIPs copied back. The Ledger showed realm Ravencrest, character Fixturemain and period 1W. Export read "Choose folder…" and took focus, and Left went to Account. The picker opened in /home/deck/Documents, and Use this folder put focus back on Export. The toast read "Exported TradeSkillMaster records" with "Saved to /home/deck/Documents/TSM_Ravencrest_2026-11-24 (1).zip". That was the second export; the toast for the first arrived after the capture had ended. TSM_Ravencrest_2026-11-24.zip held the six CSVs from Sales to Cancelled, each with a BOM. The four files with items had itemName after itemString, matching the cached names. Every record of the realm was there: 52 sales, 14 buys, 2 income, 3 expense, 2 expired and 1 cancelled, including Zoë's rows outside the shown filters. LibreOffice Calc 26.8 opened all 12 CSVs of the All realms ZIP. Converted to xlsx and back, no cell differed, and Ë, é, ã, Ç, Å and ü were intact. All 950 files under each flavour's WTF hashed the same before and after, and so did the fixture account's file. In an engine-only RPC run on the Deck with HOME pointing to an empty folder, tradeskillmaster.ledgerExportFolder answered HOME/Documents and created it. The owner's Documents folder already existed | Open the Ledger of an account with records on a realm. Pick that realm, a character and a period. Move to Export and press A. In the folder picker, choose Documents. Copy the ZIP to a computer and open each CSV in a spreadsheet | Export reads "Choose folder…" and is a focus stop; Left from it goes to Account when there is one. The picker opens in `~/Documents`, which exists even if it didn't before. Closing the picker returns focus to Export. A toast says "Exported TradeSkillMaster records" with the file's path. The ZIP is `TSM_<realm>_<date>.zip` with six files, `TSM_<realm>_Sales_<date>.csv` through `Cancelled`. Each opens in a spreadsheet with accented letters intact. Files with items have an itemName column after itemString that holds item names. The files hold every record of the realm, whatever the Character and Period filters showed. WoW's saved files are unchanged |
+| LEDGER-317-2 | P2 | Partial. DEVICE, Deck, 2026-11-24, commit 19a6993, pad, DOM probes, toast capture and the ZIPs copied back. All realms wrote TSM_2_Realms_2026-11-24.zip with six files for Aggra (Português) and six for Ravencrest. The entry names carry the UTF-8 flag. A second Ravencrest export in Documents wrote TSM_Ravencrest_2026-11-24 (1).zip. Two All realms exports to a folder on the SD card wrote TSM_2_Realms_2026-11-24.zip and then the same name with (1). After the first of them, the engine's start folder was the SD folder, and a later picker opened there. An export to a read-only folder in Documents toasted "Couldn't export TradeSkillMaster records" with "No permission to write to that folder". The folder stayed empty, hidden files included. The engine logged EACCES on the hidden temporary file. Cancelling with B put focus on Export, wrote no file and showed no toast within 8 s. On Silvermoon, a realm with only gold history, Export read "Nothing to export yet", and Right from Account did not move. The Deck test did not cover an account with no records, or a failure after the temporary file exists, such as a full drive. The RPC tests cover that failure | Pick All realms and export again. Export twice to a folder on an SD card. Then export to a folder on a full or read-only drive, such as a write-protected SD card. Cancel the picker once. Pick a realm that has only gold history | The second export starts in the folder the first one went to. All realms writes `TSM_<N>_Realms_<date>.zip` with six files per realm, and a second export on the same day adds ` (1)` to the name instead of replacing the first, on the SD card too. The failed export toasts "Couldn't export TradeSkillMaster records" with the reason and leaves no file behind, hidden temporary files included. Cancelling writes nothing and shows no toast. With no records, or on a realm with only gold history, Export is disabled, says "Nothing to export yet" and takes no focus |
+
+The RPC tests export a fixture with the recorded item cache into a
+temporary folder and read the ZIP back with the backup ZIP reader. They
+check entry names, the BOM, the itemName column and row counts, for one
+realm and for all realms. They also check that commas leave item names,
+that unsafe realm names become safe file names, and that two realms with
+the same safe name get different files. A realm with only gold history
+has nothing to export, and the engine refuses it. A write failing after
+the first CSV leaves no file, and so does a failed publish, with hard
+links or without. An export never replaces a file, even one created
+while it publishes. It removes the temporary files an interrupted export
+left and no other file. The tests also check the picker's start folder.
+The destination test checks the start folder, the remembered folder, the
+request's realm, both toasts and focus on Export. It also checks that
+Export reads "Exporting…" while it runs and ignores presses until it
+ends, and that the panel logs a start folder the engine can't give.
+
+The Deck test used a temporary Forever account, WDLEDGER317. Ravencrest
+had the 55 traded items and the real modern item cache, with players
+Fixturemain and Zoë, and Aggra (Português) had four records. Silvermoon
+had only a gold log. The frontend and engine hashes start with
+`d18edae0` and `cdc45a3e`. The engine build hashed `669e8430` before patchelf. The test removed
+the account, the exported ZIPs, the read-only folder and the SD card
+folder. It restored auto-update and left the tested build installed.
+The remembered export folder still names the deleted SD card folder,
+because `settings.set` can't write it. The Export picker falls back to
+Documents. Unzip 6.0 on the computer showed the Português entry names
+garbled because it ignores the UTF-8 flag. Python and LibreOffice read
+them correctly.
+
+### TradeSkillMaster Ledger review polish (#319)
+
+| ID | Priority | Result | Steps | Expected |
+| --- | --- | --- | --- | --- |
+| LEDGER-319-1 | P1 | Passed (Deck, 2026-11-24, recheck) | Open the Ledger with records and look at its top. Measure the Realm, Character and Period buttons, then open each menu | Period's button fits inside its segment and the pane, with "All" and its arrow in view. The filter row sits 8 px under the row above it, as the rows sit apart from each other. In every open menu the labels start at the item's left padding and the check mark sits at the item's right edge, clear of the label. The Period menu shows its items whole |
+| LEDGER-319-2 | P1 | Passed (Deck, 2026-11-24) | In Get Addons open Popular, then open its Source and Category menus | The labels start at the item's left padding and the check mark sits at the item's right edge, as in the Ledger's menus |
+| LEDGER-319-3 | P1 | Passed (Deck, 2026-11-24) | Look at every amount in the Ledger and in All items, with a period that has a loss | Each coin is in its own colour: gold yellow, silver grey, copper orange, with lowercase g, s and c. A loss keeps the coin colours behind a red minus sign. All items shows "–" where an item earned or spent nothing |
+| LEDGER-319-4 | P1 | Passed (Deck, 2026-11-24, recheck); battle pets not tried, the installation has none | Open All items on an installation with items. Scroll down, press R2 and L2, then press A on an item. Leave the browser with B, open the QAM and press A on All items | The column labels stay at the top while the items scroll under them. R2 loads the next page and L2 the previous one, and the footer names both while they apply. Items the addon never named show "Item" and their ID. A closes All items and opens the item's Wowhead page for this game in Steam's browser, with the QAM closed. Back in the Ledger, A on All items reopens the list on that page with focus on that item. A battle pet has no A action |
+| LEDGER-319-5 | P2 | Partial (Deck, 2026-11-24): descriptions passed; Export not pressed, no-records state not set up | Open the Ledger with only gold history, then with records for one realm, then All realms. Press A on Export | Without records the Export ledger row says "Nothing to export yet" and its button is disabled and no focus stop. With records the description names the realm shown, or All realms, followed by "every character and period", and A on Export opens the folder picker |
+
+The engine tests check the Wowhead section for every client and version
+in `backend/tests/tsm-wowhead.test.ts`. The frontend tests in
+`src/tsmDestination.test.tsx` check the links, the item names, the
+trigger paging, the coin colours and the table.
+
+### TradeSkillMaster Ledger: sort All items (#323)
+
+| ID | Priority | Result | Steps | Expected |
+| --- | --- | --- | --- | --- |
+| LEDGER-323-1 | P1 | Passed except the bell, which the owner still has to hear. DEVICE, Deck docked, 2026-11-25, recheck at 0f8dfc8 (`docs/hardware/2026-11-25-ledger-323/`). The first run at e96241e found that focusing the header from a scrolled list jumped the list to the top. The fix writes the list's place back in the same task, and no frame showed another position | Open All items with more than 40 items. Press Up from the first item, move along the header with Left and Right, and press A on Earned three times. Press Y on an item further down, then press A on Item. Turn a page with R2 from the header, then press Down and Up | Up reaches the header. Left and Right stop at Item and Net, and Steam rings its bell once there and on Up from the header. Focus stays on Earned after each A. The first A sorts highest first with a down arrow, the second lowest first with an up arrow, and the third returns the usual order with no arrow. Every A shows page 1 scrolled to the top. Y lands on the sorted column. Item sorts A to Z, with unnamed items last. The header stays at the top while the items scroll, and focus never lands under it. Down from the header goes to Previous page, and Up from Previous page comes back |
+| LEDGER-323-2 | P1 | Passed. DEVICE, Deck docked, 2026-11-25, e96241e: Sold ▼ page 2 came back on the same item; after B the next open was in the usual order | Sort All items by Sold, press A on an item to open it on Wowhead, go back and press A on All items. Then close the list with B and open it again | The list comes back sorted by Sold, on the same page with focus on that item. After B, the next open is in the usual order |
+| LEDGER-323-3 | P1 | Passed with limits. DEVICE, Deck docked, 2026-11-25, recheck at 0f8dfc8. Handheld width was simulated at 807 px. Epic, legendary, artifact and heirloom were set in memory, since the Deck has none. Each row paints its own `#23262e` and the focused row `#383a41`. The first run's rare and epic reached only 3.7:1 there and were lightened to 4.53:1 and 4.55:1 | Open All items with items of several rarities and with the largest amounts the account has. Record the widest row. Focus a rare, an epic and a legendary item | Item, Sold, Earned, Bought, Spent and Net fit the dialog. Every amount stays on one line in gold, silver and copper, and long names wrap instead. Names show their rarity colour and read clearly on the dialog. A poor, rare, epic or legendary name turns white while its row has focus |
+
+The engine tests in `backend/tests/tsm-ledger-rpc.test.ts` check the
+Sold and Bought counts, quality from the item cache and from battle pet
+item strings, and every sort in both directions across pages. The
+frontend tests in `src/tsmDestination.test.tsx` check the header's focus,
+the sort cycle, the Wowhead round trip and each colour's contrast.
+
+### TradeSkillMaster Dashboard and Ledger pills (PR #318 review)
+
+The owner asked for the in-game tab names. The figures view became the
+Dashboard, and the All items modal of #316, #319 and #323 became the Ledger
+pill. These cases replace the modal's steps in LEDGER-316-1, LEDGER-319-4
+and LEDGER-323-1 to LEDGER-323-3. Their results above describe the modal.
+
+| ID | Priority | Result | Steps | Expected |
+| --- | --- | --- | --- | --- |
+| LEDGER-PILL-1 | P1 | Passed. DEVICE, Deck docked (QAM page 855 px, pane 507 px, the handheld width), 2026-11-26, 98bc53a (`docs/hardware/2026-11-26-ledger-pills/`). Title and three pills on one line, none cut; Right on Ledger `no change`; Left from Auction data reaches the destination list | Open the TradeSkillMaster destination on the handheld screen and look at the title row. Move along the pills with D-pad Left and Right | The title row reads TradeSkillMaster with three pills on one line: Auction data, Dashboard, Ledger, none cut off. Right on Ledger stops, and Left on Auction data returns to the destination list |
+| LEDGER-PILL-2 | P1 | Passed. DEVICE, Deck docked, 2026-11-26, 83f06a3 (`docs/hardware/2026-11-26-ledger-pills/`, recheck). With realm Normal, switching Dashboard and Ledger twice each way on page 1, then again on Sold ▼ page 2, made no `tradeskillmaster.ledger` or `ledgerItems` call. "Reading Ledger items…" never showed, and the rows were there at once on the same page | Open the Dashboard with records. Pick a realm, then switch to the Ledger and back | The Dashboard shows the filters, the recorded line, the gold graph and the figures, with no Export and no All items row. The Ledger shows the same realm, then Export, the item count and the list. Switching reads nothing again |
+| LEDGER-PILL-3 | P1 | Passed. DEVICE, Deck docked, 2026-11-26, 1c3101a (second recheck). Each name sits on its own line, with its figures under it; no name breaks mid-word, no value is cut and every amount stays on one line. Unsorted, each number label's text ends within 0.01 px of its values and the Item label starts with the names. Sorted by Sold (▼ before the label) and by Item (▲ after it), the labels line up the same and --wowdeck-ledger-items-tracks stays the same. The header sticks under the title row with no gap, and its fade shows only once rows scroll under it | On the Ledger with more than 40 items, at handheld width, look at a page of items. Scroll down with the D-pad | All six columns fit the pane without cutting a value. Each row shows the item's name on a line of its own, broken only between words, with its five figures under their labels. The header's labels line up with the row values. The column header sticks right under the title row with no gap and no row showing between them, and its fade shows only once rows scroll under it |
+| LEDGER-PILL-4 | P1 | Passed. DEVICE, Deck docked, 2026-11-26, 83f06a3 (recheck with the taller rows; first pass 98bc53a). Up reached the header with no scroll. Sold ▼ and R2 to page 2 worked. Compact Shotgun opened `wowhead.com/forever/item=4577/compact-shotgun`. Back in the QAM, Right landed on Compact Shotgun on Sold ▼ page 2, and entering again landed on Export | On the Ledger, press Up from the first item, sort by Sold, press R2, then press A on an item. Leave the browser with B, open the QAM, go to the TradeSkillMaster destination and press Right | Up reaches the header without the list jumping. The sort and the page work as in LEDGER-323-1. Wowhead opens the item. Back in the QAM the Ledger shows, sorted by Sold on page 2, and entering the pane lands on the item opened. Entering again later lands on the first control |
+| LEDGER-PILL-5 | P2 | Passed. DEVICE, Deck docked, 2026-11-26, 98bc53a. Y at scrollTop 598 landed on "SOLD ▼" with the list held at 598; Left went to Item, then to the destination list | On the Ledger, focus an item far down the page, then press Y and Left along the header to Item, then Left again | Y lands on the sorted column without the list jumping. Left on Item returns to the destination list, as Left does from any other Ledger row |
+| LEDGER-PILL-6 | P1 | Passed. DEVICE, Deck docked, 2026-11-26, ade0e08 (`docs/hardware/2026-11-26-ledger-pills/`, "Wowhead back"). B in Wowhead opened the QAM on Get Addons, widened, focus on the item, page 2, Sold ▼, 0.6 to 0.8 s after Steam's back (five round trips). Right from the destination then gave Export. After the Steam button and Home the QAM stayed closed; reopening landed collapsed on the nav bar, and TradeSkillMaster, Right gave the item once. L1/R1 and B normal afterwards. One B in six never left the browser (no history POP) | On the Ledger, sorted by Sold on page 2, press A on an item. In the browser, press B. Then open an item again and leave the browser with the Steam button and Home instead | B opens the QAM again on Get Addons, widened, with focus on the item opened, on page 2 sorted by Sold. After Home the QAM stays closed; the next visit lands collapsed, and entering the TradeSkillMaster destination lands on the item once |
+
+`src/tsmDestination.test.tsx` checks the three pills, Export only on the
+Ledger, the shared empty states, the page kept across views, the Wowhead
+round trip landing once, the sort kept across views and filters, and the
+header's fade.
