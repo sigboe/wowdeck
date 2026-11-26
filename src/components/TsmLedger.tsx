@@ -27,7 +27,7 @@ import { openPanel } from "../openPanel";
 import { mainWindowHistory, watchExternalWebLeave } from "../steamDom/externalWebReturn";
 import { descriptionStyle } from "../steamTheme";
 import { ledgerParams } from "../tsmLedgerFilters";
-import { useTsmLedgerItems } from "../tsmReads";
+import { useTsmItemIcons, useTsmLedgerItems } from "../tsmReads";
 import { tsmView } from "../tsmView";
 import { ledgerItemLabel, wowheadItemUrl } from "../tsmWowhead";
 import { Money } from "./Money";
@@ -51,15 +51,54 @@ const Count = ({ count }: { count: number }) =>
     <span>{count.toLocaleString("en-US")}</span>
   );
 
+/** The icon's side in CSS px: the name and the figures line beside it. */
+const ICON_PX = 36;
+
 /**
- * The slot for the item's icon, left of the name and the figures and as
- * tall as both lines (owner, PR #318 review). It stays empty until the
- * icons have a source (#335), and an empty slot takes no room. An icon there
- * narrows only the empty Item track under the name: the figure columns
- * keep their widths and stay under their labels.
+ * The page's icons, read from the game's files (#335): the textures of its
+ * rows, decoded at the slot's size in device pixels. `slots` says whether
+ * the rows hold room for an icon: while icons load, and once any row has
+ * one, so names line up and nothing moves when they arrive. An install
+ * without Battle.net's storage answers none, and the room goes.
  */
-function ItemIcon(_: { item: TradeSkillMasterLedgerItem }): ReactNode {
-  return null;
+function usePageIcons(
+  rows: readonly TradeSkillMasterLedgerItem[] | undefined,
+  params: TradeSkillMasterLedgerItemsParams,
+) {
+  const textures = [
+    ...new Set(
+      (rows ?? []).flatMap((row) => (typeof row.texture === "number" ? [row.texture] : [])),
+    ),
+  ];
+  const size = Math.ceil(ICON_PX * (window.devicePixelRatio || 1));
+  const { data, error } = useTsmItemIcons(
+    textures.length > 0
+      ? {
+          installationId: params.installationId,
+          ...(params.account !== undefined && { account: params.account }),
+          textures,
+          size,
+        }
+      : null,
+  );
+  const icons = data?.icons ?? {};
+  const slots = textures.length > 0 && !error && (data === null || Object.keys(icons).length > 0);
+  return { icons, slots };
+}
+
+/**
+ * The item's icon, left of the name and the figures and as tall as both
+ * lines (owner, PR #318 review). Without `slot` it takes no room. An icon
+ * narrows only the empty Item track under the name: the figure columns keep
+ * their widths and stay under their labels.
+ */
+function ItemIcon({ src, slot }: { src: string | undefined; slot: boolean }): ReactNode {
+  if (!slot) return null;
+  return (
+    <span className="wowdeck-ledger-items-icon">
+      {src && <img src={src} alt="" width={ICON_PX} height={ICON_PX} />}
+    </span>
+  );
 }
 
 /** The item's name in its rarity colour; unknown keeps the row's text colour. */
@@ -267,6 +306,7 @@ function LedgerItems({
     offset,
     ...(sort && { sort: sort.column, descending: sort.descending }),
   });
+  const { icons, slots } = usePageIcons(data?.rows, params);
   const firstRow = useRef<HTMLDivElement>(null);
   const table = useRef<HTMLDivElement>(null);
   const head = useRef<HTMLDivElement>(null);
@@ -540,7 +580,10 @@ function LedgerItems({
                             className="wowdeck-ledger-items-row"
                             {...{ [ITEM_ATTRIBUTE]: itemString }}
                           >
-                            <ItemIcon item={item} />
+                            <ItemIcon
+                              slot={slots}
+                              src={item.texture === null ? undefined : icons[String(item.texture)]}
+                            />
                             <div className="wowdeck-ledger-items-lines">
                               <ItemName item={item} />
                               <div className="wowdeck-ledger-items-columns">

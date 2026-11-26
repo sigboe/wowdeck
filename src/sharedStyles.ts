@@ -279,6 +279,8 @@ export function wowdeckSharedStyleCss(): string {
    unless a word is wider than the pane, then the figures under it in the
    header's columns. */
 .wowdeck-ledger-items-row { display: flex; align-items: stretch; gap: 8px; width: 100%; min-width: 0; }
+.wowdeck-ledger-items-icon { flex: none; align-self: center; width: 36px; height: 36px; }
+.wowdeck-ledger-items-icon > img { display: block; width: 100%; height: 100%; border-radius: 2px; }
 .wowdeck-ledger-items-lines { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
 .wowdeck-ledger-items-item { min-width: 0; }
 .wowdeck-ledger-items-item > .wowdeck-ledger-items-name { overflow-wrap: break-word; }

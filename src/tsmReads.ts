@@ -10,6 +10,8 @@ import type {
   TradeSkillMasterAccount,
   TradeSkillMasterAuthStatus,
   TradeSkillMasterDestination,
+  TradeSkillMasterItemIcons,
+  TradeSkillMasterItemIconsParams,
   TradeSkillMasterLedger,
   TradeSkillMasterLedgerItemsPage,
   TradeSkillMasterLedgerItemsParams,
@@ -116,6 +118,19 @@ export function createTsmModule(deps: {
     },
     clock: deps.clock,
   });
+  // Icons are read from the game's files on each call and never saved: one
+  // page's icons are kept, as its rows are (useTsmItemIcons). A file the game
+  // lacks only leaves its slot empty, so a failed read shows no error.
+  const itemIcons = createKeyedResource<TradeSkillMasterItemIcons>({
+    revalidateOnReturn: false,
+    read: (key) =>
+      deps.rpc("tradeskillmaster.itemIcons", JSON.parse(key) as TradeSkillMasterItemIconsParams),
+    errorText: (e) => {
+      backendErrorMessage(e);
+      return "Couldn't read item icons";
+    },
+    clock: deps.clock,
+  });
   const cleanupPreview = createKeyedResource<TradeSkillMasterAccount["follows"]>({
     read: (installationId) => deps.rpc("tradeskillmaster.cleanupPreview", { installationId }),
     errorText: (e) => {
@@ -142,6 +157,7 @@ export function createTsmModule(deps: {
     destination,
     ledger,
     ledgerItems,
+    itemIcons,
     ledgerChanged({ installationId }: EventMap["tradeskillmaster.ledgerChanged"]) {
       const matches = (key: string) =>
         (JSON.parse(key) as LedgerKey).installationId === installationId;
@@ -238,6 +254,20 @@ export function useTsmLedgerItems(params: TradeSkillMasterLedgerItemsParams) {
   }, [key]);
   return snapshot;
 }
+/**
+ * The icons of one Ledger page's textures, `size` device pixels wide; null
+ * `params` reads nothing. Another page forgets the last one's icons.
+ */
+let shownIconsKey: string | null = null;
+export function useTsmItemIcons(params: TradeSkillMasterItemIconsParams | null) {
+  const key = params ? JSON.stringify(params) : null;
+  const snapshot = useResource(tsmModule.itemIcons, key);
+  useEffect(() => {
+    if (shownIconsKey !== null && shownIconsKey !== key) tsmModule.itemIcons.forget(shownIconsKey);
+    shownIconsKey = key;
+  }, [key]);
+  return snapshot;
+}
 export const useTsmCleanupPreview = (installationId: string) =>
   useResource(tsmCleanupPreview, installationId);
 
@@ -261,6 +291,7 @@ export function resetTsmReads(): void {
     tsmModule.addons,
     tsmModule.ledger,
     tsmModule.ledgerItems,
+    tsmModule.itemIcons,
   ]) {
     resource.retainOnly([]);
   }

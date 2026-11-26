@@ -1439,3 +1439,21 @@ and LEDGER-323-1 to LEDGER-323-3. Their results above describe the modal.
 Ledger, the shared empty states, the page kept across views, the Wowhead
 round trip landing once, the sort kept across views and filters, and the
 header's fade.
+
+### Ledger item icons (#335)
+
+Each Ledger row shows the item's icon, read from the game's own files when
+the page shows and never saved. Not run on a device yet.
+
+| ID | Priority | Result | Steps | Expected |
+| --- | --- | --- | --- | --- |
+| LEDGER-ICON-1 | P1 | | On a Battle.net install, open the Ledger with more than 40 items and look at the first page, then press R2 | Each item with a cached icon shows the icon as in game, left of its name and figures. The figure columns still line up under their labels. Rows without an icon keep the same name position. The next page shows its icons too, without a pause for the first page |
+| LEDGER-ICON-2 | P1 | | Open the Ledger on an install that Battle.net does not manage and that has no `.build.info`, or for items the addon never cached | The rows show no icon and take no room for one: names start at the left as before |
+| LEDGER-ICON-3 | P2 | | Open the Ledger right after the engine starts and time the first page's icons, then switch pages and views | The first page's icons appear within about a second. Later pages show their icons at once. Nothing under the plugin's data folder or the WoW folder grows |
+
+`backend/tests/casc-textures.test.ts` checks the game-file reader on a
+storage written from scratch: BLTE chunks, the newest index of each bucket,
+encoding pages, root blocks by locale and flags, each texture encoding and
+mipmap choice, and the PNG output. `backend/tests/tsm-ledger-rpc.test.ts`
+checks the rows' icon IDs and the icon method. `src/tsmDestination.test.tsx`
+checks that the slot holds while icons read and goes when none come.
