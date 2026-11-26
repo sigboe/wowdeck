@@ -29,6 +29,8 @@ export interface HandlerDeps {
   tsmData: import("../../wow/tsm/TradeSkillMasterData").TradeSkillMasterData;
   tsmAuth: import("../../wow/tsm/TradeSkillMasterAuth").TradeSkillMasterAuth;
   tsmLedger: import("../../wow/tsm/Ledger").TradeSkillMasterLedgerReader;
+  /** Icons read from the game's files (the Ledger's items). */
+  gameTextures: import("../../wow/textures/GameTextures").GameTextures;
   backendVersion: string;
   homeDir: string;
   store: StateStore;

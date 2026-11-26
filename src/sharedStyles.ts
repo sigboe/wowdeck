@@ -274,11 +274,17 @@ export function wowdeckSharedStyleCss(): string {
   color: #b8bcbf; font-size: 12px; line-height: 16px; text-transform: uppercase; letter-spacing: .5px;
   box-sizing: border-box; width: calc(100% + 12px); margin: 0 -6px; padding: 0 0 6px;
 }
-/* An item row: the icon slot (empty for now, then no room) as tall as the
-   row, beside its two lines. The name, which wraps only between words
-   unless a word is wider than the pane, then the figures under it in the
-   header's columns. */
-.wowdeck-ledger-items-row { display: flex; align-items: stretch; gap: 8px; width: 100%; min-width: 0; }
+/* An item row: the icon slot (no room when the page has no icons) beside
+   its two lines. The name, which wraps only between words unless a word is
+   wider than the pane, then the figures under it in the header's columns.
+   Steam's Field pads 12 px on every side in Game Mode, and its "compact"
+   padding is the same there (Classic only differs). The row takes back
+   6 px above and below inside our own class, so rows are 12 px shorter
+   while Steam's padding, separator and highlight stay as Steam draws them
+   (owner, #335 review). */
+.wowdeck-ledger-items-row { display: flex; align-items: stretch; gap: 8px; width: 100%; min-width: 0; margin-top: -6px; margin-bottom: -6px; }
+.wowdeck-ledger-items-icon { flex: none; align-self: center; width: 36px; height: 36px; }
+.wowdeck-ledger-items-icon > img { display: block; width: 100%; height: 100%; border-radius: 2px; }
 .wowdeck-ledger-items-lines { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
 .wowdeck-ledger-items-item { min-width: 0; }
 .wowdeck-ledger-items-item > .wowdeck-ledger-items-name { overflow-wrap: break-word; }

@@ -31,6 +31,7 @@ import { FileProvider } from "./wow/providers/file/FileProvider";
 import { CurseForgeAuthService } from "./wow/providers/curseforge/CurseForgeKeyAuth";
 import { TradeSkillMasterData } from "./wow/tsm/TradeSkillMasterData";
 import { TradeSkillMasterLedgerReader } from "./wow/tsm/Ledger";
+import { GameTextures } from "./wow/textures/GameTextures";
 import { watchLedger, type LedgerWatchOptions } from "./wow/tsm/LedgerWatch";
 import { TradeSkillMasterAuth, TradeSkillMasterProvider } from "./wow/tsm/TradeSkillMasterAuth";
 import { DownloadService } from "./wow/downloads/DownloadService";
@@ -353,6 +354,7 @@ export function assembleEngine(config: EngineConfig): Engine & { start(): Promis
     tsmAuth,
     tsmData,
     tsmLedger: new TradeSkillMasterLedgerReader({ gameRunning: config.ledgerWatch?.gameRunning, now }),
+    gameTextures: new GameTextures(),
     backendVersion,
     homeDir,
     store,

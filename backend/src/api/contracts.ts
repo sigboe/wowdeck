@@ -873,6 +873,35 @@ export interface TradeSkillMasterLedgerItem {
    * cached quality, or the older cache format, which stores none).
    */
   quality: number | null;
+  /**
+   * The item's icon: a FileDataID in the game's files, from the addon's
+   * current item cache. Null when unknown (no cached item, or the older
+   * cache format). Read it with `tradeskillmaster.itemIcons`.
+   */
+  texture: number | null;
+}
+
+export interface TradeSkillMasterItemIconsParams {
+  installationId: string;
+  /**
+   * The WoW account whose Ledger shows the icons (absent: the engine's
+   * pick, as for the Ledger). The other icons its item cache records are
+   * looked up in the same pass, so later pages read only their files.
+   */
+  account?: string;
+  /** TradeSkillMasterLedgerItem.texture values: at most 64. */
+  textures: number[];
+  /** The icon's width in device pixels, 1 to 512: the smallest stored size at least this large is read. */
+  size: number;
+}
+
+export interface TradeSkillMasterItemIcons {
+  /**
+   * PNG data URLs by texture, decoded from the game's files on each call;
+   * nothing is saved on disk. A texture the files lack is left out, as is
+   * every texture of an installation without Battle.net's local storage.
+   */
+  icons: Record<string, string>;
 }
 /** The Ledger's periods, as the in-game Dashboard offers them; All is the default. */
 export const TSM_LEDGER_PERIODS = ["1D", "1W", "1M", "3M", "6M", "1Y", "2Y", "All"] as const;
@@ -1039,6 +1068,11 @@ export interface MethodMap {
   "tradeskillmaster.ledgerItems": {
     params: TradeSkillMasterLedgerItemsParams;
     result: TradeSkillMasterLedgerItemsPage;
+  };
+  /** The Ledger's item icons, read from the installation's game files. */
+  "tradeskillmaster.itemIcons": {
+    params: TradeSkillMasterItemIconsParams;
+    result: TradeSkillMasterItemIcons;
   };
   /**
    * Export (GLOSSARY: Ledger): the account's records, read fresh, as the

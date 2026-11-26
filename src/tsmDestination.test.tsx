@@ -1632,6 +1632,7 @@ test("the Ledger lists its items in the pane, pages them in native focus rows an
       sold: 0,
       bought: 0,
       quality: null,
+      texture: null,
     },
     {
       itemString: "i:2592",
@@ -1642,6 +1643,7 @@ test("the Ledger lists its items in the pane, pages them in native focus rows an
       sold: 0,
       bought: 0,
       quality: null,
+      texture: null,
     },
     ...Array.from({ length: 38 }, (_, i) => ({
       itemString: `i:${i + 1}`,
@@ -1652,6 +1654,7 @@ test("the Ledger lists its items in the pane, pages them in native focus rows an
       sold: 1,
       bought: 0,
       quality: null,
+      texture: null,
     })),
   ];
   const lastItem = {
@@ -1663,6 +1666,7 @@ test("the Ledger lists its items in the pane, pages them in native focus rows an
     sold: 0,
     bought: 0,
     quality: null,
+    texture: null,
   };
   let realmExists = true;
   fake.answers["tradeskillmaster.ledgerItems"] = ({ exact, realm, offset }) => {
@@ -1802,6 +1806,7 @@ test("the Ledger opens an item on Wowhead with A, lands on it once on the way ba
               sold: 0,
               bought: 0,
               quality: null,
+              texture: null,
             },
           ],
           nextOffset: null,
@@ -1817,6 +1822,7 @@ test("the Ledger opens an item on Wowhead with A, lands on it once on the way ba
               sold: 0,
               bought: 0,
               quality: null,
+              texture: null,
             },
             {
               itemString: "i:286742",
@@ -1827,6 +1833,7 @@ test("the Ledger opens an item on Wowhead with A, lands on it once on the way ba
               sold: 0,
               bought: 0,
               quality: null,
+              texture: null,
             },
             {
               itemString: "p:39:1:3",
@@ -1837,6 +1844,7 @@ test("the Ledger opens an item on Wowhead with A, lands on it once on the way ba
               sold: 0,
               bought: 0,
               quality: null,
+              texture: null,
             },
           ],
           nextOffset: 40,
@@ -1908,6 +1916,97 @@ test("the Ledger opens an item on Wowhead with A, lands on it once on the way ba
   }
 });
 
+test("Ledger rows show their icons from the game's files, holding the slot while they read", async () => {
+  resetTsmView();
+  resetTsmReads();
+  resetLedgerFilters();
+  resetFocusMemory();
+  const previousLedger = ledger;
+  const previousItems = fake.answers["tradeskillmaster.ledgerItems"];
+  ledger = { ...readyLedger, itemCount: 3 };
+  const item = (itemString: string, texture: number | null) => ({
+    itemString,
+    name: itemString,
+    earned: 1,
+    spent: 0,
+    net: 1,
+    sold: 1,
+    bought: 0,
+    quality: null,
+    texture,
+  });
+  // Two rows share an icon; one has none cached.
+  fake.answers["tradeskillmaster.ledgerItems"] = {
+    rows: [item("i:1", 133919), item("i:2", 133919), item("i:3", null)],
+    nextOffset: null,
+  };
+  const view = await mountDestination(false);
+  const slots = () =>
+    itemRows(view.container).map((row) => {
+      const slot = row.querySelector(".wowdeck-ledger-items-icon");
+      return slot ? (slot.querySelector("img")?.getAttribute("src") ?? "empty") : null;
+    });
+  try {
+    await showLedger(view.container);
+    // One read for the page's distinct textures, at the slot's device size.
+    const asked = fake.next("tradeskillmaster.itemIcons");
+    expect(asked.params).toEqual({
+      installationId: "active",
+      account: "MAIN",
+      textures: [133919],
+      size: 36,
+    });
+    // While they read, every row holds the slot, so nothing moves.
+    expect(slots()).toEqual(["empty", "empty", "empty"]);
+    await act(() => asked.resolve({ icons: { 133919: "data:image/png;base64,AAAA" } }));
+    expect(slots()).toEqual(["data:image/png;base64,AAAA", "data:image/png;base64,AAAA", "empty"]);
+  } finally {
+    await view.leave();
+    ledger = previousLedger;
+    fake.answers["tradeskillmaster.ledgerItems"] = previousItems;
+    resetTsmReads();
+  }
+});
+
+test("Ledger rows take no icon room when the game's files have none of the page's icons", async () => {
+  resetTsmView();
+  resetTsmReads();
+  resetLedgerFilters();
+  resetFocusMemory();
+  const previousLedger = ledger;
+  const previousItems = fake.answers["tradeskillmaster.ledgerItems"];
+  ledger = { ...readyLedger, itemCount: 1 };
+  fake.answers["tradeskillmaster.ledgerItems"] = {
+    rows: [
+      {
+        itemString: "i:1",
+        name: "One",
+        earned: 1,
+        spent: 0,
+        net: 1,
+        sold: 1,
+        bought: 0,
+        quality: null,
+        texture: 7,
+      },
+    ],
+    nextOffset: null,
+  };
+  const view = await mountDestination(false);
+  try {
+    await showLedger(view.container);
+    // An install without Battle.net's storage answers no icons.
+    await act(() => fake.next("tradeskillmaster.itemIcons").resolve({ icons: {} }));
+    expect(view.container.querySelector(".wowdeck-ledger-items-icon")).toBeNull();
+    expect(view.container.textContent).toContain("One");
+  } finally {
+    await view.leave();
+    ledger = previousLedger;
+    fake.answers["tradeskillmaster.ledgerItems"] = previousItems;
+    resetTsmReads();
+  }
+});
+
 test("B out of Wowhead opens the QAM again on the item, as a modal's close does; another way out ends the session", async () => {
   resetTsmView();
   resetTsmReads();
@@ -1925,6 +2024,7 @@ test("B out of Wowhead opens the QAM again on the item, as a modal's close does;
     sold: 1,
     bought: 0,
     quality: null,
+    texture: null,
   });
   fake.answers["tradeskillmaster.ledgerItems"] = {
     rows: [item("i:2589", "Linen Cloth"), item("i:4306", "Silk Cloth")],
@@ -2035,6 +2135,7 @@ test("the Ledger sorts by its header: Up, Y and the D-pad reach it, A cycles a c
     spent: 0,
     net: 0,
     quality,
+    texture: null,
   });
   const firstPage = [
     { ...row("i:2589", "Linen Cloth", 1), sold: 1234, earned: 300, net: 300 },
@@ -2231,6 +2332,7 @@ test("a turned Ledger page lands on its first item once it arrives, and the colu
     sold: 1,
     bought: 0,
     quality: null,
+    texture: null,
   }));
   // The rows arrive after the view shows, as on the Deck with the real
   // item cache.

@@ -22,7 +22,7 @@ import type { WowInstallation } from "../models";
 import { NotFoundError } from "../errors";
 import { WowClientType } from "../types";
 import { detectGameRunning } from "../wtf/GameProcessGuard";
-import { ledgerItemName, ledgerItemQuality } from "./ItemNames";
+import { ledgerItemName, ledgerItemQuality, ledgerItemTexture, ledgerItemTextures } from "./ItemNames";
 import { wowheadSection } from "./Wowhead";
 import { exportable, writeLedgerExport, type ZipWrite } from "./LedgerExport";
 import { GOLD_LOG, hasRows, ledgerItemTotals, ledgerView, RECORD_CSVS, type LedgerSelection } from "./LedgerFigures";
@@ -82,7 +82,12 @@ function itemPage(
   for (; index < items.length && rows.length < ITEM_PAGE_ROWS; index++) {
     const item = items[index]!;
     const name = (itemInfo && ledgerItemName(itemInfo, item.itemString)) ?? item.itemString;
-    let row: TradeSkillMasterLedgerItem = { ...item, name, quality: ledgerItemQuality(itemInfo, item.itemString) };
+    let row: TradeSkillMasterLedgerItem = {
+      ...item,
+      name,
+      quality: ledgerItemQuality(itemInfo, item.itemString),
+      texture: ledgerItemTexture(itemInfo, item.itemString),
+    };
     let size = Buffer.byteLength(JSON.stringify(row));
     // A malformed record/cache can hold a single string larger than the page.
     // Keep its amounts and its place in the list, with a shortened label.
@@ -241,6 +246,22 @@ export class TradeSkillMasterLedgerReader {
       this.#sorted = { totals, sort: sortKey, rows: sortItems(totals, saved.itemInfo, sort, descending) };
     }
     return itemPage(this.#sorted.rows, saved.itemInfo, Number.isSafeInteger(offset) && offset >= 0 ? offset : 0);
+  }
+
+  /**
+   * Every icon the item cache of `account` (else the engine's pick, as
+   * `ledger`) records: the icons the Ledger's pages can ask for. Empty when
+   * the file or its cache cannot be read.
+   */
+  itemTextures(installation: WowInstallation, account?: string): Set<number> {
+    try {
+      const found = accounts(installation);
+      if (found.length === 0) return new Set();
+      const itemInfo = this.#readAccount(installation, found, account).saved?.itemInfo;
+      return itemInfo ? ledgerItemTextures(itemInfo) : new Set();
+    } catch {
+      return new Set();
+    }
   }
 
   /**
