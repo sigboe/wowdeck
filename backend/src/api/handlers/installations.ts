@@ -9,7 +9,7 @@ import { getClientTypeForGameType } from "../../wow/utils/gametype";
 export interface InstallationsDeps {
   installationService: Pick<
     InstallationService,
-    "update" | "listed" | "detect" | "select" | "addManual" | "inspect" | "remove" | "list" | "require"
+    "update" | "listed" | "find" | "select" | "addManual" | "inspect" | "remove" | "list" | "require"
   >;
   service: Pick<AddonService, "recovery" | "retryRecovery" | "verifyRecovery">;
   /** The home installation detection scans. */
@@ -22,7 +22,8 @@ export function installationsHandlers({ installationService, service, homeDir }:
 
     "installations.list": async () => ({ installations: installationService.listed() }),
 
-    "installations.detect": async () => ({ installations: await installationService.detect(homeDir) }),
+    // Find WoW installations: removed installations found come back.
+    "installations.detect": async () => installationService.find(homeDir),
 
     "installations.select": async (params) => ({ installation: installationService.select(params.installationId) }),
 

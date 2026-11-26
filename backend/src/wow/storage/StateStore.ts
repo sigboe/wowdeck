@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { mkdirSync, readFileSync, rmSync } from "node:fs";
 import type { PluginSettings } from "../../api/contracts";
 import { defaultSettings, hasLegacySteamSettings, migrateLegacySteamSettings, normalizeStoredSettings } from "./settings";
-import type { WowAddon, WowInstallation } from "../models";
+import type { RemovedInstallation, WowAddon, WowInstallation } from "../models";
 import { detectedSteamGames } from "../installation/LinkedGames";
 import { AddonRecords, type AddonCommitEvidence, type AddonRecordsState, normalizeCommitEvidence } from "../addons/AddonRecords";
 import { realStageFs, type FsStage, type StageFs } from "../fs/StageFs";
@@ -21,6 +21,8 @@ export interface SettingsChange {
 
 export interface EngineState {
   installations: WowInstallation[];
+  /** Installations the player removed (RemovedInstallation); absent in older files. */
+  removedInstallations?: RemovedInstallation[];
   addons: WowAddon[];
   settings: PluginSettings;
   /** Commit evidence of addon transactions not yet cleaned up (AddonRecords.commit); absent in older files. */
@@ -76,6 +78,7 @@ export class StateStore {
       const found = new Set(detectedSteamGames(installations).keys());
       this.#state = {
         installations,
+        ...removedFrom(parsed.removedInstallations),
         addons: (parsed.addons ?? []).map(({ autoUpdateEnabled: _auto, ...addon }: LegacyAddon) => addon),
         settings: normalizeStoredSettings(migrateLegacySteamSettings(parsed.settings, found)),
         ...commitsFrom(parsed.addonCommits),
@@ -199,8 +202,16 @@ export class StateStore {
     return this.load().installations;
   }
 
-  setInstallations(installations: WowInstallation[]): void {
-    this.load().installations = installations;
+  /** Installations the player removed; empty when there are none. */
+  get removedInstallations(): RemovedInstallation[] {
+    return this.load().removedInstallations ?? [];
+  }
+
+  /** Write the installation list and, when given, the removed list with it in one write. */
+  setInstallations(installations: WowInstallation[], removed?: RemovedInstallation[]): void {
+    const state = this.load();
+    state.installations = installations;
+    if (removed) state.removedInstallations = removed;
     void this.persist();
   }
 
@@ -221,11 +232,12 @@ export class StateStore {
 
   /** Write-to-temp + rename of `state`; throws on failure, removing the temp copy. */
   #write(state: EngineState, [writeStage, replaceStage]: [FsStage, FsStage] = ["state.write", "state.replace"]): void {
-    const { addonCommits, addonTransactions, ...rest } = state;
-    // Written only when there is evidence or a marker, so a state file
-    // without transactions keeps its shape.
+    const { addonCommits, addonTransactions, removedInstallations, ...rest } = state;
+    // Written only when there is evidence, a marker or a removed
+    // installation, so a state file without them keeps its shape.
     const stored = {
       ...rest,
+      ...(removedInstallations?.length && { removedInstallations }),
       ...(addonCommits?.length && { addonCommits }),
       ...(addonTransactions?.length && { addonTransactions }),
     };
@@ -279,6 +291,18 @@ function transactionsFrom(stored: unknown): Pick<EngineState, "addonTransactions
   }
   const markers = Array.isArray(stored) ? (stored as unknown[]) : [stored];
   return markers.length ? { addonTransactions: markers } : {};
+}
+
+/** Stored removed installations, malformed entries dropped; nothing when there are none. */
+function removedFrom(stored: unknown): Pick<EngineState, "removedInstallations"> {
+  const removed = (Array.isArray(stored) ? stored : []).filter(
+    (entry: Partial<RemovedInstallation> | null): entry is RemovedInstallation =>
+      typeof entry?.id === "string" && entry.id !== "" &&
+      typeof entry.location === "string" &&
+      typeof entry.displayName === "string" &&
+      typeof entry.clientType === "number",
+  );
+  return removed.length ? { removedInstallations: removed } : {};
 }
 
 /** Stored commit evidence, malformed entries dropped; nothing when there is none. */

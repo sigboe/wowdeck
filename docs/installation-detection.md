@@ -103,6 +103,15 @@ with `detectionSource ∈ { custom, prefix-registry, steam-shortcut, lutris, ste
 installations. Detection **adds/updates, never removes** (WowUp
 `importWowInstallations` semantics) — removal is an explicit user action.
 
+Removing an installation puts it on the removed list (`removedInstallations`
+in the state file, GLOSSARY "Removed installation"). The scan at engine start
+and Find games leave removed installations out, so a folder that still holds
+WoW doesn't come back on every Steam start. Find WoW installations
+(`installations.detect`) brings back each removed installation it finds and
+takes it off the list. One it doesn't find stays on the list, whether its
+drive is unmounted or its folder is gone. A manual add takes the
+installations it adds off the list. Nothing else prunes the list.
+
 ## Prefix registry
 
 The detector reads `system.reg` in each Steam compatdata `pfx`, Lutris

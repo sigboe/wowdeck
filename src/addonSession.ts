@@ -590,8 +590,9 @@ export function createAddonSession(deps: AddonSessionDeps): AddonSession {
       }
       store.patch({ findingWow: true, findWowResult: null });
       try {
-        const { installations } = await rpc("installations.detect");
-        const result = `Found ${plural(installations.length, "installation")}`;
+        const { installations, restored } = await rpc("installations.detect");
+        // Removed installations come back only from here: say so, so Remove doesn't look broken.
+        const result = `Found ${plural(installations.length, "installation")}${restored > 0 ? `, including ${restored} you removed` : ""}`;
         store.patch({ findWowResult: result });
         toast(result);
         await reloadInstallations();

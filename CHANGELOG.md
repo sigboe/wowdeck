@@ -17,6 +17,7 @@ What's new in each version of WoWDeck Addon Manager. The format follows
 
 ### Fixed
 
+- A WoW installation you remove stays removed when Steam restarts. Find WoW installations or adding its folder brings it back.
 - Get Addons' Source and Category menus line up their choices on the left with the check mark at the end.
 - Low-contrast description and changelog text becomes readable while colours that already work stay unchanged.
 - Manage followed realms no longer flickers while auction data arrives.

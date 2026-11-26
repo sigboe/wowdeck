@@ -92,14 +92,14 @@ describe("addon session: installations", () => {
     await session.findWow();
     expect(session.get().findingWow).toBe(false);
     expect(session.get().findWowResult).toContain("Couldn't find WoW");
-    answers["installations.detect"] = { installations: [] };
+    answers["installations.detect"] = { installations: [], restored: 0 };
     await session.findWow();
     expect(session.get().findWowResult).toBe("Found 0 installations");
   });
 
   test("Find WoW stays busy across subscribers and ignores a second scan while pending", async () => {
-    let finish!: (value: { installations: Installation[] }) => void;
-    const pending = new Promise<{ installations: Installation[] }>((resolve) => {
+    let finish!: (value: { installations: Installation[]; restored: number }) => void;
+    const pending = new Promise<{ installations: Installation[]; restored: number }>((resolve) => {
       finish = resolve;
     });
     const { session, log } = await harness({
@@ -113,7 +113,7 @@ describe("addon session: installations", () => {
     off();
     await session.findWow();
     expect(log.filter((line) => line === "installations.detect")).toHaveLength(1);
-    finish({ installations: [] });
+    finish({ installations: [], restored: 0 });
     await scan;
     expect(session.get().findingWow).toBe(false);
     expect(session.get().findWowResult).toBe("Found 0 installations");
@@ -121,7 +121,7 @@ describe("addon session: installations", () => {
 
   test("Find WoW detects installations and loads their addons", async () => {
     const { session, log } = await harness({
-      "installations.detect": { installations: [installation("i1", true)] },
+      "installations.detect": { installations: [installation("i1", true)], restored: 0 },
       "installations.list": { installations: [installation("i1", true)] },
       "addons.list": { addons: [addon()] },
     });
@@ -131,6 +131,18 @@ describe("addon session: installations", () => {
     expect(log).toContain("installations.detect");
     expect(log).toContain("toast Found 1 installation");
     expect(session.get().findingWow).toBe(false);
+  });
+
+  test("Find WoW says when it brought back installations the player removed", async () => {
+    const found = [installation("i1", true), installation("i2"), installation("i3")];
+    const { session, log } = await harness({
+      "installations.detect": { installations: found, restored: 1 },
+      "installations.list": { installations: found },
+      "addons.list": { addons: [] },
+    });
+    await session.findWow();
+    expect(session.get().findWowResult).toBe("Found 3 installations, including 1 you removed");
+    expect(log).toContain("toast Found 3 installations, including 1 you removed");
   });
 
   test("the engine says which installation is active, not the list order", async () => {
