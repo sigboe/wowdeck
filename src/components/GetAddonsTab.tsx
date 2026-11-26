@@ -25,7 +25,7 @@ import {
   pageState,
   popBrowseToList,
   popBrowseToNav,
-  showWithoutClosing,
+  showInstallationMenu,
   subscribeWidening,
   type GetAddonsTab,
   widening,
@@ -154,8 +154,8 @@ export function GetAddonsTab({
   useEffect(() => {
     const resumed = enterBrowseSession();
     if (resumed === "list") {
-      // Back from the Install into menu while widened: its row is the only
-      // thing in the list that opens one.
+      // Back from the Installation menu, collapsed or widened (#338): its row
+      // is the only thing in the list that opens one.
       setTimeout(() => {
         const slot = installationRef.current;
         (slot?.querySelector<HTMLElement>(".Focusable[tabindex]") ?? slot)?.focus();
@@ -590,7 +590,7 @@ export function GetAddonsTab({
                     menuLabel="Installation"
                     childrenContainerWidth="max"
                     renderButtonValue={QAM_DROPDOWN_BELOW_VALUE}
-                    onMenuWillOpen={showWithoutClosing}
+                    onMenuWillOpen={showInstallationMenu}
                     bottomSeparator="none"
                   />
                 ) : (

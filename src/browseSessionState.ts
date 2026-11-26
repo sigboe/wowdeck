@@ -78,11 +78,30 @@ function setWidened(wide: boolean): void {
  * this: every way out of Get Addons collapses and resets the zone first.
  */
 export function enterBrowseSession(): "pane" | "list" | null {
+  if (installationMenuOpen) {
+    // The Installation menu closed, collapsed or widened (S36): back to its row.
+    installationMenuOpen = false;
+    return "list";
+  }
   if (widening.wide && (browseZone.zone === "pane" || browseZone.zone === "list")) {
     return browseZone.zone;
   }
   browseZone.zone = "nav";
   return null;
+}
+
+/**
+ * The Installation picker's menu is up. Its remount must return to the
+ * picker even collapsed, where the zone stays "nav" and would read as a
+ * fresh entry (#338). Picking an installation collapses the session
+ * (resetBrowseSessionState) but keeps this; leaving Get Addons clears it.
+ */
+let installationMenuOpen = false;
+
+/** The Installation picker's onMenuWillOpen: showWithoutClosing, remembering whose menu it is. */
+export function showInstallationMenu(showMenu: () => void): void {
+  installationMenuOpen = true;
+  showWithoutClosing(showMenu);
 }
 
 /**
@@ -130,6 +149,7 @@ export function popBrowseToList(): void {
  * re-entry lands collapsed on the nav bar (spec story 8).
  */
 export function leaveBrowseSession(): void {
+  installationMenuOpen = false;
   browseZone.zone = "nav";
   setWidened(false);
 }

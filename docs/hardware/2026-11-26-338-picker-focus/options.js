@@ -1,0 +1,1 @@
+(() => 'OPTIONS ' + JSON.stringify([...doc.querySelectorAll('[role=option]')].map(o => o.innerText.trim() + (o.querySelector('svg title') ? ' [' + o.querySelector('svg title').textContent + ']' : '') + (o.classList.contains('gpfocus') ? ' *focus*' : ''))))()
