@@ -157,6 +157,30 @@ describe("keyed resource: failures and polling", () => {
     expect(reads).toHaveLength(2);
   });
 
+  test("without revalidateOnReturn a return reads only a key invalidated meanwhile", async () => {
+    const clock = createManualClock();
+    const reads: string[] = [];
+    const resource = createKeyedResource<string>({
+      read: async (key) => {
+        reads.push(key);
+        return `answer ${reads.length}`;
+      },
+      errorText: String,
+      clock,
+      revalidateOnReturn: false,
+    });
+    const off = resource.subscribe("a", () => {});
+    await Promise.resolve();
+    off();
+    const back = resource.subscribe("a", () => {});
+    expect(reads).toHaveLength(1);
+    expect(resource.get("a").data).toBe("answer 1");
+    back();
+    resource.invalidate();
+    resource.subscribe("a", () => {});
+    expect(reads).toHaveLength(2);
+  });
+
   test("a viewed key polls once however many viewers, and stops with the last", async () => {
     const { resource, reads, clock } = harness(1000);
     const one = resource.subscribe("a", () => {});

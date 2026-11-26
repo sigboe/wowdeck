@@ -142,3 +142,27 @@ test("auction data changes leave the account alone; account changes arrive with 
   offAccount();
   offDestination();
 });
+
+test("a viewed Ledger reads again every minute, so period figures move as records age", async () => {
+  let earned = 100;
+  const fake = createFakeEngine({
+    "tradeskillmaster.ledger": () => ({ figures: { earned: { total: earned } } }) as never,
+  });
+  const clock = createManualClock();
+  const module = createTsmModule({ rpc: fake.rpc, clock, reloadSources: async () => {} });
+  const key = JSON.stringify({
+    installationId: "era",
+    filters: { realm: null, character: null, period: "1D" },
+  });
+  const off = module.ledger.subscribe(key, () => {});
+  await settle();
+  expect(fake.paramsOf("tradeskillmaster.ledger")).toHaveLength(1);
+  // A sale crossed the 1D edge while the Ledger stayed open.
+  earned = 0;
+  clock.advance(60_000);
+  await settle();
+  expect(fake.paramsOf("tradeskillmaster.ledger")).toHaveLength(2);
+  expect(module.ledger.get(key).data?.figures?.earned.total).toBe(0);
+  off();
+  expect(clock.activeTimers()).toBe(0);
+});

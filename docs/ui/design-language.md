@@ -144,6 +144,12 @@ inactive tabs show only their icon: three uppercase labels overflow 268 px
   and R1 on the last do nothing; `shoulderNav.ts`). Owner decision 2026-10-20
   after trying both: with three tabs in the narrow QAM bar, wrapping is the
   more jarring of the two.
+- **Views inside a pane** (the TradeSkillMaster destination's Auction data,
+  Dashboard and Ledger) use the same pills in a `PillBar`. It has no
+  shoulder glyphs, because L1/R1 keep switching plugin tabs, and every pill
+  shows its label, because the widened pane has the room. D-pad Left and Right switch views. Left on the
+  first pill returns to the destination list, as it does from the rest of the
+  pane (spec #308).
 
 **S16 [PROJECT] MUST** use Steam's QAM row components as they are:
 `PanelSection` / `PanelSectionRow` with `Field`, `ToggleField`, `DropdownItem`,
@@ -361,6 +367,19 @@ Concretely:
   Addons install target and category), goes in the floating pane under the
   tab bar, never as the first row of the list (owner, 2026-10-15). Rows of
   the list itself never float.
+- **Exception: the TradeSkillMaster destination floats only its title row**
+  (owner, 2026-11-24, #319). The row holds the destination's name and its
+  views' pills, right-aligned (`.wowdeck-pane-title`). The two floating rows
+  of filter controls took a fifth of the pane, and the owner asked for them
+  to scroll. Account, Realm, Character and Period are therefore the first
+  rows of the Dashboard and the Ledger, with Export among them on the
+  Ledger. The title row paints the QAM background 16 px above itself,
+  because scrolled rows showed through the scroller's padding above the
+  pills (DEVICE 2026-11-24). The Ledger's column header also floats (owner,
+  PR #318 review): it sticks right under the title row
+  (`.wowdeck-ledger-items-head`, offset by `--wowdeck-pane-bar-height`,
+  which `TsmDestination` measures) and shows its own scroll fade only while
+  rows scroll under it.
 - **Full-screen pages:** Steam's tab header is the pane (S18); view-wide
   controls go in `belowHeaderTabsContent`.
 - The scroll buffer (S21) includes every such pane: Decky's title, our tab

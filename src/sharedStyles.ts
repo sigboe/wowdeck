@@ -1,3 +1,5 @@
+import { STEAM, STEAM_FONT } from "./steamTheme";
+
 /**
  * Valve's scroll buffer (guide S21): `scroll-margin` from the variables that
  * useScrollBuffer measures and sets. Steam's focus scroller reads it. Every
@@ -84,6 +86,36 @@ export function wowdeckSharedStyleCss(): string {
 .wowdeck-tab svg { width: 14px; height: 14px; }
 .wowdeck-tab-selected { background: rgba(255,255,255,.15); color: #fff; padding: 6px 14px; }
 .wowdeck-tab.gpfocus { background: #fff; color: #23262e; box-shadow: 0 3px 6px rgba(0,0,0,.32); }
+/* A pane's own navigation (the TradeSkillMaster destination's title row
+   with its view pills) floats at the top of the widened pane while its rows scroll under it
+   (S24). The pane is pinned to the QAM viewport and scrolls itself inside
+   8 px of padding, with nothing above it to attach to: the bar sticks at
+   the scroller's very top and covers that padding, opaque on the QAM's own
+   background, like .wowdeck-float-pane, and ends in the same scroll fade
+   once rows scroll under it. The pane's rows keep the root's scroll buffer,
+   which is taller than the bar and its fade, so a focused row never rests
+   under them. */
+.wowdeck-pane-slot-open .wowdeck-pane-bar {
+  position: sticky; top: -8px; z-index: 1; background: #0e141b;
+  margin-top: -8px; padding-top: 8px; padding-bottom: 8px;
+  /* Paints the QAM background above the bar too: scrolled rows showed
+     through a few px over the pills (DEVICE 2026-11-24). */
+  box-shadow: 0 -16px 0 0 #0e141b;
+}
+/* The title row: the destination's name in Steam's 16 px row text, its
+   views' pills right-aligned and centred on it (owner, PR #318 review). */
+.wowdeck-pane-title {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  color: ${STEAM.text}; font-size: ${STEAM_FONT.body}; line-height: 24px;
+}
+.wowdeck-pane-title > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wowdeck-pane-slot-open .wowdeck-pane-bar::after {
+  content: ""; position: absolute; left: 0; right: 0; top: 100%;
+  height: var(--wowdeck-fade-size, 20px); pointer-events: none;
+  background: linear-gradient(#0e141b, rgba(14, 20, 27, 0));
+  opacity: 0; transition: opacity .15s ease;
+}
+.wowdeck-pane-slot-open .wowdeck-pane-bar[data-wowdeck-scrolled]::after { opacity: 1; }
 /* The destination whose pane holds focus keeps a subtle selected background:
    the destination loses Steam's focus ring when focus moves into the pane, and
    without this the list looked unselected (owner, Valve's Friends list keeps
@@ -151,11 +183,107 @@ export function wowdeckSharedStyleCss(): string {
   max-height: min(320px, calc(100vh - 180px));
   overflow-y: auto; overflow-x: hidden; padding: 4px 0;
 }
-.wowdeck-segment-menu-item { justify-content: flex-start; }
 .wowdeck-segment-menu-label {
   flex: 1; min-width: 0; text-align: left;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+/* The Ledger's figures (TsmLedger): the in-game Dashboard's summary as a
+   2×2 grid of a caption over a value, and its Sales, Expenses and Profit
+   rows as label-left, value-right lines. Captions are Steam's 12 px muted
+   description text; values its 16 px body text. */
+.wowdeck-dashboard-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; }
+.wowdeck-dashboard-caption { color: #b8bcbf; font-size: 12px; line-height: 16px; text-transform: uppercase; letter-spacing: .5px; }
+.wowdeck-dashboard-value { color: #dcdedf; font-size: 16px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.wowdeck-dashboard-line { display: flex; justify-content: space-between; gap: 12px; color: #b8bcbf; font-size: 12px; line-height: 20px; }
+.wowdeck-dashboard-line .wowdeck-dashboard-value { display: inline-flex; align-items: center; gap: 4px; }
+.wowdeck-dashboard-item { min-width: 0; white-space: normal; overflow-wrap: anywhere; text-align: right; }
+/* Sales, Expenses and Profit as one table: the name, then Total and Per
+   day right-aligned, the caption row above using the same columns. */
+.wowdeck-dashboard-flows {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) minmax(0, 1.2fr);
+  gap: 12px; align-items: center; width: 100%;
+}
+.wowdeck-dashboard-flows > :not(:first-child) { justify-content: flex-end; text-align: right; }
+.wowdeck-dashboard-flows > .wowdeck-dashboard-value { display: inline-flex; align-items: center; gap: 4px; }
+.wowdeck-dashboard-flow-name { color: #dcdedf; font-size: 16px; line-height: 20px; }
+.wowdeck-dashboard-recorded { padding-bottom: 4px; }
+/* The Export row's focus highlight met the REALM caption (DEVICE
+   2026-11-24, #319): the same 8 px the other control rows keep. */
+.wowdeck-ledger-export { margin-bottom: 8px; }
+.wowdeck-dashboard-trend { display: inline-flex; }
+.wowdeck-dashboard-trend svg { width: 12px; height: 12px; }
+/* The gold graph as the in-game Dashboard draws it: gold labels in a
+   column as wide as the widest, the plot with its gridlines, and the dates
+   under the plot. Labels sit absolutely at the offsets tsmGoldAxes gives. */
+.wowdeck-dashboard-graph { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 4px; margin-top: 4px; }
+.wowdeck-dashboard-graph > svg { display: block; width: 100%; overflow: visible; }
+.wowdeck-dashboard-yaxis, .wowdeck-dashboard-xaxis { position: relative; color: #b8bcbf; font-size: 12px; line-height: 16px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.wowdeck-dashboard-yaxis > span { position: absolute; right: 0; }
+.wowdeck-dashboard-yaxis > .wowdeck-dashboard-axis-sizer { position: static; display: block; height: 0; overflow: hidden; visibility: hidden; }
+.wowdeck-dashboard-xaxis { height: 16px; margin-top: 2px; margin-bottom: 4px; }
+.wowdeck-dashboard-xaxis > span { position: absolute; top: 0; }
+.wowdeck-dashboard-gridline { opacity: .5; }
+.wowdeck-dashboard-note { color: #b8bcbf; font-size: 12px; line-height: 16px; }
+/* Item | Sold | Earned | Bought | Spent | Net. The list measures one set of
+   tracks for the header and its rows (--wowdeck-ledger-items-tracks): Item
+   takes what is left, the rest fit their widest cell on one line. A row's
+   Item track is empty: its name sits on the line above. */
+.wowdeck-ledger-items-columns {
+  display: grid;
+  grid-template-columns: var(--wowdeck-ledger-items-tracks, minmax(0, 1fr) repeat(5, max-content));
+  gap: 12px; width: 100%; font-variant-numeric: tabular-nums;
+}
+.wowdeck-ledger-items-columns > :first-child { min-width: 0; overflow-wrap: anywhere; }
+.wowdeck-ledger-items-columns > :not(:first-child) { text-align: right; white-space: nowrap; }
+/* A rarity colour under 4.5:1 on Steam's focus highlight (#3d4450) turns
+   white on the focused row (spec #323). */
+.gpfocus .wowdeck-ledger-items-name-focus, .Focusable:focus .wowdeck-ledger-items-name-focus { color: ${STEAM.header} !important; }
+/* A column header: a focus stop that sorts, white with dark text when
+   focused as Steam's tab pills are (S15), its text kept clear of the
+   highlight's edges (S27). */
+.wowdeck-ledger-items-sort {
+  padding: 2px 6px; border-radius: 4px; white-space: nowrap; cursor: pointer;
+  transition: background-color .1s ease, color .1s ease;
+}
+.wowdeck-ledger-items-sort.gpfocus { background: ${STEAM.header}; color: ${STEAM.row}; }
+.wowdeck-ledger-items-arrow-room::after { content: " ▼"; visibility: hidden; }
+.wowdeck-ledger-items-arrow-room-lead::after { content: "▼ "; visibility: hidden; white-space: pre; }
+/* The column header (TsmLedger): it sticks right under the floating title
+   row, whose height TsmDestination measures into --wowdeck-pane-bar-height.
+   The pane scrolls inside 8 px of padding, which sticky offsets count from,
+   as .wowdeck-pane-bar's -8px does. Above the title row's fade in stacking
+   order, so its own fade, shown only once rows scroll under it, ends the
+   floating part (S24). */
+.wowdeck-pane-slot-open .wowdeck-ledger-items-head {
+  position: sticky; top: calc(var(--wowdeck-pane-bar-height, 48px) - 8px);
+  z-index: 2; background: #0e141b;
+}
+.wowdeck-ledger-items-head::after {
+  content: ""; position: absolute; left: 0; right: 0; top: 100%;
+  height: var(--wowdeck-fade-size, 20px); pointer-events: none;
+  background: linear-gradient(#0e141b, rgba(14, 20, 27, 0));
+  opacity: 0; transition: opacity .15s ease;
+}
+.wowdeck-ledger-items-head[data-wowdeck-scrolled]::after { opacity: 1; }
+/* The column labels in the Dashboard's caption style. In the QAM a row's
+   text starts at its PanelSectionRow's edge, so the labels row reaches 6 px
+   past it on both sides, each cell's own 6 px padding: the labels then line
+   up with the values. A 6 px inset put every label 12 px inside its column
+   (DEVICE 2026-11-26, LEDGER-PILL-3). */
+.wowdeck-ledger-items-labels {
+  color: #b8bcbf; font-size: 12px; line-height: 16px; text-transform: uppercase; letter-spacing: .5px;
+  box-sizing: border-box; width: calc(100% + 12px); margin: 0 -6px; padding: 0 0 6px;
+}
+/* An item row: the icon slot (empty for now, then no room) as tall as the
+   row, beside its two lines. The name, which wraps only between words
+   unless a word is wider than the pane, then the figures under it in the
+   header's columns. */
+.wowdeck-ledger-items-row { display: flex; align-items: stretch; gap: 8px; width: 100%; min-width: 0; }
+.wowdeck-ledger-items-lines { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.wowdeck-ledger-items-item { min-width: 0; }
+.wowdeck-ledger-items-item > .wowdeck-ledger-items-name { overflow-wrap: break-word; }
+.wowdeck-ledger-count { padding-bottom: 4px; }
+.wowdeck-ledger-items-none { color: ${STEAM.textDisabled}; }
 .wowdeck-glyph-text {
   display: inline-flex; align-items: center; justify-content: center;
   min-width: 24px; height: 18px; padding: 0 4px; border-radius: 4px 4px 2px 2px;

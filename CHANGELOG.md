@@ -6,12 +6,17 @@ What's new in each version of WoWDeck Addon Manager. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- TradeSkillMaster gets a Dashboard of your gold history, earnings and spending, and a Ledger that sorts your items, opens them on Wowhead and exports your records.
+
 ### Changed
 
 - Log improvements, and your TradeSkillMaster sign-in now shows as a shortened email address.
 
 ### Fixed
 
+- Get Addons' Source and Category menus line up their choices on the left with the check mark at the end.
 - Low-contrast description and changelog text becomes readable while colours that already work stay unchanged.
 - Manage followed realms no longer flickers while auction data arrives.
 - After you unfollow a realm, focus moves to the next realm in the list instead of Done.

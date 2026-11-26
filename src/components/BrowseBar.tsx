@@ -121,8 +121,39 @@ export function BrowseBar({
     ),
   };
 
-  // One row, inline segments in fixed order; the halves trade width with the
-  // segments that exist, so a hidden one leaves no hole. Each segment is
+  return (
+    <SegmentRow
+      view={browseFocusView(destination)}
+      segments={items.map((item) => ({
+        id: item,
+        caption: SEGMENT_LABELS[item],
+        focusId: SEGMENT_FOCUS[item],
+        menu: segments[item],
+      }))}
+    />
+  );
+}
+
+/** One segment of a bar row: its caption, its menu and its focus-memory id. */
+export interface BarSegment {
+  /** Marks the segment's wrapper (`data-wowdeck-segment`), for the pane's Left handling. */
+  id: string;
+  caption: string;
+  /** Its focus-memory id; none for a segment that takes no focus. */
+  focusId?: string;
+  /** The segment's SegmentMenu, or a button. */
+  menu: ReactNode;
+  /** Its share of the row; by default the segments share it equally. */
+  flex?: string;
+}
+
+/**
+ * A row of browse-bar segments (ADR 0002): the browse bar's own row, and
+ * each of the Dashboard's and the Ledger's filter rows.
+ */
+export function SegmentRow({ view, segments }: { view: string; segments: BarSegment[] }) {
+  // One row, inline segments in fixed order; the segments share its width,
+  // so a hidden one leaves no hole. Each segment is
   // Valve's filter-bar shape (the Library's sort/filter row): a caption over a
   // bare dropdown button. Two DropdownItem rows side by side overlapped —
   // each Field's focus highlight reaches 16 px past its box (DEVICE
@@ -134,16 +165,23 @@ export function BrowseBar({
         flow-children="row"
         style={{ display: "flex", gap: "12px", paddingBottom: "8px" }}
       >
-        {items.map((item) => (
+        {segments.map((segment) => (
           <div
-            key={item}
-            data-wowdeck-segment={item}
-            style={{ flex: "1 1 0", minWidth: 0, position: "relative" }}
+            key={segment.id}
+            data-wowdeck-segment={segment.id}
+            style={{ flex: segment.flex ?? "1 1 0", minWidth: 0, position: "relative" }}
           >
-            <FocusSlot view={browseFocusView(destination)} id={SEGMENT_FOCUS[item]}>
-              <div style={SEGMENT_LABEL}>{SEGMENT_LABELS[item]}</div>
-              {segments[item]}
-            </FocusSlot>
+            {segment.focusId === undefined ? (
+              <>
+                <div style={SEGMENT_LABEL}>{segment.caption}</div>
+                {segment.menu}
+              </>
+            ) : (
+              <FocusSlot view={view} id={segment.focusId}>
+                <div style={SEGMENT_LABEL}>{segment.caption}</div>
+                {segment.menu}
+              </FocusSlot>
+            )}
           </div>
         ))}
       </Focusable>

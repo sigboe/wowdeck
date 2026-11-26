@@ -1,10 +1,11 @@
 import { TsmIcon } from "../icons/TsmIcon";
-import { TSM_ADDON_ACTION, TSM_REFRESH, TsmAddon } from "./TsmAddon";
+import { TSM_ADDON_ACTION, TSM_REFRESH } from "./TsmAddon";
+import { focusTsmEntry, TsmDestination } from "./TsmDestination";
+import { RECORDS_LEFT_NEIGHBOUR } from "./TsmRecords";
 import { tsmSession, tsmOptionsSources, tsmDestinationVisible } from "../tsmSession";
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { FaClock, FaFileArchive, FaFire, FaSearch } from "react-icons/fa";
 import {
-  ButtonItem,
   Field,
   Focusable,
   GamepadButton,
@@ -88,7 +89,10 @@ const NO_PROVIDERS: ProviderInfo[] = [];
  * Left from the key goes to its value. Our pane Left handler stops the press
  * before Steam's own row navigation sees it.
  */
-const PANE_LEFT_NEIGHBOUR: Record<string, string> = { [TSM_REFRESH]: TSM_ADDON_ACTION };
+const PANE_LEFT_NEIGHBOUR: Record<string, string> = {
+  [TSM_REFRESH]: TSM_ADDON_ACTION,
+  ...RECORDS_LEFT_NEIGHBOUR,
+};
 
 export function GetAddonsTab({
   installations,
@@ -167,7 +171,7 @@ export function GetAddonsTab({
         if (rememberedFocus(view) !== undefined) {
           restoreFocus(view);
         } else {
-          firstPaneControl(tab)?.focus();
+          focusFirstPaneControl(tab);
         }
       }, 0);
     }
@@ -314,6 +318,21 @@ export function GetAddonsTab({
   };
 
   /**
+   * Focus the destination's first control. The TradeSkillMaster destination
+   * lands on its first content row below the pill bar, and waits for it when
+   * its view is still reading.
+   */
+  const focusFirstPaneControl = (tab: GetAddonsTab) => {
+    if (tab === "tsm") {
+      if (paneRef.current) {
+        focusTsmEntry(paneRef.current);
+      }
+      return;
+    }
+    firstPaneControl(tab)?.focus();
+  };
+
+  /**
    * A/Enter on a destination, Moving focus into the pane (steam-right, caught
    * below): focus the destination's first control. The pane only exists while
    * wide, which destination focus has already established; the timeout lets
@@ -331,7 +350,7 @@ export function GetAddonsTab({
       if ((tab === "latest" || tab === "popular") && restoreFocus(view)) {
         return;
       }
-      firstPaneControl(tab)?.focus();
+      focusFirstPaneControl(tab);
     }, 0);
   };
 
@@ -484,12 +503,14 @@ export function GetAddonsTab({
           </CapabilityGate>
         );
       case "tsm":
-        return tsm.state === "signedIn" ? (
-          <>{installation && <TsmAddon key={installation.id} installationId={installation.id} />}</>
-        ) : (
-          <ButtonItem layout="below" onClick={() => sources.openSources(tsmOptionsSources())}>
-            Sign in in Options
-          </ButtonItem>
+        // Signed out, Auction data offers the way back to signing in; the
+        // Dashboard and the Ledger need no sign-in.
+        return (
+          <TsmDestination
+            installationId={installation?.id ?? null}
+            signedIn={tsm.state === "signedIn"}
+            onSignIn={() => sources.openSources(tsmOptionsSources())}
+          />
         );
       case "url":
         return <ManualInstallTab sources={sources} />;
