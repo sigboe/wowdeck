@@ -198,3 +198,57 @@ label text) and screenshots. Screens are in the session scratchpad
 Known limitation: the Deck was docked. The pane width matches the
 handheld one by inference from the QAM page width; the owner checks the
 handheld screen.
+
+## Wowhead back at ade0e08
+
+DEVICE, 26 November 2026, the owner's Steam Deck, docked as before
+(QAM page 855 px wide). The build was `feat/308-ledger` at `ade0e08`, a
+frontend-only change: while Wowhead shows, the Ledger holds the widened
+Get Addons session and watches Steam's main-window history. A POP out of
+`/externalweb` opens the QAM on Get Addons. Before anything else, `ps`
+over SSH showed no `Wow*.exe` process. `deck up` then deployed
+`dist/index.js` and reloaded (backend 1.3.0, engine untouched). The
+Deck's `dist/index.js` SHA-256 matches the local build after the run:
+`b4e06b0c0c3a23696df3d9f645e8ad7898828e83a370662f9afb68c7b86648cc`.
+
+Fixture: the same Forever data as before (179 items). Nothing in the WoW
+install changed. The reload reset the session, so the run picked realm
+Normal in the Ledger's Realm menu. Then it sorted by Sold and went to
+page 2 with R2.
+
+The run left the Deck on Forever with the tested build installed, the QAM
+closed, autoUpdate on and the tunnel closed. Steam was on its Home page,
+where step (c) put it. The Ledger keeps realm Normal, Sold ▼, page 2.
+The recorder (below) was removed, and `typeof window.__lp6` read
+`undefined` afterwards.
+
+Method: UI, with the real pad (A, B, L1, R1, the Steam button), CDP key
+moves for focus, DOM probes in the QAM page and screenshots. The timings
+come from a recorder in SharedJSContext. It listened to
+`GamepadUIMainWindowInstance.m_history` and polled the path and
+`MenuStore.m_eOpenSideMenu` every 20 ms (2 = QAM open, 0 = closed).
+Screens are in the session scratchpad
+(`/tmp/claude-1000/-home-sigurdb-project-wowdeck/9df6d87a-51b1-4af9-9954-485d9615a391/scratchpad/lp4/`):
+`a-after-b-qam.png` (the QAM right after B), `a-after-b-main.png` (the
+Steam page behind it, dimmed by the open QAM), `c-mainmenu.png`,
+`c-reopen.png`.
+
+| Claim | Result | Evidence |
+| --- | --- | --- |
+| (a) B in Wowhead opens the QAM again on the item | passed | On page 2, Sold ▼, A on Wooden Buckler: route `/routes/externalweb`, QAM closed (side 0). B: route back to the game page, and the QAM opened by itself on WoWDeck, tab Get Addons, pane open, focus "Wooden Buckler", header "▼ Sold", Previous page shown, first row Ornamental Mace. `a-after-b-qam.png` shows the widened Ledger with Wooden Buckler highlighted. Timing: 812 ms from the history POP to the open QAM. Four more round trips (Shed Lizard Skin, Crude Battle Axe, Briarthorn, Wooden Buckler) each landed on the item opened. For those, the time from a mark set just before `press b` to the POP was 502 to 507 ms, which includes the tool's own press latency. From POP to the open QAM took 625 to 791 ms, so 1.1 to 1.3 s from the mark to the open QAM. |
+| (b) Right from the destination after the resume lands on Export | passed | After (a), Left gave "TradeSkillMaster", then Right gave "Export", not the item. |
+| (c) Steam button and Home leave the QAM closed, resume once | passed | A on Compact Shotgun opened Wowhead. The Steam button opened the main menu on Home (side 1), and A on Home went to `/library/home` with side 0. The QAM stayed closed for the 3 s watched. Opening the QAM landed on the plugin nav bar with focus "GET ADDONS", pane closed. Down, TradeSkillMaster, Right: focus "Compact Shotgun", Sold ▼, page 2. Left, then Right again: "Export". |
+| (d) L1/R1 and B behave normally afterwards | passed | Collapsed: R1 went to Options, L1 to Get Addons (focus "Forever"), L1 to My Addons, R1 to Get Addons. From the widened pane on Export, R1 went to Options with the pane closed, and L1 to Get Addons with the pane closed. B from Export, and from a resumed item, went to the "GET ADDONS" nav bar with the pane closed. A second B left WoWDeck for Decky's plugin list, as usual. No step left the session widened. |
+
+Seen once: in one of six B presses, Steam stayed in the browser. The
+recorder saw no history POP, so B never reached Steam's back, and our
+watcher had nothing to act on. That B came 2.5 s after the page opened,
+the same wait as the presses that worked. The next B, about 10 s later,
+went back and opened the QAM on the item (Shed Lizard Skin). The cause is
+unknown. Five other B presses at the same 2.5 s wait worked. If the owner
+sees a B that does nothing in Wowhead, it is this case, not a missed
+reopen.
+
+Known limitation: the Deck was docked, and the screenshots are CEF
+captures of the QAM and the main window, not a composited capture of the
+screen. Neither CEF capture shows the browser's own view.
