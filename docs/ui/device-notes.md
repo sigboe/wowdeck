@@ -248,3 +248,23 @@ When a lookup finds nothing on either client, its feature falls back as
 its row in §8.4e or its source file's header describes. Decky's tables
 follow Steam builds, so a Steam update can blank a class until Decky ships
 a new table. Once Decky 3 is gone, delete the webpack half of each lookup.
+
+## 8.4g Leaving Steam's browser (2026-11-26)
+
+`Navigation.NavigateToExternalWeb` opens Steam's browser over the main
+window and closes the QAM. B in the browser goes back to the Steam page
+that was behind it. The QAM stays closed, so a plugin that opened the page
+loses the player unless it opens the QAM again itself.
+
+Steam's main window keeps its route history at
+`window.SteamUIStore.WindowStore.GamepadUIMainWindowInstance.m_history`.
+It is React Router's history object, and `listen` receives each location
+and its action. A listener in SharedJSContext recorded one Wowhead visit
+(DEVICE, CDP, 2026-11-26, the owner's Deck). Opening the page pushed
+`/externalweb`, and Steam then replaced that route three times while the
+page loaded. B popped back to `/library/app/<id>`, the page behind it.
+
+`src/steamDom/externalWebReturn.ts` watches that history. The Ledger uses it
+to open the QAM again on the item the player opened (S21). Without the
+history object, the player opens the QAM themselves, and entering the
+TradeSkillMaster destination lands on the item once.

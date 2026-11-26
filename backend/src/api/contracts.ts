@@ -709,6 +709,7 @@ export interface WtfJobSnapshot {
 // ---------------------------------------------------------------------------
 
 export interface TradeSkillMasterAccount {
+  /** The signed-in account's label. An email address arrives shortened (`s•••@example.com`); bridge payloads end up in logs. */
   account: string | null;
   followedCount: number;
   allowance: number | null;
@@ -721,10 +722,233 @@ export interface TradeSkillMasterDestination {
   realms: { id: number; name: string; auctionHouseType: string; followed: boolean; owned: boolean; declined: boolean; updated: number | null }[];
   regions: { id: number; name: string; updated: number | null }[];
 }
+/**
+ * Why the Ledger has nothing to show, or "ready" when it has records:
+ * `noAddon`, the addon is not installed and no account's file has records;
+ * `noAccount`, the addon is installed but no account has saved a
+ * TradeSkillMaster.lua yet; `noRecords`, the shown account's file holds no
+ * sales, purchases, income, expenses, expirations, cancellations or gold log
+ * points the addon would read. A file holding only headers, or an empty
+ * TradeSkillMasterDB, has no records.
+ */
+export type TradeSkillMasterLedgerState = "noAddon" | "noAccount" | "noRecords" | "ready";
+/** The Ledger of one WoW account of an installation (GLOSSARY: Ledger). */
+export interface TradeSkillMasterLedger {
+  state: TradeSkillMasterLedgerState;
+  /** The installation's WoW accounts (`WTF/Account/<name>`) holding a TradeSkillMaster.lua, by name. */
+  accounts: string[];
+  /**
+   * The account shown: the one asked for, else the one written last whose
+   * file has records, else the one written last; null without accounts.
+   */
+  account: string | null;
+  /** When the game last wrote the shown account's TradeSkillMaster.lua (it dates the records shown), in ms since the epoch; null without accounts. */
+  recordedAt: number | null;
+  /** World of Warcraft is running, so this session's trades are not on disk yet. */
+  gameRunning: boolean;
+  /**
+   * The installation is Retail (or its test and beta clients), where the
+   * addon records gold rounded to 1,000 gold, so the graph moves in those steps.
+   */
+  retail: boolean;
+  /**
+   * The installation's section of Wowhead, for links to its items: "" for
+   * Retail (the site root), a path segment such as "classic" or
+   * "mop-classic", or null when Wowhead has no section for it (betas, a
+   * Classic client of unknown version).
+   */
+  wowhead: string | null;
+  /**
+   * The shown account's realms with records, sorted: a row of a realm's
+   * record CSVs (`r@<realm>`) or a point of a character's or guild's gold log
+   * there. The Realm filter adds All realms.
+   */
+  realms: string[];
+  /** The realm shown; null is All realms (also when the one asked for has no records). */
+  realm: string | null;
+  /**
+   * The Character filter's choices for the realm shown: each character of
+   * the records' `player` column and of the gold logs, sorted by label,
+   * then the Warband bank and each guild of the realm shown with a gold log,
+   * guilds sorted by label. The Warband bank is a choice under every realm
+   * whenever the addon saved its log (a game with a Warband bank), even one
+   * with no point; picked, it has no gold history.
+   */
+  characters: TradeSkillMasterLedgerCharacter[];
+  /**
+   * The choice shown (a `characters` id); null is All characters (also when
+   * the one asked for is not a choice). The Warband bank or a guild shows
+   * only its gold log, and its trading figures are zero.
+   */
+  character: string | null;
+  period: TradeSkillMasterLedgerPeriod;
+  /** Distinct items bought or sold for this selection. */
+  itemCount: number;
+  /**
+   * Export has something to write for the account and realm shown: a row of
+   * a record CSV on the realm shown, or on any realm under All realms. Gold
+   * logs are no records, so a realm or account with only gold logs has
+   * nothing to export.
+   */
+  exportable: boolean;
+  /** The trading figures for the selection (ADR 0018); null unless `state` is ready. */
+  figures: TradeSkillMasterLedgerFigures | null;
+  /**
+   * The selection's gold graph (ADR 0018); null unless `state` is ready, and
+   * null when the selection's gold logs hold no point ("No gold history").
+   */
+  gold: TradeSkillMasterLedgerGold | null;
+}
+/** The filters shared by the Ledger and its all-items list. */
+export interface TradeSkillMasterLedgerParams {
+  installationId: string;
+  account?: string;
+  realm?: string;
+  character?: string;
+  period?: TradeSkillMasterLedgerPeriod;
+}
+
+/**
+ * What the Ledger's item list sorts by: `volume` is earned plus spent, the list's usual
+ * order; `name` is the name the list shows.
+ */
+export const TSM_LEDGER_ITEM_SORTS = ["volume", "name", "sold", "earned", "bought", "spent", "net"] as const;
+export type TradeSkillMasterLedgerItemSort = (typeof TSM_LEDGER_ITEM_SORTS)[number];
+
+export interface TradeSkillMasterLedgerItemsParams extends TradeSkillMasterLedgerParams {
+  /** Keep the opened selection. Missing named filters produce an empty list. */
+  exact?: boolean;
+  /** Start of the page, from the preceding page's nextOffset. Defaults to zero. */
+  offset?: number;
+  /**
+   * The order of the whole list, applied before paging. Absent: volume.
+   * Ties fall back to volume, highest first, then to the item string. A name
+   * sort compares names in English collation and puts items without a
+   * cached name after the named ones in either direction, by item ID.
+   */
+  sort?: TradeSkillMasterLedgerItemSort;
+  /** Highest (Z) first. Absent: true, except for `name` (A to Z first). */
+  descending?: boolean;
+}
+
+export interface TradeSkillMasterLedgerItemsPage {
+  rows: TradeSkillMasterLedgerItem[];
+  /** The next offset in the same ordered selection, or null at the end. */
+  nextOffset: number | null;
+}
+
+/**
+ * What Export writes: the records of one WoW account for one realm, or every
+ * realm with records, whatever the Character and Period filters show.
+ */
+export interface TradeSkillMasterLedgerExportParams {
+  installationId: string;
+  /** The WoW account (`WTF/Account/<name>`); one without a TradeSkillMaster.lua is an error. */
+  account: string;
+  /**
+   * One realm with a record row (TradeSkillMasterLedger.exportable); absent
+   * is every such realm. With none, the export is an invalid request and
+   * writes nothing.
+   */
+  realm?: string;
+  /** An existing folder, as Decky's folder picker returned it. */
+  folder: string;
+}
+
+export interface TradeSkillMasterLedgerItem {
+  /** Canonical item string, shortened only if the row would exceed the page budget. */
+  itemString: string;
+  /** The cached name, or the item string when no name is available. Oversized strings may be shortened for display. */
+  name: string;
+  /** Items sold and bought: quantities summed over the records, as the Dashboard's daily counts sum them. */
+  sold: number;
+  bought: number;
+  /** Amounts in copper. */
+  earned: number;
+  spent: number;
+  net: number;
+  /**
+   * WoW's item quality (0 Poor … 8 WoW Token): a battle pet's from its item
+   * string, else the addon's current item cache. Null when unknown (no
+   * cached quality, or the older cache format, which stores none).
+   */
+  quality: number | null;
+}
+/** The Ledger's periods, as the in-game Dashboard offers them; All is the default. */
+export const TSM_LEDGER_PERIODS = ["1D", "1W", "1M", "3M", "6M", "1Y", "2Y", "All"] as const;
+export type TradeSkillMasterLedgerPeriod = (typeof TSM_LEDGER_PERIODS)[number];
+export interface TradeSkillMasterLedgerCharacter {
+  /**
+   * `<Name> - <Realm>`: a character is its name within the realm whose
+   * records hold it (the records' `player` column carries no realm).
+   */
+  id: string;
+  /** The name, with ` - <Realm>` under All realms when the account has several realms; "Warband bank" for the Warband bank. */
+  label: string;
+  /**
+   * A character, the account-wide Warband bank (id `warbank`) or a guild
+   * (id `guild:<Guild> - <Faction> - <Realm>`): the addon logs a guild's
+   * gold while one of the player's characters leads it.
+   */
+  kind: "character" | "warbank" | "guild";
+}
+/**
+ * The selection's gold over time, as the in-game Dashboard's graph and
+ * summary show it: the sum of the selected gold logs, each carrying its last
+ * balance forward and counting zero before its first point.
+ */
+export interface TradeSkillMasterLedgerGold {
+  /**
+   * `[ms since the epoch, copper]`, oldest first, from the period's start
+   * (or the first point, whichever is later) to now, sampled as the addon's
+   * graph samples a plot of the asked width: a step per 3 px, at most 300
+   * steps, keeping every second step and the last (at most about 150 points).
+   */
+  points: [number, number][];
+  /** The highest balance of the last 52 weeks, sampled every 6 hours and now. */
+  high: number;
+  /** The lowest balance of the last 52 weeks, sampled the same way. */
+  low: number;
+  /** Now minus 24 hours ago, or minus the first point when that is later. */
+  dailyChange: number;
+}
+/** Earned, spent or profit over the selection, in copper. */
+export interface TradeSkillMasterLedgerFlow {
+  total: number;
+  /** total ÷ the period's days; for All, ÷ the days since the selection's first gold-log point (at least 1). Unrounded. */
+  perDay: number;
+  /**
+   * The item string with the highest total (for profit: the highest earned
+   * minus spent, and only when above zero); null without one.
+   */
+  topItem: string | null;
+  /** The local item-cache name for topItem, when known. */
+  topItemName?: string;
+  /** total minus the previous period's total of the same length; null for All. */
+  trend: number | null;
+}
+/** The Ledger's figures, calculated as the addon's in-game Dashboard does (ADR 0018). */
+export interface TradeSkillMasterLedgerFigures {
+  /** Sales from every source, Σ price × quantity. Income records never count. */
+  earned: TradeSkillMasterLedgerFlow;
+  /** Purchases from every source, Σ price × quantity. Expense records never count. */
+  spent: TradeSkillMasterLedgerFlow;
+  /** earned − spent. */
+  profit: TradeSkillMasterLedgerFlow;
+  /** Items sold per day (quantity, not records), divided as `perDay`. Unrounded. */
+  dailySales: number;
+  /** Items bought per day, divided as `perDay`. Unrounded. */
+  dailyPurchases: number;
+  /** The highest price per item among the sales, in copper; 0 without sales. */
+  topSale: number;
+  /** The highest price per item among the purchases, in copper; 0 without purchases. */
+  topPurchase: number;
+}
 export interface TradeSkillMasterAuthStatus {
   state: "off" | "signingIn" | "signedIn" | "signedOut";
   tier?: "free" | "gold" | "platinum";
   channels?: string[];
+  /** The signed-in account's label. An email address arrives masked (`s•••@example.com`): Decky's debug log records every bridge payload. */
   account: string | null;
 }
 
@@ -800,6 +1024,49 @@ export interface MethodMap {
   "tradeskillmaster.wake": { params: Record<string, never>; result: void };
   "tradeskillmaster.setFollow": { params: { installationId: string; realmId: number; auctionHouseType: string; followed: boolean }; result: TradeSkillMasterDestination };
   "tradeskillmaster.destination": { params: { installationId: string }; result: TradeSkillMasterDestination };
+  /**
+   * The Ledger of the installation's WoW account (`account`, or the
+   * engine's pick) for a realm and character (absent: All) and a period
+   * (absent: All). `plotWidth` is the gold graph's plot width in CSS px:
+   * the graph samples it as the addon's graph samples a plot that wide
+   * (absent: the addon's limit of 300 steps). Reads WoW files only.
+   */
+  "tradeskillmaster.ledger": {
+    params: TradeSkillMasterLedgerParams & { plotWidth?: number };
+    result: TradeSkillMasterLedger;
+  };
+  /** Items bought or sold for the Ledger selection, highest earned plus spent first. */
+  "tradeskillmaster.ledgerItems": {
+    params: TradeSkillMasterLedgerItemsParams;
+    result: TradeSkillMasterLedgerItemsPage;
+  };
+  /**
+   * Export (GLOSSARY: Ledger): the account's records, read fresh, as the
+   * ZIP of CSVs TradeSkillMaster's desktop app writes, saved into `folder`
+   * as `TSM_<realm or N_Realms>_<date>.zip` (` (n)` added when that name is
+   * taken). One `TSM_<realm>_<dataset>_<date>.csv` per realm and dataset
+   * (Sales, Buys, Income, Expense, Expired, Cancelled): UTF-8 with a BOM, the
+   * stored header and rows with an `itemName` column after `itemString`.
+   * Realm names are made safe for file names (`_2`, `_3`, … tell apart
+   * realms whose safe names are the same); the date is the UTC day. The ZIP
+   * is written to a hidden temporary file beside its final name and
+   * published without replacing any file, so a failed export leaves no
+   * file; temporary files an interrupted export left go first. On success the engine remembers `folder`
+   * (PluginSettings.tsmLedgerExportFolder). WoW files are only read.
+   */
+  "tradeskillmaster.ledgerExport": {
+    params: TradeSkillMasterLedgerExportParams;
+    result: { path: string };
+  };
+  /**
+   * Where Export's folder picker starts: the folder the last export went to
+   * while it still exists, else `~/Documents`, created when missing (the
+   * home folder if it can't be).
+   */
+  "tradeskillmaster.ledgerExportFolder": {
+    params: Record<string, never>;
+    result: { folder: string };
+  };
   "tradeskillmaster.status": { params: Record<string, never>; result: TradeSkillMasterAuthStatus };
   "tradeskillmaster.signIn": { params: Record<string, never>; result: { authorizeUrl: string } };
   "tradeskillmaster.cancel": { params: Record<string, never>; result: TradeSkillMasterAuthStatus };
@@ -1692,6 +1959,8 @@ export interface PluginSettings {
   pluginUpdateStagedVersion: string | null;
   /** User-chosen folder for WTF backups (e.g. on an SD card); null = the plugin's own data folder. */
   wtfBackupDir: string | null;
+  /** The folder the last Ledger export went to (tradeskillmaster.ledgerExport); engine-written only. Null before the first export. */
+  tsmLedgerExportFolder: string | null;
   /** How many automatic pre-restore safety backups to keep per game version (1-10). */
   wtfKeepSnapshots: number;
   /**
@@ -2020,6 +2289,8 @@ export interface EventMap {
    * TradeSkillMaster API again; it is absent when only auction data moved.
    */
   "tradeskillmaster.changed": { account?: TradeSkillMasterAccount };
+  /** Saved Ledger records or the WoW running state changed for the active installation. */
+  "tradeskillmaster.ledgerChanged": { installationId: string };
   "addons.changed": { addonIds: string[] };
   /**
    * Update all (addons.updateAll) progress, in order: one when the total is

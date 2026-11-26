@@ -70,3 +70,16 @@ column with the current choice checked, A picks, B cancels. Other popups
 (the installation pickers, the row choice menus, details) stay Steam's for
 now; the same treatment is the agreed follow-up if their entrance replay
 bothers in use.
+
+**Ledger exception (2026-11-24, #312; revised by #319).** The Ledger has
+more controls than one bar row holds. #312 floated two rows under the pill
+bar. After reviewing it on the Deck, the owner asked for only the title
+row to float (#319). That row holds the destination's name, with the
+Auction data, Dashboard and Ledger pills right-aligned beside it. The
+controls are now the first rows of the Dashboard and the Ledger and scroll
+with them. Account comes first, shown only with several WoW accounts. On
+the Ledger, Export follows as a settings row whose description names what
+it writes. Then Realm, Character and Period share one browse-bar row. The
+Ledger's column header is the one other row that floats. It sticks under
+the title row, because six columns of figures can't be read once their
+names scroll away (owner, PR #318 review).

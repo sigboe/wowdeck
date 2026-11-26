@@ -14,6 +14,7 @@ const NOT_FOUND_TEXT: Record<string, string> = {
   provider: "That addon source isn't available",
   "provider for addon": "This addon's source isn't available",
   "addon folders for": "This addon's folders weren't found",
+  "Ledger account": "That WoW account's TradeSkillMaster records are gone. Refresh and try again",
 };
 
 export class NotFoundError extends Error {

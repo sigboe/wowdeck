@@ -10,8 +10,19 @@ import type {
   TradeSkillMasterAccount,
   TradeSkillMasterAuthStatus,
   TradeSkillMasterDestination,
+  TradeSkillMasterLedger,
+  TradeSkillMasterLedgerItemsPage,
+  TradeSkillMasterLedgerItemsParams,
 } from "../backend/src/api/contracts";
 import { useResource } from "./useResource";
+import {
+  ledgerFilters,
+  ledgerParams,
+  ledgerPlotWidth,
+  settleLedgerFilters,
+  type LedgerFilters,
+} from "./tsmLedgerFilters";
+import { useEffect, useRef, useSyncExternalStore } from "react";
 
 /**
  * What the TradeSkillMaster views read from the engine, one keyed resource
@@ -19,6 +30,11 @@ import { useResource } from "./useResource";
  * guarding its own request. The account-wide reads share one key.
  */
 const ACCOUNT_KEY = "account";
+
+/** The Ledger resource's key for an installation, a filter selection and the graph's plot width. */
+const ledgerKey = (installationId: string, filters: LedgerFilters, plotWidth?: number) =>
+  JSON.stringify({ installationId, filters, plotWidth });
+type LedgerKey = { installationId: string; filters: LedgerFilters; plotWidth?: number };
 
 export function createTsmModule(deps: {
   rpc: Rpc;
@@ -57,6 +73,49 @@ export function createTsmModule(deps: {
     },
     clock: deps.clock,
   });
+  // The records read WoW's saved files only: no sign-in, no network. One key
+  // per installation and filter selection (ledgerKey). Viewed records read
+  // again when the engine reports a save or a game state change. The minute
+  // poll still moves period edges as records age and covers missed events.
+  // Switching between the Dashboard and the Ledger reads nothing again: a
+  // save invalidates every key (ledgerChanged), and the poll restarts with
+  // the view (DEVICE 2026-11-26, LEDGER-PILL-2).
+  const ledger = createKeyedResource<TradeSkillMasterLedger>({
+    pollMs: 60_000,
+    revalidateOnReturn: false,
+    read: (key) => {
+      const { installationId, filters, plotWidth } = JSON.parse(key) as LedgerKey;
+      return deps.rpc("tradeskillmaster.ledger", {
+        installationId,
+        ...ledgerParams(filters),
+        ...(plotWidth !== undefined ? { plotWidth } : {}),
+      });
+    },
+    onData: (key, data) => {
+      const { installationId, filters, plotWidth } = JSON.parse(key) as LedgerKey;
+      const settled = settleLedgerFilters(installationId, filters, data);
+      // The answer is already the settled selection's: no second read.
+      if (settled) ledger.put(ledgerKey(installationId, settled, plotWidth), data);
+    },
+    errorText: (e) => {
+      backendErrorMessage(e);
+      return "Couldn't read TradeSkillMaster's records";
+    },
+    clock: deps.clock,
+  });
+  const ledgerItems = createKeyedResource<TradeSkillMasterLedgerItemsPage>({
+    revalidateOnReturn: false,
+    read: (key) =>
+      deps.rpc(
+        "tradeskillmaster.ledgerItems",
+        JSON.parse(key) as TradeSkillMasterLedgerItemsParams,
+      ),
+    errorText: (e) => {
+      backendErrorMessage(e);
+      return "Couldn't load Ledger items";
+    },
+    clock: deps.clock,
+  });
   const cleanupPreview = createKeyedResource<TradeSkillMasterAccount["follows"]>({
     read: (installationId) => deps.rpc("tradeskillmaster.cleanupPreview", { installationId }),
     errorText: (e) => {
@@ -81,6 +140,14 @@ export function createTsmModule(deps: {
     status,
     account,
     destination,
+    ledger,
+    ledgerItems,
+    ledgerChanged({ installationId }: EventMap["tradeskillmaster.ledgerChanged"]) {
+      const matches = (key: string) =>
+        (JSON.parse(key) as LedgerKey).installationId === installationId;
+      ledger.invalidate(matches);
+      ledgerItems.invalidate(matches);
+    },
     cleanupPreview,
     /**
      * The engine's TradeSkillMaster state moved. Auction data moves often (every
@@ -125,6 +192,7 @@ export const {
   cleanupPreview: tsmCleanupPreview,
 } = tsmModule;
 engine.events.on("tradeskillmaster.changed", tsmModule.changed);
+engine.events.on("tradeskillmaster.ledgerChanged", tsmModule.ledgerChanged);
 engine.events.on("addons.changed", tsmModule.addonsChanged);
 export const useTsmAddons = (installationId: string) =>
   useResource(tsmModule.addons, installationId);
@@ -134,6 +202,42 @@ export const putTsmAccount = (data: TradeSkillMasterAccount) => account.put(ACCO
 export const useTsmAccount = () => useResource(account, ACCOUNT_KEY);
 export const useTsmDestination = (installationId: string) =>
   useResource(tsmDestination, installationId);
+/**
+ * The records for the installation's current filters (the Dashboard and
+ * the Ledger share them), the gold graph sampled for
+ * the plot width laid out last. While another selection or width reads,
+ * `data` stays the last answer this view showed, so the filter bar and the
+ * figures stay in place instead of flashing empty.
+ */
+export function useTsmLedger(installationId: string) {
+  const filters = useSyncExternalStore(ledgerFilters.subscribe, () =>
+    ledgerFilters.get(installationId),
+  );
+  const plotWidth = useSyncExternalStore(ledgerPlotWidth.subscribe, ledgerPlotWidth.get);
+  const snapshot = useResource(tsmModule.ledger, ledgerKey(installationId, filters, plotWidth));
+  const last = useRef<TradeSkillMasterLedger | null>(null);
+  if (snapshot.data) {
+    last.current = snapshot.data;
+  }
+  return { ...snapshot, data: snapshot.data ?? last.current };
+}
+/**
+ * The Ledger's page last shown stays while another view shows, so coming
+ * back shows it at once instead of a reading line (DEVICE 2026-11-26,
+ * LEDGER-PILL-2). Another page or selection forgets it: one page is kept.
+ */
+let shownItemsKey: string | null = null;
+export function useTsmLedgerItems(params: TradeSkillMasterLedgerItemsParams) {
+  const key = JSON.stringify(params);
+  const snapshot = useResource(tsmModule.ledgerItems, key);
+  useEffect(() => {
+    if (shownItemsKey !== null && shownItemsKey !== key) {
+      tsmModule.ledgerItems.forget(shownItemsKey);
+    }
+    shownItemsKey = key;
+  }, [key]);
+  return snapshot;
+}
 export const useTsmCleanupPreview = (installationId: string) =>
   useResource(tsmCleanupPreview, installationId);
 
@@ -155,6 +259,8 @@ export function resetTsmReads(): void {
     tsmDestination,
     tsmCleanupPreview,
     tsmModule.addons,
+    tsmModule.ledger,
+    tsmModule.ledgerItems,
   ]) {
     resource.retainOnly([]);
   }

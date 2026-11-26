@@ -7,6 +7,7 @@ import { providersHandlers } from "../src/api/handlers/providers";
 import { ProviderRegistry } from "../src/wow/providers/provider-registry";
 import { createStateStore } from "../src/wow/storage/StateStore";
 import {
+  accountLabel,
   TradeSkillMasterAuth,
   TradeSkillMasterProvider,
 } from "../src/wow/tsm/TradeSkillMasterAuth";
@@ -342,6 +343,37 @@ test("restart restores claims, refreshes early, retries temporary failures and p
 
   } finally {
     await mock.stop(true);
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("an email account leaves the engine masked; other names and the stored account stay whole", async () => {
+  const { readFileSync, writeFileSync } = await import("node:fs");
+  expect(accountLabel("player@example.com")).toBe("p•••@example.com");
+  expect(accountLabel("a.b@c@example.com")).toBe("a•••@example.com");
+  expect(accountLabel("fixture-player")).toBe("fixture-player");
+  expect(accountLabel("@example.com")).toBe("@example.com");
+  expect(accountLabel(null)).toBeNull();
+
+  const dir = mkdtempSync(join(tmpdir(), "tsm-label-"));
+  const registry = new ProviderRegistry();
+  const auth = new TradeSkillMasterAuth(dir, "1", registry);
+  registry.register(new TradeSkillMasterProvider(auth));
+  registry.attachStore(createStateStore(dir));
+  writeFileSync(join(dir, "tsm-refresh-token"), "fixture-offline-refresh");
+  writeFileSync(join(dir, "tsm-account"), "player@example.com");
+  let response: any;
+  const rpc = new JsonlServer((line) => {
+    response = JSON.parse(line);
+  });
+  rpc.handle(providersHandlers(subset({ registry, tsmAuth: auth })));
+  try {
+    // Off but remembered: restore() reads the stored account without the network.
+    await auth.restore();
+    await rpc.handleLine(JSON.stringify({ id: 1, method: "tradeskillmaster.status" }));
+    expect(response.result).toEqual({ state: "off", account: "p•••@example.com" });
+    expect(readFileSync(join(dir, "tsm-account"), "utf8")).toBe("player@example.com");
+  } finally {
     rmSync(dir, { recursive: true, force: true });
   }
 });
