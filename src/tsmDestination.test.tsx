@@ -482,7 +482,7 @@ mock.module("@decky/ui", () => ({
   },
 }));
 const { rememberedFocus, resetFocusMemory, restoreFocus } = await import("./focusMemory");
-const { browseFocusView, browseZone } = await import("./browseSessionState");
+const { browseFocusView, browseZone, qamHidden } = await import("./browseSessionState");
 const { TsmAddon } = await import("./components/TsmAddon");
 const { resetTsmReads, putTsmAccount } = await import("./tsmReads");
 const { TsmDestination, firstTsmControl, focusTsmEntry } =
@@ -1899,6 +1899,99 @@ test("the Ledger opens an item on Wowhead with A, lands on it once on the way ba
     await enterAgain(view);
     expect(document.activeElement).toBe(firstTsmControl(view.container));
   } finally {
+    fake.answers["tradeskillmaster.ledgerItems"] = previousItems;
+    ledger = previousLedger;
+    browseZone.zone = "nav";
+    await view.close();
+    resetFocusMemory();
+    resetTsmReads();
+  }
+});
+
+test("B out of Wowhead opens the QAM again on the item, as a modal's close does; another way out ends the session", async () => {
+  resetTsmView();
+  resetTsmReads();
+  resetLedgerFilters();
+  resetFocusMemory();
+  const previousLedger = ledger;
+  const previousItems = fake.answers["tradeskillmaster.ledgerItems"];
+  ledger = { ...readyLedger, itemCount: 2, wowhead: "classic" };
+  const item = (itemString: string, name: string) => ({
+    itemString,
+    name,
+    earned: 1,
+    spent: 0,
+    net: 1,
+    sold: 1,
+    bought: 0,
+    quality: null,
+  });
+  fake.answers["tradeskillmaster.ledgerItems"] = {
+    rows: [item("i:2589", "Linen Cloth"), item("i:4306", "Silk Cloth")],
+    nextOffset: null,
+  };
+  const view = await mountDestination(false);
+  // Steam's main-window history (DEVICE 2026-11-26): the browser pushes
+  // /externalweb, and B pops back to the page behind it.
+  const listeners = new Set<(location: { pathname: string }, action: string) => void>();
+  const history = {
+    location: { pathname: "/library/app/1" },
+    listen(listener: (location: { pathname: string }, action: string) => void) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+  };
+  const go = (pathname: string, action: string) =>
+    act(async () => {
+      history.location = { pathname };
+      for (const listener of [...listeners]) listener({ pathname }, action);
+    });
+  Object.assign(window, {
+    SteamUIStore: { WindowStore: { GamepadUIMainWindowInstance: { m_history: history } } },
+  });
+  const items = () => itemRows(view.container);
+  const openSilk = async () => {
+    await act(async () => items()[1]!.focus());
+    await act(async () =>
+      items()[1]!.querySelector<HTMLElement>(".wowdeck-ledger-items-columns")!.click(),
+    );
+    await go("/externalweb", "PUSH");
+    // The browser hides the QAM; the held session survives it.
+    qamHidden();
+  };
+  try {
+    browseZone.zone = "pane";
+    await showLedger(view.container);
+    const opens = qamOpens;
+    await openSilk();
+    expect(browseZone.zone).toBe("pane");
+    await go("/externalweb", "REPLACE");
+    expect(qamOpens).toBe(opens);
+    await go("/library/app/1", "POP");
+    expect(qamOpens).toBe(opens + 1);
+    expect(listeners.size).toBe(0);
+    // The QAM's panel mounts again and restores the pane's row by identity.
+    await view.leave();
+    await view.render();
+    await act(async () => {
+      restoreFocus(browseFocusView("tsm"));
+    });
+    expect(document.activeElement).toBe(items()[1]!);
+    // Back already landed there: the next entry lands on the first control.
+    await enterAgain(view);
+    expect(document.activeElement).toBe(firstTsmControl(view.container));
+
+    // Home from the browser: the QAM stays shut and the session ends, so
+    // the next visit lands collapsed; entering the destination then comes
+    // back to the item, once.
+    await openSilk();
+    await go("/library/home", "PUSH");
+    expect(qamOpens).toBe(opens + 1);
+    expect(browseZone.zone as string).toBe("nav");
+    await enterAgain(view);
+    expect(document.activeElement).toBe(items()[1]!);
+  } finally {
+    delete (window as { SteamUIStore?: unknown }).SteamUIStore;
     fake.answers["tradeskillmaster.ledgerItems"] = previousItems;
     ledger = previousLedger;
     browseZone.zone = "nav";

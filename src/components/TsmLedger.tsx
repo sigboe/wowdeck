@@ -21,13 +21,17 @@ import type {
   TradeSkillMasterLedgerItemsParams,
 } from "../../backend/src/api/contracts";
 import { itemQualityColour } from "../itemQuality";
+import { holdBrowseSessionForModal, leaveBrowseSession } from "../browseSessionState";
 import { rememberFocus } from "../focusMemory";
+import { openPanel } from "../openPanel";
+import { mainWindowHistory, watchExternalWebLeave } from "../steamDom/externalWebReturn";
 import { descriptionStyle } from "../steamTheme";
 import { ledgerParams } from "../tsmLedgerFilters";
 import { useTsmLedgerItems } from "../tsmReads";
 import { tsmView } from "../tsmView";
 import { ledgerItemLabel, wowheadItemUrl } from "../tsmWowhead";
 import { Money } from "./Money";
+import { focusTarget } from "./FocusSlot";
 import { ScrollBuffer } from "./ScrollBuffer";
 import { RECORDS_VIEW, RecordsView } from "./TsmRecords";
 
@@ -180,9 +184,10 @@ let kept: { key: string; offsets: number[] } | null = null;
 let keptSort: ItemsSort = null;
 
 /**
- * The item opened on Wowhead. Steam's browser closes the QAM; entering the
- * destination again lands on that item's row, once (owner, PR #318
- * review), while the Ledger still shows the same selection.
+ * The item opened on Wowhead, for a player who leaves Steam's browser
+ * another way than B (or on a Steam without the history openOnWowhead
+ * watches): entering the destination again lands on that item's row, once
+ * (owner, PR #318 review), while the Ledger still shows the same selection.
  */
 let resume: { key: string; itemString: string } | null = null;
 
@@ -398,12 +403,45 @@ function LedgerItems({
     }
     paging.onButtonDown(evt);
   };
-  // A opens the item on Wowhead in Steam's browser, which closes the QAM;
-  // entering the destination again comes back to this row (takeLedgerResume).
+  // A opens the item on Wowhead in Steam's browser, which closes the QAM.
+  // B there goes back to the Steam page behind it (DEVICE 2026-11-26), so
+  // the Ledger watches for that and opens the QAM again, on this row, as a
+  // modal's close does (S21, owner): the widened session is held meanwhile.
+  // Another way out ends the session; entering the destination again then
+  // comes back to this row (takeLedgerResume).
   const openOnWowhead = (url: string, itemString: string) => {
     resume = { key: listKey, itemString };
     rememberFocus(RECORDS_VIEW, itemFocusKey(itemString));
+    const history = mainWindowHistory();
+    if (history) {
+      const release = holdBrowseSessionForModal();
+      watchExternalWebLeave(history, (back) => {
+        if (back) {
+          resume = null;
+          openPanel("browse");
+          release();
+        } else {
+          release();
+          leaveBrowseSession();
+        }
+      });
+    }
     Navigation.NavigateToExternalWeb(url);
+  };
+  /**
+   * An item row's focus memory (S21): the QAM opening again after Wowhead
+   * restores it by identity; the page's first row is also where a turned
+   * page lands.
+   */
+  const rowFocus = (focusKey: string, first: boolean) => {
+    const target = focusTarget(RECORDS_VIEW, focusKey);
+    return {
+      ...target,
+      ref: (el: HTMLDivElement | null) => {
+        target.ref(el);
+        if (first) firstRow.current = el;
+      },
+    };
   };
   const row = (child: ReactNode) => <PanelSectionRow>{child}</PanelSectionRow>;
   return (
@@ -480,11 +518,10 @@ function LedgerItems({
                     return (
                       <PanelSectionRow key={`${index}:${itemString}`}>
                         <Field
-                          ref={index === 0 ? firstRow : undefined}
+                          {...rowFocus(focusKey, index === 0)}
                           focusable
                           childrenLayout="below"
                           childrenContainerWidth="max"
-                          onGamepadFocus={() => rememberFocus(RECORDS_VIEW, focusKey)}
                           {...paging}
                           {...(index === 0 && firstStop)}
                           {...toHeader}
