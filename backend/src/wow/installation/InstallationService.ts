@@ -97,7 +97,7 @@ export class InstallationService {
    * The automatic scan (engine start, Find games): detect installations into
    * the list, leaving out removed ones; the whole list after.
    */
-  async detect(homeDir: string): Promise<Installation[]> {
+  async scan(homeDir: string): Promise<Installation[]> {
     await this.#scan(homeDir, false);
     return this.listed();
   }

@@ -1385,7 +1385,7 @@ export interface MethodMap {
   };
   /**
    * Find games: run the startup scan (removed installations stay out),
-   * then clear the removed list, so every found game comes back. Answers with what
+   * then clear the removed games list, so every found game comes back. Answers with what
    * came back or was found for the first time. Fires linkedGames.changed.
    */
   "linkedGames.find": {

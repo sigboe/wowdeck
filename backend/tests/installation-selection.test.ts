@@ -85,7 +85,7 @@ afterAll(() => {
 
 describe("installation selection", () => {
   test("detect adds both flavors and persists first-installation fallback", async () => {
-    expect(await service.installations.detect(join(ROOT, "home"))).toHaveLength(2);
+    expect(await service.installations.scan(join(ROOT, "home"))).toHaveLength(2);
     const found = service.installations.list();
     retail = found.find((i) => i.label === "_retail_")!;
     era = found.find((i) => i.label === "_classic_era_")!;
@@ -116,26 +116,26 @@ describe("installation selection", () => {
   test("re-detection never drops installations and keeps the selection", async () => {
     // flavor dir temporarily unavailable (unmounted SD card etc.)
     rmSync(join(ROOT, "wow", "_classic_era_"), { recursive: true, force: true });
-    await service.installations.detect(join(ROOT, "home"));
+    await service.installations.scan(join(ROOT, "home"));
     expect(service.installations.list().map((i) => i.label).sort()).toEqual(["_classic_era_", "_retail_"]);
     expect(service.installations.selectedId()).toBe(era.id);
 
     // and it recovers once the directory is back
     flavorDir("_classic_era_");
-    const restored = await service.installations.detect(join(ROOT, "home"));
+    const restored = await service.installations.scan(join(ROOT, "home"));
     expect(restored).toHaveLength(2);
     expect(service.installations.selectedId()).toBe(era.id);
   });
 
   test("newly discovered installations are appended without touching selection", async () => {
     flavorDir("_classic_beta_");
-    const grown = await service.installations.detect(join(ROOT, "home"));
+    const grown = await service.installations.scan(join(ROOT, "home"));
     expect(grown).toHaveLength(3);
     expect(service.installations.selectedId()).toBe(era.id);
   });
 
   test("listInstallations refreshes a legacy auto-generated displayName, never a custom one", async () => {
-    await service.installations.detect(join(ROOT, "home"));
+    await service.installations.scan(join(ROOT, "home"));
     const beta = service.installations.list().find((i) => i.label === "_classic_beta_")!;
 
     // Simulate installations persisted before the naming fix (the old

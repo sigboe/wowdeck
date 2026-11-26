@@ -59,7 +59,7 @@ afterAll(() => {
 
 describe("Forever installations", () => {
   test("a _forever_ folder is detected as Forever; the _retail_ next to it stays Retail", async () => {
-    const detected = await service.installations.detect(join(ROOT, "home"));
+    const detected = await service.installations.scan(join(ROOT, "home"));
 
     const byLabel = (label: string) => detected.find((i) => i.path.endsWith(`/${label}`))!;
     expect(byLabel("_forever_")).toMatchObject({
@@ -86,7 +86,7 @@ describe("Forever installations", () => {
 
   test("Forever and Forever Beta installations survive a restart unchanged", async () => {
     makeFlavor(join(WOW, "_classic_beta_"), "WowB.exe");
-    await service.installations.detect(join(ROOT, "home"));
+    await service.installations.scan(join(ROOT, "home"));
     const before = foreverInstallations(service);
     expect(before.map((i) => i.displayName)).toEqual(expect.arrayContaining(["Forever", "Forever Beta"]));
 
@@ -94,10 +94,10 @@ describe("Forever installations", () => {
   });
 
   test("a Retail installation the player named World of Warcraft: Forever keeps that name", async () => {
-    await service.installations.detect(join(ROOT, "home"));
+    await service.installations.scan(join(ROOT, "home"));
     const retail = service.installations.list().find((i) => i.location.endsWith("/_retail_"))!;
     store.setInstallations(store.installations.map((i) => (i.id === retail.id ? { ...i, displayName: "World of Warcraft: Forever" } : i)));
-    await service.installations.detect(join(ROOT, "home"));
+    await service.installations.scan(join(ROOT, "home"));
     expect(service.installations.listed().find((i) => i.id === retail.id)!.displayName).toBe("World of Warcraft: Forever");
   });
 });

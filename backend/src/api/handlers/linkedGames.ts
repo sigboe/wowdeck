@@ -13,6 +13,6 @@ export function linkedGamesHandlers({
     "linkedGames.add": async ({ appId, name }) => linkedGames.add({ appId, name }),
     "linkedGames.remove": async ({ appId }) => linkedGames.remove(appId),
     // The automatic scan (removed installations stay out), then the removed games list cleared.
-    "linkedGames.find": async () => linkedGames.find(() => installationService.detect(homeDir)),
+    "linkedGames.find": async () => linkedGames.find(() => installationService.scan(homeDir)),
   } satisfies Partial<HandlerTable>;
 }

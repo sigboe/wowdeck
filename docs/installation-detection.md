@@ -235,8 +235,8 @@ sources:
   Removing an added game deletes it instead of remembering it.
 
 **Find games** in the Steam library modal (`linkedGames.find`) runs the
-same detection as Find WoW, then clears the removed list, so every found
-game comes back. It answers with the linked games that came back or were
+scan from engine start, which leaves removed installations out, then
+clears the removed games list, so every found game comes back. It answers with the linked games that came back or were
 found for the first time, and the modal's toast names them.
 
 Every scan, including the one at engine start, forgets added and removed

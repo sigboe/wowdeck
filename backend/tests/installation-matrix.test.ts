@@ -184,7 +184,7 @@ afterAll(() => {
 
 describe("installation matrix", () => {
   test("detect registers exactly the valid installations", async () => {
-    await stack.service.installations.detect(join(ROOT, "home"));
+    await stack.service.installations.scan(join(ROOT, "home"));
     const labels = stack.service.installations.list().map((i) => i.label).sort();
     expect(labels).toEqual(["_classic_beta_", "_classic_era_", "_retail_"]);
   });
@@ -235,7 +235,7 @@ describe("installation matrix", () => {
     });
     expect(added).toHaveLength(1);
 
-    await stack.service.installations.detect(join(ROOT, "home"));
+    await stack.service.installations.scan(join(ROOT, "home"));
     expect(stack.service.installations.list().some((i) => i.id === added[0]!.id)).toBe(true);
   });
 

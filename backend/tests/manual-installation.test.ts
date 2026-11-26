@@ -148,7 +148,7 @@ describe("manual installation", () => {
   test("manual installation persists and survives detection", async () => {
     store.updateSettings({ customWowPaths: [] });
     // detection finds nothing under the empty home; manual entries must stay
-    const detected = await service.installations.detect(join(ROOT, "home"));
+    const detected = await service.installations.scan(join(ROOT, "home"));
     expect(detected).toHaveLength(2);
     expect(detected.every((i) => i.source === "manual")).toBe(true);
   });

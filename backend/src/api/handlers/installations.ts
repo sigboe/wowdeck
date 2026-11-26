@@ -22,7 +22,7 @@ export function installationsHandlers({ installationService, service, homeDir }:
 
     "installations.list": async () => ({ installations: installationService.listed() }),
 
-    // Find WoW installations: removed installations found come back.
+    // Find WoW installations: unlike the startup scan, it brings back removed installations it finds.
     "installations.detect": async () => installationService.find(homeDir),
 
     "installations.select": async (params) => ({ installation: installationService.select(params.installationId) }),
