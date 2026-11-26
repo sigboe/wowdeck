@@ -20,6 +20,8 @@ export interface AddonActionDeps {
    * until that change is on screen; a list read it waits for resolves this.
    */
   settled(change: ListChange, addonId?: string): Promise<void> | void;
+  /** Refresh other views of the result while Update all still shows progress. */
+  afterUpdateAll?(): Promise<void>;
 }
 
 /**
@@ -272,8 +274,12 @@ export function createAddonActions(deps: AddonActionDeps) {
         toastError("Couldn't update addons", e);
       } finally {
         // The bar stays until the updated list is on screen.
-        await deps.settled("reload");
-        deps.setUpdatingAll(null);
+        try {
+          await deps.settled("reload");
+          await deps.afterUpdateAll?.();
+        } finally {
+          deps.setUpdatingAll(null);
+        }
       }
     },
   };

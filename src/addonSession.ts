@@ -107,7 +107,7 @@ export function recoveryNeededFor(state: AddonSessionState): Installation | null
 
 export type AddonSessionDeps = Pick<
   AddonActionDeps,
-  "rpc" | "toast" | "toastError" | "autoUpdateOn"
+  "rpc" | "toast" | "toastError" | "autoUpdateOn" | "afterUpdateAll"
 >;
 
 export interface AddonSession extends Pick<Store<AddonSessionState>, "get" | "subscribe"> {
@@ -418,6 +418,17 @@ export function createAddonSession(deps: AddonSessionDeps): AddonSession {
   };
   const actions: AddonActions = {
     ...shared,
+    /**
+     * One Update all at a time, from any view (#252): the engine's progress
+     * event names no run, so a second run would mix its counts into the
+     * first's bar. A press while one runs starts nothing and is not queued.
+     */
+    async updateAll(scope) {
+      if (store.get().updatingAll) {
+        return;
+      }
+      await shared.updateAll(scope);
+    },
     /**
      * One install per result at a time, whichever view or release channel
      * asks: a repeat while it is pending sends nothing and is not queued.

@@ -2,6 +2,7 @@ import { engine } from "./engineLink";
 import { pluginToast, toastError } from "./toast";
 import { settingsStore } from "./settings";
 import { createAddonSession } from "./addonSession";
+import { steamUpdates } from "./steamUpdates";
 
 /** The one addon session (addonSession.ts), wired to the engine. */
 export const addonSession = createAddonSession({
@@ -9,6 +10,9 @@ export const addonSession = createAddonSession({
   toast: pluginToast,
   toastError,
   autoUpdateOn: () => settingsStore.get().settings.autoUpdate,
+  // Update all changes the counts on Steam's game page and home badge too,
+  // from either view (#252); read before its progress clears.
+  afterUpdateAll: () => steamUpdates.loadSummary(),
 });
 
 // The list follows the engine's changes while no panel is mounted, so a
