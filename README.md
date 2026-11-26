@@ -109,11 +109,6 @@ The Dashboard and the Ledger read what the addon saved at your last
 logout or reload. They need no sign-in, work offline and filter by
 account, realm, character and period.
 
-When the Ledger shows an item as "Item 12345", the addon has lost its
-name. TradeSkillMaster clears its item cache when WoW updates and only
-looks up items it meets again. Open TradeSkillMaster's Ledger in game
-once and log out, and the names come back.
-
 ## Updating
 
 The plugin is not in the official Decky store, so updates come from
