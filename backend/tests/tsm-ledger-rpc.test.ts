@@ -15,6 +15,8 @@ import type { WowInstallation } from "../src/wow/models";
 import { WowClientType } from "../src/wow/types";
 import type { GameRunning } from "../src/api/contracts";
 import { subset } from "./helpers/subset";
+import { blp, writeCascFixture } from "./helpers/cascFixture";
+import { GameTextures } from "../src/wow/textures/GameTextures";
 
 /** A hand-written TradeSkillMaster.lua: empty CSVs carry only their header, as the addon writes them. */
 const saved = (db: Record<string, string>) =>
@@ -54,12 +56,12 @@ function fixture() {
     response = JSON.parse(line);
     lineBytes = Buffer.byteLength(line) + 1; // stdout newline
   });
-  rpc.handle(providersHandlers(subset({ tsmLedger: ledger, installationService: { require: () => installation } })));
+  rpc.handle(providersHandlers(subset({ tsmLedger: ledger, gameTextures: new GameTextures(), installationService: { require: () => installation } })));
   const call = async (params: object = {}, method = "tradeskillmaster.ledger") => {
     await rpc.handleLine(JSON.stringify({ id: 1, method, params: { installationId: "era", ...params } }));
     return response;
   };
-  return { write, call, remove: (path: string) => rmSync(join(installation.location, path)), lineBytes: () => lineBytes, running: (state: GameRunning) => { running = state; } };
+  return { dir, write, call, remove: (path: string) => rmSync(join(installation.location, path)), lineBytes: () => lineBytes, running: (state: GameRunning) => { running = state; } };
 }
 
 const account = (name: string) => `WTF/Account/${name}/SavedVariables/TradeSkillMaster.lua`;
@@ -203,9 +205,9 @@ test("the Ledger reads names from the saved legacy item cache and prefers an exa
   expect(figures.spent).toMatchObject({ total: 5, topItem: "i:4306", topItemName: "Silk Cloth" });
   expect(figures.profit.topItemName).toBe("Linen Cloth");
   expect((await call({}, "tradeskillmaster.ledgerItems")).result.rows).toEqual([
-    // The legacy cache stores no quality.
-    { itemString: "i:2589:123", name: "Linen Cloth", sold: 2, earned: 30, bought: 0, spent: 0, net: 30, quality: null },
-    { itemString: "i:4306", name: "Silk Cloth", sold: 0, earned: 0, bought: 1, spent: 5, net: -5, quality: null },
+    // The legacy cache stores no quality and no icon.
+    { itemString: "i:2589:123", name: "Linen Cloth", sold: 2, earned: 30, bought: 0, spent: 0, net: 30, quality: null, texture: null },
+    { itemString: "i:4306", name: "Silk Cloth", sold: 0, earned: 0, bought: 1, spent: 5, net: -5, quality: null, texture: null },
   ]);
 
   // Rewriting the same file replaces its names. Flat legacy lists also work.
@@ -250,6 +252,31 @@ test("All items reads each item's quality from the modern item cache, a battle p
     ["p:39:1:3", "p:39:1:3", 3],
     ["i:999999", "i:999999", null],
   ]);
+});
+
+test("Ledger items carry the cached icon, and their icons read from the game's files", async () => {
+  const { dir, write, call } = fixture();
+  // One 4×4 red DXT1 icon; 200 is cached but not in the game's files.
+  const red = blp({ encoding: 2, width: 4, height: 4, mips: [Uint8Array.of(0x00, 0xf8, 0x1f, 0x00, 0, 0, 0, 0)] });
+  writeCascFixture(dir, [{ id: 133919, bytes: red, mode: "Z" }]);
+  const fields = (texture: number) => [0, 0, 0, 0, 0, texture, 0, 0, 1, 0, 0, 0, -1];
+  const cache = deflateRawSync(encode(["i:6292", "10 Pound Mud Snapper", ...fields(133919), "i:2589", "Linen Cloth", ...fields(200)])).toString("base64");
+  const sales = ["i:6292", "i:2589", "i:999"].map((item, index) => `${item},1,1,${10 - index},Bob,Hero,${NOW},Auction`);
+  write(account("MAIN"), saved({ ...empty, "r@Silvermoon@internalData@csvSales": csv(TRADE, sales) }) + `TSMItemInfoDB = { data = "${cache}" }`, NOW);
+
+  const rows = (await call({}, "tradeskillmaster.ledgerItems")).result.rows;
+  expect(rows.map((row: { itemString: string; texture: number | null }) => [row.itemString, row.texture])).toEqual([
+    ["i:6292", 133919],
+    ["i:2589", 200],
+    ["i:999", null],
+  ]);
+  const { icons } = (await call({ account: "MAIN", textures: [133919, 200], size: 36 }, "tradeskillmaster.itemIcons")).result;
+  expect(Object.keys(icons)).toEqual(["133919"]);
+  expect(icons["133919"]).toStartWith("data:image/png;base64,iVBORw0KGgo");
+
+  for (const params of [{ textures: [1.5], size: 36 }, { textures: Array(65).fill(1), size: 36 }, { textures: [1], size: 0 }, { textures: "1", size: 36 }]) {
+    expect((await call(params, "tradeskillmaster.itemIcons")).error).toBeDefined();
+  }
 });
 
 test("a battle pet's item string wins over its cached quality, and an entry without a name has no quality", async () => {
@@ -399,7 +426,7 @@ test("the item RPC shares the summary's filters and counts only bought and sold 
   const items = async (params: object = {}) => (await call(params, "tradeskillmaster.ledgerItems")).rows;
   // Sold and Bought count items, not records: a stack of 20 is 20.
   const row = (itemString: string, earned: number, spent: number, sold: number, bought: number) => ({
-    itemString, name: itemString, sold, earned, bought, spent, net: earned - spent, quality: null,
+    itemString, name: itemString, sold, earned, bought, spent, net: earned - spent, quality: null, texture: null,
   });
   expect(await items()).toEqual([
     row("i:1", 2550, 2000, 22, 10), row("i:9", 1000, 0, 1, 0), row("i:6", 0, 800, 0, 1), row("i:2", 300, 130, 10, 4),

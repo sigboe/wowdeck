@@ -83,6 +83,32 @@ and manage them.
 If you already have an addon link, choose **Manual Install** and paste
 its CurseForge, GitHub or WowInterface URL, or a direct archive link.
 
+## TradeSkillMaster
+
+WoWDeck does the job of TradeSkillMaster's desktop app on the Deck. It
+keeps the addon's auction prices fresh and shows what your characters
+earned and spent. Turn on the TradeSkillMaster source under Options →
+Addon sources and sign in with your TradeSkillMaster account. Then open
+**TradeSkillMaster** in Get Addons, below Manual Install. It has three
+views:
+
+- **Auction data** installs TradeSkillMaster and its AppHelper library
+  and keeps the auction prices of your followed realms up to date. WoWDeck
+  follows the realms of the characters saved on the Deck and checks for
+  new prices every 15 minutes while you're signed in. Your
+  TradeSkillMaster account sets how many realms you can follow.
+- **Dashboard** shows your gold over time, what you earned and spent, and
+  your top sale and purchase, figured the same way as the addon's own
+  Dashboard.
+- **Ledger** lists every item your characters bought or sold, with its
+  icon from the game's files. Sort it by any column, press **A** to open
+  an item on Wowhead, or press **Export** to save your records as the CSV
+  files TradeSkillMaster's desktop app writes.
+
+The Dashboard and the Ledger read what the addon saved at your last
+logout or reload. They need no sign-in, work offline and filter by
+account, realm, character and period.
+
 ## Updating
 
 The plugin is not in the official Decky store, so updates come from
@@ -148,6 +174,8 @@ the top of Options with the **Update** button.
   Beta into Forever. `docs/wtf-backup.md` has the details.
 - Leaves the previous version in place when an install fails.
 - Copies its diagnostics to the clipboard in one tap.
+- Keeps TradeSkillMaster's auction prices fresh and shows its gold
+  Dashboard and item Ledger. See [TradeSkillMaster](#tradeskillmaster).
 
 <picture>
   <source media="(max-width: 767px)" srcset="docs/screenshot-panel.png">
@@ -176,7 +204,9 @@ the top of Options with the **Update** button.
   (`api.curseforge.com`), WowUp Hub (`hub.wowup.io`), TukUI
   (`api.tukui.org`), GitHub (`api.github.com`), WowInterface/MMOUI
   (`api.mmoui.com`), plus the providers' download servers when you
-  install.
+  install. With the TradeSkillMaster source on, WoWDeck signs in to
+  TradeSkillMaster and downloads auction prices from its servers
+  (`tradeskillmaster.com`).
 - No telemetry, crash reporting or analytics. The only outbound traffic
   is addon searches, installs and update checks. On top of that,
   WoWDeck checks for its own new version once a day and, when you update

@@ -10,6 +10,8 @@ import type { LuaTable, LuaValue } from "./SavedVariables";
  */
 const FIELDS_PER_ITEM = 15;
 const NAME_FIELD = 1;
+/** The icon's FileDataID, as GetItemInfo answers it. */
+const TEXTURE_FIELD = 7;
 const QUALITY_FIELD = 10;
 /** WoW's qualities: 0 Poor … 8 WoW Token. */
 const MAX_QUALITY = 8;
@@ -37,7 +39,12 @@ const text = (value: unknown) =>
 interface CachedItem {
   name: string;
   quality: number | null;
+  /** The icon's FileDataID; null when unknown (the older cache format stores none). */
+  texture: number | null;
 }
+
+const textureOf = (value: unknown): number | null =>
+  typeof value === "number" && Number.isSafeInteger(value) && value > 0 && value <= 0xffffffff ? value : null;
 
 const qualityOf = (value: unknown): number | null =>
   typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= MAX_QUALITY ? value : null;
@@ -71,10 +78,11 @@ function currentItems(data: string): Map<string, CachedItem> | null {
       if (field === NAME_FIELD && itemString) {
         const name = text(value);
         if (name) {
-          item = { name, quality: null };
+          item = { name, quality: null, texture: null };
           items.set(itemString, item);
         }
       }
+      if (field === TEXTURE_FIELD && item) item.texture = textureOf(value);
       if (field === QUALITY_FIELD && item) item.quality = qualityOf(value);
     }
     if (index % FIELDS_PER_ITEM !== 0 || values.read()) return null;
@@ -116,7 +124,7 @@ function legacyItems(cache: LuaTable, joined: boolean): Map<string, CachedItem> 
       if (itemStrings.length !== labels.length) continue;
       for (const [position, itemString] of itemStrings.entries()) {
         const name = labels[position]!;
-        if (itemString && name) items.set(itemString, { name, quality: null });
+        if (itemString && name) items.set(itemString, { name, quality: null, texture: null });
       }
     }
   } catch {
@@ -129,8 +137,7 @@ function legacyItems(cache: LuaTable, joined: boolean): Map<string, CachedItem> 
 // reload that rewrites the file gives the reader a new table.
 const indexes = new WeakMap<LuaTable, ReadonlyMap<string, CachedItem>>();
 
-/** The cache's entry for the full item string, else for its base item. */
-function cachedItem(cache: LuaTable, itemString: string): CachedItem | undefined {
+function cachedItems(cache: LuaTable): ReadonlyMap<string, CachedItem> {
   let items = indexes.get(cache);
   if (!items) {
     const data = cache.data;
@@ -138,6 +145,12 @@ function cachedItem(cache: LuaTable, itemString: string): CachedItem | undefined
       ?? (typeof data === "object" ? legacyItems(data, true) : legacyItems(cache, false));
     indexes.set(cache, items);
   }
+  return items;
+}
+
+/** The cache's entry for the full item string, else for its base item. */
+function cachedItem(cache: LuaTable, itemString: string): CachedItem | undefined {
+  const items = cachedItems(cache);
   const base = itemString.split(":", 2).join(":");
   return items.get(itemString) ?? items.get(base);
 }
@@ -157,4 +170,16 @@ export function ledgerItemQuality(cache: LuaTable | null, itemString: string): n
     if (quality !== null) return quality;
   }
   return (cache && cachedItem(cache, itemString)?.quality) ?? null;
+}
+
+/** The item's icon (a FileDataID in the game's files), or null when the cache has none. */
+export function ledgerItemTexture(cache: LuaTable | null, itemString: string): number | null {
+  return (cache && cachedItem(cache, itemString)?.texture) ?? null;
+}
+
+/** Every icon the cache records: what a list of the account's items can show. */
+export function ledgerItemTextures(cache: LuaTable): Set<number> {
+  const textures = new Set<number>();
+  for (const item of cachedItems(cache).values()) if (item.texture !== null) textures.add(item.texture);
+  return textures;
 }
