@@ -117,6 +117,7 @@ Every script takes a target by a substring of its title.
 | `audit-view.mjs <target> [--brief]` | Guideline audit of the view on screen (`audit.js`): content too close to a highlight's edge, touching focus targets, text under 12 px, clipped text, anything wider than the QAM panel (OVERFLOW). `--brief` prints one summary line |
 | `render.mjs <Component> '<props JSON>' [out.png]` | Render one @decky/ui component in memory in our QAM panel (no build, no deploy), print its box against the panel's, audit, screenshot, then remove it. Use before adopting a Steam component in the QAM |
 | `audit-focus.js` | Guideline audit of what lights up at the current focus; use with `walk.mjs` or `step.mjs` |
+| `readme-avatar.js` | For README screenshots: `deck run 'target Big Picture; eval --file=tools/deck-ui/readme-avatar.js; shot docs/screenshot.png --max=1280'` shows Steam's default avatar in the top bar and hides the avatar frame, on screen only. Run it again to put the player's avatar back |
 
 Useful one-liners (run with `eval.mjs SharedJSContext …`): open the QAM on Decky
 `window.DFL.Navigation.OpenQuickAccessMenu(999)`, open our panel
