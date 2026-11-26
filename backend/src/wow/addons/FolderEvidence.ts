@@ -76,10 +76,15 @@ export async function folderEvidence(
         digest.update(`D ${relPath}\n`);
         await walk(full, relPath);
       } else if (info.isFile()) {
-        const content = await fs.readFile("evidence.read", full);
-        digest.update(`F ${relPath} ${content.length} ${new Bun.CryptoHasher("sha256").update(content).digest("hex")}\n`);
+        const content = new Bun.CryptoHasher("sha256");
+        let size = 0;
+        for await (const chunk of fs.readChunks("evidence.read", full)) {
+          content.update(chunk);
+          size += chunk.length;
+        }
+        digest.update(`F ${relPath} ${size} ${content.digest("hex")}\n`);
         files += 1;
-        bytes += content.length;
+        bytes += size;
       } else {
         throw new Error(`Not a file or folder: ${full}`);
       }

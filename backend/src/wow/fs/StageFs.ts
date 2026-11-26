@@ -11,7 +11,7 @@
  */
 
 import { mkdirSync, readdirSync, renameSync, writeFileSync } from "node:fs";
-import { readFile, rm } from "node:fs/promises";
+import { open, rm } from "node:fs/promises";
 
 /** A named operation stage a test can make fail. */
 export type FsStage =
@@ -48,18 +48,42 @@ export interface StageFs {
   readdirSync(stage: FsStage, path: string): string[];
   writeFileSync(stage: FsStage, path: string, data: string): void;
   renameSync(stage: FsStage, from: string, to: string): void;
-  readFile(stage: FsStage, path: string): Promise<Buffer>;
+  /**
+   * A file's bytes, read through one buffer of at most 256 KiB.
+   * Each chunk is a view of that buffer, valid until the next is asked for.
+   */
+  readChunks(stage: FsStage, path: string): AsyncIterable<Uint8Array>;
   /** Create one directory; its parent must exist (never recursive). */
   mkdirSync(stage: FsStage, path: string): void;
   /** Delete a file or folder tree; a missing one is not an error. */
   remove(stage: FsStage, path: string): Promise<void>;
 }
 
+/** The largest chunk `readChunks` yields. */
+const READ_CHUNK_BYTES = 256 * 1024;
+
+async function* readChunks(path: string): AsyncGenerator<Uint8Array> {
+  const handle = await open(path, "r");
+  try {
+    const { size } = await handle.stat();
+    const buffer = new Uint8Array(Math.max(1, Math.min(size, READ_CHUNK_BYTES)));
+    for (;;) {
+      const { bytesRead } = await handle.read(buffer, 0, buffer.length, null);
+      if (bytesRead === 0) {
+        return;
+      }
+      yield buffer.subarray(0, bytesRead);
+    }
+  } finally {
+    await handle.close();
+  }
+}
+
 export const realStageFs: StageFs = {
   readdirSync: (_stage, path) => readdirSync(path),
   writeFileSync: (_stage, path, data) => writeFileSync(path, data),
   renameSync: (_stage, from, to) => renameSync(from, to),
-  readFile: (_stage, path) => readFile(path),
+  readChunks: (_stage, path) => readChunks(path),
   mkdirSync: (_stage, path) => void mkdirSync(path),
   remove: (_stage, path) => rm(path, { recursive: true, force: true }),
 };
@@ -139,9 +163,9 @@ export class FaultInjectingFs implements StageFs {
     this.base.renameSync(stage, from, to);
   }
 
-  async readFile(stage: FsStage, path: string): Promise<Buffer> {
+  readChunks(stage: FsStage, path: string): AsyncIterable<Uint8Array> {
     this.#check(stage);
-    return this.base.readFile(stage, path);
+    return this.base.readChunks(stage, path);
   }
 
   mkdirSync(stage: FsStage, path: string): void {
