@@ -8,20 +8,26 @@ import type { ProviderRegistry } from "../../wow/providers/provider-registry";
 import type { StateStore } from "../../wow/storage/StateStore";
 import type { TradeSkillMasterAuth } from "../../wow/tsm/TradeSkillMasterAuth";
 import type { TradeSkillMasterData } from "../../wow/tsm/TradeSkillMasterData";
+import type { TradeSkillMasterLedgerReader } from "../../wow/tsm/Ledger";
 import { NotFoundError } from "../../wow/errors";
+import { exportStartFolder } from "../../wow/tsm/LedgerExport";
 
 /** What the addon source handlers use. */
 export interface ProvidersDeps {
-  store: Pick<StateStore, "settings">;
+  store: Pick<StateStore, "settings" | "updateSettings">;
   registry: Pick<ProviderRegistry, "get" | "providerInfos" | "setEnabled">;
   curseForgeAuth: Pick<CurseForgeAuthService, "recheck" | "snapshot">;
   curseForgeProvider: Pick<CurseForgeProvider, "testApiKey">;
   tsmAuth: Pick<TradeSkillMasterAuth, "begin" | "cancel" | "signOut" | "status">;
   tsmData: Pick<TradeSkillMasterData, "account" | "cleanupPreview" | "destination" | "refresh" | "setFollow" | "unfollow" | "wake">;
+  /** The Ledger: the addon's own records, read from WoW's saved files. */
+  tsmLedger: Pick<TradeSkillMasterLedgerReader, "ledger" | "ledgerExport" | "ledgerItems">;
   installationService: Pick<InstallationService, "require">;
+  /** Where Export's folder picker looks for Documents. */
+  homeDir: string;
 }
 
-export function providersHandlers({ store, registry, curseForgeAuth, curseForgeProvider, tsmAuth, tsmData, installationService }: ProvidersDeps) {
+export function providersHandlers({ store, registry, curseForgeAuth, curseForgeProvider, tsmAuth, tsmData, tsmLedger, installationService, homeDir }: ProvidersDeps) {
   return {
     "tradeskillmaster.cleanupPreview": async (params) => tsmData.cleanupPreview(installationService.require(params.installationId).id),
     "tradeskillmaster.account": async () => tsmData.account(),
@@ -30,6 +36,21 @@ export function providersHandlers({ store, registry, curseForgeAuth, curseForgeP
     "tradeskillmaster.wake": async () => tsmData.wake(),
     "tradeskillmaster.setFollow": async (params) => tsmData.setFollow(installationService.require(params.installationId).id, params.realmId, params.auctionHouseType, params.followed),
     "tradeskillmaster.destination": async (params) => tsmData.destination(installationService.require(params.installationId).id),
+    "tradeskillmaster.ledger": async (params) => tsmLedger.ledger(installationService.require(params.installationId), params.account, {
+      realm: params.realm,
+      character: params.character,
+      period: params.period,
+      plotWidth: params.plotWidth,
+    }),
+    "tradeskillmaster.ledgerItems": async (params) => tsmLedger.ledgerItems(installationService.require(params.installationId), params),
+    "tradeskillmaster.ledgerExport": async ({ installationId, ...params }) => {
+      const path = await tsmLedger.ledgerExport(installationService.require(installationId), params);
+      store.updateSettings({ tsmLedgerExportFolder: params.folder });
+      return { path };
+    },
+    "tradeskillmaster.ledgerExportFolder": async () => ({
+      folder: exportStartFolder(store.settings.tsmLedgerExportFolder, homeDir),
+    }),
     "tradeskillmaster.status": async () => tsmAuth.status(),
     "tradeskillmaster.signIn": async () => tsmAuth.begin(),
     "tradeskillmaster.cancel": async () => tsmAuth.cancel(),

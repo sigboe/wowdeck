@@ -28,6 +28,7 @@ export interface HandlerDeps {
   linkedGames: import("../../wow/installation/LinkedGames").LinkedGameList;
   tsmData: import("../../wow/tsm/TradeSkillMasterData").TradeSkillMasterData;
   tsmAuth: import("../../wow/tsm/TradeSkillMasterAuth").TradeSkillMasterAuth;
+  tsmLedger: import("../../wow/tsm/Ledger").TradeSkillMasterLedgerReader;
   backendVersion: string;
   homeDir: string;
   store: StateStore;

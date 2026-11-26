@@ -6,11 +6,16 @@ What's new in each version of WoWDeck Addon Manager. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- Log improvements, and your TradeSkillMaster sign-in now shows as a shortened email address.
+
 ### Fixed
 
 - Low-contrast description and changelog text becomes readable while colours that already work stay unchanged.
 - Manage followed realms no longer flickers while auction data arrives.
 - After you unfollow a realm, focus moves to the next realm in the list instead of Done.
+- TradeSkillMaster finds your Classic realms to follow even when the addon has saved a lot of data.
 - Addons with many large files, such as media packs, install and update instead of failing partway with an error.
 - Searching Get Addons for an exact CurseForge name with punctuation, such as LibSharedMedia-3.0, finds the addon.
 - Updating or reloading WoWDeck no longer pauses partway, and the previous copy stops instead of running in the background.
