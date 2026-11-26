@@ -249,3 +249,100 @@ in this run and the first. That row may need updating with the fix.
 
 The engine's non-hidden fallback in `ensureSelection` is still pending, for
 the reason given under Part B.
+
+## PR #339 device check
+
+### Build and fixture
+
+The brief named no target, so the run used the default, the owner's Steam
+Deck (Wi-Fi `10.10.1.39`, handheld). WoW wasn't running (`pgrep` matched no
+WoW or Battle.net process). The build was the worktree
+`fix/321-removed-installations` at `919ec87`, already installed by the fix
+rerun above: the Deck's `dist/index.js` hashed
+`7229e4b46c5d6a4f5b0466d69323998f79085dfd353f91ea4c85793be6c1a4eb`, the same
+as the local build, and `deck up` (which compares the frontend and the
+patched engine) printed `the Deck already runs this build`. Nothing was
+redeployed. The two plugin reloads used `deck up --reload` (`deployed
+nothing`, engine pid 94799→97694, then 97694→97948).
+
+Fixture: an empty folder `~/Applications/World of Warcraft/_xptr_` holding
+only `Interface/AddOns/` and `Data/`. Nothing else in the WoW root was
+touched. Find WoW added it as `Retail XPTR` (id `06300d6bdec2`, game type
+`ptr`, source `detected`); the startup scan logged it as
+`"flavor":"_xptr_","validity":"likely"`. The engine's list sorts it third:
+Forever Beta, Classic Era, Retail XPTR, Forever.
+
+Installations before and after (identical, RPC `installations.list --full`):
+
+| Installation | Hidden | Auto updates | Active |
+| --- | --- | --- | --- |
+| Forever Beta | yes | on | |
+| Classic Era | no | off | |
+| Forever | no | on | yes |
+
+At the end the fixture folder was deleted, its record removed through the UI,
+Forever made active again through the picker, and a last Find WoW toasted
+"Found 3 installations". The engine's `state.json` now holds a
+`removedInstallations` entry for the fixture (`06300d6bdec2`, `_xptr_`); it
+had no such key before. It is harmless while the folder is gone, but a future
+`_xptr_` folder would come back as "1 you removed". Nothing else changed: no
+addons were installed or removed. `deck down` turned autoUpdate back on, and
+the tested build stays installed.
+
+### Results
+
+DEVICE 2026-11-27. Method UI: real pad presses through `deck run` (Options ›
+Active installation picker; Y on it opens Installation details; Remove this
+installation… then Remove), toasts captured by `toast-start`/`toast-read`,
+the list read by RPC `installations.list`.
+
+| # | Claim | Result |
+| --- | --- | --- |
+| 1 | Find WoW adds the fixture as a detected installation | passed |
+| 2 | Removed fixture leaves the list and stays out after a plugin reload, folder on disk | passed |
+| 3 | Find WoW toasts "…including 1 you removed" and brings it back; it stays after a reload | passed |
+| 4 | Removing the active fixture falls back to a visible installation, not a hidden one | passed |
+| 5 | Folder renamed away: Find WoW doesn't restore it; renamed back: it does | passed |
+
+1. Toast `Found 4 installations`; list
+   `["Forever Beta","Classic Era","Retail XPTR","Forever"]`, the fixture
+   `source: "detected"`.
+2. Picked Retail XPTR (`selected [false,false,true,false]`), removed it. The
+   confirmation read "Remove installation? WoWDeck Addon Manager will stop
+   managing Retail XPTR. …". After: `["Forever Beta","Classic Era","Forever"]`,
+   `selected [false,true,false]`. After the reload (pid 94799→97694) the
+   list was unchanged, `ls` showed `_xptr_` still on disk, and the startup
+   scan's detection log listed `_xptr_` as `likely`, so the scan found it and
+   left it out.
+3. Toast `Found 4 installations, including 1 you removed`; list back to four
+   with the same id. After the second reload (pid 97694→97948):
+   `["Forever Beta","Classic Era","Retail XPTR","Forever"]`, ids unchanged.
+4. Forever Beta was already hidden (it sorts first). Classic Era was also
+   hidden for this step (Hide toggle in its Installation details; before:
+   `hidden [true,false,false,false]`, after: `[true,true,false,false]`), the
+   fixture made active and removed. Active afterwards: Forever
+   (`selected [false,false,true]`, `hidden [true,true,false]`), the only
+   visible one. Claim 2's removal covered the single-hidden case: Classic
+   Era, skipping Forever Beta. Classic Era's Hide was restored to off (RPC
+   `installations.update`).
+5. With the fixture removed and the folder renamed to `_xptr_.away`: toast
+   `Found 3 installations`, list `["Forever Beta","Classic Era","Forever"]`.
+   Renamed back: toast `Found 4 installations, including 1 you removed`, list
+   with Retail XPTR again.
+
+### Findings
+
+- **Removing the active installation shows an error toast.** Each removal of
+  the active fixture (three times) toasted "Couldn't load addons: That WoW
+  installation isn't available. Check Options" before "Installation removed:
+  WoW files weren't touched". The engine logged `addons.list failed
+  (not_found): That WoW installation isn't available` at the same moment, so
+  the frontend asks for the removed installation's addons once before it
+  picks up the new active one. `removeInstallation` in `src/addonSession.ts`
+  is unchanged by this PR, so it probably predates it; not checked on the
+  base build.
+- **The Options crash before the engine connects recurred twice.** Opening
+  the QAM after each `deck up --reload` showed Decky's error screen with
+  `Error: The engine isn't connected yet` from `AboutSection`, as in the
+  first run's "Other finding". Retry (clicked by script; the screen has no
+  pad focus) recovered, on My Addons rather than Options.
