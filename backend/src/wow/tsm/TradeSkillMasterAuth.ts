@@ -24,6 +24,16 @@ export interface TradeSkillMasterEndpoints {
   gameVersions?: string;
   userRealms?: string;
 }
+/**
+ * The account as the engine shows it. An email address keeps its first
+ * character and its domain; anything else passes through. Bridge payloads
+ * end up in logs, so the full address stays in the engine.
+ */
+export function accountLabel(account: string | null): string | null {
+  const at = account?.lastIndexOf("@") ?? -1;
+  if (!account || at < 1) return account;
+  return `${account[0]}•••${account.slice(at)}`;
+}
 /** Token and revoke answers are small JSON objects. */
 const tokenResponseLimit = 1024 * 1024;
 const issuer = "https://id.tradeskillmaster.com/realms/app/protocol/openid-connect";
@@ -94,7 +104,7 @@ export class TradeSkillMasterAuth {
           : this.#revoked
             ? "signedOut"
             : "off",
-      account: this.#account,
+      account: accountLabel(this.#account),
       ...(this.#access ? { tier: this.#tier, channels: this.#channels } : {}),
     };
   }

@@ -10,6 +10,10 @@ What's new in each version of WoWDeck Addon Manager. The format follows
 
 - TradeSkillMaster's Ledger shows your gold history, earnings and spending, sorts your items and opens them on Wowhead, and exports your records.
 
+### Changed
+
+- Log improvements, and your TradeSkillMaster sign-in now shows as a shortened email address.
+
 ### Fixed
 
 - Get Addons' Source and Category menus line up their choices on the left with the check mark at the end.

@@ -709,6 +709,7 @@ export interface WtfJobSnapshot {
 // ---------------------------------------------------------------------------
 
 export interface TradeSkillMasterAccount {
+  /** The signed-in account's label. An email address arrives shortened (`s•••@example.com`); bridge payloads end up in logs. */
   account: string | null;
   followedCount: number;
   allowance: number | null;
@@ -947,6 +948,7 @@ export interface TradeSkillMasterAuthStatus {
   state: "off" | "signingIn" | "signedIn" | "signedOut";
   tier?: "free" | "gold" | "platinum";
   channels?: string[];
+  /** The signed-in account's label. An email address arrives masked (`s•••@example.com`): Decky's debug log records every bridge payload. */
   account: string | null;
 }
 
