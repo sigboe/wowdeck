@@ -44,6 +44,13 @@ targets out of it. They go here.
   `decky.pyi`, the Deck Debug settings in `deck-debug/`, and the
   `backend/out` build convention. Its BSD-3-Clause text is appended to
   `LICENSE`.
+- **wow.export.** `backend/src/wow/casc/` and `backend/src/wow/textures/Blp.ts`
+  read WoW's local storage (BLTE, local index, encoding, root) and BLP
+  textures using the layouts in wow.export's `src/js/casc/` (MIT,
+  Kruithne/wow.export at `81cc25e4c500d2153c503b381eba82a906f52ba8`). The
+  code is written for this project, not copied. Its lookups differ on
+  purpose. They resolve a set of IDs in one pass and keep only where each
+  file sits (ADR 0019).
 - **fflate.** The npm package, 0.8.x. `backend/src/wow/archives/ArchiveExtractor.ts`
   checks every entry for path traversal before it extracts.
 - **The `unslop` skill.** `.claude/skills/unslop/SKILL.md` is
