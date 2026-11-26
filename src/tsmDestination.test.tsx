@@ -1728,12 +1728,16 @@ test("the Ledger lists its items in the pane, pages them in native focus rows an
     expect(document.activeElement?.textContent).toContain("Silk Cloth");
     expect(pageAction("Next page")).toBeUndefined();
 
-    // Another view and back: the same page, without taking focus.
+    // Another view and back: the same page at once, without taking focus,
+    // and nothing read again (DEVICE 2026-11-26, LEDGER-PILL-2).
+    const ledgerReads = ledgerRequests.length;
     await showDashboard(view.container);
     expect(columns()).toHaveLength(0);
     await showLedger(view.container);
+    expect(text()).not.toContain("Reading Ledger items");
     expect(columns()).toHaveLength(2);
     expect(text()).toContain("Silk Cloth");
+    expect(ledgerRequests).toHaveLength(ledgerReads);
     await turnPage("Previous page");
     expect(columns()).toHaveLength(41);
     expect(document.activeElement?.textContent).toContain("Linen Cloth");
@@ -1745,7 +1749,6 @@ test("the Ledger lists its items in the pane, pages them in native focus rows an
     );
     expect(requests()).toEqual([
       { ...scope, offset: 0 },
-      { ...scope, offset: 40 },
       { ...scope, offset: 40 },
       { ...scope, offset: 0 },
       { ...scope, offset: 0 },

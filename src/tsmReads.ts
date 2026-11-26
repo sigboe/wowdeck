@@ -77,8 +77,12 @@ export function createTsmModule(deps: {
   // per installation and filter selection (ledgerKey). Viewed records read
   // again when the engine reports a save or a game state change. The minute
   // poll still moves period edges as records age and covers missed events.
+  // Switching between the Dashboard and the Ledger reads nothing again: a
+  // save invalidates every key (ledgerChanged), and the poll restarts with
+  // the view (DEVICE 2026-11-26, LEDGER-PILL-2).
   const ledger = createKeyedResource<TradeSkillMasterLedger>({
     pollMs: 60_000,
+    revalidateOnReturn: false,
     read: (key) => {
       const { installationId, filters, plotWidth } = JSON.parse(key) as LedgerKey;
       return deps.rpc("tradeskillmaster.ledger", {
@@ -100,6 +104,7 @@ export function createTsmModule(deps: {
     clock: deps.clock,
   });
   const ledgerItems = createKeyedResource<TradeSkillMasterLedgerItemsPage>({
+    revalidateOnReturn: false,
     read: (key) =>
       deps.rpc(
         "tradeskillmaster.ledgerItems",
@@ -216,10 +221,21 @@ export function useTsmLedger(installationId: string) {
   }
   return { ...snapshot, data: snapshot.data ?? last.current };
 }
+/**
+ * The Ledger's page last shown stays while another view shows, so coming
+ * back shows it at once instead of a reading line (DEVICE 2026-11-26,
+ * LEDGER-PILL-2). Another page or selection forgets it: one page is kept.
+ */
+let shownItemsKey: string | null = null;
 export function useTsmLedgerItems(params: TradeSkillMasterLedgerItemsParams) {
   const key = JSON.stringify(params);
   const snapshot = useResource(tsmModule.ledgerItems, key);
-  useEffect(() => () => tsmModule.ledgerItems.forget(key), [key]);
+  useEffect(() => {
+    if (shownItemsKey !== null && shownItemsKey !== key) {
+      tsmModule.ledgerItems.forget(shownItemsKey);
+    }
+    shownItemsKey = key;
+  }, [key]);
   return snapshot;
 }
 export const useTsmCleanupPreview = (installationId: string) =>

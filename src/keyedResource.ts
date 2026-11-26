@@ -20,7 +20,8 @@ export interface ResourceSnapshot<T> {
  * - `put` records an answer the caller already holds (a write's reply) as the
  *   newest one, so reads still on their way are ignored;
  * - each key with viewers has one poll loop, however many viewers; the loop
- *   stops when the last viewer leaves, and the next first viewer revalidates;
+ *   stops when the last viewer leaves, and the next first viewer revalidates
+ *   (unless `revalidateOnReturn` is false: then only a stale or empty key);
  * - `invalidate` reads only viewed keys; the rest wait, stale, for a viewer;
  * - a failed read keeps the last data beside the error.
  */
@@ -52,6 +53,13 @@ export interface KeyedResourceOptions<T> {
   clock: Clock;
   /** How often a viewed key reads again; without it a key reads on first view and on `refresh` or `invalidate` only. */
   pollMs?: number;
+  /**
+   * False: a viewer returning to a key with data reads again only when the
+   * key was invalidated meanwhile. For data whose changes always come with
+   * an event that invalidates it, so a return has nothing new to find.
+   * Default true.
+   */
+  revalidateOnReturn?: boolean;
   /** Taken when a read is sent and handed to `onData` with its answer, to order it against other state. */
   stamp?(): number;
   /** Called with each answer that is applied (stale answers are not), with the read's `stamp`. */
@@ -172,7 +180,8 @@ export function createKeyedResource<T>(options: KeyedResourceOptions<T>): KeyedR
           entry.timer = options.clock.setInterval(() => poll(key), options.pollMs);
         }
         // Returning to a key revalidates it; the first load shows as loading.
-        if (needsRead(entry)) {
+        const returning = entry.snapshot.data !== null && !entry.stale;
+        if (needsRead(entry) && (options.revalidateOnReturn !== false || !returning)) {
           void read(key, entry.snapshot.data === null);
         }
       }

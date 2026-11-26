@@ -263,11 +263,14 @@ export function wowdeckSharedStyleCss(): string {
   opacity: 0; transition: opacity .15s ease;
 }
 .wowdeck-ledger-items-head[data-wowdeck-scrolled]::after { opacity: 1; }
-/* The column labels in the Dashboard's caption style, inset like the rows'
-   text: 12 px, less each header cell's own 6 px. */
+/* The column labels in the Dashboard's caption style. In the QAM a row's
+   text starts at its PanelSectionRow's edge, so the labels row reaches 6 px
+   past it on both sides, each cell's own 6 px padding: the labels then line
+   up with the values. A 6 px inset put every label 12 px inside its column
+   (DEVICE 2026-11-26, LEDGER-PILL-3). */
 .wowdeck-ledger-items-labels {
   color: #b8bcbf; font-size: 12px; line-height: 16px; text-transform: uppercase; letter-spacing: .5px;
-  box-sizing: border-box; padding: 0 6px 6px;
+  box-sizing: border-box; width: calc(100% + 12px); margin: 0 -6px; padding: 0 0 6px;
 }
 /* The Item cell: the icon slot, then the name, which wraps. */
 .wowdeck-ledger-items-item { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
