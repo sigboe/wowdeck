@@ -1147,7 +1147,8 @@ These cases have not been run on hardware.
 | --- | --- |
 | Turn Auto updates off in Installation details, then run an automatic check | No check, update notification count, game-page summary or automatic update for that installation. Rescan and My Addons refresh still check it. |
 | Hide an inactive installation | It disappears from My Addons and Get Addons pickers. Options still lists it with an eye-slash mark and can select it. Browsing and installing still work. |
-| Hide the active installation | Its picker entry stays visible with an eye-slash mark. Its picker menu offers only Unhide. |
+| Hide the active installation, then open the picker on My Addons and on Get Addons | The usual list opens: the visible installations, the active one with an eye-slash mark, and a last entry "Unhide <name>". Unhide unhides it and the next list has no Unhide entry. Picking another installation switches to it (#338). Verified DEVICE 2026-11-26, [hardware/2026-11-26-338-picker-focus](hardware/2026-11-26-338-picker-focus/README.md) |
+| With another installation hidden, remove the active installation | The first installation that isn't hidden becomes active; a hidden one only when every other one is hidden (#338) |
 | Inspect a hidden installation's details, then unhide | Auto updates displays off and is disabled with an explanation. Unhiding restores its previous setting, whether on or off. |
 | Restart or detect installations again | Auto updates and Hide choices survive. Newly found installations default to Auto updates on and Hide off. |
 | Run Update all installations | Hidden and auto-off installations are included. |

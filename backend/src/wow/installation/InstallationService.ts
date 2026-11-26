@@ -309,8 +309,10 @@ export class InstallationService {
   /**
    * The canonical active installation. One source of truth: the persisted
    * `selectedInstallationId`. When it is unset or stale the first
-   * installation is selected and the choice persisted (mirrors WowUp's
-   * SessionService fallback) so the engine and UI always agree.
+   * installation that isn't hidden is selected (the first one when all are)
+   * and the choice persisted (mirrors WowUp's SessionService fallback) so
+   * the engine and UI always agree. A hidden active installation would leave
+   * My Addons' and Get Addons' pickers on a list the player hid (#338).
    */
   ensureSelection(): WowInstallation | null {
     const installations = this.store.installations;
@@ -321,7 +323,7 @@ export class InstallationService {
     if (found) {
       return found;
     }
-    const fallback = installations[0]!;
+    const fallback = installations.find((i) => !i.hidden) ?? installations[0]!;
     this.store.updateSettings({ selectedInstallationId: fallback.id });
     return fallback;
   }

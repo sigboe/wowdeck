@@ -1,6 +1,5 @@
 import { FaEyeSlash } from "react-icons/fa";
 import { toastError } from "../toast";
-import { showChoiceMenu } from "./choiceMenu";
 import { useRef, useState, useSyncExternalStore } from "react";
 import { DropdownItem, type DropdownItemProps } from "@decky/ui";
 import { installationSwitchBlocked, type AddonSession } from "../addonSession";
@@ -10,6 +9,9 @@ type Props = Omit<DropdownItemProps, "rgOptions" | "selectedOption" | "onChange"
   showHidden?: boolean;
   session: Pick<AddonSession, "get" | "subscribe" | "selectInstallation" | "updateInstallation">;
 };
+
+/** The Unhide entry's value: never an installation id, which is 12 hex digits. */
+const UNHIDE = "wowdeck:unhide";
 
 /**
  * The active-installation dropdown My Addons, Get Addons and Options share.
@@ -28,48 +30,43 @@ export function InstallationSelect({
   const state = useSyncExternalStore(session.subscribe, session.get, session.get);
   const blocked = installationSwitchBlocked(state);
   const selected = state.installations.find((i) => i.id === state.selectedId);
+  // A hidden active installation still shows its list here, with Unhide
+  // last (#338): a menu holding only Unhide left no way to switch.
+  const offerUnhide = selected?.hidden === true && !showHidden;
+  const unhide = () => {
+    if (!selected || pending.current) return;
+    pending.current = true;
+    setSaving(true);
+    void session
+      .updateInstallation(selected.id, { hidden: false })
+      .catch((e) => toastError("Couldn't unhide installation", e))
+      .finally(() => {
+        pending.current = false;
+        setSaving(false);
+      });
+  };
   return (
     <DropdownItem
       {...dropdown}
-      rgOptions={state.installations
-        .filter((i) => showHidden || !i.hidden || i.id === state.selectedId)
-        .map((i) => ({
-          data: i.id,
-          label: i.hidden ? (
-            <>
-              {i.displayName} <FaEyeSlash title="Hidden installation" />
-            </>
-          ) : (
-            i.displayName
-          ),
-        }))}
-      onMenuWillOpen={
-        selected?.hidden && !showHidden
-          ? () => {
-              showChoiceMenu(
-                "Installation",
-                [{ value: "unhide", label: "Unhide" }],
-                undefined,
-                () => {
-                  if (pending.current) return;
-                  pending.current = true;
-                  setSaving(true);
-                  void session
-                    .updateInstallation(selected.id, { hidden: false })
-                    .catch((e) => toastError("Couldn't unhide installation", e))
-                    .finally(() => {
-                      pending.current = false;
-                      setSaving(false);
-                    });
-                },
-              );
-              // Steam opens the ordinary list unless the handler returns false.
-              return false;
-            }
-          : dropdown.onMenuWillOpen
-      }
+      rgOptions={[
+        ...state.installations
+          .filter((i) => showHidden || !i.hidden || i.id === state.selectedId)
+          .map((i) => ({
+            data: i.id,
+            label: i.hidden ? (
+              <>
+                {i.displayName} <FaEyeSlash title="Hidden installation" />
+              </>
+            ) : (
+              i.displayName
+            ),
+          })),
+        ...(offerUnhide ? [{ data: UNHIDE, label: `Unhide ${selected.displayName}` }] : []),
+      ]}
       selectedOption={state.selectedId}
-      onChange={(option) => void session.selectInstallation(option.data as string)}
+      onChange={(option) =>
+        option.data === UNHIDE ? unhide() : void session.selectInstallation(option.data as string)
+      }
       disabled={saving || !!blocked}
       description={
         blocked ? (
