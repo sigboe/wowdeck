@@ -44,6 +44,10 @@ START_TIMEOUT = 10.0
 REQUEST_TIMEOUT = 120.0
 RESTART_MIN_DELAY = 1.0
 RESTART_MAX_DELAY = 30.0
+# Grace for the engine to exit after SIGTERM, then after SIGKILL. Together
+# they stay under the 5 s Decky waits before it SIGKILLs the plugin itself.
+ENGINE_STOP_TIMEOUT = 3.0
+ENGINE_KILL_TIMEOUT = 1.0
 # Largest single JSON line accepted from the engine (asyncio default: 64 KiB).
 ENGINE_LINE_LIMIT = 16 * 1024 * 1024
 
@@ -106,6 +110,24 @@ def _ensure_executable(path: str) -> None:
         decky.logger.info("Engine binary was not executable; restored its execute bit")
     except OSError as exc:
         decky.logger.warning("Could not make the engine binary executable: %s", exc)
+
+def _wait_for_exit(pid: int, timeout: float) -> bool:
+    """Blocks until child `pid` exits or `timeout` passes; True if it exited.
+
+    WNOWAIT leaves the exit status for asyncio's child watcher to collect, so
+    the Process object still learns its return code if the loop runs again.
+    """
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            if os.waitid(os.P_PID, pid, os.WEXITED | os.WNOHANG | os.WNOWAIT) is not None:
+                return True
+        except ChildProcessError:  # already collected by the child watcher
+            return True
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(0.01)
+
 
 class BackendError(Exception):
     def __init__(self, code: str, message: str):
@@ -268,7 +290,15 @@ class BackendProcess:
             self._pending.pop(msg_id, None)
             raise BackendError("timeout", f"Request {method} timed out") from None
 
-    async def stop(self) -> None:
+    def stop(self) -> None:
+        """Stops the engine without ever yielding to the event loop.
+
+        Synchronous on purpose. Once Decky asks the plugin to stop, its socket
+        listener in this process spins at EOF and starves the event loop
+        (decky-loader#975, still in v3.3.1). An `await` that suspends inside
+        `_unload` never resumes, and Decky SIGKILLs the plugin 5 s later
+        (#331). Blocking here is fine: the plugin is going away.
+        """
         self._stopping = True
         proc = self.proc
         for task in (self._reader_task, self._stderr_task):
@@ -280,12 +310,10 @@ class BackendProcess:
         if proc is not None and proc.returncode is None:
             with contextlib.suppress(ProcessLookupError):
                 proc.terminate()
-            try:
-                await asyncio.wait_for(proc.wait(), 5.0)
-            except TimeoutError:
+            if not _wait_for_exit(proc.pid, ENGINE_STOP_TIMEOUT):
                 with contextlib.suppress(ProcessLookupError):
                     proc.kill()
-                await proc.wait()
+                _wait_for_exit(proc.pid, ENGINE_KILL_TIMEOUT)
         self.proc = None
 
 
@@ -312,7 +340,7 @@ class Plugin:
         # busy"). Stopping whatever is already running before replacing
         # `self.backend` means a stray process never survives a reload.
         if self.backend is not None:
-            await self.backend.stop()
+            self.backend.stop()
         machine = platform.machine()
         binary_name = ENGINE_BINARIES.get(machine)
         if binary_name is None:
@@ -331,14 +359,15 @@ class Plugin:
         decky.logger.info("Machine %s: engine binary %s", machine, binary_name)
         decky.logger.info("WoWDeck Addon Manager loaded (plugin dir: %s)", decky.DECKY_PLUGIN_DIR)
 
+    # Decky's shutdown hooks must not suspend: see BackendProcess.stop.
     async def _unload(self):
         if self.backend is not None:
-            await self.backend.stop()
+            self.backend.stop()
         decky.logger.info("WoWDeck Addon Manager unloaded")
 
     async def _uninstall(self):
         if self.backend is not None:
-            await self.backend.stop()
+            self.backend.stop()
 
     # ---- RPC surface (called from the frontend via @decky/api) ----
 
