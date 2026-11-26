@@ -488,7 +488,8 @@ const { resetTsmReads, putTsmAccount } = await import("./tsmReads");
 const { TsmDestination, firstTsmControl, focusTsmEntry } =
   await import("./components/TsmDestination");
 const { resetTsmView, tsmView } = await import("./tsmView");
-const { LEDGER_FOCUS, LEDGER_LEFT_NEIGHBOUR } = await import("./components/TsmLedger");
+const { RECORDS_FOCUS, RECORDS_LEFT_NEIGHBOUR } = await import("./components/TsmRecords");
+const { resetLedgerPlace } = await import("./components/TsmLedger");
 const { resetLedgerFilters } = await import("./tsmLedgerFilters");
 const { resetLedgerExport } = await import("./tsmLedgerExport");
 const { Focusable, GamepadButton } = await import("@decky/ui");
@@ -499,7 +500,10 @@ const exportRowButton = (container: HTMLElement) =>
     .find((label) => label.textContent === "Export ledger")!
     .parentElement!.querySelector<HTMLButtonElement>("button")!;
 
-beforeEach(resetTsmReads);
+beforeEach(() => {
+  resetTsmReads();
+  resetLedgerPlace();
+});
 
 test("destination shows account allowance, waiting data and live freshness for the selected installation", async () => {
   setSystemTime(new Date("2026-11-10T12:00:00Z"));
@@ -1163,18 +1167,29 @@ test("the pill bar switches views with Left and Right, stops at the last pill an
   resetFocusMemory();
   const { container, press, selected, reachedPane, close } = await mountDestination();
   try {
+    // The in-game tabs' names, after Auction data.
+    expect(
+      [...container.querySelectorAll(".wowdeck-pill-bar .wowdeck-tab")].map((p) => p.textContent),
+    ).toEqual(["Auction data", "Dashboard", "Ledger"]);
     // One focus stop: only the selected pill takes focus.
     expect(container.querySelectorAll(".wowdeck-pill-bar .Focusable")).toHaveLength(1);
     expect(selected()?.textContent).toBe("Auction data");
     await act(async () => selected()!.focus());
     await press(GamepadButton.DIR_RIGHT);
+    expect(selected()?.textContent).toBe("Dashboard");
+    expect(document.activeElement).toBe(selected());
+    expect(container.textContent).not.toContain("Signed in as Fixture");
+    // Export is the Ledger's.
+    expect(container.textContent).not.toContain("Export");
+    await press(GamepadButton.DIR_RIGHT);
     expect(selected()?.textContent).toBe("Ledger");
     expect(document.activeElement).toBe(selected());
     expect(container.textContent).toContain("Export");
-    expect(container.textContent).not.toContain("Signed in as Fixture");
     // Right on the last pill goes nowhere, and the pane never sees it.
     await press(GamepadButton.DIR_RIGHT);
     expect(selected()?.textContent).toBe("Ledger");
+    await press(GamepadButton.DIR_LEFT);
+    expect(selected()?.textContent).toBe("Dashboard");
     await press(GamepadButton.DIR_LEFT);
     expect(selected()?.textContent).toBe("Auction data");
     expect(document.activeElement).toBe(selected());
@@ -1241,7 +1256,7 @@ test("signed out, Auction data offers sign-in and the Ledger still reads the rec
   }
 });
 
-test("the Ledger shows its freshness, the game-running line, each empty state and Export only with records", async () => {
+test("the Dashboard dates the records, both views say why they're empty, and the Ledger offers Export only with records", async () => {
   setSystemTime(new Date("2026-11-24T12:00:00Z"));
   resetTsmView();
   const base: TradeSkillMasterLedger = {
@@ -1256,45 +1271,48 @@ test("the Ledger shows its freshness, the game-running line, each empty state an
   };
   ledger = base;
   const view = await mountDestination();
-  const showLedger = async () => {
+  const text = () => view.container.textContent ?? "";
+  /** Read the records afresh and show one view of them. */
+  const show = async (pill: "Dashboard" | "Ledger") => {
     await view.leave();
     resetTsmReads();
+    tsmView.set(pill === "Dashboard" ? "dashboard" : "ledger");
     await view.render();
   };
   try {
-    await act(async () =>
-      (
-        [...view.container.querySelectorAll(".wowdeck-tab")].find(
-          (p) => p.textContent === "Ledger",
-        ) as HTMLElement
-      ).click(),
-    );
-    const text = () => view.container.textContent ?? "";
+    await show("Dashboard");
     expect(text()).toContain("Recorded at last logout · 2 hours ago");
     expect(text()).not.toContain("/reload to include this session");
     expect(text()).toContain("No sales, purchases or gold recorded yet");
+    expect(text()).not.toContain("Export");
     // Nothing to export: Export's row says so and its button is disabled.
+    await show("Ledger");
     const exportButton = () => exportRowButton(view.container);
     expect(exportButton().disabled).toBe(true);
     expect(exportButton().textContent).toBe("Export");
     expect(text()).toContain("Nothing to export yet");
+    expect(text()).toContain("No sales, purchases or gold recorded yet");
+    // The Ledger lists items; it doesn't date the records.
+    expect(text()).not.toContain("Recorded at last logout");
     expect(text()).not.toContain("next update");
 
     ledger = { ...base, gameRunning: true };
-    await showLedger();
+    await show("Dashboard");
     expect(text()).toContain("Log out or /reload to include this session");
 
     // Gold logs alone, or a realm with only gold logs: nothing to export.
     ledger = { ...base, state: "ready" };
-    await showLedger();
+    await show("Dashboard");
     expect(text()).toContain("Recorded at last logout");
     expect(text()).not.toContain("recorded yet");
+    await show("Ledger");
     expect(exportButton().disabled).toBe(true);
     expect(text()).toContain("Nothing to export yet");
+    expect(text()).toContain("0 items");
 
     // The row says what Export writes: the realm shown, every character and period.
     ledger = { ...base, state: "ready", exportable: true };
-    await showLedger();
+    await show("Ledger");
     expect(exportButton().disabled).toBe(false);
     expect(exportButton().textContent).toBe("Export");
     expect(text()).toContain("All realms · every character and period");
@@ -1306,31 +1324,33 @@ test("the Ledger shows its freshness, the game-running line, each empty state an
       realms: ["Soulseeker"],
       realm: "Soulseeker",
     };
-    await showLedger();
+    await show("Ledger");
     expect(text()).toContain("Soulseeker · every character and period");
 
-    ledger = { ...base, state: "noAddon", accounts: [], account: null, recordedAt: null };
-    await showLedger();
-    expect(text()).toContain("Install TradeSkillMaster to start recording");
-    expect(text()).not.toContain("Recorded at last logout");
-    // Files without records from before the addon was removed: nothing to
-    // date, and nothing this session will record.
-    ledger = { ...base, state: "noAddon", gameRunning: true };
-    await showLedger();
-    expect(text()).toContain("Install TradeSkillMaster to start recording");
-    expect(text()).not.toContain("Recorded at last logout");
-    expect(text()).not.toContain("include this session");
+    for (const pill of ["Dashboard", "Ledger"] as const) {
+      ledger = { ...base, state: "noAddon", accounts: [], account: null, recordedAt: null };
+      await show(pill);
+      expect(text()).toContain("Install TradeSkillMaster to start recording");
+      expect(text()).not.toContain("Recorded at last logout");
+      // Files without records from before the addon was removed: nothing to
+      // date, and nothing this session will record.
+      ledger = { ...base, state: "noAddon", gameRunning: true };
+      await show(pill);
+      expect(text()).toContain("Install TradeSkillMaster to start recording");
+      expect(text()).not.toContain("Recorded at last logout");
+      expect(text()).not.toContain("include this session");
 
-    ledger = { ...base, state: "noAccount", accounts: [], account: null, recordedAt: null };
-    await showLedger();
-    expect(text()).toContain("Nothing recorded yet");
-    expect(text()).toContain("log out or /reload");
+      ledger = { ...base, state: "noAccount", accounts: [], account: null, recordedAt: null };
+      await show(pill);
+      expect(text()).toContain("Nothing recorded yet");
+      expect(text()).toContain("log out or /reload");
 
-    // A failed read is an error, never an empty Ledger (A9).
-    ledger = new Error("TradeSkillMaster.lua is invalid");
-    await showLedger();
-    expect(text()).toContain("Couldn't read TradeSkillMaster's records");
-    expect(text()).not.toContain("recorded yet");
+      // A failed read is an error, never an empty view (A9).
+      ledger = new Error("TradeSkillMaster.lua is invalid");
+      await show(pill);
+      expect(text()).toContain("Couldn't read TradeSkillMaster's records");
+      expect(text()).not.toContain("recorded yet");
+    }
   } finally {
     ledger = base;
     await view.close();
@@ -1338,7 +1358,7 @@ test("the Ledger shows its freshness, the game-running line, each empty state an
   }
 });
 
-test("the open Ledger reloads after a save and when WoW starts or stops", async () => {
+test("the open Dashboard reloads after a save and when WoW starts or stops", async () => {
   setSystemTime(new Date("2026-11-24T12:00:00Z"));
   resetTsmView();
   resetLedgerFilters();
@@ -1361,7 +1381,7 @@ test("the open Ledger reloads after a save and when WoW starts or stops", async 
     );
   const text = () => view.container.textContent ?? "";
   try {
-    await showLedger(view.container);
+    await showDashboard(view.container);
     expect(text()).toContain("Recorded at last logout · 2 hours ago");
     expect(text()).not.toContain("include this session");
     const reads = ledgerRequests.length;
@@ -1561,16 +1581,40 @@ const readyLedger: TradeSkillMasterLedger = {
 /** A Ledger control's button, under the floating title row. */
 const segment = (container: HTMLElement, name: string) =>
   container.querySelector<HTMLButtonElement>(`.wowdeck-browse-bar button[aria-label="${name}"]`);
-const showLedger = (container: HTMLElement) =>
+/** A on a view's pill. */
+const showView = (container: HTMLElement, label: string) =>
   act(async () =>
     (
       [...container.querySelectorAll(".wowdeck-tab")].find(
-        (p) => p.textContent === "Ledger",
+        (p) => p.textContent === label,
       ) as HTMLElement
     ).click(),
   );
+const showDashboard = (container: HTMLElement) => showView(container, "Dashboard");
+const showLedger = (container: HTMLElement) => showView(container, "Ledger");
 
-test("All items pages native focus rows and refreshes only the opened filters", async () => {
+/** A Ledger item row: the focus stop around one item's cells. */
+const itemRows = (container: HTMLElement) =>
+  [...container.querySelectorAll<HTMLElement>(".Focusable[tabindex]")].filter((row) =>
+    row.querySelector(".wowdeck-ledger-items-columns"),
+  );
+/** A gamepad button on an element, as Steam sends it to the focused node. */
+const pressOn = (el: HTMLElement, button: number) =>
+  act(async () => {
+    el.dispatchEvent(
+      new window.CustomEvent("gamepadbutton", { detail: { button }, cancelable: true }),
+    );
+  });
+/** Steam's browser closed the QAM; the player comes back and enters the destination. */
+const enterAgain = async (view: Awaited<ReturnType<typeof mountDestination>>) => {
+  await view.leave();
+  await view.render();
+  browseZone.zone = "pane";
+  focusTsmEntry(view.container);
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
+};
+
+test("the Ledger lists its items in the pane, pages them in native focus rows and keeps the page across views", async () => {
   resetTsmView();
   resetTsmReads();
   resetLedgerFilters();
@@ -1628,19 +1672,17 @@ test("All items pages native focus rows and refreshes only the opened filters", 
       : { rows: firstPage, nextOffset: 40 };
   };
   const view = await mountDestination(false);
-  const opener = () =>
-    [...view.container.querySelectorAll<HTMLElement>(".Focusable[tabindex]")].find(
-      (row) => row.textContent === "All items (41)",
-    )!;
+  const columns = () => [...view.container.querySelectorAll(".wowdeck-ledger-items-columns")];
+  const text = () => view.container.textContent ?? "";
   try {
-    await showLedger(view.container);
-    expect(view.container.textContent).toMatch(/Profit.*All items \(41\)/);
     const reads = fake.paramsOf("tradeskillmaster.ledgerItems").length;
-    await act(async () => {
-      opener().focus();
-      opener().querySelector("b")!.click();
-    });
-    await view.leave(); // Opening a Steam modal unmounts the pane.
+    await showLedger(view.container);
+    // The Dashboard's figures and the old All items row are gone from here.
+    expect(text()).not.toContain("All items");
+    expect(text()).not.toContain("Profit");
+    // The count as plain text, then the list, in the pane: no modal.
+    expect(text()).toMatch(/41 items.*Item.*Linen Cloth/);
+    expect(document.querySelector("[data-modal-root]")).toBeNull();
     const scope = {
       installationId: "active",
       account: "MAIN",
@@ -1648,14 +1690,11 @@ test("All items pages native focus rows and refreshes only the opened filters", 
       realm: "Silvermoon",
       period: "1M",
     } as const;
-    expect(fake.paramsOf("tradeskillmaster.ledgerItems").slice(reads)).toEqual([
-      { ...scope, offset: 0 },
-    ]);
+    const requests = () => fake.paramsOf("tradeskillmaster.ledgerItems").slice(reads);
+    expect(requests()).toEqual([{ ...scope, offset: 0 }]);
+    // Showing the list takes no focus.
+    expect(document.activeElement?.closest(".wowdeck-ledger-items")).toBeNull();
 
-    expect(document.querySelector("h2")?.textContent).toBe(
-      "All itemsMAIN · Silvermoon · All characters · 1M",
-    );
-    const columns = () => [...document.querySelectorAll(".wowdeck-ledger-items-columns")];
     expect(columns()).toHaveLength(41); // header plus one bounded page of item rows
     expect(
       columns()
@@ -1666,13 +1705,15 @@ test("All items pages native focus rows and refreshes only the opened filters", 
       ["Linen Cloth", "–", "3s", "–", "2s", "1s"],
       ["Wool Cloth", "–", "–", "–", "50c", "-50c"],
     ]);
+    // The column header sticks under the title row, above the rows.
+    expect(view.container.querySelector(".wowdeck-ledger-items-head")).not.toBeNull();
     for (const row of columns().slice(1)) {
       const field = row.closest<HTMLElement>(".Focusable[tabindex]")!;
       await act(async () => field.focus());
       expect(document.activeElement).toBe(field);
     }
     const pageAction = (label: string) =>
-      [...document.querySelectorAll<HTMLElement>(".Focusable[tabindex]")].find(
+      [...view.container.querySelectorAll<HTMLElement>(".Focusable[tabindex]")].find(
         (row) => row.textContent === label,
       );
     const turnPage = (label: string) =>
@@ -1686,6 +1727,13 @@ test("All items pages native focus rows and refreshes only the opened filters", 
     expect(document.activeElement).toBe(columns()[1]!.closest(".Focusable"));
     expect(document.activeElement?.textContent).toContain("Silk Cloth");
     expect(pageAction("Next page")).toBeUndefined();
+
+    // Another view and back: the same page, without taking focus.
+    await showDashboard(view.container);
+    expect(columns()).toHaveLength(0);
+    await showLedger(view.container);
+    expect(columns()).toHaveLength(2);
+    expect(text()).toContain("Silk Cloth");
     await turnPage("Previous page");
     expect(columns()).toHaveLength(41);
     expect(document.activeElement?.textContent).toContain("Linen Cloth");
@@ -1695,33 +1743,27 @@ test("All items pages native focus rows and refreshes only the opened filters", 
     await act(async () =>
       fake.emit({ event: "tradeskillmaster.ledgerChanged", params: { installationId: "active" } }),
     );
-    expect(fake.paramsOf("tradeskillmaster.ledgerItems").slice(reads)).toEqual([
+    expect(requests()).toEqual([
       { ...scope, offset: 0 },
+      { ...scope, offset: 40 },
       { ...scope, offset: 40 },
       { ...scope, offset: 0 },
       { ...scope, offset: 0 },
     ]);
-    expect(document.querySelector("h2")?.textContent).toContain("Silvermoon · All characters · 1M");
-    expect(document.body.textContent).toContain("No items bought or sold for these filters");
+    expect(text()).toContain("No items bought or sold for these filters");
     expect(columns()).toHaveLength(0);
-    const opens = qamOpens;
-    await act(async () => cancelModal!());
-    expect(qamOpens).toBe(opens + 1);
-    await view.render();
-    await act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
-    expect(document.activeElement).toBe(opener());
     expect(view.selected()?.textContent).toBe("Ledger");
   } finally {
-    await act(async () => cancelModal && modalRoot && cancelModal());
     fake.answers["tradeskillmaster.ledgerItems"] = previousItems;
     ledger = previousLedger;
+    browseZone.zone = "nav";
     await view.close();
     resetFocusMemory();
     resetTsmReads();
   }
 });
 
-test("All items opens an item on Wowhead with A, names unnamed items by ID and pages with L2 and R2", async () => {
+test("the Ledger opens an item on Wowhead with A, lands on it once on the way back, names unnamed items by ID and pages with L2 and R2", async () => {
   resetTsmView();
   resetTsmReads();
   resetLedgerFilters();
@@ -1783,79 +1825,65 @@ test("All items opens an item on Wowhead with A, names unnamed items by ID and p
         };
   webPages.length = 0;
   const view = await mountDestination(false);
-  const items = () =>
-    [...document.querySelectorAll<HTMLElement>("[data-modal-root] .Focusable[tabindex]")].filter(
-      (row) => row.querySelector(".wowdeck-ledger-items-columns"),
-    );
-  const trigger = (row: HTMLElement, button: number) =>
-    act(async () => {
-      row.dispatchEvent(
-        new window.CustomEvent("gamepadbutton", { detail: { button }, cancelable: true }),
-      );
-    });
+  const items = () => itemRows(view.container);
   try {
     await showLedger(view.container);
-    const opener = [...view.container.querySelectorAll<HTMLElement>(".Focusable[tabindex]")].find(
-      (row) => row.textContent === "All items (4)",
-    )!;
-    await act(async () => opener.querySelector("b")!.click());
-    await view.leave();
-    expect(items().map((row) => row.querySelector("span")?.textContent)).toEqual([
-      "Linen Cloth",
-      "Item 286742",
-      "p:39:1:3",
-    ]);
+    expect(
+      items().map((row) => row.querySelector(".wowdeck-ledger-items-name")?.textContent),
+    ).toEqual(["Linen Cloth", "Item 286742", "p:39:1:3"]);
     // A item links to its page in the installation's section; a battle pet has no link.
     expect(items().map((row) => row.getAttribute("data-ok"))).toEqual([
       "Open on Wowhead",
       "Open on Wowhead",
       null,
     ]);
-    const opens = qamOpens;
+    await act(async () => items()[1]!.focus());
     await act(async () =>
       items()[1]!.querySelector<HTMLElement>(".wowdeck-ledger-items-columns")!.click(),
     );
     expect(webPages).toEqual(["https://www.wowhead.com/mop-classic/item=286742"]);
-    // Steam's browser opens under a QAM dialog, so the list closes first
-    // and the QAM stays closed for the page (DEVICE 2026-11-24, #319).
-    expect(items()).toHaveLength(0);
-    expect(qamOpens).toBe(opens);
 
-    // The next All items comes back to the item opened, once.
-    await view.render();
-    const reopen = () =>
-      [...view.container.querySelectorAll<HTMLElement>(".Focusable[tabindex]")]
-        .find((row) => row.textContent === "All items (4)")!
-        .querySelector("b")!;
-    await act(async () => reopen().click());
-    await view.leave();
+    // Entering the destination again lands on the item opened, once.
+    await enterAgain(view);
     expect(items()).toHaveLength(3);
     expect(document.activeElement).toBe(items()[1]!);
-    await act(async () => cancelModal && modalRoot && cancelModal());
-    await view.render();
-    await act(async () => reopen().click());
-    await view.leave();
-    expect(document.activeElement).toBe(items()[0]!);
+    await enterAgain(view);
+    expect(document.activeElement).toBe(firstTsmControl(view.container));
+    expect(items()).not.toContain(document.activeElement);
 
     // R2 turns to the next page from any row, L2 back; the footer names each.
     expect([items()[0]!.getAttribute("data-l2"), items()[0]!.getAttribute("data-r2")]).toEqual([
       null,
       "Next page",
     ]);
-    await trigger(items()[1]!, 8);
-    expect(items().map((row) => row.querySelector("span")?.textContent)).toEqual(["Silk Cloth"]);
+    await pressOn(items()[1]!, 8);
+    expect(
+      items().map((row) => row.querySelector(".wowdeck-ledger-items-name")?.textContent),
+    ).toEqual(["Silk Cloth"]);
     expect([items()[0]!.getAttribute("data-l2"), items()[0]!.getAttribute("data-r2")]).toEqual([
       "Previous page",
       null,
     ]);
-    await trigger(items()[0]!, 8); // Nothing after the last page.
+    await pressOn(items()[0]!, 8); // Nothing after the last page.
     expect(items()).toHaveLength(1);
-    await trigger(items()[0]!, 7);
+    await pressOn(items()[0]!, 7);
     expect(items()).toHaveLength(3);
+
+    // Back from Wowhead after the filters changed, the item may be gone:
+    // entry lands on the first content row as usual.
+    await act(async () =>
+      items()[0]!.querySelector<HTMLElement>(".wowdeck-ledger-items-columns")!.click(),
+    );
+    ledger = { ...readyLedger, itemCount: 4, wowhead: "mop-classic", period: "1W" };
+    await act(async () =>
+      fake.emit({ event: "tradeskillmaster.ledgerChanged", params: { installationId: "active" } }),
+    );
+    await enterAgain(view);
+    expect(document.activeElement).toBe(firstTsmControl(view.container));
   } finally {
-    await act(async () => cancelModal && modalRoot && cancelModal());
     fake.answers["tradeskillmaster.ledgerItems"] = previousItems;
     ledger = previousLedger;
+    browseZone.zone = "nav";
     await view.close();
     resetFocusMemory();
     resetTsmReads();
@@ -1879,7 +1907,7 @@ const hex = (rgb: string) =>
     .map((v) => Number(v).toString(16).padStart(2, "0"))
     .join("");
 
-test("All items sorts by its header: Up, Y and the D-pad reach it, A cycles a column, and Wowhead keeps the sort", async () => {
+test("the Ledger sorts by its header: Up, Y and the D-pad reach it, A cycles a column, and the sort stays across views and Wowhead", async () => {
   resetTsmView();
   resetTsmReads();
   resetLedgerFilters();
@@ -1909,12 +1937,11 @@ test("All items sorts by its header: Up, Y and the D-pad reach it, A cycles a co
       ? { rows: [row("i:200", "Last", 1)], nextOffset: null }
       : { rows: firstPage, nextOffset: 40 };
   const view = await mountDestination(false);
-  const items = () =>
-    [...document.querySelectorAll<HTMLElement>("[data-modal-root] .Focusable[tabindex]")].filter(
-      (r) => r.querySelector(".wowdeck-ledger-items-columns"),
-    );
+  const items = () => itemRows(view.container);
   const header = () => [
-    ...document.querySelectorAll<HTMLElement>(".wowdeck-ledger-items-labels .Focusable[tabindex]"),
+    ...view.container.querySelectorAll<HTMLElement>(
+      ".wowdeck-ledger-items-labels .Focusable[tabindex]",
+    ),
   ];
   const cell = (label: string) => header().find((c) => c.textContent?.startsWith(label))!;
   const focused = () => document.activeElement;
@@ -1924,37 +1951,18 @@ test("All items sorts by its header: Up, Y and the D-pad reach it, A cycles a co
       cell(label).focus();
       cell(label).click();
     });
-  const press = (el: HTMLElement, button: number) =>
-    act(async () => {
-      el.dispatchEvent(
-        new window.CustomEvent("gamepadbutton", { detail: { button }, cancelable: true }),
-      );
-    });
   const { DIR_UP, DIR_DOWN, DIR_LEFT, DIR_RIGHT, OPTIONS, TRIGGER_LEFT, TRIGGER_RIGHT } =
     GamepadButton as unknown as Record<string, number>;
   const requests = () => fake.paramsOf("tradeskillmaster.ledgerItems");
   const lastRequest = () => {
-    // The filters stay as opened; only the page and the sort change.
+    // The filters stay as shown; only the page and the sort change.
     const all = requests();
     const { offset, sort, descending } = all[all.length - 1]!;
     return { offset, ...(sort && { sort, descending }) };
   };
   const arrows = () => header().map((c) => c.textContent);
-  const opener = () =>
-    [...view.container.querySelectorAll<HTMLElement>(".Focusable[tabindex]")].find(
-      (r) => r.textContent === "All items (41)",
-    )!;
-  const open = async () => {
-    await view.render();
-    await act(async () => {
-      opener().focus();
-      opener().querySelector("b")!.click();
-    });
-    await view.leave();
-  };
   try {
     await showLedger(view.container);
-    await open();
 
     // Six columns: counts beside their amounts, "–" for nothing.
     const cells = (r: Element) =>
@@ -1962,13 +1970,16 @@ test("All items sorts by its header: Up, Y and the D-pad reach it, A cycles a co
     expect(arrows()).toEqual(["Item", "Sold", "Earned", "Bought", "Spent", "Net"]);
     expect(cells(items()[0]!)).toEqual(["Linen Cloth", "1,234", "3s", "–", "–", "3s"]);
     expect(cells(items()[1]!)).toEqual(["Silk Cloth", "–", "–", "2", "50c", "-50c"]);
+    // The Item cell keeps a slot for the item's icon: empty, and no room taken.
+    const item = items()[0]!.querySelector(".wowdeck-ledger-items-item")!;
+    expect([...item.children].map((c) => c.className)).toEqual(["wowdeck-ledger-items-name"]);
 
     // Every rarity colour reads on its row (#23262e, DEVICE 2026-11-25); one
     // that doesn't on Steam's focus highlight (#383a41 measured, #3d4450
     // documented) turns white with focus. Unknown quality: the usual text.
-    for (const item of items().slice(0, 10)) {
-      const name = item.querySelector<HTMLElement>(".wowdeck-ledger-items-name")!;
-      if (item.textContent?.startsWith("Item 9")) {
+    for (const entry of items().slice(0, 10)) {
+      const name = entry.querySelector<HTMLElement>(".wowdeck-ledger-items-name")!;
+      if (entry.textContent?.startsWith("Item 9")) {
         expect(name.style.color).toBe("");
         continue;
       }
@@ -1981,26 +1992,37 @@ test("All items sorts by its header: Up, Y and the D-pad reach it, A cycles a co
     }
 
     // Up from the first item reaches the header, on Item while unsorted.
-    expect(focused()).toBe(items()[0]!);
+    await act(async () => items()[0]!.focus());
     expect(header()).toHaveLength(6);
-    await press(items()[0]!, DIR_UP);
+    await pressOn(items()[0]!, DIR_UP);
     expect(focused()).toBe(cell("Item"));
-    // Left and Right stop at both ends.
-    await press(cell("Item"), DIR_LEFT);
-    expect(focused()).toBe(cell("Item"));
-    for (let i = 0; i < 6; i++) await press(focused() as HTMLElement, DIR_RIGHT);
+    // Right stops at the last cell. Left on the first is the pane's: back
+    // to the destination list.
+    for (let i = 0; i < 6; i++) await pressOn(focused() as HTMLElement, DIR_RIGHT);
     expect(focused()).toBe(cell("Net"));
+    for (let i = 0; i < 5; i++) await pressOn(focused() as HTMLElement, DIR_LEFT);
+    expect(focused()).toBe(cell("Item"));
+    await act(async () => {
+      cell("Item").dispatchEvent(
+        new window.CustomEvent("gamepadbutton", {
+          detail: { button: DIR_LEFT },
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    });
+    expect(view.reachedPane).toEqual([DIR_LEFT]);
     // Down leads into the list.
-    await press(cell("Net"), DIR_DOWN);
+    await pressOn(cell("Item"), DIR_DOWN);
     expect(focused()).toBe(items()[0]!);
     // Y on any item jumps to the header; Steam's hint names it Sort.
     expect(items()[5]!.getAttribute("data-y")).toBe("Sort");
-    await press(items()[5]!, OPTIONS);
+    await pressOn(items()[5]!, OPTIONS);
     expect(focused()).toBe(cell("Item"));
 
     // A cycles a column: highest first, lowest first, off. Focus stays on
     // the header and the list goes back to page 1.
-    await press(cell("Item"), TRIGGER_RIGHT);
+    await pressOn(cell("Item"), TRIGGER_RIGHT);
     expect(lastRequest()).toEqual({ offset: 40 });
     expect(cell("Earned").getAttribute("data-ok")).toBe("Sort");
     await choose("Earned");
@@ -2023,63 +2045,59 @@ test("All items sorts by its header: Up, Y and the D-pad reach it, A cycles a co
     expect(arrows()).toEqual(["Item", "Sold ▼", "Earned", "Bought", "Spent", "Net"]);
 
     // Y lands on the sorted column.
-    await press(items()[3]!, OPTIONS);
+    await pressOn(items()[3]!, OPTIONS);
     expect(focused()).toBe(cell("Sold"));
 
     // L2 and R2 page from the header. With Previous page shown, Down goes
     // there and Up from it comes back.
-    await press(cell("Sold"), TRIGGER_RIGHT);
+    await pressOn(cell("Sold"), TRIGGER_RIGHT);
     expect(lastRequest()).toEqual({ offset: 40, sort: "sold", descending: true });
     const previous = () =>
-      [...document.querySelectorAll<HTMLElement>(".Focusable[tabindex]")].find(
+      [...view.container.querySelectorAll<HTMLElement>(".Focusable[tabindex]")].find(
         (r) => r.textContent === "Previous page",
       )!;
-    await press(cell("Sold"), DIR_DOWN);
+    await pressOn(cell("Sold"), DIR_DOWN);
     expect(focused()).toBe(previous());
-    await press(previous(), DIR_UP);
+    await pressOn(previous(), DIR_UP);
     expect(focused()).toBe(cell("Sold"));
-    await press(cell("Sold"), TRIGGER_LEFT);
+    await pressOn(cell("Sold"), TRIGGER_LEFT);
     expect(lastRequest()).toEqual({ offset: 0, sort: "sold", descending: true });
 
     // Back from Wowhead, the list comes back sorted, on the same page and item.
-    const openOnWowhead = (item: HTMLElement) =>
-      act(async () => item.querySelector<HTMLElement>(".wowdeck-ledger-items-columns")!.click());
+    const openOnWowhead = (entry: HTMLElement) =>
+      act(async () => entry.querySelector<HTMLElement>(".wowdeck-ledger-items-columns")!.click());
     await openOnWowhead(items()[1]!);
     expect(webPages[webPages.length - 1]).toBe("https://www.wowhead.com/classic/item=4306");
-    await open();
+    await enterAgain(view);
     expect(lastRequest()).toEqual({ offset: 0, sort: "sold", descending: true });
     expect(arrows()[1]).toBe("Sold ▼");
     expect(focused()).toBe(items()[1]!);
-    await press(items()[1]!, TRIGGER_RIGHT);
+    await pressOn(items()[1]!, TRIGGER_RIGHT);
     await openOnWowhead(items()[0]!);
     expect(webPages[webPages.length - 1]).toBe("https://www.wowhead.com/classic/item=200");
-    await open();
+    await enterAgain(view);
     expect(lastRequest()).toEqual({ offset: 40, sort: "sold", descending: true });
     expect(arrows()[1]).toBe("Sold ▼");
     expect(focused()).toBe(items()[0]!);
 
-    // B from the header closes the list and returns to All items; the next
-    // open starts in the usual order.
-    await press(items()[0]!, OPTIONS);
-    expect(focused()).toBe(cell("Sold"));
-    await act(async () => cancelModal!());
-    await view.render();
-    await act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
-    expect(document.activeElement).toBe(opener());
-    await open();
-    expect(lastRequest()).toEqual({ offset: 0 });
-    expect(arrows()).toEqual(["Item", "Sold", "Earned", "Bought", "Spent", "Net"]);
+    // Another filter selection keeps the sort and starts on page 1.
+    ledger = { ...readyLedger, itemCount: 41, wowhead: "classic", period: "1M" };
+    await act(async () =>
+      fake.emit({ event: "tradeskillmaster.ledgerChanged", params: { installationId: "active" } }),
+    );
+    expect(lastRequest()).toEqual({ offset: 0, sort: "sold", descending: true });
+    expect(arrows()[1]).toBe("Sold ▼");
   } finally {
-    await act(async () => cancelModal && modalRoot && cancelModal());
     fake.answers["tradeskillmaster.ledgerItems"] = previousItems;
     ledger = previousLedger;
+    browseZone.zone = "nav";
     await view.close();
     resetFocusMemory();
     resetTsmReads();
   }
 });
 
-test("All items opens full width and lands on its first item once a page of more than 40 arrives", async () => {
+test("a turned Ledger page lands on its first item once it arrives, and the column header fades only while rows scroll under it", async () => {
   resetTsmView();
   resetTsmReads();
   resetLedgerFilters();
@@ -2097,8 +2115,8 @@ test("All items opens full width and lands on its first item once a page of more
     bought: 0,
     quality: null,
   }));
-  // The rows arrive after Steam's dialog has taken focus, as on the Deck
-  // with the real item cache.
+  // The rows arrive after the view shows, as on the Deck with the real
+  // item cache.
   let release = () => {};
   let held = new Promise<void>((resolve) => (release = resolve));
   fake.answers["tradeskillmaster.ledgerItems"] = async ({ offset = 0 }) => {
@@ -2106,52 +2124,47 @@ test("All items opens full width and lands on its first item once a page of more
     return { rows: items.slice(offset, offset + 40), nextOffset: offset ? null : 40 };
   };
   const view = await mountDestination(false);
-  const opener = () =>
-    [...view.container.querySelectorAll<HTMLElement>(".Focusable[tabindex]")].find(
-      (row) => row.textContent === "All items (55)",
-    )!;
   const focused = () => document.activeElement?.textContent ?? "";
-  const firstItem = () =>
-    document.querySelectorAll(".wowdeck-ledger-items-columns")[1]?.closest(".Focusable");
+  const firstItem = () => itemRows(view.container)[0];
   try {
     await showLedger(view.container);
-    await act(async () => {
-      opener().focus();
-      opener().querySelector("b")!.click();
-    });
-    await view.leave(); // Opening a Steam modal unmounts the pane.
-
-    // The dialog spans the screen: Steam's 660 px box takes our full-width class.
-    const dialog = document.querySelector<HTMLElement>("[data-modal-root]")!;
-    expect(dialog.classList.contains("wowdeck-full-width-modal")).toBe(true);
-    expect(dialog.querySelector("style")?.textContent).toMatch(
-      /\.wowdeck-full-width-modal\s*\{[^}]*width: 100%/,
-    );
-
-    // While reading, focus holds the top of the list, not Close at the
-    // bottom: the header stays in view once the rows push Close down.
-    expect(focused()).toBe("Reading Ledger items…");
+    const pill = view.selected()!;
+    await act(async () => pill.focus());
+    expect(view.container.textContent).toContain("Reading Ledger items…");
     await act(async () => release());
-    expect(firstItem()).not.toBeNull();
-    expect(document.activeElement).toBe(firstItem()!);
-    expect(focused()).toContain("Item 1");
+    // Showing the view takes no focus: the pill keeps it.
+    expect(firstItem()).toBeDefined();
+    expect(document.activeElement).toBe(pill);
 
-    // A page turn reads the same way and lands on its first item too.
+    // A page turn reads, and lands on the new page's first item.
     held = new Promise<void>((resolve) => (release = resolve));
-    const next = [...document.querySelectorAll<HTMLElement>(".Focusable[tabindex]")].find(
+    const next = [...view.container.querySelectorAll<HTMLElement>(".Focusable[tabindex]")].find(
       (row) => row.textContent === "Next page",
     )!;
     await act(async () => {
       next.focus();
       next.querySelector("b")!.click();
     });
-    expect(document.body.textContent).toContain("Reading Ledger items…");
+    expect(view.container.textContent).toContain("Reading Ledger items…");
     await act(async () => release());
     expect(document.activeElement).toBe(firstItem()!);
     expect(focused()).toContain("Item 41");
+
+    // The header's fade: only once the pane scrolled it up against the
+    // title row (JSDOM lays nothing out, so every box sits at 0).
+    const head = view.container.querySelector(".wowdeck-ledger-items-head")!;
+    const scroll = (top: number) =>
+      act(async () => {
+        view.container.scrollTop = top;
+        view.container.dispatchEvent(new window.Event("scroll"));
+      });
+    expect(head.hasAttribute("data-wowdeck-scrolled")).toBe(false);
+    await scroll(40);
+    expect(head.hasAttribute("data-wowdeck-scrolled")).toBe(true);
+    await scroll(0);
+    expect(head.hasAttribute("data-wowdeck-scrolled")).toBe(false);
   } finally {
     release();
-    await act(async () => cancelModal && modalRoot && cancelModal());
     fake.answers["tradeskillmaster.ledgerItems"] = previousItems;
     ledger = previousLedger;
     await view.close();
@@ -2160,7 +2173,7 @@ test("All items opens full width and lands on its first item once a page of more
   }
 });
 
-test("the Ledger's figures render under its freshness line: a 2×2 grid, then a Sales, Expenses and Profit table in coin colours", async () => {
+test("the Dashboard's figures render under its freshness line: a 2×2 grid, then a Sales, Expenses and Profit table in coin colours", async () => {
   resetTsmView();
   resetTsmReads();
   resetLedgerFilters();
@@ -2168,12 +2181,12 @@ test("the Ledger's figures render under its freshness line: a 2×2 grid, then a 
   ledger = readyLedger;
   const view = await mountDestination();
   try {
-    await showLedger(view.container);
+    await showDashboard(view.container);
     const text = view.container.textContent ?? "";
     // Entry lands on the first content row under the title row: the
     // Ledger's controls scroll with it, Account first with two accounts.
     expect(firstTsmControl(view.container)?.textContent).toContain("MAIN");
-    const grid = view.container.querySelector(".wowdeck-ledger-grid")!;
+    const grid = view.container.querySelector(".wowdeck-dashboard-grid")!;
     expect([...grid.children].map((cell) => cell.textContent)).toEqual([
       "Avg daily sales3.7",
       "Avg daily purchases0",
@@ -2182,7 +2195,7 @@ test("the Ledger's figures render under its freshness line: a 2×2 grid, then a 
     ]);
     // One caption row naming the columns, then a focus stop per row with
     // its top item in grey under it.
-    const table = [...view.container.querySelectorAll(".wowdeck-ledger-flows")];
+    const table = [...view.container.querySelectorAll(".wowdeck-dashboard-flows")];
     expect(table.map((row) => [...row.children].map((cell) => cell.textContent))).toEqual([
       ["", "Total", "Per day"],
       ["Sales", "1,234g 56s 78c", "30g 11s 14c"],
@@ -2206,7 +2219,7 @@ test("the Ledger's figures render under its freshness line: a 2×2 grid, then a 
     expect(text.indexOf("Recorded at last logout")).toBeLessThan(text.indexOf("Avg daily sales"));
     expect(text.indexOf("Top purchase")).toBeLessThan(text.indexOf("Sales1,234g"));
     // All has no previous period, so no trend.
-    expect(view.container.querySelector(".wowdeck-ledger-trend")).toBeNull();
+    expect(view.container.querySelector(".wowdeck-dashboard-trend")).toBeNull();
 
     // A period trends: up is good for sales and profit, and bad for expenses.
     const week = readyLedger.figures!;
@@ -2223,7 +2236,7 @@ test("the Ledger's figures render under its freshness line: a 2×2 grid, then a 
     await view.leave();
     resetTsmReads();
     await view.render();
-    const trends = [...view.container.querySelectorAll(".wowdeck-ledger-trend")];
+    const trends = [...view.container.querySelectorAll(".wowdeck-dashboard-trend")];
     // Each row's trend stands beside its total and its per-day amount, as in game.
     expect(trends.map((t) => t.getAttribute("aria-label"))).toEqual([
       "Up from the previous period",
@@ -2247,7 +2260,7 @@ test("the Ledger's figures render under its freshness line: a 2×2 grid, then a 
   }
 });
 
-test("the Ledger's gold graph sits between the freshness line and the grid as one focus stop, or says there is no gold history", async () => {
+test("the Dashboard's gold graph sits between the freshness line and the grid as one focus stop, or says there is no gold history", async () => {
   resetTsmView();
   resetTsmReads();
   resetLedgerFilters();
@@ -2255,8 +2268,8 @@ test("the Ledger's gold graph sits between the freshness line and the grid as on
   ledger = readyLedger;
   const view = await mountDestination();
   try {
-    await showLedger(view.container);
-    const graph = view.container.querySelector<HTMLElement>(".wowdeck-ledger-gold")!;
+    await showDashboard(view.container);
+    const graph = view.container.querySelector<HTMLElement>(".wowdeck-dashboard-gold")!;
     // One focus stop holds the line, its dates and the summary (G3).
     const stop = graph.closest<HTMLElement>(".Focusable[tabindex]")!;
     expect(stop).not.toBeNull();
@@ -2273,20 +2286,20 @@ test("the Ledger's gold graph sits between the freshness line and the grid as on
     // labelled by weekday at each midnight.
     expect(
       [
-        ...graph.querySelectorAll(".wowdeck-ledger-yaxis > span:not(.wowdeck-ledger-axis-sizer)"),
+        ...graph.querySelectorAll(
+          ".wowdeck-dashboard-yaxis > span:not(.wowdeck-dashboard-axis-sizer)",
+        ),
       ].map((l) => l.textContent),
     ).toEqual(["100g", "120g", "140g", "160g"]);
-    expect(graph.querySelectorAll(".wowdeck-ledger-gridline")).toHaveLength(4);
+    expect(graph.querySelectorAll(".wowdeck-dashboard-gridline")).toHaveLength(4);
     const weekday = (day: number) =>
       new Date(new Date().getFullYear(), 0, day).toLocaleDateString("en-GB", { weekday: "short" });
     expect(
-      [...graph.querySelectorAll(".wowdeck-ledger-xaxis > span")].map((l) => l.textContent),
+      [...graph.querySelectorAll(".wowdeck-dashboard-xaxis > span")].map((l) => l.textContent),
     ).toEqual([weekday(16), weekday(17)]);
-    expect([...stop.querySelectorAll(".wowdeck-ledger-line")].map((l) => l.textContent)).toEqual([
-      "52-week high2,000g",
-      "52-week low50g",
-      "Daily change-30g",
-    ]);
+    expect([...stop.querySelectorAll(".wowdeck-dashboard-line")].map((l) => l.textContent)).toEqual(
+      ["52-week high2,000g", "52-week low50g", "Daily change-30g"],
+    );
     const text = view.container.textContent ?? "";
     expect(text.indexOf("Recorded at last logout")).toBeLessThan(text.indexOf("52-week high"));
     expect(text.indexOf("Daily change")).toBeLessThan(text.indexOf("Avg daily sales"));
@@ -2308,7 +2321,7 @@ test("the Ledger's gold graph sits between the freshness line and the grid as on
     resetTsmReads();
     await view.render();
     expect(
-      view.container.querySelector(".wowdeck-ledger-gold polyline")!.getAttribute("stroke"),
+      view.container.querySelector(".wowdeck-dashboard-gold polyline")!.getAttribute("stroke"),
     ).toBe("#ef806c");
 
     ledger = {
@@ -2319,25 +2332,25 @@ test("the Ledger's gold graph sits between the freshness line and the grid as on
     await view.leave();
     resetTsmReads();
     await view.render();
-    const retail = view.container.querySelector<HTMLElement>(".wowdeck-ledger-gold")!;
+    const retail = view.container.querySelector<HTMLElement>(".wowdeck-dashboard-gold")!;
     // Retail rounds as the in-game Dashboard does: the summary to whole gold,
     // every other amount of 1g or more to the silver.
-    expect([...retail.querySelectorAll(".wowdeck-ledger-line")].map((l) => l.textContent)).toEqual([
-      "52-week high2,001g 23s",
-      "52-week low50g",
-      "Daily change-32g",
-    ]);
     expect(
-      [...view.container.querySelectorAll(".wowdeck-ledger-grid .wowdeck-ledger-value")].map(
+      [...retail.querySelectorAll(".wowdeck-dashboard-line")].map((l) => l.textContent),
+    ).toEqual(["52-week high2,001g 23s", "52-week low50g", "Daily change-32g"]);
+    expect(
+      [...view.container.querySelectorAll(".wowdeck-dashboard-grid .wowdeck-dashboard-value")].map(
         (v) => v.textContent,
       ),
     ).toEqual(["3.7", "0", "0c", "200g"]);
     expect(
       [
-        ...view.container.querySelectorAll(".wowdeck-ledger-flows:not(.wowdeck-ledger-caption)"),
+        ...view.container.querySelectorAll(
+          ".wowdeck-dashboard-flows:not(.wowdeck-dashboard-caption)",
+        ),
       ].map((r) => r.textContent),
     ).toEqual(["Sales1,234g 57s30g 11s", "Expenses200g 1s4g 88s", "Profit1,034g 56s25g 23s"]);
-    expect(retail.querySelector(".wowdeck-ledger-note")?.textContent).toBe(
+    expect(retail.querySelector(".wowdeck-dashboard-note")?.textContent).toBe(
       "Retail records your gold in steps of 1,000g",
     );
     // Inside the graph's one focus stop, under the line.
@@ -2351,27 +2364,27 @@ test("the Ledger's gold graph sits between the freshness line and the grid as on
     resetTsmReads();
     await view.render();
     expect(
-      view.container.querySelector(".wowdeck-ledger-gold polyline")!.getAttribute("points"),
+      view.container.querySelector(".wowdeck-dashboard-gold polyline")!.getAttribute("points"),
     ).toBe("0,96 300,96");
 
     ledger = { ...readyLedger, gold: null };
     await view.leave();
     resetTsmReads();
     await view.render();
-    expect(view.container.querySelector(".wowdeck-ledger-gold")).toBeNull();
+    expect(view.container.querySelector(".wowdeck-dashboard-gold")).toBeNull();
     const empty = [...view.container.querySelectorAll<HTMLElement>(".Focusable[tabindex]")].find(
       (e) => e.textContent?.includes("No gold history"),
     );
     expect(empty).toBeDefined();
     // The figures still follow.
-    expect(view.container.querySelector(".wowdeck-ledger-grid")).not.toBeNull();
+    expect(view.container.querySelector(".wowdeck-dashboard-grid")).not.toBeNull();
   } finally {
     ledger = readyLedger;
     await view.close();
   }
 });
 
-test("the Ledger asks for its gold graph sampled for the graph's own width", async () => {
+test("the Dashboard asks for its gold graph sampled for the graph's own width", async () => {
   resetTsmView();
   resetTsmReads();
   resetLedgerFilters();
@@ -2385,7 +2398,7 @@ test("the Ledger asks for its gold graph sampled for the graph's own width", asy
     return { ...rect.call(this), width: 270.4 };
   };
   try {
-    await showLedger(view.container);
+    await showDashboard(view.container);
     // The first read has no width yet; once the graph is laid out, it reads for its width.
     expect(ledgerRequests[0]).toEqual({ installationId: "active", period: "All" });
     expect(ledgerRequests[ledgerRequests.length - 1]).toEqual({
@@ -2393,7 +2406,7 @@ test("the Ledger asks for its gold graph sampled for the graph's own width", asy
       period: "All",
       plotWidth: 270,
     });
-    expect(view.container.querySelector(".wowdeck-ledger-gold polyline")).not.toBeNull();
+    expect(view.container.querySelector(".wowdeck-dashboard-gold polyline")).not.toBeNull();
   } finally {
     svg.getBoundingClientRect = rect;
     resetLedgerFilters();
@@ -2498,7 +2511,7 @@ test("the Ledger's filters open in the pane and reset Realm on another account",
   }
 });
 
-test("only the title row floats: the Ledger's controls scroll with it, Account, Export, then Realm, Character and Period", async () => {
+test("only the title row floats: the views' controls scroll with them, Account, Export on the Ledger, then Realm, Character and Period", async () => {
   resetTsmView();
   resetTsmReads();
   resetLedgerFilters();
@@ -2517,25 +2530,36 @@ test("only the title row floats: the Ledger's controls scroll with it, Account, 
     // The title row: the destination's name and its views' pills, nothing else.
     const bar = view.container.querySelector(".wowdeck-pane-bar")!;
     expect(bar.querySelector(".wowdeck-pane-title")?.textContent).toBe(
-      "TradeSkillMasterAuction dataLedger",
+      "TradeSkillMasterAuction dataDashboardLedger",
     );
     expect(bar.querySelector(".wowdeck-browse-bar")).toBeNull();
     expect(bar.textContent).not.toContain("Export");
     expect(rows()).toEqual([["account"], ["realm", "character", "period"]]);
-    // Export between them, then the recorded line as plain text.
+    // Export between them, then the item count as plain text.
     expect(text().indexOf("MAIN")).toBeLessThan(text().indexOf("Export ledger"));
     expect(text().indexOf("Export ledger")).toBeLessThan(text().indexOf("All realms"));
-    expect(text().indexOf("All realms")).toBeLessThan(text().indexOf("Recorded at last logout"));
+    expect(text().indexOf("All realms")).toBeLessThan(text().indexOf("3 items"));
     expect(exportRowButton(view.container).disabled).toBe(false);
+    const count = [...view.container.querySelectorAll("div")].find(
+      (el) => el.textContent === "3 items",
+    )!;
+    expect(count.closest(".Focusable")).toBeNull();
+    // The Dashboard: the same controls without Export, then the recorded
+    // line as plain text.
+    await showDashboard(view.container);
+    expect(rows()).toEqual([["account"], ["realm", "character", "period"]]);
+    expect(text()).not.toContain("Export");
+    expect(text().indexOf("All realms")).toBeLessThan(text().indexOf("Recorded at last logout"));
     const recorded = [...view.container.querySelectorAll("div")].find((el) =>
       el.textContent?.startsWith("Recorded at last logout"),
     )!;
     expect(recorded.closest(".Focusable")).toBeNull();
+    await showLedger(view.container);
     // Left from Period goes to Character, from Character to Realm. Export and
     // Account are alone on their rows.
-    expect(LEDGER_LEFT_NEIGHBOUR).toEqual({
-      [LEDGER_FOCUS.period]: LEDGER_FOCUS.character,
-      [LEDGER_FOCUS.character]: LEDGER_FOCUS.realm,
+    expect(RECORDS_LEFT_NEIGHBOUR).toEqual({
+      [RECORDS_FOCUS.period]: RECORDS_FOCUS.character,
+      [RECORDS_FOCUS.character]: RECORDS_FOCUS.realm,
     });
 
     // One account: no Account row.
@@ -2593,7 +2617,7 @@ test("Export picks a folder from Documents, then the remembered one, and toasts 
     expect(pickers).toEqual([{ type: 1, start: "/home/deck/Documents" }]);
     expect(exportRequests).toEqual([]);
     expect(toasts).toEqual([]);
-    expect(rememberedFocus(browseFocusView("tsm"))).toBe(LEDGER_FOCUS.export);
+    expect(rememberedFocus(browseFocusView("tsm"))).toBe(RECORDS_FOCUS.export);
 
     pickFolder = async (start) => ({ path: `${start}/Gold` });
     await pressExport();
@@ -2635,7 +2659,7 @@ test("Export picks a folder from Documents, then the remembered one, and toasts 
         body: "No permission to write to that folder",
       },
     ]);
-    expect(rememberedFocus(browseFocusView("tsm"))).toBe(LEDGER_FOCUS.export);
+    expect(rememberedFocus(browseFocusView("tsm"))).toBe(RECORDS_FOCUS.export);
   } finally {
     exportFails = false;
     pickFolder = async () => {

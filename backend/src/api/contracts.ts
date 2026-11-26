@@ -809,7 +809,7 @@ export interface TradeSkillMasterLedgerParams {
 }
 
 /**
- * What All items sorts by: `volume` is earned plus spent, the list's usual
+ * What the Ledger's item list sorts by: `volume` is earned plus spent, the list's usual
  * order; `name` is the name the list shows.
  */
 export const TSM_LEDGER_ITEM_SORTS = ["volume", "name", "sold", "earned", "bought", "spent", "net"] as const;

@@ -1,615 +1,542 @@
 import {
   useEffect,
-  useId,
   useLayoutEffect,
   useRef,
   useState,
-  useSyncExternalStore,
-  type CSSProperties,
   type ReactNode,
+  type RefObject,
 } from "react";
-import { DialogButton, Field, PanelSectionRow } from "@decky/ui";
-import { FaCaretDown, FaCaretUp } from "react-icons/fa";
+import {
+  Field,
+  Focusable,
+  GamepadButton,
+  Navigation,
+  PanelSectionRow,
+  type GamepadEvent,
+} from "@decky/ui";
 import type {
   TradeSkillMasterLedger,
-  TradeSkillMasterLedgerFigures,
-  TradeSkillMasterLedgerFlow,
-  TradeSkillMasterLedgerGold,
-  TradeSkillMasterLedgerPeriod,
-  TradeSkillMasterLedgerState,
+  TradeSkillMasterLedgerItem,
+  TradeSkillMasterLedgerItemSort,
+  TradeSkillMasterLedgerItemsParams,
 } from "../../backend/src/api/contracts";
-import { browseFocusView } from "../browseSessionState";
-import { requestFocus } from "../focusMemory";
-import { useTsmLedger } from "../tsmReads";
-import { ledgerPlotWidth, pickLedgerFilter } from "../tsmLedgerFilters";
-import { exportLedger, ledgerExport } from "../tsmLedgerExport";
-import { descriptionStyle, STEAM } from "../steamTheme";
-import { openLedgerItems } from "./TsmLedgerItemsModal";
-import {
-  AXIS_LABEL_HEIGHT,
-  goldXAxis,
-  goldYAxis,
-  type GoldXTick,
-  type GoldYAxis,
-} from "../tsmGoldAxes";
-import { FocusSlot, focusTarget } from "./FocusSlot";
+import { itemQualityColour } from "../itemQuality";
+import { rememberFocus } from "../focusMemory";
+import { descriptionStyle } from "../steamTheme";
+import { ledgerParams } from "../tsmLedgerFilters";
+import { useTsmLedgerItems } from "../tsmReads";
+import { tsmView } from "../tsmView";
+import { ledgerItemLabel, wowheadItemUrl } from "../tsmWowhead";
 import { Money } from "./Money";
-import { dashboardMoney, dashboardSummaryMoney } from "../tsmLedgerMoney";
-import { SegmentRow, type BarSegment } from "./BrowseBar";
-import { SegmentMenu } from "./SegmentMenu";
-import {
-  LEDGER_FULL_VALUE,
-  LEDGER_HALF_VALUE,
-  LEDGER_PERIOD_VALUE,
-  LEDGER_PERIOD_WIDTH,
-} from "./dropdownValue";
-import { dayMonth, formatMoney, formatWhen } from "../text";
+import { ScrollBuffer } from "./ScrollBuffer";
+import { RECORDS_VIEW, RecordsView } from "./TsmRecords";
 
-/** What an empty Ledger says, by the engine's reason. */
-const EMPTY: Record<Exclude<TradeSkillMasterLedgerState, "ready">, [string, string]> = {
-  noAddon: [
-    "Install TradeSkillMaster to start recording",
-    "The addon records your sales, purchases and gold while you play",
-  ],
-  noAccount: [
-    "Nothing recorded yet",
-    "Play a character with TradeSkillMaster enabled, then log out or /reload to save its records",
-  ],
-  noRecords: [
-    "No sales, purchases or gold recorded yet",
-    "TradeSkillMaster records them while you play and saves them when you log out or /reload",
-  ],
-};
-
-/** The Ledger's rows in the destination's focus memory (S21, R1). */
-const FOCUS_VIEW = browseFocusView("tsm");
-export const LEDGER_FOCUS = {
-  error: "ledger-error",
-  empty: "ledger-empty",
-  account: "ledger-account",
-  realm: "ledger-realm",
-  character: "ledger-character",
-  period: "ledger-period",
-  export: "ledger-export",
-  gold: "ledger-gold",
-  averages: "ledger-averages",
-  sales: "ledger-sales",
-  expenses: "ledger-expenses",
-  profit: "ledger-profit",
-  items: "ledger-items",
-} as const;
-
-/**
- * Bar segments that sit beside another on their row, by focus key: Left
- * from the key goes to its value (GetAddonsTab's pane Left handling;
- * Steam's own row navigation skipped the sibling and left the pane, DEVICE
- * 2026-10-23). Up and Down between the rows are Steam's own.
- */
-export const LEDGER_LEFT_NEIGHBOUR: Record<string, string> = {
-  [LEDGER_FOCUS.character]: LEDGER_FOCUS.realm,
-  [LEDGER_FOCUS.period]: LEDGER_FOCUS.character,
-};
-
-/** The in-game Dashboard's periods, in its order. */
-const PERIODS: TradeSkillMasterLedgerPeriod[] = ["1D", "1W", "1M", "3M", "6M", "1Y", "2Y", "All"];
-
-/**
- * Export as a Steam settings row (S19): what it writes as the description,
- * the button on the right. Export writes the shown account's records for
- * the shown realm, or every realm, whatever Character and Period show, and
- * the description says so (owner, PR #318 review). Without records there
- * (gold logs are none) the button is disabled and takes no focus: Steam's
- * navigation stopped on a disabled button although A did nothing there
- * (DEVICE 2026-11-24).
- */
-function ExportRow({
-  installationId,
-  ledger,
-}: {
-  installationId: string;
-  ledger: TradeSkillMasterLedger;
-}) {
-  const { exporting } = useSyncExternalStore(ledgerExport.subscribe, ledgerExport.get);
-  const canExport = ledger.exportable && ledger.account !== null;
-  return (
-    <PanelSectionRow>
-      <div className="wowdeck-ledger-export">
-        <Field
-          label="Export ledger"
-          description={
-            canExport
-              ? `${ledger.realm ?? "All realms"} · every character and period`
-              : "Nothing to export yet"
-          }
-        >
-          {canExport ? (
-            <FocusSlot view={FOCUS_VIEW} id={LEDGER_FOCUS.export}>
-              <DialogButton
-                onClick={() =>
-                  void exportLedger(installationId, ledger, () =>
-                    requestFocus(FOCUS_VIEW, LEDGER_FOCUS.export),
-                  )
-                }
-                onOKActionDescription="Export"
-                style={{ minWidth: 0, width: "auto", padding: "10px 24px" }}
-              >
-                {exporting ? "Exporting…" : "Export"}
-              </DialogButton>
-            </FocusSlot>
-          ) : (
-            <DialogButton
-              disabled
-              focusable={false}
-              onClick={() => {}}
-              style={{ minWidth: 0, width: "auto", padding: "10px 24px" }}
-            >
-              Export
-            </DialogButton>
-          )}
-        </Field>
-      </div>
-    </PanelSectionRow>
+/** A cell of the list: "–" for nothing, so the amounts stand out (owner, PR #318 review). */
+const Amount = ({ copper }: { copper: number }) =>
+  Math.round(copper) === 0 ? (
+    <span className="wowdeck-ledger-items-none">–</span>
+  ) : (
+    <Money copper={copper} />
   );
-}
+
+/** A count of items: "–" for none, like an amount. */
+const Count = ({ count }: { count: number }) =>
+  count === 0 ? (
+    <span className="wowdeck-ledger-items-none">–</span>
+  ) : (
+    <span>{count.toLocaleString("en-US")}</span>
+  );
 
 /**
- * The Ledger's controls, at the top of its rows and scrolling with them
- * (owner, PR #318 review: only the title row floats): Account, only with
- * more than one account; Export; then Realm, Character and Period as the
- * browse bar's segments with in-pane menus (ADR 0002, G14), once the
- * account has records.
+ * The Item cell: a slot for the item's icon, then the name in its rarity
+ * colour (unknown keeps the row's text colour). The slot stays empty until
+ * the icons have a source, and an empty slot takes no room. The column
+ * widths are measured from what the cells hold, so an icon there widens
+ * Item by itself.
  */
-function LedgerControls({
-  installationId,
-  ledger,
-}: {
-  installationId: string;
-  ledger: TradeSkillMasterLedger;
-}) {
-  const pick = (change: Parameters<typeof pickLedgerFilter>[2]) =>
-    pickLedgerFilter(installationId, ledger, change);
-  const account: BarSegment = {
-    id: "account",
-    caption: "Account",
-    focusId: LEDGER_FOCUS.account,
-    menu: (
-      <SegmentMenu
-        menuLabel="Account"
-        choices={ledger.accounts.map((name) => ({ data: name, label: name }))}
-        selected={ledger.account}
-        renderValue={LEDGER_FULL_VALUE}
-        onPick={(name) => pick({ account: name })}
-      />
-    ),
-  };
-  const filters: BarSegment[] = [
-    {
-      id: "realm",
-      caption: "Realm",
-      focusId: LEDGER_FOCUS.realm,
-      menu: (
-        <SegmentMenu
-          menuLabel="Realm"
-          choices={[
-            { data: null as string | null, label: "All realms" },
-            ...ledger.realms.map((realm) => ({ data: realm as string | null, label: realm })),
-          ]}
-          selected={ledger.realm}
-          renderValue={LEDGER_HALF_VALUE}
-          onPick={(realm) => pick({ realm })}
-        />
-      ),
-    },
-    {
-      id: "character",
-      caption: "Character",
-      focusId: LEDGER_FOCUS.character,
-      menu: (
-        <SegmentMenu
-          menuLabel="Character"
-          choices={[
-            { data: null as string | null, label: "All characters" },
-            ...ledger.characters.map((c) => ({ data: c.id as string | null, label: c.label })),
-          ]}
-          selected={ledger.character}
-          renderValue={LEDGER_HALF_VALUE}
-          onPick={(character) => pick({ character })}
-        />
-      ),
-    },
-    {
-      id: "period",
-      caption: "Period",
-      focusId: LEDGER_FOCUS.period,
-      flex: `0 0 ${LEDGER_PERIOD_WIDTH}px`,
-      menu: (
-        <SegmentMenu
-          menuLabel="Period"
-          choices={PERIODS.map((period) => ({ data: period, label: period }))}
-          selected={ledger.period}
-          renderValue={LEDGER_PERIOD_VALUE}
-          onPick={(period) => pick({ period })}
-        />
-      ),
-    },
-  ];
+function ItemCell({ item }: { item: TradeSkillMasterLedgerItem }) {
+  const colour = itemQualityColour(item.quality);
+  const icon: ReactNode = null;
   return (
-    <>
-      {ledger.accounts.length > 1 && <SegmentRow view={FOCUS_VIEW} segments={[account]} />}
-      <ExportRow installationId={installationId} ledger={ledger} />
-      {ledger.state === "ready" && <SegmentRow view={FOCUS_VIEW} segments={filters} />}
-    </>
-  );
-}
-
-/** A trend against the previous period: an arrow by shape and colour (S13). */
-function Trend({ change, upIsGood }: { change: number | null; upIsGood: boolean }) {
-  if (change === null || change === 0) {
-    return null;
-  }
-  const up = change > 0;
-  const Arrow = up ? FaCaretUp : FaCaretDown;
-  return (
-    <span
-      className="wowdeck-ledger-trend"
-      role="img"
-      aria-label={up ? "Up from the previous period" : "Down from the previous period"}
-      data-good={String(up === upIsGood)}
-      style={{ color: up === upIsGood ? STEAM.positive : STEAM.danger }}
-    >
-      <Arrow />
+    <span className="wowdeck-ledger-items-item">
+      {icon}
+      <span
+        className={
+          colour?.whiteOnFocus
+            ? "wowdeck-ledger-items-name wowdeck-ledger-items-name-focus"
+            : "wowdeck-ledger-items-name"
+        }
+        style={colour ? { color: colour.colour } : undefined}
+      >
+        {ledgerItemLabel(item.name, item.itemString)}
+      </span>
     </span>
   );
 }
 
-/** A line of a panel: its label on the left, its value on the right. */
-function Line({ label, children }: { label: string; children: ReactNode }) {
+type SortColumn = Exclude<TradeSkillMasterLedgerItemSort, "volume">;
+/** A column's sort; null is the usual order, earned plus spent, highest first. */
+type ItemsSort = { column: SortColumn; descending: boolean } | null;
+
+/** The list's columns, in order (spec #323). */
+const COLUMNS: { column: SortColumn; label: string }[] = [
+  { column: "name", label: "Item" },
+  { column: "sold", label: "Sold" },
+  { column: "earned", label: "Earned" },
+  { column: "bought", label: "Bought" },
+  { column: "spent", label: "Spent" },
+  { column: "net", label: "Net" },
+];
+
+/**
+ * A on a column header: highest first (A to Z for Item), then lowest
+ * first, then off. Another column starts at its own first state.
+ */
+function nextSort(sort: ItemsSort, column: SortColumn): ItemsSort {
+  const first = column !== "name";
+  if (sort?.column !== column) return { column, descending: first };
+  return sort.descending === first ? { column, descending: !first } : null;
+}
+
+/** The header cell's padding on each side: its text lines up with the rows'. */
+const HEADER_CELL_PADDING_PX = 6;
+
+/**
+ * Each row is its own Steam Field, so each is its own grid. One set of
+ * column widths for the header and every row of the page keeps them
+ * aligned: Item takes what is left and wraps; every other column is as wide
+ * as its widest cell on one line. Measured from the cells' inline content,
+ * which keeps its natural width whatever its column's width.
+ */
+function useColumnWidths(table: RefObject<HTMLDivElement | null>, deps: unknown[]) {
+  useLayoutEffect(() => {
+    const el = table.current;
+    if (!el) return;
+    const widths = COLUMNS.map(() => 0);
+    for (const row of el.querySelectorAll(".wowdeck-ledger-items-columns")) {
+      const header = row.classList.contains("wowdeck-ledger-items-labels");
+      [...row.children].forEach((cell, index) => {
+        const content = cell.firstElementChild;
+        if (index === 0 || !content) return;
+        const width =
+          content.getBoundingClientRect().width + (header ? 2 * HEADER_CELL_PADDING_PX : 0);
+        widths[index] = Math.max(widths[index]!, Math.ceil(width));
+      });
+    }
+    el.style.setProperty(
+      "--wowdeck-ledger-items-tracks",
+      ["minmax(0, 1fr)", ...widths.slice(1).map((w) => `${w}px`)].join(" "),
+    );
+  }, deps);
+}
+
+/**
+ * Where the Ledger was left (P6: module scope, so it survives switching
+ * views, leaving the destination, the QAM closing and Wowhead's round trip,
+ * as S21 keeps a place): the pages turned so far for one filter selection,
+ * and the sort, which another selection keeps.
+ */
+let kept: { key: string; offsets: number[] } | null = null;
+let keptSort: ItemsSort = null;
+
+/**
+ * The item opened on Wowhead. Steam's browser closes the QAM; entering the
+ * destination again lands on that item's row, once (owner, PR #318
+ * review), while the Ledger still shows the same selection.
+ */
+let resume: { key: string; itemString: string } | null = null;
+
+/** Test hook: the Ledger back on page 1, in the usual order, with no item to land on. */
+export function resetLedgerPlace(): void {
+  kept = null;
+  keptSort = null;
+  resume = null;
+}
+
+/** The marker on an item row's cells, which takeLedgerResume's finder looks up. */
+const ITEM_ATTRIBUTE = "data-wowdeck-ledger-item";
+
+/**
+ * Entering the destination after Wowhead: a finder for the row of the item
+ * opened there, while the Ledger shows and its selection is unchanged;
+ * otherwise null. Taken once.
+ */
+export function takeLedgerResume(): ((pane: HTMLElement) => HTMLElement | null) | null {
+  const item = resume;
+  resume = null;
+  if (!item || tsmView.get() !== "ledger" || kept?.key !== item.key) return null;
+  return (pane) =>
+    [...pane.querySelectorAll(`[${ITEM_ATTRIBUTE}]`)]
+      .find((cells) => cells.getAttribute(ITEM_ATTRIBUTE) === item.itemString)
+      ?.closest<HTMLElement>(".Focusable[tabindex]") ?? null;
+}
+
+/** The focus-memory key of an item's row (S21): its identity, not its place. */
+const itemFocusKey = (itemString: string) => `ledger-item:${itemString}`;
+
+/**
+ * The column header sticks under the floating title row (owner, PR #318
+ * review: six columns of figures can't be read without their names). The
+ * title row's height is its offset (--wowdeck-pane-bar-height, set by
+ * TsmDestination); it ends in Valve's scroll fade only while rows scroll
+ * under it.
+ */
+function useStuckHeader(head: RefObject<HTMLDivElement | null>, deps: unknown[]) {
+  useEffect(() => {
+    const el = head.current;
+    const scroller = el?.closest<HTMLElement>(".wowdeck-pane-slot");
+    if (!el || !scroller) return;
+    const onScroll = () => {
+      const offset = parseFloat(scroller.style.getPropertyValue("--wowdeck-pane-bar-height")) || 0;
+      const stuck =
+        scroller.scrollTop > 0 &&
+        el.getBoundingClientRect().top - scroller.getBoundingClientRect().top <= offset + 1;
+      el.toggleAttribute("data-wowdeck-scrolled", stuck);
+    };
+    onScroll();
+    scroller.addEventListener("scroll", onScroll, { passive: true });
+    return () => scroller.removeEventListener("scroll", onScroll);
+  }, deps);
+}
+
+function LedgerItems({
+  listKey,
+  params,
+  wowhead,
+}: {
+  /** The filter selection's identity: another one is another list, from page 1. */
+  listKey: string;
+  params: TradeSkillMasterLedgerItemsParams;
+  /** The installation's Wowhead section (TradeSkillMasterLedger.wowhead). */
+  wowhead: string | null;
+}) {
+  const [offsets, setOffsets] = useState(() => (kept?.key === listKey ? kept.offsets : [0]));
+  const [sort, setSort] = useState(keptSort);
+  useEffect(() => {
+    kept = { key: listKey, offsets };
+    keptSort = sort;
+  }, [listKey, offsets, sort]);
+  const offset = offsets[offsets.length - 1]!;
+  const { data, error } = useTsmLedgerItems({
+    ...params,
+    offset,
+    ...(sort && { sort: sort.column, descending: sort.descending }),
+  });
+  const firstRow = useRef<HTMLDivElement>(null);
+  const table = useRef<HTMLDivElement>(null);
+  const head = useRef<HTMLDivElement>(null);
+  const list = useRef<HTMLDivElement>(null);
+  const headerCells = useRef<(HTMLDivElement | null)[]>([]);
+  // A turned page lands on its first row when it arrives: the Previous page
+  // or Next page row that had focus is gone. Showing the view takes no
+  // focus: the pill or the control that showed it keeps it.
+  const focusPage = useRef(false);
+  // After a sort, focus stays on the header while the new order reads;
+  // should the answer leave nothing to sort (the file changed meanwhile),
+  // it moves to the list.
+  const sortPending = useRef(false);
+  useEffect(() => {
+    if ((focusPage.current || (sortPending.current && !showHeader)) && firstRow.current) {
+      focusPage.current = false;
+      firstRow.current.focus();
+    }
+    if (data !== null || error) sortPending.current = false;
+  }, [data, error]);
+
+  const changePage = (next: number[]) => {
+    focusPage.current = true;
+    setOffsets(next);
+  };
+  /** The header cell of the sorted column, or Item in the usual order. */
+  // Steam scrolls a node it focuses into view, and the header's own place is
+  // the top of the list: Y on row 15 jumped the list from 241 px to 0
+  // (DEVICE 2026-11-25, LEDGER-323-1). The header stays stuck in view, so
+  // the list keeps its place: written back as soon as focus moves, and again
+  // once Steam's scroll has run (F9). On the Deck the list never drew a
+  // frame at the top (DEVICE 2026-11-25, recheck at 0f8dfc8); a negative
+  // scroll-margin-top on the cells did not stop Steam's scroll.
+  const restoreScroll = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => () => clearTimeout(restoreScroll.current), []);
+  const focusHeader = (index = sort ? COLUMNS.findIndex((c) => c.column === sort.column) : 0) => {
+    const cell = headerCells.current[index];
+    if (!cell) return;
+    const scrolled: [HTMLElement, number][] = [];
+    for (let el = table.current?.parentElement; el; el = el.parentElement) {
+      if (el.scrollTop > 0) scrolled.push([el, el.scrollTop]);
+    }
+    cell.focus();
+    const restore = () => scrolled.forEach(([el, top]) => (el.scrollTop = top));
+    restore();
+    clearTimeout(restoreScroll.current);
+    restoreScroll.current = setTimeout(restore, 60);
+  };
+  /** The list's first focus stop: Previous page when shown, else its first row. */
+  const focusList = () => {
+    clearTimeout(restoreScroll.current);
+    list.current?.querySelector<HTMLElement>(".Focusable")?.focus();
+  };
+  // A on a header cell: the new order from page 1, with focus kept on the
+  // cell, so A again reverses or turns it off. A pane scrolled into the
+  // list goes back to where the header meets the list's top.
+  const sortBy = (column: SortColumn) => {
+    focusPage.current = false;
+    sortPending.current = true;
+    setSort(nextSort(sort, column));
+    setOffsets([0]);
+    clearTimeout(restoreScroll.current);
+    const scroller = table.current?.closest<HTMLElement>(".wowdeck-pane-slot");
+    const top = table.current?.offsetTop;
+    if (scroller && top !== undefined && scroller.scrollTop > top) scroller.scrollTop = top;
+  };
+  const nextOffset = data?.nextOffset ?? null;
+  const previous = offsets.length > 1 ? () => changePage(offsets.slice(0, -1)) : null;
+  const next = nextOffset !== null ? () => changePage([...offsets, nextOffset]) : null;
+  // L2 and R2 turn the page from any row, as Steam's lists page with the
+  // triggers; the Previous page and Next page rows stay at the list's ends.
+  const paging = {
+    actionDescriptionMap: {
+      ...(previous && { [GamepadButton.TRIGGER_LEFT]: "Previous page" }),
+      ...(next && { [GamepadButton.TRIGGER_RIGHT]: "Next page" }),
+    },
+    onButtonDown: (evt: GamepadEvent) => {
+      const turn =
+        evt.detail.button === GamepadButton.TRIGGER_LEFT
+          ? previous
+          : evt.detail.button === GamepadButton.TRIGGER_RIGHT
+            ? next
+            : null;
+      if (turn) {
+        evt.preventDefault();
+        evt.stopPropagation();
+        turn();
+      }
+    },
+  };
+  const rows = data !== null && !error ? data.rows : [];
+  // The header stays while a new order or page reads, so the cell that
+  // asked for it keeps focus; an empty list has no columns to sort.
+  const listed = useRef(false);
+  if (rows.length > 0) listed.current = true;
+  if (data !== null && !error && data.rows.length === 0) listed.current = false;
+  const showHeader = rows.length > 0 || listed.current;
+  useColumnWidths(table, [data, sort, showHeader]);
+  useStuckHeader(head, [showHeader]);
+  // Up from the list's first focus stop reaches the header.
+  const topRow = {
+    onButtonDown: (evt: GamepadEvent) => {
+      if (evt.detail.button === GamepadButton.DIR_UP && showHeader) {
+        evt.preventDefault();
+        evt.stopPropagation();
+        focusHeader();
+        return;
+      }
+      paging.onButtonDown(evt);
+    },
+  };
+  // The list's first focus stop: Previous page when shown, else its first row.
+  const firstStop = previous ? {} : topRow;
+  // Y on any item jumps to the header.
+  const toHeader = {
+    onOptionsActionDescription: "Sort",
+    onOptionsButton: () => focusHeader(),
+  };
+  // A header cell's buttons: Left and Right move along the header, Down
+  // leads into the list. Right on the last cell rings (S29); Left on the
+  // first is the pane's, back to the destination list; Up is Steam's, to
+  // the filters above.
+  const onHeaderButtonDown = (index: number) => (evt: GamepadEvent) => {
+    const button = evt.detail.button;
+    const step =
+      button === GamepadButton.DIR_LEFT ? -1 : button === GamepadButton.DIR_RIGHT ? 1 : 0;
+    const to = index + step;
+    if ((step !== 0 && to >= 0 && to < COLUMNS.length) || button === GamepadButton.DIR_DOWN) {
+      evt.preventDefault();
+      evt.stopPropagation();
+      if (step !== 0) focusHeader(to);
+      else focusList();
+      return;
+    }
+    paging.onButtonDown(evt);
+  };
+  // A opens the item on Wowhead in Steam's browser, which closes the QAM;
+  // entering the destination again comes back to this row (takeLedgerResume).
+  const openOnWowhead = (url: string, itemString: string) => {
+    resume = { key: listKey, itemString };
+    rememberFocus(RECORDS_VIEW, itemFocusKey(itemString));
+    Navigation.NavigateToExternalWeb(url);
+  };
+  const row = (child: ReactNode) => <PanelSectionRow>{child}</PanelSectionRow>;
   return (
-    <div className="wowdeck-ledger-line">
-      <span>{label}</span>
-      <span className="wowdeck-ledger-value">{children}</span>
+    <div ref={table} className="wowdeck-ledger-items">
+      {/* The column headers stay in place while the items scroll under
+          them: outside the scroll buffer, which counts them as floating
+          over the list (S21). Each is a focus stop that sorts by its
+          column (spec #323). */}
+      {showHeader && (
+        <div ref={head} className="wowdeck-ledger-items-head">
+          <PanelSectionRow>
+            <Focusable
+              flow-children="row"
+              className="wowdeck-ledger-items-columns wowdeck-ledger-items-labels"
+            >
+              {COLUMNS.map(({ column, label }, index) => (
+                <Focusable
+                  key={column}
+                  ref={(el: HTMLDivElement | null) => {
+                    headerCells.current[index] = el;
+                  }}
+                  className="wowdeck-ledger-items-sort"
+                  noFocusRing
+                  onActivate={() => sortBy(column)}
+                  onOKActionDescription="Sort"
+                  onButtonDown={onHeaderButtonDown(index)}
+                  actionDescriptionMap={paging.actionDescriptionMap}
+                >
+                  <span>
+                    {label}
+                    {/* Unsorted cells keep the arrow's room, so the columns
+                        keep their widths as a sort turns on and off. */}
+                    {sort?.column === column ? (
+                      <span className="wowdeck-ledger-items-arrow">
+                        {sort.descending ? " ▼" : " ▲"}
+                      </span>
+                    ) : (
+                      <span className="wowdeck-ledger-items-arrow-room" aria-hidden />
+                    )}
+                  </span>
+                </Focusable>
+              ))}
+            </Focusable>
+          </PanelSectionRow>
+        </div>
+      )}
+      <ScrollBuffer key={`${sort?.column}:${sort?.descending}:${offset}`}>
+        <div ref={list}>
+          {previous &&
+            row(
+              <Field
+                focusable
+                label="Previous page"
+                onOKActionDescription="Previous page"
+                onClick={previous}
+                {...paging}
+                {...topRow}
+              />,
+            )}
+          {error
+            ? row(<Field ref={firstRow} focusable label={error} {...firstStop} />)
+            : data === null
+              ? row(<Field focusable label="Reading Ledger items…" {...firstStop} />)
+              : data.rows.length === 0
+                ? row(
+                    <Field
+                      ref={firstRow}
+                      focusable
+                      label={
+                        offset === 0
+                          ? "No items bought or sold for these filters"
+                          : "No items on this page"
+                      }
+                      {...firstStop}
+                    />,
+                  )
+                : data.rows.map((item, index) => {
+                    const { itemString, sold, earned, bought, spent, net } = item;
+                    const url = wowheadItemUrl(wowhead, itemString);
+                    const focusKey = itemFocusKey(itemString);
+                    return (
+                      <PanelSectionRow key={`${index}:${itemString}`}>
+                        <Field
+                          ref={index === 0 ? firstRow : undefined}
+                          focusable
+                          childrenLayout="below"
+                          childrenContainerWidth="max"
+                          onGamepadFocus={() => rememberFocus(RECORDS_VIEW, focusKey)}
+                          {...paging}
+                          {...(index === 0 && firstStop)}
+                          {...toHeader}
+                          // No ID or no section: no action.
+                          {...(url && {
+                            onOKActionDescription: "Open on Wowhead",
+                            onClick: () => openOnWowhead(url, itemString),
+                          })}
+                        >
+                          <div
+                            className="wowdeck-ledger-items-columns"
+                            {...{ [ITEM_ATTRIBUTE]: itemString }}
+                          >
+                            <ItemCell item={item} />
+                            <span>
+                              <Count count={sold} />
+                            </span>
+                            <span>
+                              <Amount copper={earned} />
+                            </span>
+                            <span>
+                              <Count count={bought} />
+                            </span>
+                            <span>
+                              <Amount copper={spent} />
+                            </span>
+                            <span>
+                              <Amount copper={net} />
+                            </span>
+                          </div>
+                        </Field>
+                      </PanelSectionRow>
+                    );
+                  })}
+          {rows.length > 0 &&
+            next &&
+            row(
+              <Field
+                focusable
+                label="Next page"
+                onOKActionDescription="Next page"
+                onClick={next}
+                {...paging}
+              />,
+            )}
+        </div>
+      </ScrollBuffer>
     </div>
   );
 }
 
-/**
- * Sales, Expenses and Profit as one table (owner, PR #318 review): a row
- * each with its total and per-day average, each behind the period's trend
- * as the in-game Dashboard shows it on both lines, and its top item in grey
- * under it. One focus stop per row (G3), under a caption row naming the
- * columns. Amounts round as the Dashboard's details rows do.
- */
-function FlowTable({
-  figures,
-  retail,
-}: {
-  figures: TradeSkillMasterLedgerFigures;
-  retail: boolean;
-}) {
-  const rows: [string, TradeSkillMasterLedgerFlow, boolean, string][] = [
-    ["Sales", figures.earned, true, LEDGER_FOCUS.sales],
-    ["Expenses", figures.spent, false, LEDGER_FOCUS.expenses],
-    ["Profit", figures.profit, true, LEDGER_FOCUS.profit],
-  ];
-  return (
-    <>
-      <PanelSectionRow>
-        <div className="wowdeck-ledger-flows wowdeck-ledger-caption">
-          <span />
-          <span>Total</span>
-          <span>Per day</span>
-        </div>
-      </PanelSectionRow>
-      {rows.map(([heading, flow, upIsGood, focusKey]) => (
-        <PanelSectionRow key={heading}>
-          <Field
-            focusable
-            childrenLayout="below"
-            childrenContainerWidth="max"
-            {...focusTarget(FOCUS_VIEW, focusKey)}
-          >
-            <div className="wowdeck-ledger-flows">
-              <span className="wowdeck-ledger-flow-name">{heading}</span>
-              <span className="wowdeck-ledger-value">
-                <Trend change={flow.trend} upIsGood={upIsGood} />
-                <Money copper={dashboardMoney(flow.total, retail)} />
-              </span>
-              <span className="wowdeck-ledger-value">
-                <Trend change={flow.trend} upIsGood={upIsGood} />
-                <Money copper={dashboardMoney(flow.perDay, retail)} />
-              </span>
-            </div>
-            <div className="wowdeck-ledger-note">
-              Top item · {flow.topItemName ?? flow.topItem ?? "None"}
-            </div>
-          </Field>
-        </PanelSectionRow>
-      ))}
-    </>
-  );
-}
+/** How many items the selection has, as a line above the list (C02). */
+const itemCount = (count: number) =>
+  `${count.toLocaleString("en-US")} ${count === 1 ? "item" : "items"}`;
 
 /**
- * The plot's height in CSS px, and its width until the graph is laid out.
- * The in-game graph keeps a gridline per 32 px at most; 96 px holds four.
- */
-const GRAPH_WIDTH = 300;
-const GRAPH_HEIGHT = 96;
-
-/** A gold label beside its gridline, kept inside the plot at the top and bottom. */
-function yLabelStyle({ offset, align }: GoldYAxis["lines"][number]): CSSProperties {
-  if (align === "start") return { bottom: 0 };
-  if (align === "end") return { top: 0 };
-  return { bottom: offset - AXIS_LABEL_HEIGHT / 2 };
-}
-
-/** A date under its mark, kept inside the plot at the left and right. */
-function xLabelStyle({ offset, align }: GoldXTick): CSSProperties {
-  if (align === "start") return { left: 0 };
-  if (align === "end") return { right: 0 };
-  return { left: offset, transform: "translateX(-50%)" };
-}
-
-/**
- * The selection's gold over the period, as the in-game Dashboard's graph:
- * one line through the engine's samples (Retail's 1,000 g steps as
- * recorded, which a note under the line names on Retail) over the
- * Dashboard's gridlines, gold labels and dates (tsmGoldAxes), then the
- * 52-week High and Low and the daily change. One focus stop (G3), so the
- * D-pad scrolls past it.
- */
-function GoldGraph({
-  gold,
-  now,
-  retail,
-}: {
-  gold: TradeSkillMasterLedgerGold | null;
-  now: number;
-  retail: boolean;
-}) {
-  // The engine samples the line for the plot's laid-out width, as the addon
-  // samples its own graph (a step per 3 px), and the axes space their
-  // labels by it.
-  const plot = useRef<SVGSVGElement>(null);
-  const width = useSyncExternalStore(ledgerPlotWidth.subscribe, ledgerPlotWidth.get) ?? GRAPH_WIDTH;
-  // useId's colons are not valid in url(#…) references.
-  const fillId = `wowdeck-gold-fill${useId().replace(/:/g, "")}`;
-  useLayoutEffect(() => {
-    if (plot.current) ledgerPlotWidth.set(plot.current.getBoundingClientRect().width);
-  });
-  if (!gold) {
-    return (
-      <PanelSectionRow>
-        <Field focusable label="No gold history" {...focusTarget(FOCUS_VIEW, LEDGER_FOCUS.gold)} />
-      </PanelSectionRow>
-    );
-  }
-  const values = gold.points.map(([, copper]) => copper);
-  const low = Math.min(...values);
-  const high = Math.max(...values);
-  const first = gold.points[0]![0];
-  const last = gold.points[gold.points.length - 1]![0];
-  const span = last - first;
-  // Green when the period ends at or above where it started, else red, as
-  // the in-game graph colours its line (owner, 2026-11-25). The line's own
-  // slope says the same without colour (S13).
-  const rising = values[0]! <= values[values.length - 1]!;
-  const colour = rising ? STEAM.positive : STEAM.danger;
-  const yAxis = goldYAxis(values, GRAPH_HEIGHT, retail);
-  const xTicks = goldXAxis(first, last, width);
-  const y = (copper: number) =>
-    GRAPH_HEIGHT - ((copper - yAxis.min) / (yAxis.max - yAxis.min)) * GRAPH_HEIGHT;
-  const x = (ms: number) => (span === 0 ? 0 : ((ms - first) / span) * width);
-  // One point (a first balance logged this minute) is a flat line across.
-  const line =
-    gold.points.length === 1
-      ? `0,${y(values[0]!)} ${width},${y(values[0]!)}`
-      : gold.points.map(([ms, copper]) => `${x(ms)},${y(copper)}`).join(" ");
-  // The area under the line, closed along the bottom of the box.
-  const area = `${line} ${width},${GRAPH_HEIGHT} 0,${GRAPH_HEIGHT}`;
-  const start = dayMonth(new Date(first), new Date(now));
-  // The widest gold label sizes the label column.
-  const widest = yAxis.lines.reduce((a, b) => (b.label.length > a.length ? b.label : a), "");
-  return (
-    <PanelSectionRow>
-      <Field
-        focusable
-        label="Gold"
-        childrenLayout="below"
-        {...focusTarget(FOCUS_VIEW, LEDGER_FOCUS.gold)}
-      >
-        <div className="wowdeck-ledger-gold">
-          <div className="wowdeck-ledger-graph">
-            <div
-              className="wowdeck-ledger-yaxis"
-              style={{ height: GRAPH_HEIGHT }}
-              aria-hidden="true"
-            >
-              <span className="wowdeck-ledger-axis-sizer">{widest}</span>
-              {yAxis.lines.map((gridline) => (
-                <span key={gridline.copper} style={yLabelStyle(gridline)}>
-                  {gridline.label}
-                </span>
-              ))}
-            </div>
-            <svg
-              ref={plot}
-              role="img"
-              aria-label={`Gold from ${start} to now, between ${formatMoney(low)} and ${formatMoney(high)}`}
-              viewBox={`0 0 ${width} ${GRAPH_HEIGHT}`}
-              preserveAspectRatio="none"
-              style={{ height: GRAPH_HEIGHT }}
-            >
-              {/* A soft fill under the line in its colour, fading out
-                  towards the bottom (owner, PR #318 review). */}
-              <defs>
-                <linearGradient id={fillId} x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0" stopColor={colour} stopOpacity={0.35} />
-                  <stop offset="1" stopColor={colour} stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              {yAxis.lines.map((gridline) => (
-                <line
-                  key={gridline.copper}
-                  className="wowdeck-ledger-gridline"
-                  x1={0}
-                  x2={width}
-                  y1={GRAPH_HEIGHT - gridline.offset}
-                  y2={GRAPH_HEIGHT - gridline.offset}
-                  stroke={STEAM.textDisabled}
-                  strokeWidth={1}
-                  vectorEffect="non-scaling-stroke"
-                  shapeRendering="crispEdges"
-                />
-              ))}
-              <polygon points={area} fill={`url(#${fillId})`} stroke="none" />
-              <polyline
-                points={line}
-                fill="none"
-                stroke={colour}
-                strokeWidth={2}
-                strokeLinejoin="round"
-                vectorEffect="non-scaling-stroke"
-              />
-            </svg>
-            <span />
-            <div className="wowdeck-ledger-xaxis" aria-hidden="true">
-              {xTicks.map((tick) => (
-                <span key={tick.at} style={xLabelStyle(tick)}>
-                  {tick.label}
-                </span>
-              ))}
-            </div>
-          </div>
-          {retail && (
-            <div className="wowdeck-ledger-note">Retail records your gold in steps of 1,000g</div>
-          )}
-          <Line label="52-week high">
-            <Money copper={dashboardMoney(gold.high, retail)} />
-          </Line>
-          <Line label="52-week low">
-            <Money copper={dashboardMoney(gold.low, retail)} />
-          </Line>
-          <Line label="Daily change">
-            <Money copper={dashboardSummaryMoney(gold.dailyChange, retail)} />
-          </Line>
-        </div>
-      </Field>
-    </PanelSectionRow>
-  );
-}
-
-/** Items per day, as the Dashboard rounds them: one decimal. */
-const perDay = (items: number) => String(Math.round(items * 10) / 10);
-
-/**
- * The figures under the graph: the four that are not the graph's in a 2×2
- * grid, then the Sales, Expenses and Profit table, rounded as the
- * Dashboard rounds them (tsmLedgerMoney).
- */
-function Figures({ figures, retail }: { figures: TradeSkillMasterLedgerFigures; retail: boolean }) {
-  const cells: [string, ReactNode][] = [
-    ["Avg daily sales", perDay(figures.dailySales)],
-    ["Avg daily purchases", perDay(figures.dailyPurchases)],
-    ["Top sale", <Money copper={dashboardSummaryMoney(figures.topSale, retail)} />],
-    ["Top purchase", <Money copper={dashboardSummaryMoney(figures.topPurchase, retail)} />],
-  ];
-  return (
-    <>
-      <PanelSectionRow>
-        <Field focusable childrenLayout="below" {...focusTarget(FOCUS_VIEW, LEDGER_FOCUS.averages)}>
-          <div className="wowdeck-ledger-grid">
-            {cells.map(([label, value]) => (
-              <div key={label}>
-                <div className="wowdeck-ledger-caption">{label}</div>
-                <div className="wowdeck-ledger-value">{value}</div>
-              </div>
-            ))}
-          </div>
-        </Field>
-      </PanelSectionRow>
-      <FlowTable figures={figures} retail={retail} />
-    </>
-  );
-}
-
-function AllItemsRow({
-  installationId,
-  ledger,
-}: {
-  installationId: string;
-  ledger: TradeSkillMasterLedger;
-}) {
-  return (
-    <PanelSectionRow>
-      <Field
-        focusable
-        label={`All items (${ledger.itemCount})`}
-        onOKActionDescription="View items"
-        onClick={() => openLedgerItems(installationId, ledger, LEDGER_FOCUS.items)}
-        {...focusTarget(FOCUS_VIEW, LEDGER_FOCUS.items)}
-      />
-    </PanelSectionRow>
-  );
-}
-
-/**
- * The Ledger (GLOSSARY): what the TradeSkillMaster addon recorded for the
- * active installation, read from the game's saved settings. It needs no
- * TradeSkillMaster sign-in and only reads.
+ * The Ledger (GLOSSARY): every item the player's characters bought or sold
+ * for the filter selection, and Export for the records behind it. It reads
+ * what the TradeSkillMaster addon recorded, needs no sign-in and only reads.
  */
 export function TsmLedger({ installationId }: { installationId: string }) {
-  const { data, error, loading } = useTsmLedger(installationId);
-  const [now, setNow] = useState(Date.now());
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 30_000);
-    return () => clearInterval(timer);
-  }, []);
   return (
-    <>
-      {loading && !data && (
-        <PanelSectionRow>
-          <Field label="Reading TradeSkillMaster's records…" />
-        </PanelSectionRow>
-      )}
-      {error && (
-        <PanelSectionRow>
-          <Field focusable label={error} {...focusTarget(FOCUS_VIEW, LEDGER_FOCUS.error)} />
-        </PanelSectionRow>
-      )}
-      {data && !error && (
-        <>
-          <LedgerControls installationId={installationId} ledger={data} />
-          {/* Without the addon nothing records, so nothing is dated. Plain
-              text with no focus stop (owner, PR #318 review): the controls
-              above it already bring the top of the view into sight. */}
-          {data.recordedAt !== null && data.state !== "noAddon" && (
+    <RecordsView installationId={installationId} withExport>
+      {(ledger: TradeSkillMasterLedger) => {
+        if (ledger.state !== "ready") return null;
+        // The selection the engine settled on, not the one still asked for.
+        const params = {
+          installationId,
+          exact: true,
+          ...ledgerParams({ ...ledger, account: ledger.account ?? undefined }),
+        };
+        const listKey = JSON.stringify(params);
+        return (
+          <>
+            {/* Plain text with no focus stop, like the Dashboard's
+                recorded line. */}
             <PanelSectionRow>
-              <div className="wowdeck-ledger-recorded" style={descriptionStyle}>
-                <div>Recorded at last logout · {formatWhen(data.recordedAt, now)}</div>
-                {data.gameRunning && <div>Log out or /reload to include this session</div>}
+              <div className="wowdeck-ledger-count" style={descriptionStyle}>
+                {itemCount(ledger.itemCount)}
               </div>
             </PanelSectionRow>
-          )}
-          {data.state === "ready" && data.figures && (
-            <>
-              <GoldGraph gold={data.gold} now={now} retail={data.retail} />
-              <Figures figures={data.figures} retail={data.retail} />
-              <AllItemsRow installationId={installationId} ledger={data} />
-            </>
-          )}
-          {data.state !== "ready" && (
-            <PanelSectionRow>
-              <Field
-                focusable
-                label={EMPTY[data.state][0]}
-                description={EMPTY[data.state][1]}
-                {...focusTarget(FOCUS_VIEW, LEDGER_FOCUS.empty)}
-              />
-            </PanelSectionRow>
-          )}
-        </>
-      )}
-    </>
+            <LedgerItems key={listKey} listKey={listKey} params={params} wowhead={ledger.wowhead} />
+          </>
+        );
+      }}
+    </RecordsView>
   );
 }

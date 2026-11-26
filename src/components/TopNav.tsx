@@ -146,7 +146,7 @@ export function TopNav({ tabs, activeId, onSelect, compact, selectedRef }: Props
 
 /**
  * The plugin tab bar's look for the views inside one pane (the
- * TradeSkillMaster destination's Auction data | Ledger): the same pills and
+ * TradeSkillMaster destination's Auction data | Dashboard | Ledger): the same pills and
  * the same one focus stop, but every pill shows its label and there are no
  * shoulder glyphs, since L1/R1 keep switching plugin tabs. Left on the first
  * pill bubbles to the pane, which returns to the destination list; Right on

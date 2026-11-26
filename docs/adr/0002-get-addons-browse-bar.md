@@ -75,8 +75,11 @@ bothers in use.
 more controls than one bar row holds. #312 floated two rows under the pill
 bar. After reviewing it on the Deck, the owner asked for only the title
 row to float (#319). That row holds the destination's name, with the
-Auction data and Ledger pills right-aligned beside it. The Ledger's controls are now the
-first rows of the view and scroll with it. Account comes first, shown
-only with several WoW accounts. Export follows as a settings row whose
-description names what it writes. Then Realm, Character and Period share
-one browse-bar row.
+Auction data, Dashboard and Ledger pills right-aligned beside it. The
+controls are now the first rows of the Dashboard and the Ledger and scroll
+with them. Account comes first, shown only with several WoW accounts. On
+the Ledger, Export follows as a settings row whose description names what
+it writes. Then Realm, Character and Period share one browse-bar row. The
+Ledger's column header is the one other row that floats. It sticks under
+the title row, because six columns of figures can't be read once their
+names scroll away (owner, PR #318 review).

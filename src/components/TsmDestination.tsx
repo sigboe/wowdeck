@@ -6,7 +6,8 @@ import { TSM_VIEWS, tsmView, type TsmView } from "../tsmView";
 import { FocusSlot } from "./FocusSlot";
 import { PillBar } from "./TopNav";
 import { TsmAddon } from "./TsmAddon";
-import { TsmLedger } from "./TsmLedger";
+import { TsmDashboard } from "./TsmDashboard";
+import { takeLedgerResume, TsmLedger } from "./TsmLedger";
 
 /**
  * The pill bar's focus-memory key in the destination's browse view. Its
@@ -33,14 +34,18 @@ export function firstTsmControl(pane: HTMLElement): HTMLElement | null {
 
 /**
  * Entering the destination (Right or A on it in the list): focus its first
- * content row. A view still reading has none yet (the Ledger's first read
- * shows only a loading line under its bar), so focus stays on the
- * list until the first row appears, for PENDING_RESTORE_MS, unless the
- * player moves first or leaves the pane. Without the wait, focus stayed on
- * the list while the pane counted itself focused.
+ * content row, or, back from Wowhead, the Ledger item opened there
+ * (takeLedgerResume). A view still reading has no such row yet (a first
+ * read shows only a loading line under its bar), so focus stays on the
+ * list until the row appears, for PENDING_RESTORE_MS, unless the player
+ * moves first or leaves the pane. Without the wait, focus stayed on the
+ * list while the pane counted itself focused. An item that never shows
+ * gives way to the first content row then.
  */
 export function focusTsmEntry(pane: HTMLElement): void {
-  const row = firstTsmControl(pane);
+  const resumed = takeLedgerResume();
+  const find = resumed ?? firstTsmControl;
+  const row = find(pane);
   if (row) {
     row.focus();
     return;
@@ -53,7 +58,7 @@ export function focusTsmEntry(pane: HTMLElement): void {
   const from = doc.activeElement;
   const waiting = () => browseZone.zone === "pane" && doc.activeElement === from;
   const observer = new win.MutationObserver(() => {
-    const found = firstTsmControl(pane);
+    const found = find(pane);
     if (!waiting() || found) {
       stop();
     }
@@ -62,7 +67,11 @@ export function focusTsmEntry(pane: HTMLElement): void {
       win.setTimeout(() => waiting() && found.focus(), 0);
     }
   });
-  const timer = win.setTimeout(() => stop(), PENDING_RESTORE_MS);
+  const timer = win.setTimeout(() => {
+    stop();
+    const first = resumed && waiting() ? firstTsmControl(pane) : null;
+    first?.focus();
+  }, PENDING_RESTORE_MS);
   const stop = () => {
     observer.disconnect();
     win.clearTimeout(timer);
@@ -76,10 +85,11 @@ export function focusTsmEntry(pane: HTMLElement): void {
 }
 
 /**
- * The TradeSkillMaster destination (GLOSSARY): a pill bar over its two
+ * The TradeSkillMaster destination (GLOSSARY): a pill bar over its three
  * views. Auction data is today's pane (or, signed out, the way back to
- * signing in); the Ledger reads the addon's own records and works signed
- * out. The view picked last stays for the session (tsmView).
+ * signing in); the Dashboard and the Ledger read the addon's own records
+ * and work signed out. The view picked last stays for the session
+ * (tsmView).
  */
 export function TsmDestination({
   installationId,
@@ -93,7 +103,8 @@ export function TsmDestination({
   const view = useSyncExternalStore(tsmView.subscribe, tsmView.get);
   const barRef = useRef<HTMLDivElement>(null);
   // The bar's scroll fade shows only while rows continue under it (S24,
-  // Valve's ScrollFade): the widened pane scrolls itself.
+  // Valve's ScrollFade): the widened pane scrolls itself. Its height is
+  // where the Ledger's column header sticks (--wowdeck-pane-bar-height).
   useEffect(() => {
     const bar = barRef.current;
     const scroller = bar?.closest<HTMLElement>(".wowdeck-pane-slot");
@@ -103,13 +114,24 @@ export function TsmDestination({
     const onScroll = () => bar.toggleAttribute("data-wowdeck-scrolled", scroller.scrollTop > 0);
     onScroll();
     scroller.addEventListener("scroll", onScroll, { passive: true });
-    return () => scroller.removeEventListener("scroll", onScroll);
+    const measure = () =>
+      scroller.style.setProperty("--wowdeck-pane-bar-height", `${bar.offsetHeight}px`);
+    measure();
+    const win = scroller.ownerDocument.defaultView;
+    const resize = win?.ResizeObserver ? new win.ResizeObserver(measure) : null;
+    resize?.observe(bar);
+    return () => {
+      scroller.removeEventListener("scroll", onScroll);
+      resize?.disconnect();
+      scroller.style.removeProperty("--wowdeck-pane-bar-height");
+    };
   }, []);
   return (
     <>
       {/* The title row floats at the top of the pane (S24): the destination's
           name, and its views' pills right-aligned beside it (owner, PR #318
-          review). Nothing else floats; the Ledger's filters scroll with it. */}
+          review). Only the Ledger's column header floats besides it; the
+          filters scroll with the rows. */}
       <div ref={barRef} className="wowdeck-pane-bar">
         <PanelSectionRow>
           <div className="wowdeck-pane-title">
@@ -124,7 +146,9 @@ export function TsmDestination({
           </div>
         </PanelSectionRow>
       </div>
-      {view === "ledger" ? (
+      {view === "dashboard" ? (
+        installationId && <TsmDashboard key={installationId} installationId={installationId} />
+      ) : view === "ledger" ? (
         installationId && <TsmLedger key={installationId} installationId={installationId} />
       ) : signedIn ? (
         installationId && <TsmAddon key={installationId} installationId={installationId} />

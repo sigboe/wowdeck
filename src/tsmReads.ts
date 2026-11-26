@@ -73,8 +73,8 @@ export function createTsmModule(deps: {
     },
     clock: deps.clock,
   });
-  // The Ledger reads WoW's saved files only: no sign-in, no network. One key
-  // per installation and filter selection (ledgerKey). A viewed Ledger reads
+  // The records read WoW's saved files only: no sign-in, no network. One key
+  // per installation and filter selection (ledgerKey). Viewed records read
   // again when the engine reports a save or a game state change. The minute
   // poll still moves period edges as records age and covers missed events.
   const ledger = createKeyedResource<TradeSkillMasterLedger>({
@@ -198,7 +198,8 @@ export const useTsmAccount = () => useResource(account, ACCOUNT_KEY);
 export const useTsmDestination = (installationId: string) =>
   useResource(tsmDestination, installationId);
 /**
- * The Ledger for the installation's current filters, its graph sampled for
+ * The records for the installation's current filters (the Dashboard and
+ * the Ledger share them), the gold graph sampled for
  * the plot width laid out last. While another selection or width reads,
  * `data` stays the last answer this view showed, so the filter bar and the
  * figures stay in place instead of flashing empty.

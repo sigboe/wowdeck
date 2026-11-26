@@ -191,52 +191,39 @@ export function wowdeckSharedStyleCss(): string {
    2×2 grid of a caption over a value, and its Sales, Expenses and Profit
    rows as label-left, value-right lines. Captions are Steam's 12 px muted
    description text; values its 16 px body text. */
-.wowdeck-ledger-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; }
-.wowdeck-ledger-caption { color: #b8bcbf; font-size: 12px; line-height: 16px; text-transform: uppercase; letter-spacing: .5px; }
-.wowdeck-ledger-value { color: #dcdedf; font-size: 16px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-.wowdeck-ledger-line { display: flex; justify-content: space-between; gap: 12px; color: #b8bcbf; font-size: 12px; line-height: 20px; }
-.wowdeck-ledger-line .wowdeck-ledger-value { display: inline-flex; align-items: center; gap: 4px; }
-.wowdeck-ledger-item { min-width: 0; white-space: normal; overflow-wrap: anywhere; text-align: right; }
+.wowdeck-dashboard-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; }
+.wowdeck-dashboard-caption { color: #b8bcbf; font-size: 12px; line-height: 16px; text-transform: uppercase; letter-spacing: .5px; }
+.wowdeck-dashboard-value { color: #dcdedf; font-size: 16px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.wowdeck-dashboard-line { display: flex; justify-content: space-between; gap: 12px; color: #b8bcbf; font-size: 12px; line-height: 20px; }
+.wowdeck-dashboard-line .wowdeck-dashboard-value { display: inline-flex; align-items: center; gap: 4px; }
+.wowdeck-dashboard-item { min-width: 0; white-space: normal; overflow-wrap: anywhere; text-align: right; }
 /* Sales, Expenses and Profit as one table: the name, then Total and Per
    day right-aligned, the caption row above using the same columns. */
-.wowdeck-ledger-flows {
+.wowdeck-dashboard-flows {
   display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) minmax(0, 1.2fr);
   gap: 12px; align-items: center; width: 100%;
 }
-.wowdeck-ledger-flows > :not(:first-child) { justify-content: flex-end; text-align: right; }
-.wowdeck-ledger-flows > .wowdeck-ledger-value { display: inline-flex; align-items: center; gap: 4px; }
-.wowdeck-ledger-flow-name { color: #dcdedf; font-size: 16px; line-height: 20px; }
-.wowdeck-ledger-recorded { padding-bottom: 4px; }
+.wowdeck-dashboard-flows > :not(:first-child) { justify-content: flex-end; text-align: right; }
+.wowdeck-dashboard-flows > .wowdeck-dashboard-value { display: inline-flex; align-items: center; gap: 4px; }
+.wowdeck-dashboard-flow-name { color: #dcdedf; font-size: 16px; line-height: 20px; }
+.wowdeck-dashboard-recorded { padding-bottom: 4px; }
 /* The Export row's focus highlight met the REALM caption (DEVICE
    2026-11-24, #319): the same 8 px the other control rows keep. */
 .wowdeck-ledger-export { margin-bottom: 8px; }
-.wowdeck-ledger-trend { display: inline-flex; }
-.wowdeck-ledger-trend svg { width: 12px; height: 12px; }
+.wowdeck-dashboard-trend { display: inline-flex; }
+.wowdeck-dashboard-trend svg { width: 12px; height: 12px; }
 /* The gold graph as the in-game Dashboard draws it: gold labels in a
    column as wide as the widest, the plot with its gridlines, and the dates
    under the plot. Labels sit absolutely at the offsets tsmGoldAxes gives. */
-.wowdeck-ledger-graph { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 4px; margin-top: 4px; }
-.wowdeck-ledger-graph > svg { display: block; width: 100%; overflow: visible; }
-.wowdeck-ledger-yaxis, .wowdeck-ledger-xaxis { position: relative; color: #b8bcbf; font-size: 12px; line-height: 16px; white-space: nowrap; font-variant-numeric: tabular-nums; }
-.wowdeck-ledger-yaxis > span { position: absolute; right: 0; }
-.wowdeck-ledger-yaxis > .wowdeck-ledger-axis-sizer { position: static; display: block; height: 0; overflow: hidden; visibility: hidden; }
-.wowdeck-ledger-xaxis { height: 16px; margin-top: 2px; margin-bottom: 4px; }
-.wowdeck-ledger-xaxis > span { position: absolute; top: 0; }
-.wowdeck-ledger-gridline { opacity: .5; }
-.wowdeck-ledger-note { color: #b8bcbf; font-size: 12px; line-height: 16px; }
-/* A modal as wide as the screen: pass the class as ModalRoot's className.
-   ModalRoot puts that className on Steam's dialog box, next to the plain
-   classes GenericDialogBase and DialogContent. Steam sizes that box 660 px
-   wide with a two-class rule (ModalPosition > GamepadDialogContent), and
-   bAllowFullSize does not change it (660 px on the 854 px Deck, DEVICE
-   2026-11-24). Three classes win, and 100% fills Steam's modal area inside
-   its 24 px padding. INFERRED from Steam's sp.js and sp.css, not yet
-   measured on a Deck. If Steam renames those classes, the modal falls back
-   to 660 px and nothing else changes. */
-.GenericDialogBase.DialogContent.wowdeck-full-width-modal { width: 100%; }
-.wowdeck-ledger-items-filters {
-  color: ${STEAM.textMuted}; font-size: ${STEAM_FONT.body}; overflow-wrap: anywhere;
-}
+.wowdeck-dashboard-graph { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 4px; margin-top: 4px; }
+.wowdeck-dashboard-graph > svg { display: block; width: 100%; overflow: visible; }
+.wowdeck-dashboard-yaxis, .wowdeck-dashboard-xaxis { position: relative; color: #b8bcbf; font-size: 12px; line-height: 16px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.wowdeck-dashboard-yaxis > span { position: absolute; right: 0; }
+.wowdeck-dashboard-yaxis > .wowdeck-dashboard-axis-sizer { position: static; display: block; height: 0; overflow: hidden; visibility: hidden; }
+.wowdeck-dashboard-xaxis { height: 16px; margin-top: 2px; margin-bottom: 4px; }
+.wowdeck-dashboard-xaxis > span { position: absolute; top: 0; }
+.wowdeck-dashboard-gridline { opacity: .5; }
+.wowdeck-dashboard-note { color: #b8bcbf; font-size: 12px; line-height: 16px; }
 /* Item | Sold | Earned | Bought | Spent | Net. The list measures one set of
    tracks for the header and its rows (--wowdeck-ledger-items-tracks): Item
    takes what is left and wraps, the rest fit their widest cell on one line. */
@@ -259,18 +246,33 @@ export function wowdeckSharedStyleCss(): string {
 }
 .wowdeck-ledger-items-sort.gpfocus { background: ${STEAM.header}; color: ${STEAM.row}; }
 .wowdeck-ledger-items-arrow-room::after { content: " ▼"; visibility: hidden; }
-/* The column labels: the Ledger's caption style, sticky over the list on
-   the dialog's own background, inset like the rows' text. */
+/* The column header (TsmLedger): it sticks right under the floating title
+   row, whose height TsmDestination measures into --wowdeck-pane-bar-height.
+   The pane scrolls inside 8 px of padding, which sticky offsets count from,
+   as .wowdeck-pane-bar's -8px does. Above the title row's fade in stacking
+   order, so its own fade, shown only once rows scroll under it, ends the
+   floating part (S24). */
+.wowdeck-pane-slot-open .wowdeck-ledger-items-head {
+  position: sticky; top: calc(var(--wowdeck-pane-bar-height, 48px) - 8px);
+  z-index: 2; background: #0e141b;
+}
+.wowdeck-ledger-items-head::after {
+  content: ""; position: absolute; left: 0; right: 0; top: 100%;
+  height: var(--wowdeck-fade-size, 20px); pointer-events: none;
+  background: linear-gradient(#0e141b, rgba(14, 20, 27, 0));
+  opacity: 0; transition: opacity .15s ease;
+}
+.wowdeck-ledger-items-head[data-wowdeck-scrolled]::after { opacity: 1; }
+/* The column labels in the Dashboard's caption style, inset like the rows'
+   text: 12 px, less each header cell's own 6 px. */
 .wowdeck-ledger-items-labels {
-  /* The dialog's scroller has 24 px of top padding, and top: 0 stuck the
-     labels 24 px below its edge with scrolled rows showing above ITEM.
-     A shadow over that strip covered the dialog header at the top of the
-     list (DEVICE 2026-11-24, #319). -24px sticks them at the scroller's
-     edge, as .wowdeck-pane-bar does, and leaves them in place unscrolled. */
-  position: sticky; top: -24px; z-index: 1; background: #0e141b;
-  /* 12 px like the rows' text, less each header cell's own 6 px. */
+  color: #b8bcbf; font-size: 12px; line-height: 16px; text-transform: uppercase; letter-spacing: .5px;
   box-sizing: border-box; padding: 0 6px 6px;
 }
+/* The Item cell: the icon slot, then the name, which wraps. */
+.wowdeck-ledger-items-item { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.wowdeck-ledger-items-item > .wowdeck-ledger-items-name { min-width: 0; overflow-wrap: anywhere; }
+.wowdeck-ledger-count { padding-bottom: 4px; }
 .wowdeck-ledger-items-none { color: ${STEAM.textDisabled}; }
 .wowdeck-glyph-text {
   display: inline-flex; align-items: center; justify-content: center;

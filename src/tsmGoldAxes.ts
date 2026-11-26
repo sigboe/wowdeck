@@ -1,5 +1,5 @@
 /**
- * The Ledger gold graph's axes, laid out as the TradeSkillMaster addon's
+ * The Dashboard gold graph's axes, laid out as the TradeSkillMaster addon's
  * in-game Dashboard lays out its own (addon 4.15.9: LibTSMUI
  * `Components/Display/Graph.lua` and the Dashboard's step and format
  * functions in `App/MainUI/Dashboard/Core.lua`, a behaviour reference only;

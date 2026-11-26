@@ -36,8 +36,8 @@ _Avoid_: tab row, pill row, browse nav bar
 **Pill bar**:
 The plugin tab bar's pills, without shoulder glyphs, switching the views
 inside one destination's pane: the TradeSkillMaster destination's Auction
-data and Ledger. D-pad Left and Right switch views; L1/R1 still switch
-plugin tabs.
+data, Dashboard and Ledger. D-pad Left and Right switch views; L1/R1 still
+switch plugin tabs.
 _Avoid_: sub-tabs, view tabs
 
 **Destination**:
@@ -84,20 +84,35 @@ _Avoid_: dev build, dev copy
 
 **TradeSkillMaster destination**:
 The destination listed after Manual Install, present only while the
-TradeSkillMaster source is on, whether usable or signed out. It has two
+TradeSkillMaster source is on, whether usable or signed out. It has three
 views: Auction data, which installs the addon for the active installation
 and shows the state of its auction data (while signed out it offers the way
-back to signing in instead), and the Ledger.
+back to signing in instead), the Dashboard and the Ledger.
 _Avoid_: TSM page, TSM tab
 
-**Ledger**:
+**TradeSkillMaster records**:
+What the TradeSkillMaster addon recorded in the game's saved settings for
+one WoW account of the active installation: sales, purchases and gold logs.
+The Dashboard and the Ledger read them through the same filters (Account,
+Realm, Character, Period), so they need no TradeSkillMaster sign-in and work
+signed out. They are only as fresh as the last logout or reload. The
+engine's `tradeskillmaster.ledger*` methods read them under the name the
+first version of the feature used.
+_Avoid_: Accounting
+
+**Dashboard**:
 The TradeSkillMaster destination's view of the gold the player's characters
-made and spent: what they sold and bought, their gold over time, and an
-export of the records behind it. It reads what the TradeSkillMaster addon
-recorded in the game's saved settings for one WoW account of the active
-installation, so it needs no TradeSkillMaster sign-in and works signed out.
-It is only as fresh as the last logout or reload.
-_Avoid_: Accounting, accounting dashboard
+made and spent: the gold graph, the totals, averages and top items, figured
+the way the addon's own Dashboard tab figures them (ADR 0018). It is named
+after that tab.
+_Avoid_: accounting dashboard, overview, summary
+
+**Ledger**:
+The TradeSkillMaster destination's list of every item the player's
+characters bought or sold for the filters, with Sold, Earned, Bought, Spent
+and Net per item, and Export, which writes the records behind it. It is
+named after the addon's Ledger tab.
+_Avoid_: All items, item list, accounting
 
 **Auction data**:
 The price data TradeSkillMaster publishes per auction house and per region,
@@ -152,16 +167,16 @@ active destination (Popular → Source, Category; Latest → Source; Search,
 Manual Install and Auction data have no bar), draws them in the fixed order
 Source then Category, and hides whatever the current sources cannot act on —
 disappearing entirely when nothing can be chosen. There is at most one bar
-row, ever, except in the Ledger. Its bar uses the same segments in two rows.
-Realm, Character and Period come first, then Account beside Export. Account
-shows only with several WoW accounts. Entering a destination lands focus on
-the first result row, never the bar.
+row, ever, except in the Dashboard and the Ledger. There Account has a row
+of its own, shown only with several WoW accounts, and Realm, Character and
+Period share another. The rows scroll with the view. Entering a destination
+lands focus on the first content row, never the bar.
 _Avoid_: picker row, filter row, toolbar, Source menu
 
 **Segment**:
 One of the browse bar's items: the Source segment (switches catalogue) or
-the Category segment (narrows the active source's list); in the Ledger, the
-Realm, Character, Period and Account segments, and Export. Segments close up
+the Category segment (narrows the active source's list); in the Dashboard
+and the Ledger, the Account, Realm, Character and Period segments. Segments close up
 to the left when one of them is hidden. A segment's choices open in an
 in-pane menu (a list inside the pane, never a Steam popup — ADR 0002
 revision 2026-10-24). A category is the active source's content grouping

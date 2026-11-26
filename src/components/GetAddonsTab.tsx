@@ -1,7 +1,7 @@
 import { TsmIcon } from "../icons/TsmIcon";
 import { TSM_ADDON_ACTION, TSM_REFRESH } from "./TsmAddon";
 import { focusTsmEntry, TsmDestination } from "./TsmDestination";
-import { LEDGER_LEFT_NEIGHBOUR } from "./TsmLedger";
+import { RECORDS_LEFT_NEIGHBOUR } from "./TsmRecords";
 import { tsmSession, tsmOptionsSources, tsmDestinationVisible } from "../tsmSession";
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { FaClock, FaFileArchive, FaFire, FaSearch } from "react-icons/fa";
@@ -91,7 +91,7 @@ const NO_PROVIDERS: ProviderInfo[] = [];
  */
 const PANE_LEFT_NEIGHBOUR: Record<string, string> = {
   [TSM_REFRESH]: TSM_ADDON_ACTION,
-  ...LEDGER_LEFT_NEIGHBOUR,
+  ...RECORDS_LEFT_NEIGHBOUR,
 };
 
 export function GetAddonsTab({
@@ -504,7 +504,7 @@ export function GetAddonsTab({
         );
       case "tsm":
         // Signed out, Auction data offers the way back to signing in; the
-        // Ledger needs no sign-in.
+        // Dashboard and the Ledger need no sign-in.
         return (
           <TsmDestination
             installationId={installation?.id ?? null}

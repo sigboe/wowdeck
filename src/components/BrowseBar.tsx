@@ -139,9 +139,9 @@ export interface BarSegment {
   /** Marks the segment's wrapper (`data-wowdeck-segment`), for the pane's Left handling. */
   id: string;
   caption: string;
-  /** Its focus-memory id; none for a segment that takes no focus (the Ledger's disabled Export). */
+  /** Its focus-memory id; none for a segment that takes no focus. */
   focusId?: string;
-  /** The segment's SegmentMenu, or a button (the Ledger's Export). */
+  /** The segment's SegmentMenu, or a button. */
   menu: ReactNode;
   /** Its share of the row; by default the segments share it equally. */
   flex?: string;
@@ -149,7 +149,7 @@ export interface BarSegment {
 
 /**
  * A row of browse-bar segments (ADR 0002): the browse bar's own row, and
- * each of the Ledger's two bar rows.
+ * each of the Dashboard's and the Ledger's filter rows.
  */
 export function SegmentRow({ view, segments }: { view: string; segments: BarSegment[] }) {
   // One row, inline segments in fixed order; the segments share its width,

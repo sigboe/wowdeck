@@ -1,12 +1,15 @@
 /**
  * The TradeSkillMaster destination's view (pill bar): Auction data first,
- * then the one picked last, for as long as the plugin runs. Module scope
- * (P6): it survives tab switches, modal round-trips and the QAM closing.
+ * then the one picked last, for as long as the plugin runs. Dashboard and
+ * Ledger carry the names of the addon's own tabs in game (owner, PR #318
+ * review). Module scope (P6): it survives tab switches, modal round-trips
+ * and the QAM closing.
  */
-export type TsmView = "auction" | "ledger";
+export type TsmView = "auction" | "dashboard" | "ledger";
 
 export const TSM_VIEWS: { id: TsmView; label: string }[] = [
   { id: "auction", label: "Auction data" },
+  { id: "dashboard", label: "Dashboard" },
   { id: "ledger", label: "Ledger" },
 ];
 

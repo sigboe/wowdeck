@@ -1418,3 +1418,23 @@ Sold and Bought counts, quality from the item cache and from battle pet
 item strings, and every sort in both directions across pages. The
 frontend tests in `src/tsmDestination.test.tsx` check the header's focus,
 the sort cycle, the Wowhead round trip and each colour's contrast.
+
+### TradeSkillMaster Dashboard and Ledger pills (PR #318 review)
+
+The owner asked for the in-game tab names. The figures view became the
+Dashboard, and the All items modal of #316, #319 and #323 became the Ledger
+pill. These cases replace the modal's steps in LEDGER-316-1, LEDGER-319-4
+and LEDGER-323-1 to LEDGER-323-3. Their results above describe the modal.
+
+| ID | Priority | Result | Steps | Expected |
+| --- | --- | --- | --- | --- |
+| LEDGER-PILL-1 | P1 | Not run yet | Open the TradeSkillMaster destination on the handheld screen and look at the title row. Move along the pills with D-pad Left and Right | The title row reads TradeSkillMaster with three pills on one line: Auction data, Dashboard, Ledger, none cut off. Right on Ledger stops, and Left on Auction data returns to the destination list |
+| LEDGER-PILL-2 | P1 | Not run yet | Open the Dashboard with records. Pick a realm, then switch to the Ledger and back | The Dashboard shows the filters, the recorded line, the gold graph and the figures, with no Export and no All items row. The Ledger shows the same realm, then Export, the item count and the list. Switching reads nothing again |
+| LEDGER-PILL-3 | P1 | Not run yet | On the Ledger with more than 40 items, at handheld width, look at a page of items. Scroll down with the D-pad | All six columns fit the pane without cutting a value, Item wraps, and the header's labels line up with the row values. The column header sticks right under the title row with no gap and no row showing between them, and its fade shows only once rows scroll under it |
+| LEDGER-PILL-4 | P1 | Not run yet | On the Ledger, press Up from the first item, sort by Sold, press R2, then press A on an item. Leave the browser with B, open the QAM, go to the TradeSkillMaster destination and press Right | Up reaches the header without the list jumping. The sort and the page work as in LEDGER-323-1. Wowhead opens the item. Back in the QAM the Ledger shows, sorted by Sold on page 2, and entering the pane lands on the item opened. Entering again later lands on the first control |
+| LEDGER-PILL-5 | P2 | Not run yet | On the Ledger, focus an item far down the page, then press Y and Left along the header to Item, then Left again | Y lands on the sorted column without the list jumping. Left on Item returns to the destination list, as Left does from any other Ledger row |
+
+`src/tsmDestination.test.tsx` checks the three pills, Export only on the
+Ledger, the shared empty states, the page kept across views, the Wowhead
+round trip landing once, the sort kept across views and filters, and the
+header's fade.

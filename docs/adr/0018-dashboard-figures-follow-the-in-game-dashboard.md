@@ -1,10 +1,15 @@
-# Ledger figures follow the in-game Dashboard
+# Dashboard figures follow the in-game Dashboard
 
 Owner decision during the Ledger design interview, 24 November 2026. The
-Ledger calculates its figures the way the TradeSkillMaster addon's own
-Dashboard does (addon 4.15.9, `App/MainUI/Dashboard/Core.lua`), not the way
-the community desktop clients tsm-app-linux and Wuild's TSM-App do. Players
-compare the Ledger with what they see in game. The community clients
+figures view, then called the Ledger, was renamed Dashboard in the PR #318
+review, after the addon's own tab. The item list took the name Ledger, after
+the addon's other tab. Below, "the Dashboard" is the addon's tab and
+"WoWDeck's Dashboard" is ours.
+
+WoWDeck's Dashboard calculates its figures the way the TradeSkillMaster
+addon's own Dashboard does (addon 4.15.9, `App/MainUI/Dashboard/Core.lua`),
+not the way the community desktop clients tsm-app-linux and Wuild's TSM-App
+do. Players compare it with what they see in game. The community clients
 disagree with the addon and with each other, so neither can serve as the
 reference.
 
@@ -53,24 +58,24 @@ The rules this pins down:
   the silver. Other games show every copper.
 
 Two additions have no in-game equivalent, and the community clients set
-their pattern. The Ledger picks one WoW account at a time, as every
-reference app does. It lists totals per item as Earned, Spent and Net. Net is
+their pattern. WoWDeck picks one WoW account at a time, as every
+reference app does. Its Ledger lists totals per item as Earned, Spent and Net. Net is
 earned minus spent; the addon reserves "profit" for an item's resale profit.
 Beside them, Sold and Bought count the items sold and bought, summed as the
 Dashboard sums its daily sales and purchases (#323).
 
 The Dashboard shows a top item for sales and expenses and an average of
-daily sales only. The Ledger also shows average daily purchases, counted
+daily sales only. WoWDeck's Dashboard also shows average daily purchases, counted
 the same way, and a top item for profit: the item with the highest earned
 minus spent in the period, or none when no item comes out ahead. A Realm
-filter is a Ledger addition too. It lists every realm with records, and a
+filter is a WoWDeck addition too. It lists every realm with records, and a
 point in a character's or guild's gold log there counts as a record.
 
 The in-game graph ticks characters, guilds and the Warband bank on and off
-in one list. The Ledger's Character filter picks one of them, or all. The
+in one list. WoWDeck's Character filter picks one of them, or all. The
 Warband bank and each guild with a gold log are choices of their own. Picking
 one shows its gold, and the trading figures show zero, because neither one
-trades. The Ledger lists the Warband bank whenever the addon saved its log,
+trades. The Character filter lists the Warband bank whenever the addon saved its log,
 even an empty one, as the addon does. Only a game with a Warband bank saves
 that log. Classic Era leaves the key empty.
 
