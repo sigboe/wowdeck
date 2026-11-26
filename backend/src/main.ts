@@ -19,4 +19,26 @@ if (process.argv.includes("--methods")) {
 const config = configFromEnv(process.env, version);
 console.error(`[engine] wowdeck backend ${config.backendVersion} starting (pid ${process.pid})`);
 console.error(`[engine] data dir: ${config.dataDir}`);
-await runEngine(config);
+
+/**
+ * How long requests still in flight may finish once the host is gone. An
+ * install or state write cut off here is no worse than the SIGKILL main.py
+ * sends a stopping engine that does not exit: both are recoverable.
+ */
+const HOST_GONE_GRACE_MS = 2_000;
+
+/**
+ * stdin, ending when the host is gone. main.py is its only writer, so EOF
+ * means the plugin process died or was killed without stopping the engine.
+ * Timers, sockets (TradeSkillMaster) and requests still in flight would
+ * otherwise keep an orphan running beside the next engine, on the same
+ * data folder.
+ */
+async function* untilHostGone(): AsyncGenerator<Uint8Array> {
+  yield* Bun.stdin.stream();
+  console.error("[engine] stdin closed: the host is gone; exiting");
+  setTimeout(() => process.exit(0), HOST_GONE_GRACE_MS);
+}
+
+await runEngine(config, untilHostGone());
+process.exit(0);

@@ -315,5 +315,42 @@ class EnsureExecutableTest(unittest.TestCase):
     def test_a_missing_binary_is_left_to_the_start_to_report(self) -> None:
         main._ensure_executable("/nonexistent/wowdeck")
 
+# Answers every request line with a null result, as a live engine would.
+FAKE_ENGINE = """#!/usr/bin/env python3
+import json, sys
+for line in sys.stdin:
+    print(json.dumps({"id": json.loads(line)["id"], "result": None}), flush=True)
+"""
+
+
+class StoppedEngineTests(unittest.TestCase):
+    """A stopped backend (plugin unload) never starts another engine."""
+
+    def test_a_request_after_stop_starts_no_engine(self) -> None:
+        async def scenario() -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                binary = os.path.join(tmp, "engine")
+                Path(binary).write_text(FAKE_ENGINE)
+                os.chmod(binary, 0o755)
+                main.decky.DECKY_PLUGIN_RUNTIME_DIR = tmp  # type: ignore[attr-defined]
+                main.decky.DECKY_USER_HOME = tmp  # type: ignore[attr-defined]
+                backend = main.BackendProcess(binary)
+                backend._last_start = -main.RESTART_MIN_DELAY  # no restart pacing in the test
+                self.assertIsNone(await backend.request("system.getStatus"))
+                await backend.stop()
+                # A frontend call that arrives while Decky unloads the plugin:
+                # an engine started now would outlive the plugin.
+                backend._last_start = -main.RESTART_MIN_DELAY
+                try:
+                    with self.assertRaises(main.BackendError) as raised:
+                        await backend.request("system.getStatus")
+                    self.assertEqual(raised.exception.code, "engine_stopped")
+                    self.assertFalse(backend.running)
+                finally:
+                    await backend.stop()
+
+        asyncio.run(scenario())
+
+
 if __name__ == "__main__":
     unittest.main()
