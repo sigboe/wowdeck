@@ -152,3 +152,49 @@ inset is gone). But the empty slot means an unsorted label's text ends
 The first run's "Sold label ends at 488" was the box, slot included
 (499.52 less the 12 px inset). The text then ended about 26 px before its
 values, and now ends 13.68 px before them.
+
+## Recheck at 1c3101a
+
+DEVICE, 26 November 2026, the owner's Steam Deck, docked as before
+(QAM page 855 px wide). The build was `feat/308-ledger` at `1c3101a`, a
+frontend-only change that moves a number column's sort arrow, and its
+hidden room when unsorted, before the label. Item keeps them after.
+Before anything else, `ps` over SSH showed no `Wow*.exe` process. `deck
+up` then deployed `dist/index.js` and reloaded (backend 1.3.0, engine
+untouched). The Deck's `dist/index.js` SHA-256 matches the local build
+after the run:
+`ff75ff2a0dcaaf83e5937fc273631663c5e7973593744e39bff2bb4719293910`.
+
+Fixture: the same Forever data as before (`5e80311f078e`, realm Normal,
+179 items). Nothing in the WoW install changed. The reload reset the
+session, so the run picked realm Normal on the Dashboard again. The Ledger
+keeps realm Normal, Item ▲, page 1.
+
+The run left the Deck on Forever with the tested build installed, the QAM
+closed, autoUpdate on and the tunnel closed. It installed no hooks.
+
+Method: UI, with pad presses, a DOM probe in the QAM page (`eval
+--active`, text-node ranges, so a hidden arrow room does not count as
+label text) and screenshots. Screens are in the session scratchpad
+(`/tmp/claude-1000/-home-sigurdb-project-wowdeck/9df6d87a-51b1-4af9-9954-485d9615a391/scratchpad/lp3/`):
+`head-unsorted.png`, `sold-sorted.png`, `item-sorted.png`,
+`item-stuck.png`.
+
+| Claim | Result | Evidence |
+| --- | --- | --- |
+| (a) Unsorted: number labels end at their values, Item label starts at the names | passed | See the table below. Each number label's text ends 0.01 px past its values' right edge, the same on all 40 rows. Item label and names both start at 372.77 px. The empty room now sits before each number label (Sold's at 452.77 to 466.46). |
+| (b) Sorted by Sold, then by Item: same alignment, arrow side, no width change | passed | Press A on Sold: focus "▼ SOLD", list starts Heavy Linen Bandage. The ▼ fills the room before the label (452.77 to 466.46), the label text still ends at 499.52. Left, A on Item: focus "ITEM ▲", list starts Barbaric Loincloth. The ▲ sits after the label (402.91 to 416.59), where the Item room was. Every label and value edge matched the unsorted reading to the hundredth. `--wowdeck-ledger-items-tracks` read `minmax(0, 1fr) 59px 76px 79px 66px 63px` unsorted, sorted by Sold and sorted by Item. Header cell boxes did not move either. |
+| (c) Names on their own line, no mid-word break, header stuck | passed | In each of the three states, 40 of 40 rows have the name above the figures, with no name wrapping onto a second line, so 0 mid-word breaks. Twelve Downs from Item ▲ to Broken Spear (scrollTop 332.81): the header sits at 49.99 to 75.95 px under the title row (0 to 49.98), gap 0.01 px. `data-wowdeck-scrolled` is set and its fade shows (opacity 1). At scrollTop 0 the fade was off (opacity 0). `item-stuck.png` shows no row between the title row and the header. |
+
+| Column | Label text (unsorted) | Label text (sorted) | Values end |
+| --- | --- | --- | --- |
+| Item | starts 372.77 | starts 372.77, ▲ 402.91 to 416.59 | names start 372.77 |
+| Sold | ends 499.52 | ▼ 452.77 to 466.46, ends 499.52 | 499.51 |
+| Earned | ends 587.51 | ends 587.51 | 587.50 |
+| Bought | ends 678.50 | ends 678.50 | 678.49 |
+| Spent | ends 756.49 | ends 756.49 | 756.48 |
+| Net | ends 831.48 | ends 831.48 | 831.47 |
+
+Known limitation: the Deck was docked. The pane width matches the
+handheld one by inference from the QAM page width; the owner checks the
+handheld screen.
