@@ -101,6 +101,42 @@ function nextSort(sort: ItemsSort, column: SortColumn): ItemsSort {
   return sort.descending === first ? { column, descending: !first } : null;
 }
 
+/**
+ * A column label and its sort arrow. Unsorted cells keep the arrow's room,
+ * so the columns keep their widths as a sort turns on and off. The number
+ * columns are right-aligned, so their arrow and its room come first: room
+ * after the label left their text 13.68 px short of the values under it
+ * (DEVICE 2026-11-26, LEDGER-PILL-3 recheck at 83f06a3).
+ */
+function HeaderLabel({
+  label,
+  leading,
+  arrow,
+}: {
+  label: string;
+  leading: boolean;
+  arrow: string | null;
+}) {
+  const mark =
+    arrow !== null ? (
+      <span className="wowdeck-ledger-items-arrow">{leading ? `${arrow} ` : ` ${arrow}`}</span>
+    ) : (
+      <span
+        className={
+          leading ? "wowdeck-ledger-items-arrow-room-lead" : "wowdeck-ledger-items-arrow-room"
+        }
+        aria-hidden
+      />
+    );
+  return (
+    <span>
+      {leading && mark}
+      {label}
+      {!leading && mark}
+    </span>
+  );
+}
+
 /** The header cell's padding on each side: its text lines up with the rows'. */
 const HEADER_CELL_PADDING_PX = 6;
 
@@ -396,18 +432,11 @@ function LedgerItems({
                   onButtonDown={onHeaderButtonDown(index)}
                   actionDescriptionMap={paging.actionDescriptionMap}
                 >
-                  <span>
-                    {label}
-                    {/* Unsorted cells keep the arrow's room, so the columns
-                        keep their widths as a sort turns on and off. */}
-                    {sort?.column === column ? (
-                      <span className="wowdeck-ledger-items-arrow">
-                        {sort.descending ? " ▼" : " ▲"}
-                      </span>
-                    ) : (
-                      <span className="wowdeck-ledger-items-arrow-room" aria-hidden />
-                    )}
-                  </span>
+                  <HeaderLabel
+                    label={label}
+                    leading={column !== "name"}
+                    arrow={sort?.column === column ? (sort.descending ? "▼" : "▲") : null}
+                  />
                 </Focusable>
               ))}
             </Focusable>

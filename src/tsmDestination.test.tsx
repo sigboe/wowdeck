@@ -1961,7 +1961,8 @@ test("the Ledger sorts by its header: Up, Y and the D-pad reach it, A cycles a c
       ".wowdeck-ledger-items-labels .Focusable[tabindex]",
     ),
   ];
-  const cell = (label: string) => header().find((c) => c.textContent?.startsWith(label))!;
+  const cell = (label: string) =>
+    header().find((c) => c.textContent?.replace(/[▼▲]/g, "").trim() === label)!;
   const focused = () => document.activeElement;
   // A on a header cell: it has focus, as Steam sends A to the focused node.
   const choose = (label: string) =>
@@ -2050,11 +2051,11 @@ test("the Ledger sorts by its header: Up, Y and the D-pad reach it, A cycles a c
     expect(cell("Earned").getAttribute("data-ok")).toBe("Sort");
     await choose("Earned");
     expect(lastRequest()).toEqual({ offset: 0, sort: "earned", descending: true });
-    expect(arrows()).toEqual(["Item", "Sold", "Earned ▼", "Bought", "Spent", "Net"]);
+    expect(arrows()).toEqual(["Item", "Sold", "▼ Earned", "Bought", "Spent", "Net"]);
     expect(focused()).toBe(cell("Earned"));
     await choose("Earned");
     expect(lastRequest()).toEqual({ offset: 0, sort: "earned", descending: false });
-    expect(arrows()).toEqual(["Item", "Sold", "Earned ▲", "Bought", "Spent", "Net"]);
+    expect(arrows()).toEqual(["Item", "Sold", "▲ Earned", "Bought", "Spent", "Net"]);
     await choose("Earned");
     expect(lastRequest()).toEqual({ offset: 0 });
     expect(arrows()).toEqual(["Item", "Sold", "Earned", "Bought", "Spent", "Net"]);
@@ -2065,7 +2066,7 @@ test("the Ledger sorts by its header: Up, Y and the D-pad reach it, A cycles a c
     expect(arrows()[0]).toBe("Item ▲");
     await choose("Sold");
     expect(lastRequest()).toEqual({ offset: 0, sort: "sold", descending: true });
-    expect(arrows()).toEqual(["Item", "Sold ▼", "Earned", "Bought", "Spent", "Net"]);
+    expect(arrows()).toEqual(["Item", "▼ Sold", "Earned", "Bought", "Spent", "Net"]);
 
     // Y lands on the sorted column.
     await pressOn(items()[3]!, OPTIONS);
@@ -2093,14 +2094,14 @@ test("the Ledger sorts by its header: Up, Y and the D-pad reach it, A cycles a c
     expect(webPages[webPages.length - 1]).toBe("https://www.wowhead.com/classic/item=4306");
     await enterAgain(view);
     expect(lastRequest()).toEqual({ offset: 0, sort: "sold", descending: true });
-    expect(arrows()[1]).toBe("Sold ▼");
+    expect(arrows()[1]).toBe("▼ Sold");
     expect(focused()).toBe(items()[1]!);
     await pressOn(items()[1]!, TRIGGER_RIGHT);
     await openOnWowhead(items()[0]!);
     expect(webPages[webPages.length - 1]).toBe("https://www.wowhead.com/classic/item=200");
     await enterAgain(view);
     expect(lastRequest()).toEqual({ offset: 40, sort: "sold", descending: true });
-    expect(arrows()[1]).toBe("Sold ▼");
+    expect(arrows()[1]).toBe("▼ Sold");
     expect(focused()).toBe(items()[0]!);
 
     // Another filter selection keeps the sort and starts on page 1.
@@ -2109,7 +2110,7 @@ test("the Ledger sorts by its header: Up, Y and the D-pad reach it, A cycles a c
       fake.emit({ event: "tradeskillmaster.ledgerChanged", params: { installationId: "active" } }),
     );
     expect(lastRequest()).toEqual({ offset: 0, sort: "sold", descending: true });
-    expect(arrows()[1]).toBe("Sold ▼");
+    expect(arrows()[1]).toBe("▼ Sold");
   } finally {
     fake.answers["tradeskillmaster.ledgerItems"] = previousItems;
     ledger = previousLedger;

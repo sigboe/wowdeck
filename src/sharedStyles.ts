@@ -247,6 +247,7 @@ export function wowdeckSharedStyleCss(): string {
 }
 .wowdeck-ledger-items-sort.gpfocus { background: ${STEAM.header}; color: ${STEAM.row}; }
 .wowdeck-ledger-items-arrow-room::after { content: " ▼"; visibility: hidden; }
+.wowdeck-ledger-items-arrow-room-lead::after { content: "▼ "; visibility: hidden; white-space: pre; }
 /* The column header (TsmLedger): it sticks right under the floating title
    row, whose height TsmDestination measures into --wowdeck-pane-bar-height.
    The pane scrolls inside 8 px of padding, which sticky offsets count from,

@@ -96,3 +96,59 @@ Ledger, page 1, usual order, then Sold ▼ page 2. Tracks
   inference; the owner checks the handheld screen.
 - Up from the first item was seen only with the list at the top (page 1
   and page 2), since the first item is always near the top.
+
+## Recheck at 83f06a3
+
+DEVICE, 26 November 2026, the owner's Steam Deck, docked as before
+(QAM page 855 px wide). The build was `feat/308-ledger` at `83f06a3`, a
+frontend-only change. Before anything else, `ps` over SSH showed no
+`Wow*.exe` process. `deck up` then deployed `dist/index.js` and reloaded
+(backend 1.3.0, engine untouched). The Deck's `dist/index.js` SHA-256
+matches the local build, before and after the run:
+`4748e7ac87a58244a9b92b539e4a66b0f2f29e4fd74019f74911575e0ae753ee`.
+
+Fixture: the same Forever data as before (`5e80311f078e`, account
+SIGURDJNB, realm Normal, 179 items). Nothing in the WoW install changed.
+The reload reset the session, so the run picked realm Normal on the
+Dashboard again. The Ledger keeps realm Normal, Sold ▼, page 2.
+
+The run left the Deck on Forever with the tested build installed, the QAM
+closed, autoUpdate on and the tunnel closed. The hooks (a
+`DeckyBackend.call` wrapper in SharedJSContext, a mutation observer for
+"Reading Ledger items" in the QAM page) were removed and checked gone.
+
+Method: UI, with pad presses, DOM probes in the QAM page and screenshots.
+Engine calls were recorded by the `DeckyBackend.call` wrapper. Screens are in
+the session scratchpad
+(`/tmp/claude-1000/-home-sigurdb-project-wowdeck/9df6d87a-51b1-4af9-9954-485d9615a391/scratchpad/lp2/`):
+`p1-top.png`, `p1-stuck.png`, `p2-top.png`.
+
+| Claim | Result | Evidence |
+| --- | --- | --- |
+| LEDGER-PILL-2, no read on switching | passed | Realm Normal picked on the Dashboard. The first visit to the Ledger read `ledger` (Normal) and `ledgerItems` (offset 0), as a first visit should. After a reset, Dashboard to Ledger and back twice each way on page 1: no `tradeskillmaster.ledger` and no `ledgerItems` call (only the 1 s `status` poll). The observer never saw "Reading Ledger items…", and "179 items" showed on each return. Again on page 2, sorted by Sold: two switches each way, no call, no loading text. Right after each return the list showed 40 rows starting at Ornamental Mace, with Previous page and "SOLD ▼". |
+| LEDGER-PILL-3, labels, names on their own line, header | failed in part | Passed: each row has its name on its own line with its five figures below it (40 of 40 rows on pages 1 and 2). Every name fits on one line, so no name breaks mid-word (0 on page 1, 0 on page 2). No value is cut, no amount wraps. Item label and names both start at 372.77 px. The header sticks under the title row at 49.99 px (bar 0 to 49.98, gap 0.01 px), with no gap. Its fade shows only once rows scroll under it: no fade at scrollTop 0, both fades from scrollTop 266 on. **Failed: the unsorted numeric labels end 13.68 px before their values.** See below. |
+| LEDGER-PILL-4, Up, sort, page, Wowhead round trip | passed | Up from Rough Bronze Leggings gave "ITEM" at scrollTop 0, with the header still at 205.91 px. Right, A: "SOLD ▼". Down: Heavy Linen Bandage. R2: page 2, focus Ornamental Mace. Up, Up: Previous page, then "SOLD ▼", scrollTop 0. A on Compact Shotgun: route `/routes/externalweb`, `https://www.wowhead.com/forever/item=4577/compact-shotgun`. B went back to the game page. Opening the QAM, then TradeSkillMaster and Right, focused "Compact Shotgun" on Sold ▼ page 2 (40 rows). Left, then Right again: "Export". The taller rows did not change any of this. |
+
+### LEDGER-PILL-3 recheck detail
+
+Tracks `minmax(0, 1fr) 59px 76px 79px 66px 63px`, as before. Each header
+label holds its text, then a 13.68 px slot for the sort arrow. The sorted
+column fills the slot with " ▼". Unsorted columns leave it empty, so the
+columns keep their widths.
+
+The label boxes, slot included, now end where the values do (the 12 px
+inset is gone). But the empty slot means an unsorted label's text ends
+13.68 px before its values, which `p1-top.png` shows:
+
+| Column | Label text ends | Label box ends (with slot) | Values end |
+| --- | --- | --- | --- |
+| Sold (unsorted) | 485.84 | 499.52 | 499.51 |
+| Sold ▼ (sorted) | ▼ ends 499.52 | 499.52 | 499.51 |
+| Earned | 573.83 | 587.51 | 587.50 |
+| Bought | 664.82 | 678.50 | 678.49 |
+| Spent | 742.81 | 756.49 | 756.48 |
+| Net | 817.80 | 831.48 | 831.47 |
+
+The first run's "Sold label ends at 488" was the box, slot included
+(499.52 less the 12 px inset). The text then ended about 26 px before its
+values, and now ends 13.68 px before them.
