@@ -57,9 +57,14 @@ let link: EngineLink | null = null;
 let unsubscribe: (() => void) | null = null;
 const router = createEventRouter();
 
+/** The code `rpc` and `bridge` reject with while no link is connected. */
+export const NOT_CONNECTED = "not_connected";
+
 function connected(): EngineLink {
   if (!link) {
-    throw new Error("The engine isn't connected yet");
+    const error = new Error("The engine isn't connected") as Error & { code?: string };
+    error.code = NOT_CONNECTED;
+    throw error;
   }
   return link;
 }
@@ -67,10 +72,17 @@ function connected(): EngineLink {
 /**
  * The connected engine. `rpc` and `bridge` forward to the link connected
  * when the call is made; `events.on` registers with the one router.
+ *
+ * Every failure is a rejected promise carrying a `code`, as an engine error
+ * envelope's is: a call made while no link is connected rejects with
+ * NOT_CONNECTED, so a caller's one `.catch()` covers it. After a plugin
+ * reload the previous load's panel can still render once with its link
+ * already disconnected (#341), and that link never comes back, so the call
+ * rejects rather than waiting for one.
  */
 export const engine: { rpc: Rpc; bridge: Bridge; events: Pick<EventRouter, "on"> } = {
-  rpc: ((method, ...params) => connected().rpc(method, ...params)) as Rpc,
-  bridge: ((method, ...args) => connected().bridge(method, ...args)) as Bridge,
+  rpc: (async (method, ...params) => connected().rpc(method, ...params)) as Rpc,
+  bridge: (async (method, ...args) => connected().bridge(method, ...args)) as Bridge,
   events: { on: router.on },
 };
 
