@@ -254,6 +254,43 @@ describe("addon session: installation writes", () => {
     expect(session.get().selectedId).toBeNull();
   });
 
+  test("removing the active installation reads only the next one's addons (#342)", async () => {
+    const { session, log, fake } = await harness({
+      "installations.list": { installations: [installation("i2", true)] },
+      "installations.recoveryStatus": { installations: [], stateFile: { status: "readable" } },
+      "addons.list": ({ installationId }) =>
+        installationId === "i1"
+          ? engineFailure("not_found", "gone")
+          : { addons: [addon({ id: "b1" })] },
+    });
+    const removed = session.removeInstallation("i1");
+    // The engine announces the removal's change before it answers.
+    session.addonsChanged([]);
+    await settle();
+    await fake.next("installations.remove").resolve({ installationId: "i1" });
+    await removed;
+    expect(log.filter((l) => l.startsWith("addons.list"))).toEqual([
+      'addons.list {"installationId":"i2"}',
+    ]);
+    expect(log.filter((l) => l.startsWith("error"))).toEqual([]);
+    expect(session.get().selectedId).toBe("i2");
+    expect(session.get().addons.map((a) => a.id)).toEqual(["b1"]);
+  });
+
+  test("a refused removal reads the list for a change announced while it ran", async () => {
+    const { session, log, fake } = await harness({ "addons.list": { addons: [addon()] } });
+    const removed = session.removeInstallation("i1");
+    session.addonsChanged([]);
+    await settle();
+    expect(log.filter((l) => l.startsWith("addons.list"))).toEqual([]);
+    await fake.next("installations.remove").reject("recovery_required");
+    await expect(removed).rejects.toThrow("recovery_required");
+    await settle();
+    expect(log.filter((l) => l.startsWith("addons.list"))).toEqual([
+      'addons.list {"installationId":"i1"}',
+    ]);
+  });
+
   test("addInstallation adds, reads both lists again and answers with the folder's installations", async () => {
     const { session, log } = await harness({
       "installations.add": { installations: [installation("i2")] },
