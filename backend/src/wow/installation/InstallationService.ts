@@ -1,11 +1,13 @@
 /**
  * The installation list: detection, manual adds, removal and the one active
  * installation. Persisted in the state store; addon records are touched only
- * to drop those of a removed installation.
+ * to drop those of a removed installation. A removed installation stays out
+ * of the startup scan until Find WoW installations or a manual add brings it
+ * back (GLOSSARY: Removed installation).
  */
 
 import type { FoundInstallation, Installation, InstallationPreferences } from "../../api/contracts";
-import type { WowInstallation } from "../models";
+import type { RemovedInstallation, WowInstallation } from "../models";
 import type { StateStore } from "../storage/StateStore";
 import { NotFoundError, ValidationError } from "../errors";
 import { isDirectory } from "../fs/safe-fs";
@@ -60,6 +62,10 @@ function mergeInstallations(
   return [...byId.values()].sort((a, b) => a.clientType - b.clientType);
 }
 
+function removedEntry({ id, location, displayName, clientType }: WowInstallation): RemovedInstallation {
+  return { id, location, displayName, clientType };
+}
+
 export class InstallationService {
   constructor(
     /** Settings and installations; addon records change only in AddonService's gate. */
@@ -87,15 +93,40 @@ export class InstallationService {
     await Promise.all([...this.foundListeners].map((listener) => listener()));
   }
 
-  /** Detect installations into the list; the whole list after. */
-  async detect(homeDir: string): Promise<Installation[]> {
+  /**
+   * The automatic scan (engine start, Find games): detect installations into
+   * the list, leaving out removed ones; the whole list after.
+   */
+  async scan(homeDir: string): Promise<Installation[]> {
+    await this.#scan(homeDir, false);
+    return this.listed();
+  }
+
+  /**
+   * Find WoW installations: detect, bringing back every removed
+   * installation found. One whose folder isn't found (an unmounted drive, a
+   * deleted folder) stays removed. `restored` counts those brought back.
+   */
+  async find(homeDir: string): Promise<{ installations: Installation[]; restored: number }> {
+    const restored = await this.#scan(homeDir, true);
+    return { installations: this.listed(), restored };
+  }
+
+  async #scan(homeDir: string, restore: boolean): Promise<number> {
     const detector = new InstallationDetector({ homeDir, customPaths: this.store.settings.customWowPaths });
     const found = await detector.detect();
+    const removed = this.store.removedInstallations;
+    const removedIds = new Set(removed.map((r) => r.id));
+    const restored = new Set(restore ? found.filter((f) => removedIds.has(f.id)).map((f) => f.id) : []);
+    const kept = found.filter((f) => !removedIds.has(f.id) || restored.has(f.id));
     // Keep installations through an unmounted drive, but never keep stale shortcut links.
-    this.store.setInstallations(mergeInstallations(this.store.installations.map(i => ({ ...i, steamGames: [] })), found,
-      (prior, current) => { prior.steamGames = current.steamGames ?? []; }));
+    this.store.setInstallations(
+      mergeInstallations(this.store.installations.map(i => ({ ...i, steamGames: [] })), kept,
+        (prior, current) => { prior.steamGames = current.steamGames ?? []; }),
+      restored.size ? removed.filter((r) => !restored.has(r.id)) : undefined,
+    );
     await this.#found();
-    return this.listed();
+    return restored.size;
   }
 
   /** The list in wire form (installations.list). */
@@ -230,7 +261,9 @@ export class InstallationService {
       named.displayName = name;
     }
     // Idempotent by location hash; a known installation keeps its display
-    // name unless this add names it.
+    // name unless this add names it. Adding a removed one brings it back.
+    const removed = this.store.removedInstallations;
+    const remaining = removed.filter((r) => !created.some((c) => c.id === r.id));
     this.store.setInstallations(
       mergeInstallations(this.store.installations, created, (prior) => {
         prior.source = "manual";
@@ -238,6 +271,7 @@ export class InstallationService {
           prior.displayName = name;
         }
       }),
+      remaining.length !== removed.length ? remaining : undefined,
     );
     await this.#found();
     return created.map((c) => this.#wire(this.store.installations.find((e) => e.id === c.id)!));
@@ -251,16 +285,20 @@ export class InstallationService {
   /**
    * Remove an installation record (never touches WoW files). Addon records
    * belonging to it are dropped; if it was selected the selection falls
-   * back to the first remaining installation.
+   * back to the first remaining installation. It goes on the removed list in
+   * the same write, so the startup scan never adds it back.
    */
   async remove(id: string): Promise<void> {
     const installations = this.store.installations;
     if (!installations.some((i) => i.id === id)) {
       throw new NotFoundError("installation", id);
     }
-    await this.removeGuarded(id, () =>
-      this.store.setInstallations(this.store.installations.filter((i) => i.id !== id)),
-    );
+    await this.removeGuarded(id, () => {
+      const gone = this.store.installations.find((i) => i.id === id);
+      const removed = this.store.removedInstallations.filter((r) => r.id !== id);
+      if (gone) removed.push(removedEntry(gone));
+      this.store.setInstallations(this.store.installations.filter((i) => i.id !== id), removed);
+    });
     if (this.store.settings.selectedInstallationId === id) {
       this.store.updateSettings({ selectedInstallationId: null });
       this.ensureSelection();
@@ -271,8 +309,10 @@ export class InstallationService {
   /**
    * The canonical active installation. One source of truth: the persisted
    * `selectedInstallationId`. When it is unset or stale the first
-   * installation is selected and the choice persisted (mirrors WowUp's
-   * SessionService fallback) so the engine and UI always agree.
+   * installation that isn't hidden is selected (the first one when all are)
+   * and the choice persisted (mirrors WowUp's SessionService fallback) so
+   * the engine and UI always agree. A hidden active installation would leave
+   * My Addons' and Get Addons' pickers on a list the player hid (#338).
    */
   ensureSelection(): WowInstallation | null {
     const installations = this.store.installations;
@@ -283,7 +323,7 @@ export class InstallationService {
     if (found) {
       return found;
     }
-    const fallback = installations[0]!;
+    const fallback = installations.find((i) => !i.hidden) ?? installations[0]!;
     this.store.updateSettings({ selectedInstallationId: fallback.id });
     return fallback;
   }

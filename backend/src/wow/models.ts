@@ -46,6 +46,20 @@ export interface WowInstallation {
 
 export type InstallationSource = "detected" | "manual";
 
+/**
+ * An installation the player removed (GLOSSARY: Removed installation). The
+ * startup scan leaves it out; Find WoW installations or a manual add of its
+ * folder brings it back. Persisted, never pruned on its own: its folder may
+ * sit on a drive that isn't mounted.
+ */
+export interface RemovedInstallation {
+  /** The removed installation's id (`installationIdFor` its location). */
+  id: string;
+  location: string;
+  displayName: string;
+  clientType: WowClientType;
+}
+
 export interface AddonExternalId {
   providerName: string;
   id: string;

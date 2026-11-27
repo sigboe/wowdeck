@@ -1,5 +1,5 @@
 import { describe, expect, mock, test } from "bun:test";
-import type { DropdownItemProps } from "@decky/ui";
+import type { DropdownItemProps, SingleDropdownOption } from "@decky/ui";
 import { renderToStaticMarkup } from "react-dom/server";
 import { fakeDeckyUi } from "./testing/fakeDeckyUi";
 import type { Installation, SearchResult } from "./types";
@@ -12,19 +12,6 @@ mock.module("@decky/api", () => ({
 }));
 
 let dropdownProps: DropdownItemProps;
-let choices: { value: string; label: string }[] = [];
-let choose: (value: string) => void;
-mock.module("./components/choiceMenu", () => ({
-  showChoiceMenu: (
-    _label: string,
-    values: typeof choices,
-    _current: unknown,
-    onPick: typeof choose,
-  ) => {
-    choices = values;
-    choose = onPick;
-  },
-}));
 mock.module("@decky/ui", () => ({
   ...fakeDeckyUi,
   DropdownItem: (props: DropdownItemProps) => {
@@ -45,10 +32,12 @@ function openDropdown(props: DropdownItemProps, showMenu: () => void) {
   showMenu();
 }
 
-function sessionWithInstallations(hidden = false) {
+/** Retail (active) and Classic; `hidden` hides both, or only the ones listed. */
+function sessionWithInstallations(hidden: boolean | string[] = false) {
+  const isHidden = (id: string) => (Array.isArray(hidden) ? hidden.includes(id) : hidden);
   const installations = [
-    { id: "i1", displayName: "Retail", selected: true, hidden },
-    { id: "i2", displayName: "Classic", selected: false, hidden },
+    { id: "i1", displayName: "Retail", selected: true, hidden: isHidden("i1") },
+    { id: "i2", displayName: "Classic", selected: false, hidden: isHidden("i2") },
   ] as Installation[];
   // The picker's Unhide and the session it reloads share one engine; an
   // install never answers.
@@ -114,21 +103,31 @@ test("hidden installations stay in Options and only the active one stays in brow
   expect(options).toContain("Classic");
 });
 
-test("hidden-active picker offers only Unhide and reloads its supplied session", async () => {
-  const session = sessionWithInstallations(true);
+// #338: a menu holding only Unhide left the player no way to switch here.
+test("hidden-active picker keeps its list and adds Unhide, which reloads its supplied session", async () => {
+  const session = sessionWithInstallations(["i1"]);
   await session.reloadAll();
   renderToStaticMarkup(<InstallationSelect session={session} />);
   let ordinaryMenu = false;
   openDropdown(dropdownProps, () => {
     ordinaryMenu = true;
   });
-  expect(choices).toEqual([{ value: "unhide", label: "Unhide" }]);
-  expect(ordinaryMenu).toBe(false);
-  choose("unhide");
+  expect(ordinaryMenu).toBe(true);
+  const options = dropdownProps.rgOptions.map((o) => renderToStaticMarkup(<>{o.label}</>));
+  expect(options).toEqual([expect.stringContaining("Retail"), "Classic", "Unhide Retail"]);
+  dropdownProps.onChange!(dropdownProps.rgOptions[2] as SingleDropdownOption);
   // Drain the mutation and reload promises without a wall-clock wait.
   for (let i = 0; i < 20; i++) await Promise.resolve();
   expect(session.get().installations.find((i) => i.id === "i1")!.hidden).toBe(false);
-  renderToStaticMarkup(<InstallationSelect session={session} showHidden />);
+  expect(session.get().selectedId).toBe("i1");
+  renderToStaticMarkup(<InstallationSelect session={session} />);
+  expect(dropdownProps.rgOptions.map((o) => o.label)).toEqual(["Retail", "Classic"]);
+});
+
+test("a hidden-active picker switches to another installation", async () => {
+  const session = sessionWithInstallations(["i1"]);
+  await session.reloadAll();
+  renderToStaticMarkup(<InstallationSelect session={session} />);
   dropdownProps.onChange!({ data: "i2", label: "Classic" });
   for (let i = 0; i < 20; i++) await Promise.resolve();
   expect(session.get().selectedId).toBe("i2");

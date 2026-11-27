@@ -12,6 +12,7 @@ import {
   popBrowseToList,
   popBrowseToNav,
   resetBrowseSessionState,
+  showInstallationMenu,
   subscribeWidening,
   widening,
 } from "./browseSessionState";
@@ -100,6 +101,31 @@ describe("browse session state machine", () => {
     expect(enterBrowseSession()).toBe("list");
     expect(browseZone.zone as BrowseFocusZone).toBe("list");
     expect(widening.wide).toBe(true);
+  });
+
+  // #338: collapsed, the remount after the Installation menu closed landed
+  // on the nav bar, as a fresh entry does.
+  test("a remount after the Installation menu closed returns to it, collapsed too", () => {
+    popBrowseToNav();
+    showInstallationMenu(() => {});
+    expect(enterBrowseSession()).toBe("list");
+    expect(widening.wide).toBe(false);
+    // Only that one remount: the next entry is a fresh one.
+    expect(enterBrowseSession()).toBeNull();
+  });
+
+  test("picking an installation collapses the session and still returns to the Installation menu's row", () => {
+    focusDestination("latest");
+    showInstallationMenu(() => {});
+    resetBrowseSessionState();
+    expect(enterBrowseSession()).toBe("list");
+    expect(widening.wide).toBe(false);
+  });
+
+  test("leaving Get Addons with the Installation menu up makes the next entry a fresh one", () => {
+    showInstallationMenu(() => {});
+    leaveBrowseSession();
+    expect(enterBrowseSession()).toBeNull();
   });
 
   test("a remount after leaving is a fresh entry on the nav bar", () => {

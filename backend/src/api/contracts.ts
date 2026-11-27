@@ -1384,8 +1384,8 @@ export interface MethodMap {
     result: LinkedGames;
   };
   /**
-   * Find games: run the same detection as installations.detect, then clear
-   * the removed list, so every found game comes back. Answers with what
+   * Find games: run the startup scan (removed installations stay out),
+   * then clear the removed games list, so every found game comes back. Answers with what
    * came back or was found for the first time. Fires linkedGames.changed.
    */
   "linkedGames.find": {
@@ -1397,9 +1397,15 @@ export interface MethodMap {
     params: Record<string, never>;
     result: { installations: Installation[] };
   };
+  /**
+   * Find WoW installations: detect, bringing back every removed
+   * installation found (GLOSSARY: Removed installation). One whose folder
+   * isn't found stays removed. `restored` counts those brought back. The
+   * engine's startup scan leaves removed installations out.
+   */
   "installations.detect": {
     params: Record<string, never>;
-    result: { installations: Installation[] };
+    result: { installations: Installation[]; restored: number };
   };
   "installations.update": {
     params: { installationId: string } & InstallationPreferences;

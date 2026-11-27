@@ -349,6 +349,15 @@ The Battle.net ID that selects a game version without starting it, for example
 `wow_classic_era`. The player still presses Play in Battle.net.
 _Avoid_: product code, launch UID
 
+**Removed installation**:
+A WoW installation the player removed in Installation details. WoWDeck
+forgets it and its addon records, and the scan when Steam starts leaves it
+out even while its folder still holds WoW. Find WoW installations brings back
+every removed installation it finds, and adding its folder by hand brings it
+back too. One whose folder isn't there, such as on an SD card that's out,
+stays removed. No files are deleted.
+_Avoid_: blacklist, ignored installation, deleted installation
+
 **Linked game**:
 A Steam library game WoWDeck adds addon updates and Play to: the section on
 its game page, the badge on its tile and the WoW version choice on Play.

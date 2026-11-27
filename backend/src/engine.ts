@@ -393,7 +393,7 @@ export function assembleEngine(config: EngineConfig): Engine & { start(): Promis
     void curseForgeAuth.recheck((key) => curseForgeProvider.testApiKey(key));
     // Discovery also refreshes Steam attachments while the QAM is closed. It never opts into updates.
     try {
-      await installationService.detect(homeDir);
+      await installationService.scan(homeDir);
       // Forget added and removed games deleted from Steam since the last run.
       await linkedGames.forgetDeleted();
     } catch {

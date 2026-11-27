@@ -199,4 +199,30 @@ describe("engine selection persistence", () => {
     expect(after.result.installations.find((i: any) => i.id === manual.id)).toBeUndefined();
     expect(after.result.installations.find((i: any) => i.selected).id).toBe(previous.id);
   });
+
+  // #321: the startup scan used to add a removed installation straight back
+  // when its folder still held WoW files, on every Steam start.
+  test("a removed installation stays removed across a restart until Find WoW installations", async () => {
+    const list = await send("installations.list");
+    const retail = list.result.installations.find((i: any) => i.gameType === "retail");
+    await send("installations.remove", { installationId: retail.id });
+
+    engine!.kill();
+    await engine!.exited;
+    engine = spawnEngine();
+
+    const after = await send("installations.list");
+    expect(after.result.installations.find((i: any) => i.id === retail.id)).toBeUndefined();
+
+    const found = await send("installations.detect");
+    expect(found.result.restored).toBe(1);
+    expect(found.result.installations.find((i: any) => i.id === retail.id)).toBeDefined();
+
+    // Brought back for good: the next startup scan keeps it.
+    engine!.kill();
+    await engine!.exited;
+    engine = spawnEngine();
+    const again = await send("installations.list");
+    expect(again.result.installations.find((i: any) => i.id === retail.id)).toBeDefined();
+  });
 });
