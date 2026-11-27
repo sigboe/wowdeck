@@ -36,6 +36,18 @@ type Source = {
 const hash = (bytes: Uint8Array | string) => createHash("sha256").update(bytes).digest("hex");
 const MAX_ICO = 1024 * 1024 + 22;
 
+/** Local performance evidence only; never includes source paths or image bytes. */
+function timing(stage: string, start: number, product?: string) {
+  console.error(
+    JSON.stringify({
+      component: "launch-icons",
+      stage,
+      product,
+      durationMs: performance.now() - start,
+    }),
+  );
+}
+
 /**
  * Owns launch artwork selection and persistence. Usable entries never expire;
  * neither game updates nor absent executables invalidate them. All disk failures
@@ -50,11 +62,15 @@ export class LaunchIcons {
   private scanQueue: Promise<unknown> = Promise.resolve();
   private readonly sources = new Map<string, Source>();
   private readonly attempts = new Map<string, Promise<void>>();
-  private readonly completedAttempts = new Set<string>();
+  // Suppress failed identities, not an entire prefix: lazy launch resolution
+  // can register a new product, path or shortcut after an earlier attempt.
+  private readonly attemptedSources = new Set<string>();
+  private readonly startedPrefixes = new Set<string>();
 
   register(source: Source): void {
-    if (preferredArtworkProducts.has(source.product))
-      this.sources.set(`${this.key(source).key}:${source.appId}`, source);
+    if (!preferredArtworkProducts.has(source.product)) return;
+    this.sources.set(`${this.key(source).key}:${source.appId}`, source);
+    if (this.startedPrefixes.has(source.prefix)) this.populate(source.prefix);
   }
 
   /** Relevant activity permits missing artwork to retry; complete entries are
@@ -63,7 +79,9 @@ export class LaunchIcons {
     const prefixes = new Set([...this.sources.values()].map((source) => source.prefix));
     for (const candidate of prefixes) {
       if (prefix && candidate !== prefix) continue;
-      this.completedAttempts.delete(candidate);
+      for (const source of this.sources.values()) {
+        if (source.prefix === candidate) this.attemptedSources.delete(this.key(source).key);
+      }
       this.populate(candidate);
     }
   }
@@ -104,25 +122,48 @@ export class LaunchIcons {
   }
 
   private populate(prefix: string): void {
-    if (this.attempts.has(prefix) || this.completedAttempts.has(prefix)) return;
-    const work = (async () => {
-      const missing: Source[] = [];
+    const pending = () => {
+      const sources = new Map<string, Source>();
       for (const source of this.sources.values()) {
-        if (source.prefix === prefix && !(await this.preferred(source))) missing.push(source);
+        const { key } = this.key(source);
+        if (source.prefix === prefix && !this.attemptedSources.has(key)) sources.set(key, source);
       }
-      if (!missing.length) return;
-      const scan = this.scanQueue.then(() => discoverArtwork(prefix, this.read));
-      this.scanQueue = scan.catch(() => undefined);
-      const artwork = await scan;
-      for (const source of missing) {
-        const image = artwork.get(source.product);
-        if (image) await this.savePreferred(source, image);
+      return [...sources];
+    };
+    if (this.attempts.has(prefix) || !pending().length) return;
+    this.startedPrefixes.add(prefix);
+    const work = (async () => {
+      let artwork: Map<string, Artwork> | undefined;
+      // Registrations arriving during discovery or publishing share its result.
+      // Claim each batch before I/O so ordinary reads never retry failed sources.
+      for (let batch = pending(); batch.length; batch = pending()) {
+        for (const [key] of batch) this.attemptedSources.add(key);
+        const missing = new Map<string, Source>();
+        for (const [, source] of batch) {
+          if (!(await this.preferred(source))) missing.set(this.key(source).key, source);
+        }
+        if (!missing.size) continue;
+        if (!artwork) {
+          const scan = this.scanQueue.then(async () => {
+            const start = performance.now();
+            const result = await discoverArtwork(prefix, this.read);
+            timing("discovery", start);
+            return result;
+          });
+          this.scanQueue = scan.catch(() => undefined);
+          artwork = await scan;
+        }
+        for (const source of missing.values()) {
+          const image = artwork.get(source.product);
+          if (image) await this.savePreferred(source, image);
+        }
       }
     })()
       .catch(() => {})
       .finally(() => {
         this.attempts.delete(prefix);
-        this.completedAttempts.add(prefix);
+        // Include registrations made between the final batch and cleanup.
+        this.populate(prefix);
       });
     this.attempts.set(prefix, work);
   }
@@ -145,7 +186,11 @@ export class LaunchIcons {
           sourceAsset: image.asset,
         }),
       );
-      this.changed({ appId: source.appId, targetId: source.target });
+      // Several linked shortcuts can be waiting on the same persisted source.
+      for (const registered of this.sources.values()) {
+        if (this.key(registered).key === key)
+          this.changed({ appId: registered.appId, targetId: registered.target });
+      }
     } catch {
       /* Retain the ICO and any previously published preferred entry. */
     }
@@ -177,10 +222,14 @@ export class LaunchIcons {
     const hit = this.inFlight.get(key);
     if (hit) return hit;
     const work = (async () => {
+      const start = performance.now();
       const preferred = preferredArtworkProducts.has(source.product)
         ? await this.preferred(source)
         : undefined;
-      if (preferred) return preferred;
+      if (preferred) {
+        timing("persistent-svg", start, source.product);
+        return preferred;
+      }
       const fallback = await this.load(key, identity, source);
       this.populate(source.prefix);
       return fallback;
@@ -194,6 +243,7 @@ export class LaunchIcons {
   }
 
   private async load(key: string, identity: string, source: Source): Promise<string | undefined> {
+    const start = performance.now();
     const manifest = join(this.directory, `${key}.json`);
     try {
       const bytes = await this.read(manifest, 16 * 1024);
@@ -206,15 +256,20 @@ export class LaunchIcons {
         /^[a-f0-9]{64}$/.test(entry.asset)
       ) {
         const ico = await this.read(join(this.directory, `${entry.asset}.ico`), MAX_ICO);
-        if (ico && hash(ico) === entry.asset && isExecutableIco(ico)) return iconDataUrl(ico);
+        if (ico && hash(ico) === entry.asset && isExecutableIco(ico)) {
+          timing("persistent-ico", start, source.product);
+          return iconDataUrl(ico);
+        }
       }
     } catch {
       /* A missing, incompatible or corrupt entry can be rebuilt. */
     }
 
+    const extractionStart = performance.now();
     const icon = source.directory
       ? await executableIcon(source.directory, this.executables)
       : await launcherIcon(source.executable!, this.executables);
+    timing("executable", extractionStart, source.product);
     if (!icon) return undefined;
     const bytes = Buffer.from(icon.slice(icon.indexOf(",") + 1), "base64");
     if (!isExecutableIco(bytes)) return undefined;

@@ -4,8 +4,8 @@ import { join, sep } from "node:path";
 import type { LaunchIconRead } from "./LaunchIcons";
 import { isLaunchSvg } from "./LaunchSvg";
 
-/** Extend this product set when another launch row gains preferred artwork. */
-export const preferredArtworkProducts: ReadonlySet<string> = new Set(["WoW"]);
+/** Battle.net product codes for Retail, the shared Classic row and Forever. */
+export const preferredArtworkProducts: ReadonlySet<string> = new Set(["WoW", "WoWC", "WoWF"]);
 
 export interface Artwork {
   bytes: Uint8Array;

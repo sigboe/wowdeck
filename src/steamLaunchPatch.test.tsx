@@ -487,3 +487,71 @@ test("an image render failure retains the generic Play glyph", async () => {
   expect(doc().querySelector("#root .PlayButton image")).toBeNull();
   expect(playText()).toBe("PlayForever");
 });
+
+for (const id of ["classic", "forever", "battlenet"]) {
+  test(`${id} keeps its icon dimensions and accepts only its own artwork updates`, async () => {
+    const target: LaunchClient =
+      id === "battlenet"
+        ? battlenet
+        : {
+            kind: "wow",
+            id,
+            name: id === "classic" ? "World of Warcraft Classic" : forever.name,
+            shortName: id === "classic" ? "Classic" : "Forever",
+          };
+    fake.answers["launch.state"] = { state: { ...state, clients: [battlenet, target], target } };
+    fake.answers["launch.icon"] = { icon: FOREVER_ICON };
+    patch.install();
+    await showPage();
+    await attach();
+    await act(async () =>
+      fake.emit({ event: "launch.iconChanged", params: { appId: 42, targetId: id } }),
+    );
+    const image = () => doc().querySelector("#root .PlayButton image");
+    const dimensions = [image()?.getAttribute("width"), image()?.getAttribute("height")];
+    expect(image()?.getAttribute("href")).toBe(FOREVER_ICON);
+    const svg = "data:image/svg+xml;base64,PHN2Zy8+";
+    if (id !== "battlenet") fake.answers["launch.icon"] = { icon: svg };
+    await act(async () =>
+      fake.emit({ event: "launch.iconChanged", params: { appId: 99, targetId: id } }),
+    );
+    expect(image()?.getAttribute("href")).toBe(FOREVER_ICON);
+    await act(async () =>
+      fake.emit({ event: "launch.iconChanged", params: { appId: 42, targetId: id } }),
+    );
+    expect(image()?.getAttribute("href")).toBe(id === "battlenet" ? FOREVER_ICON : svg);
+    expect([image()?.getAttribute("width"), image()?.getAttribute("height")]).toEqual(dimensions);
+    expect(dimensions).toEqual(["24", "24"]);
+  });
+}
+
+test("switching from Classic to Forever rejects a late Classic SVG", async () => {
+  const classic: LaunchClient = {
+    kind: "wow",
+    id: "classic",
+    name: "World of Warcraft Classic",
+    shortName: "Classic",
+  };
+  fake.answers["launch.state"] = {
+    state: { ...state, target: classic, clients: [battlenet, classic, forever] },
+  };
+  patch.install();
+  await showPage();
+  await attach();
+  delete fake.answers["launch.icon"];
+  await act(async () =>
+    fake.emit({ event: "launch.iconChanged", params: { appId: 42, targetId: "classic" } }),
+  );
+  const old = fake.next("launch.icon");
+  fake.answers["launch.state"] = { state };
+  fake.answers["launch.icon"] = { icon: FOREVER_ICON };
+  await act(async () =>
+    fake.emit({
+      event: "launch.completed",
+      params: { appId: 42, clientName: "Forever", outcome: "confirmed" },
+    }),
+  );
+  await act(async () => old.resolve({ icon: "data:image/svg+xml;base64,c3RhbGU=" }));
+  expect(playText()).toBe("PlayForever");
+  expect(doc().querySelector("#root .PlayButton image")?.getAttribute("href")).toBe(FOREVER_ICON);
+});

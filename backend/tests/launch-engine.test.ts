@@ -33,17 +33,17 @@ afterEach(() => {
 });
 
 /** Synthetic binary KeyValues shortcuts.vdf with one non-Steam shortcut. */
-function writeShortcut(steam: string, exe: string) {
+function writeShortcut(steam: string, exe: string, id = APP_ID, launchOptions = "") {
   const string = (key: string, value: string) => Buffer.from(`\x01${key}\0${value}\0`);
   const appid = Buffer.alloc(4);
-  appid.writeUInt32LE(APP_ID);
+  appid.writeUInt32LE(id);
   const record = Buffer.concat([
     Buffer.from("\x000\0\x02appid\0"),
     appid,
     string("AppName", "World of Warcraft"),
     string("Exe", `"${exe}"`),
     string("StartDir", ""),
-    string("LaunchOptions", ""),
+    string("LaunchOptions", launchOptions),
     Buffer.from([8]),
   ]);
   const config = join(steam, "userdata/100/config");
@@ -122,6 +122,7 @@ async function fixture(setup: Setup = {}) {
     },
   };
   const iconChanges: Array<{ appId: number; targetId: string }> = [];
+  const iconWaiters: Array<() => void> = [];
   let iconChanged!: () => void;
   const changed = new Promise<void>((resolve) => {
     iconChanged = resolve;
@@ -132,6 +133,7 @@ async function fixture(setup: Setup = {}) {
     if (message.event === "launch.iconChanged") {
       iconChanges.push(message.params as unknown as { appId: number; targetId: string });
       iconChanged();
+      for (const notify of iconWaiters) notify();
     }
     if (message.event === "launch.completed") completions.push(message.params!);
   };
@@ -158,6 +160,14 @@ async function fixture(setup: Setup = {}) {
     asks,
     completions,
     iconChanges,
+    waitForIcons: (count: number) =>
+      new Promise<void>((resolve) => {
+        const check = () => {
+          if (iconChanges.length >= count) resolve();
+        };
+        iconWaiters.push(check);
+        check();
+      }),
     changed,
     retail: id("_retail_"),
     classic: id("_classic_"),
@@ -526,13 +536,13 @@ function cacheFile(root: string, content: string) {
   writeFileSync(path, content);
   return { hash, path };
 }
-function retailArtwork(root: string, svg = RETAIL_SVG) {
+function retailArtwork(root: string, svg = RETAIL_SVG, product = "WoW") {
   const asset = cacheFile(root, svg);
   const catalogue = cacheFile(
     root,
     JSON.stringify({
       fragment_id: "world_of_warcraft",
-      products: [{ id: "WoW", base: { icon_svg: "wow#RETAIL_ICON" } }],
+      products: [{ id: product, base: { icon_svg: "wow#RETAIL_ICON" } }],
       files: { default: { "wow#RETAIL_ICON": { hash: asset.hash } } },
     }),
   );
@@ -763,4 +773,263 @@ test("well-hashed malformed catalogue field shapes do not block another valid ca
   expect(await f.icon(f.retail)).toBeNull();
   await f.changed;
   expect(await f.icon(f.retail)).toStartWith("data:image/svg+xml;base64,");
+});
+
+for (const [product, row, folder, exe, colour] of [
+  ["WoW", "retail", "_retail_", "Wow.exe", "#ffcc00"],
+  ["WoWC", "classic", "_classic_", "WowClassic.exe", "#00ccff"],
+  ["WoWF", "forever", "_forever_", "Wow.exe", "#cc00ff"],
+] as const) {
+  test(`${product} shares background work, survives source removal and recovers an icon-only wipe`, async () => {
+    let release!: () => void;
+    let entered!: () => void;
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    const reading = new Promise<void>((r) => {
+      entered = r;
+    });
+    let reads = 0;
+    const f = await fixture({
+      readIcon: async (path, limit) => {
+        if (path.includes("Battle.net/Cache")) {
+          reads++;
+          entered();
+          await gate;
+        }
+        return readLaunchIconFile(path, limit);
+      },
+    });
+    const target = row === "classic" ? "classic" : f[row];
+    const svg = RETAIL_SVG.replace("#ffcc00", colour);
+    const source = retailArtwork(f.root, svg, product);
+    const executable = join(f.root, "home/Games/World of Warcraft", folder, exe);
+    const pe = syntheticPe([{ id: 1, width: 16, height: 16, payload: BMP }]);
+    writeFileSync(executable, pe);
+    await f.select(target);
+    const selected = await f.selected();
+    const fallback = await f.icon(target);
+    expect(fallback).toStartWith("data:image/x-icon;base64,");
+    await reading;
+    expect(await Promise.all([f.icon(target), f.icon(target)])).toEqual([fallback, fallback]);
+    expect(reads).toBe(1);
+    release();
+    await f.changed;
+    const expected = `data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`;
+    expect(await f.icon(target)).toBe(expected);
+    expect(f.iconChanges).toEqual([{ appId: 42, targetId: target }]);
+    rmSync(join(source.asset.path, "../../.."), { recursive: true, force: true });
+    let sourceReads = 0;
+    const again = await fixture({
+      root: f.root,
+      readIcon: async (path, limit) => {
+        if (path.includes("Battle.net/Cache") || path.endsWith(".exe")) sourceReads++;
+        return readLaunchIconFile(path, limit);
+      },
+    });
+    expect(await again.icon(target)).toBe(expected);
+    expect(sourceReads).toBe(0);
+    expect((await again.state())?.target.id).toBe(target);
+    expect(await again.selected()).toBe(selected);
+    const settings = readFileSync(join(f.root, "data/state.json"));
+    rmSync(join(f.root, "data/launch-icons"), { recursive: true });
+    const wiped = await fixture({ root: f.root });
+    writeFileSync(executable, pe);
+    retailArtwork(f.root, svg, product);
+    expect(await wiped.icon(target)).toBe(fallback);
+    await wiped.changed;
+    expect(await wiped.icon(target)).toBe(expected);
+    expect((await wiped.state())?.target.id).toBe(target);
+    expect(await wiped.selected()).toBe(selected);
+    expect(readFileSync(join(f.root, "data/state.json"))).toEqual(settings);
+  });
+}
+
+test("partial catalogues preserve each product and isolate every product across prefixes", async () => {
+  const first = await fixture();
+  retailArtwork(first.root, RETAIL_SVG, "WoWC");
+  expect(await first.icon("classic")).toBeNull();
+  await first.changed;
+  const classic = await first.icon("classic");
+  expect(classic).toStartWith("data:image/svg+xml;base64,");
+  const again = await fixture({ root: first.root });
+  const svg = RETAIL_SVG.replace("#ffcc00", "#112233");
+  retailArtwork(first.root, svg, "WoWF");
+  expect(await again.icon(again.forever)).toBeNull();
+  await again.changed;
+  expect(await again.icon("classic")).toBe(classic);
+  expect(await again.icon(again.forever)).toBe(
+    `data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`,
+  );
+  expect(await again.icon(again.retail)).toBeNull();
+  const other = await fixture({ dataDir: join(first.root, "data") });
+  for (const target of [other.retail, "classic", other.forever])
+    expect(await other.icon(target)).toBeNull();
+  expect(await again.icon("classic")).toBe(classic);
+});
+
+test("one population attempt fills Classic and Forever while Retail remains unavailable", async () => {
+  let reads = 0;
+  const f = await fixture({
+    readIcon: async (path, limit) => {
+      if (path.includes("Battle.net/Cache")) reads++;
+      return readLaunchIconFile(path, limit);
+    },
+  });
+  retailArtwork(f.root, RETAIL_SVG, "WoWC");
+  retailArtwork(f.root, RETAIL_SVG.replace("#ffcc00", "#112233"), "WoWF");
+  expect(await f.icon(f.retail)).toBeNull();
+  await f.waitForIcons(2);
+  expect(await f.icon("classic")).toBe(
+    `data:image/svg+xml;base64,${Buffer.from(RETAIL_SVG).toString("base64")}`,
+  );
+  expect(await f.icon(f.forever)).toBe(
+    `data:image/svg+xml;base64,${Buffer.from(RETAIL_SVG.replace("#ffcc00", "#112233")).toString("base64")}`,
+  );
+  const afterPopulation = reads;
+  for (let i = 0; i < 5; i++) expect(await f.icon(f.retail)).toBeNull();
+  expect(reads).toBe(afterPopulation);
+  expect(f.iconChanges.map((x) => x.targetId).sort()).toEqual(["classic", f.forever].sort());
+});
+
+test("a Classic source resolved during discovery shares the scan and updates its target", async () => {
+  let release!: () => void;
+  let entered!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const reading = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  let reads = 0;
+  const f = await fixture({
+    readIcon: async (path, limit) => {
+      if (path.includes("Battle.net/Cache")) {
+        reads++;
+        entered();
+        await gate;
+      }
+      return readLaunchIconFile(path, limit);
+    },
+  });
+  retailArtwork(f.root, RETAIL_SVG, "WoWC");
+  expect(await f.icon("classic")).toBeNull();
+  await reading;
+  // Battle.net now offers Era as the first Classic executable, changing the
+  // source identity while the same target's original population is in flight.
+  writeProductDb(join(f.root, "home/.local/share/Steam/steamapps/compatdata/42/pfx"), [
+    {
+      uid: "wow_classic_era",
+      installPath: `Z:${join(f.root, "home/Games/World of Warcraft")}`,
+      subfolder: "_classic_era_",
+    },
+  ]);
+  expect(await f.icon("classic")).toBeNull();
+  expect(reads).toBe(1);
+  release();
+  await f.waitForIcons(2);
+  expect(await f.icon("classic")).toBe(
+    `data:image/svg+xml;base64,${Buffer.from(RETAIL_SVG).toString("base64")}`,
+  );
+  expect(f.iconChanges).toEqual([
+    { appId: APP_ID, targetId: "classic" },
+    { appId: APP_ID, targetId: "classic" },
+  ]);
+  // One catalogue and its referenced asset; the new identity shares discovery.
+  expect(reads).toBe(2);
+});
+
+test("a source resolved after population gets artwork without retrying earlier failed identities", async () => {
+  let reads = 0;
+  const f = await fixture({
+    readIcon: async (path, limit) => {
+      if (path.includes("Battle.net/Cache")) reads++;
+      return readLaunchIconFile(path, limit);
+    },
+  });
+  const prefix = join(f.root, "home/.local/share/Steam/steamapps/compatdata/42/pfx");
+  const installPath = `Z:${join(f.root, "home/Games/World of Warcraft")}`;
+  writeProductDb(prefix, [
+    { uid: "wow", installPath, subfolder: "_retail_" },
+    { uid: "wow_classic", installPath, subfolder: "_classic_" },
+  ]);
+  retailArtwork(f.root, RETAIL_SVG, "WoWC");
+  retailArtwork(f.root, RETAIL_SVG, "WoWF");
+  expect(await f.icon(f.retail)).toBeNull();
+  await f.changed;
+  expect(await f.icon("classic")).toStartWith("data:image/svg+xml;base64,");
+  const originalReads = reads;
+  for (let i = 0; i < 5; i++) expect(await f.icon(f.retail)).toBeNull();
+  expect(reads).toBe(originalReads);
+
+  // Retail becomes available too, but a newly resolved Classic path must not
+  // reset suppression for the already attempted Retail identity.
+  retailArtwork(f.root);
+  writeProductDb(prefix, [
+    { uid: "wow", installPath, subfolder: "_retail_" },
+    { uid: "wow_classic_era", installPath, subfolder: "_classic_era_" },
+    { uid: "wowf", installPath, subfolder: "_forever_" },
+  ]);
+  expect(await f.icon("classic")).toBeNull();
+  await f.waitForIcons(3);
+  expect(await f.icon("classic")).toBe(
+    `data:image/svg+xml;base64,${Buffer.from(RETAIL_SVG).toString("base64")}`,
+  );
+  expect(await f.icon(f.forever)).toStartWith("data:image/svg+xml;base64,");
+  const afterPopulation = reads;
+  expect(afterPopulation).toBeGreaterThan(originalReads);
+  for (let i = 0; i < 5; i++) {
+    expect(await f.icon(f.retail)).toBeNull();
+    expect(await f.icon("classic")).toStartWith("data:image/svg+xml;base64,");
+  }
+  expect(reads).toBe(afterPopulation);
+  expect(f.iconChanges).toEqual([
+    { appId: APP_ID, targetId: "classic" },
+    { appId: APP_ID, targetId: "classic" },
+    { appId: APP_ID, targetId: f.forever },
+  ]);
+});
+
+test("a shortcut resolved during discovery receives its own icon update while sharing the source", async () => {
+  let release!: () => void;
+  let entered!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const reading = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  let reads = 0;
+  const f = await fixture({
+    readIcon: async (path, limit) => {
+      if (path.includes("Battle.net/Cache")) {
+        reads++;
+        entered();
+        await gate;
+      }
+      return readLaunchIconFile(path, limit);
+    },
+  });
+  retailArtwork(f.root, RETAIL_SVG, "WoWC");
+  expect(await f.icon("classic")).toBeNull();
+  await reading;
+  const steam = join(f.root, "home/.local/share/Steam");
+  writeShortcut(
+    steam,
+    join(f.root, "home/Games/World of Warcraft/Battle.net Launcher.exe"),
+    43,
+    `STEAM_COMPAT_DATA_PATH="${join(steam, "steamapps/compatdata/42")}" %command%`,
+  );
+  await f.engine.call("linkedGames.add", { appId: 43, name: "Battle.net" });
+  expect((await f.engine.call("launch.icon", { appId: 43, targetId: "classic" })).icon).toBeNull();
+  release();
+  await f.waitForIcons(2);
+  expect(f.iconChanges).toEqual([
+    { appId: APP_ID, targetId: "classic" },
+    { appId: 43, targetId: "classic" },
+  ]);
+  expect((await f.engine.call("launch.icon", { appId: 43, targetId: "classic" })).icon).toBe(
+    `data:image/svg+xml;base64,${Buffer.from(RETAIL_SVG).toString("base64")}`,
+  );
+  expect(reads).toBe(2);
 });
