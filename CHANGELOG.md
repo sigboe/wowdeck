@@ -28,6 +28,7 @@ What's new in each version of WoWDeck Addon Manager. The format follows
 - TradeSkillMaster finds your Classic realms to follow even when the addon has saved a lot of data.
 - Addons with many large files, such as media packs, install and update instead of failing partway with an error.
 - Searching Get Addons for an exact CurseForge name with punctuation, such as LibSharedMedia-3.0, finds the addon.
+- Opening WoWDeck on Options right after it reloads or updates no longer shows an error screen.
 - Updating or reloading WoWDeck no longer pauses partway, and the previous copy stops instead of running in the background.
 
 ## [1.3.0] - 2026-11-22

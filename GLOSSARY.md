@@ -306,7 +306,9 @@ The frontend's one way to the engine and to `main.py` (`src/engineLink.ts`):
 the typed `rpc` and `bridge`, and one event router. The plugin connects
 Decky's adapter to it once, at plugin load; tests connect the typed fake
 engine. Stores take its `rpc` when they are built and hear its events from
-plugin load on, so a change reaches them while the panel is closed.
+plugin load on, so a change reaches them while the panel is closed. A call
+made while no link is connected fails like any engine failure. Its promise
+rejects with the code `not_connected`.
 _Avoid_: backend module, `api`, subscribing to `backend_event` in a component.
 
 ## Get Addons rework

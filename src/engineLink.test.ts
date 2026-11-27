@@ -1,6 +1,6 @@
 /// <reference types="bun-types" />
 import { describe, expect, test } from "bun:test";
-import { connectEngine, createEventRouter, engine } from "./engineLink";
+import { NOT_CONNECTED, connectEngine, createEventRouter, engine } from "./engineLink";
 import { createFakeEngine, engineFailure, settle } from "./testSupport/fakeEngine";
 
 describe("the typed fake engine", () => {
@@ -92,6 +92,23 @@ describe("the connected engine", () => {
     disconnect();
     second.emit({ event: "addons.changed", params: { addonIds: ["after"] } });
     expect(heard).toEqual([["new"]]);
+  });
+
+  test("with no link connected, rpc and bridge reject with not_connected instead of throwing", async () => {
+    // After a plugin reload the previous load's panel can render once with its
+    // link already disconnected (#341): a caller's .catch() must see it.
+    const disconnect = connectEngine(createFakeEngine({ "about.get": { version: "1" } as never }));
+    disconnect();
+    let rpcCall: Promise<unknown> | null = null;
+    let bridgeCall: Promise<unknown> | null = null;
+    expect(() => {
+      rpcCall = engine.rpc("about.get");
+      bridgeCall = engine.bridge("read_text_file", "/a.txt");
+    }).not.toThrow();
+    for (const call of [rpcCall!, bridgeCall!]) {
+      const error = await (call as Promise<unknown>).catch((e: Error & { code?: string }) => e);
+      expect((error as Error & { code?: string }).code).toBe(NOT_CONNECTED);
+    }
   });
 
   test("rpc and bridge go to the link connected when the call is made", async () => {

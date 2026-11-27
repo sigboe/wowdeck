@@ -1,17 +1,19 @@
 /// <reference types="bun-types" />
 /**
  * Options' WoW installations section through its real seam: the addon
- * session. No engine is connected in this file — an engine call from the
- * section would throw "The engine isn't connected yet", so these tests
- * passing is the proof the section writes through the session alone.
+ * session. Each test connects a typed fake engine with no answers and ends
+ * with its call log empty: the proof the section writes through the session
+ * alone.
  */
-import { expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, expect, mock, test } from "bun:test";
 import { act, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { JSDOM } from "jsdom";
 import { deckyUiStub } from "./deckyUiStub";
 import type { Installation, InstallationPreferences } from "./types";
 import type { InstallationsSession } from "./components/settings/InstallationsSection";
+import { connectEngine } from "./engineLink";
+import { createFakeEngine, type FakeEngine } from "./testSupport/fakeEngine";
 
 mock.module("@decky/api", () => ({
   FileSelectionType: { FILE: 0, FOLDER: 1 },
@@ -74,6 +76,17 @@ mock.module("./components/FocusSlot", () => ({
 mock.module("@decky/ui", () => deckyUiStub);
 
 const { InstallationsSection } = await import("./components/settings/InstallationsSection");
+
+let fakeEngine: FakeEngine;
+let disconnectEngine: () => void;
+beforeEach(() => {
+  fakeEngine = createFakeEngine();
+  disconnectEngine = connectEngine(fakeEngine);
+});
+afterEach(() => {
+  disconnectEngine();
+  expect(fakeEngine.log).toEqual([]);
+});
 
 const retail = { id: "r1", displayName: "Retail", version: "11.0.5.1234" } as Installation;
 
