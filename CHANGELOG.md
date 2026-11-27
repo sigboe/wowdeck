@@ -19,7 +19,7 @@ What's new in each version of WoWDeck Addon Manager. The format follows
 
 - A WoW installation you remove stays removed when Steam restarts. Find WoW installations or adding its folder brings it back.
 - With the active WoW installation hidden, the installation picker lists every installation plus Unhide, so you can switch again.
-- Removing the active installation makes a visible one active, not a hidden one.
+- Removing the active installation makes a visible one active, not a hidden one, without a false "Couldn't load addons" error.
 - Closing Get Addons' installation picker keeps focus on it instead of jumping to the tab bar.
 - Get Addons' Source and Category menus line up their choices on the left with the check mark at the end.
 - Low-contrast description and changelog text becomes readable while colours that already work stay unchanged.

@@ -125,8 +125,9 @@ export interface AddonSession extends Pick<Store<AddonSessionState>, "get" | "su
   run(addon: Addon, action: SessionActionId): void;
   /**
    * The engine's "addons changed" event. A change an action is making is left
-   * to that action (the engine announces it before it answers); any other
-   * change reads the list again, after the running actions end.
+   * to that action (the engine announces it before it answers), and so is
+   * one during an installation removal; any other change reads the list
+   * again, after the running actions end.
    */
   addonsChanged(addonIds: readonly string[]): void;
   /** The engine's addons.updateAllProgress; ignored with no Update all running. */
@@ -491,6 +492,14 @@ export function createAddonSession(deps: AddonSessionDeps): AddonSession {
     await reloadAddons();
   };
 
+  // Removals the engine hasn't answered yet. It announces a removal's change
+  // before it answers, while the removed installation may still be the
+  // selected one: that change is left to the removal, which reads both lists
+  // once the engine has picked the next active installation (#342). A
+  // refused removal reads the list itself for a change it held back.
+  let removing = 0;
+  let heldBack = false;
+
   return {
     get: store.get,
     subscribe: store.subscribe,
@@ -536,6 +545,10 @@ export function createAddonSession(deps: AddonSessionDeps): AddonSession {
       if (addonIds.length > 0 && addonIds.every((id) => busy[id])) {
         return;
       }
+      if (removing > 0) {
+        heldBack = true;
+        return;
+      }
       if (running > 0) {
         reloadWanted = true;
       } else {
@@ -552,7 +565,19 @@ export function createAddonSession(deps: AddonSessionDeps): AddonSession {
       return installation;
     },
     async removeInstallation(installationId) {
-      await rpc("installations.remove", { installationId });
+      removing++;
+      try {
+        await rpc("installations.remove", { installationId });
+      } catch (e) {
+        if (--removing === 0 && heldBack) {
+          heldBack = false;
+          void reloadAddons();
+        }
+        throw e;
+      }
+      if (--removing === 0) {
+        heldBack = false;
+      }
       // The engine picks the next active installation when this one was it.
       await reloadAll();
     },
