@@ -364,22 +364,30 @@ const cache = new ExecutableIconCache(
   },
 );
 
-export async function executableIcon(directory: string): Promise<string | undefined> {
+export async function executableIcon(directory: string, reader = cache): Promise<string | undefined> {
   const files = await readdir(directory).catch(() => []);
   for (const name of files.filter(isWowClientExecutable).sort()) {
     const path = await realpath(join(directory, name)).catch(() => undefined);
     if (!path || dirname(path) !== directory || !isWowClientExecutable(basename(path))) continue;
-    const icon = await cache.icon(path);
+    const icon = await reader.icon(path);
     if (icon) return iconDataUrl(icon);
   }
   return undefined;
 }
 
 /** The icon of the launcher a shortcut starts: Battle.net's own, read like a client's. */
-export async function launcherIcon(executable: string): Promise<string | undefined> {
+export async function launcherIcon(executable: string, reader = cache): Promise<string | undefined> {
   if (!isAbsolute(executable)) return undefined;
   const path = await realpath(executable).catch(() => undefined);
   if (!path || !isWowLauncherExecutable(basename(path))) return undefined;
-  const icon = await cache.icon(path);
+  const icon = await reader.icon(path);
   return icon && iconDataUrl(icon);
+}
+
+/** Validate the bounded single-image ICO representation produced by this parser. */
+export function isExecutableIco(bytes: Uint8Array): boolean {
+  return bytes.length <= MAX_ICON_BYTES + ICO_HEADER + ICO_ENTRY &&
+    fits(bytes, 0, 22) && u16(bytes, 0) === 0 && u16(bytes, 2) === 1 &&
+    u16(bytes, 4) === 1 && u32(bytes, 18) === 22 &&
+    u32(bytes, 14) === bytes.length - 22 && isIconImage(bytes.subarray(22));
 }

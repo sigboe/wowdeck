@@ -5,14 +5,15 @@
  */
 
 import { afterEach, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import type { LaunchCompletion } from "../src/api/contracts";
 import { configFromEnv, startEngine, type Engine } from "../src/engine";
 import type { LaunchWorld, Observation } from "../src/wow/launch/LaunchService";
 import { writeProductDb } from "./helpers/productDb";
-import { BMP, syntheticPe } from "./helpers/syntheticPe";
+import { readLaunchIconFile, type LaunchIconRead } from "../src/wow/launch/LaunchIcons";
+import { BMP, PNG, syntheticPe } from "./helpers/syntheticPe";
 import { loadCassette, ReplayNetwork } from "./providers/cassette";
 
 const APP_ID = 42;
@@ -50,6 +51,10 @@ interface Setup {
   launcher?: Uint8Array;
   /** Reuse an earlier fixture's home and data (an engine restart). */
   root?: string;
+  readIcon?: LaunchIconRead;
+  renameIcon?: (from: string, to: string) => Promise<void>;
+  dataDir?: string;
+  version?: string;
 }
 
 /** A WoW root with Retail, Classic and Forever, linked to one Battle.net shortcut. */
@@ -97,13 +102,15 @@ async function fixture(setup: Setup = {}) {
     const message = JSON.parse(line) as { event?: string; params?: LaunchCompletion };
     if (message.event === "launch.completed") completions.push(message.params!);
   };
-  const base = configFromEnv({ HOME: home, WOWDECK_DATA_DIR: join(root, "data") }, "9.9.9");
+  const base = configFromEnv({ HOME: home, WOWDECK_DATA_DIR: setup.dataDir ?? join(root, "data") }, setup.version ?? "9.9.9");
   const engine: Engine = await startEngine({
     ...base,
     network: new ReplayNetwork(await loadCassette("wowup-hub")),
     now: () => Date.UTC(2026, 10, 1),
     out,
     launchWorld: world,
+    launchIconRead: setup.readIcon,
+    launchIconRename: setup.renameIcon,
   });
   const { installations } = await engine.call("installations.list", {});
   // A direct client shortcut discovers its own flavor only.
@@ -281,4 +288,135 @@ test("a client's icon is read from that client's executable", async () => {
   writeFileSync(join(f.root, "home/Games/World of Warcraft/_classic_/WowClassic.exe"), pe);
   expect(await f.icon("classic")).toStartWith("data:image/x-icon;base64,");
   expect(await f.icon(f.era)).toBeNull();
+});
+
+
+test("launch icons survive restart and executable replacement without changing saved choices", async () => {
+  const pe = syntheticPe([{ id: 1, width: 16, height: 16, payload: BMP }]);
+  const first = await fixture({ launcher: pe });
+  await first.select(first.forever);
+  const active = await first.selected();
+  const icon = await first.icon("battlenet");
+  expect(icon).toStartWith("data:image/x-icon;base64,");
+  // Restart replaces the executable with an empty file. A usable cached icon has no expiry.
+  const again = await fixture({ root: first.root, version: "10.0.0" });
+  expect(await again.icon("battlenet")).toBe(icon);
+  expect((await again.state())?.target.id).toBe(first.forever);
+  expect(await again.selected()).toBe(active);
+});
+
+
+test("restart reads persistent icons without reading the executable, even when it is absent", async () => {
+  const pe = syntheticPe([{ id: 1, width: 16, height: 16, payload: BMP }]);
+  const first = await fixture({ launcher: pe });
+  const icon = await first.icon("battlenet");
+  let sourceReads = 0;
+  const again = await fixture({ root: first.root, readIcon: async (path, limit) => {
+    if (path.endsWith(".exe")) { sourceReads++; return undefined; }
+    return readLaunchIconFile(path, limit);
+  } });
+  rmSync(join(first.root, "home/Games/World of Warcraft/Battle.net Launcher.exe"));
+  expect(await again.icon("battlenet")).toBe(icon);
+  expect(sourceReads).toBe(0);
+});
+
+test("concurrent launch.icon requests share one executable extraction", async () => {
+  let entered!: () => void;
+  let release!: () => void;
+  const reading = new Promise<void>((resolve) => { entered = resolve; });
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  let reads = 0;
+  const f = await fixture({
+    launcher: syntheticPe([{ id: 1, width: 16, height: 16, payload: PNG }]),
+    readIcon: async (path, limit) => {
+      if (path.endsWith(".exe")) { reads++; entered(); await gate; }
+      return readLaunchIconFile(path, limit);
+    },
+  });
+  const pending = Array.from({ length: 8 }, () => f.icon("battlenet"));
+  await reading;
+  release();
+  const icons = await Promise.all(pending);
+  expect(icons[0]).toStartWith("data:image/x-icon;base64,");
+  expect(new Set(icons).size).toBe(1);
+  expect(reads).toBe(1);
+});
+
+
+test("unrelated shortcuts and prefixes sharing persistent data keep their own icon", async () => {
+  const first = await fixture({ launcher: syntheticPe([{ id: 1, width: 16, height: 16, payload: BMP }]) });
+  const firstIcon = await first.icon("battlenet");
+  const other = await fixture({ dataDir: join(first.root, "data"),
+    launcher: syntheticPe([{ id: 1, width: 16, height: 16, payload: PNG }]),
+  });
+  const otherIcon = await other.icon("battlenet");
+  expect(otherIcon).toStartWith("data:image/x-icon;base64,");
+  expect(otherIcon).not.toBe(firstIcon);
+  expect(await first.icon("battlenet")).toBe(firstIcon);
+  expect(await other.icon(other.retail)).toBeNull();
+});
+
+test("missing, corrupt and incompatible cache entries rebuild through launch.icon", async () => {
+  const pe = syntheticPe([{ id: 1, width: 16, height: 16, payload: BMP }]);
+  for (const damage of ["missing", "manifest", "version", "hash", "oversized"]) {
+    const first = await fixture({ launcher: pe });
+    const icon = await first.icon("battlenet");
+    const cache = join(first.root, "data/launch-icons");
+    const files = readdirSync(cache);
+    const manifest = join(cache, files.find((name) => name.endsWith(".json"))!);
+    const asset = join(cache, files.find((name) => name.endsWith(".ico"))!);
+    if (damage === "missing") rmSync(asset);
+    if (damage === "manifest") writeFileSync(manifest, "{");
+    if (damage === "version") {
+      const entry = JSON.parse(readFileSync(manifest, "utf8"));
+      entry.version = 999;
+      writeFileSync(manifest, JSON.stringify(entry));
+    }
+    if (damage === "hash") writeFileSync(asset, "corrupt");
+    if (damage === "oversized") writeFileSync(asset, new Uint8Array(1024 * 1024 + 23));
+    const again = await fixture({ root: first.root, launcher: pe });
+    expect(await again.icon("battlenet")).toBe(icon);
+    const restarted = await fixture({ root: first.root });
+    expect(await restarted.icon("battlenet")).toBe(icon);
+  }
+});
+
+test("cache write failure returns the available icon and does not prevent launching", async () => {
+  const f = await fixture({ launcher: syntheticPe([{ id: 1, width: 16, height: 16, payload: BMP }]) });
+  writeFileSync(join(f.root, "data/launch-icons"), "unwritable cache directory");
+  expect(await f.icon("battlenet")).toStartWith("data:image/x-icon;base64,");
+  expect((await f.start()).steamStart).toBeDefined();
+});
+
+test("interrupted cache publication leaves the last usable image available", async () => {
+  const first = await fixture({ launcher: syntheticPe([{ id: 1, width: 16, height: 16, payload: BMP }]) });
+  const icon = await first.icon("battlenet");
+  const cache = join(first.root, "data/launch-icons");
+  // An interrupted replacement left partial files beside the published entry.
+  for (const name of readdirSync(cache)) writeFileSync(join(cache, `${name}.interrupted.tmp`), "partial");
+  const again = await fixture({ root: first.root });
+  expect(await again.icon("battlenet")).toBe(icon);
+});
+
+
+test("failed manifest replacement preserves the previously published icon", async () => {
+  const first = await fixture({ launcher: syntheticPe([{ id: 1, width: 16, height: 16, payload: BMP }]) });
+  const previous = await first.icon("battlenet");
+  const { rename } = await import("node:fs/promises");
+  let failed = false;
+  const replacing = await fixture({ root: first.root,
+    launcher: syntheticPe([{ id: 1, width: 16, height: 16, payload: PNG }]),
+    // A transient read fault forces a rebuild while the old entry remains intact.
+    readIcon: async (path, limit) => path.endsWith(".json") ? undefined : readLaunchIconFile(path, limit),
+    renameIcon: async (from, to) => {
+      if (to.endsWith(".json")) { failed = true; throw new Error("simulated rename failure"); }
+      await rename(from, to);
+    },
+  });
+  const available = await replacing.icon("battlenet");
+  expect(available).toStartWith("data:image/x-icon;base64,");
+  expect(available).not.toBe(previous);
+  expect(failed).toBe(true);
+  const again = await fixture({ root: first.root });
+  expect(await again.icon("battlenet")).toBe(previous);
 });

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Installation } from "../src/api/contracts";
 import { parseProductDb } from "../src/wow/launch/BattleNetInstalls";
+import { LaunchIcons } from "../src/wow/launch/LaunchIcons";
 import { resolveLaunchEntry } from "../src/wow/launch/LaunchEntries";
 import { PRODUCT_DB, productDb, writeProductDb } from "./helpers/productDb";
 import { BMP, syntheticPe } from "./helpers/syntheticPe";
@@ -30,6 +31,7 @@ async function fixture(
 ) {
   const root = await mkdtemp(join(tmpdir(), "wowdeck-launch-targets-"));
   const prefix = join(root, "steamapps/compatdata/42/pfx");
+  const icons = new LaunchIcons(join(root, "data"));
   const installs: Installation[] = [];
   const listed: Array<{ uid: string; installPath: string; subfolder: string }> = [];
   const shortcut = {
@@ -73,7 +75,7 @@ async function fixture(
         }
         return installation;
       },
-      resolve: (selected) => resolveLaunchEntry(42, installs, steam, selected),
+      resolve: (selected) => resolveLaunchEntry(42, installs, steam, icons, selected),
     });
   } finally {
     await rm(root, { recursive: true, force: true });
