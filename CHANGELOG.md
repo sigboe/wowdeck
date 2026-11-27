@@ -12,6 +12,7 @@ What's new in each version of WoWDeck Addon Manager. The format follows
 
 ### Changed
 
+- Play uses Battle.net's local Retail, Classic and Forever artwork when available, and keeps icons after WoWDeck restarts or updates.
 - Log improvements, and your TradeSkillMaster sign-in now shows as a shortened email address.
 - WoW's Steam game page shows your addon updates in a box under Play, with Update all's progress and the addon it is updating.
 

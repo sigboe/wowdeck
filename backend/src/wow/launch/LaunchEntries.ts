@@ -12,7 +12,7 @@ import type { InstallationDetector } from "../installation/InstallationDetector"
 import { isWowShortcut, shortcutPrefixOverrides } from "../installation/SteamShortcuts";
 import { isWowClientExecutable } from "../installation/WowExecutables";
 import { battleNetInstalls } from "./BattleNetInstalls";
-import { executableIcon, launcherIcon } from "./ExecutableIcon";
+import type { LaunchIcons } from "./LaunchIcons";
 import type { LaunchEntry } from "./LaunchService";
 
 const canonical = (path: string) => realpath(path).catch(() => undefined);
@@ -26,6 +26,7 @@ export async function resolveLaunchEntry(
   appId: number,
   installations: Installation[],
   steam: Pick<InstallationDetector, "steamLibraryFolders" | "steamShortcuts">,
+  artwork: LaunchIcons,
   preferredId?: string,
 ): Promise<LaunchEntry | null> {
   const [shortcuts, folders] = await Promise.all([
@@ -118,6 +119,9 @@ export async function resolveLaunchEntry(
   const chosen = preferredId === undefined
     ? undefined
     : rows.find(({ client, ids }) => client.id === preferredId || ids.includes(preferredId));
+  for (const { client, folders, product } of rows) {
+    artwork.register({ appId, prefix: prefixes[0]!, target: client.id, product, directory: folders[0]!.path });
+  }
   return {
     appId,
     clients: [battleNet, ...rows.map(({ client }) => client)],
@@ -128,10 +132,11 @@ export async function resolveLaunchEntry(
     }),
     prefixes,
     libraries,
+    iconActivity: () => artwork.retryMissing(prefixes[0]!),
     icons: Object.fromEntries([
-      [battleNet.id, () => launcherIcon(unquote(shortcut.exe))],
+      [battleNet.id, () => artwork.icon({ appId, prefix: prefixes[0]!, target: battleNet.id, product: "battlenet", executable: unquote(shortcut.exe) })],
       // Classic's icon is its first version's in table order: Mists, Era, Anniversary.
-      ...rows.map(({ client, folders }) => [client.id, () => executableIcon(folders[0]!.path)]),
+      ...rows.map(({ client, folders, product }) => [client.id, () => artwork.icon({ appId, prefix: prefixes[0]!, target: client.id, product, directory: folders[0]!.path })]),
     ]),
   };
 }

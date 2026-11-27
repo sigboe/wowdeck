@@ -93,3 +93,7 @@ export const steamLaunchIcon = createKeyedResource({
 engine.events.on("launch.completed", ({ appId }) => {
   steamLaunchState.invalidate((key) => key === String(appId));
 });
+
+engine.events.on("launch.iconChanged", ({ appId, targetId }) => {
+  steamLaunchIcon.invalidate((key) => key === launchIconKey(appId, targetId));
+});

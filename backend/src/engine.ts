@@ -1,3 +1,4 @@
+import { LaunchIcons, type LaunchIconRead } from "./wow/launch/LaunchIcons";
 import { InstallationDetector } from "./wow/installation/InstallationDetector";
 import { LaunchService, type LaunchWorld } from "./wow/launch/LaunchService";
 import { localLaunchWorld } from "./wow/launch/LaunchProcesses";
@@ -99,6 +100,10 @@ export interface EngineConfig {
   out?: (line: string) => void;
   /** Process observation and launch asks; this machine's when unset (tests pass fake processes). */
   launchWorld?: LaunchWorld;
+  /** Bounded launch artwork file reads; real filesystem unless overridden in tests. */
+  launchIconRead?: LaunchIconRead;
+  /** Atomic launch artwork publication; overridable for filesystem failure tests. */
+  launchIconRename?: (from: string, to: string) => Promise<void>;
   /** Ledger watcher timers and process observation, overridable in fixture tests. */
   ledgerWatch?: LedgerWatchOptions;
   /** The filesystem state writes go through; the real one except in fault-injection tests. */
@@ -337,11 +342,13 @@ export function assembleEngine(config: EngineConfig): Engine & { start(): Promis
     () => steam.steamShortcutAppIds(),
     playOwner,
   );
+  const launchIcons = new LaunchIcons(dataDir, config.launchIconRead, config.launchIconRename, (change) => server.emit("launch.iconChanged", change));
+  installationService.foundListeners.add(() => launchIcons.retryMissing());
   const launch = new LaunchService(
     // Only a linked game's page launches through WoWDeck (Show in Steam on).
     async (appId, preferredId) => linkedGames.isLinked(appId)
       ? resolveLaunchEntry(
-        appId, installationService.listed(), steam, preferredId ?? store.settings.steamLaunchTargets[appId],
+        appId, installationService.listed(), steam, launchIcons, preferredId ?? store.settings.steamLaunchTargets[appId],
       )
       : null,
     config.launchWorld ?? localLaunchWorld(homeDir, () => steam.steamHomes()),

@@ -19,6 +19,7 @@ export interface LaunchEntry {
    * Each client's icon reader, by client id, for executables this
    * resolution owns. Read on request only: icons stay out of the state.
    */
+  iconActivity?: () => void;
   icons?: Record<string, () => Promise<string | undefined>>;
 }
 
@@ -114,6 +115,7 @@ export class LaunchService {
   ): Promise<MethodMap["launch.start"]["result"]> {
     const entry = await this.entry(appId);
     if (!entry) return { state: null };
+    entry.iconActivity?.();
     const observed = await this.world.observe(entry);
     const alreadyStarted = observed.entryRunning || steamEntryRunning;
     if (this.active || observed.gameRunning !== "not_running" ||
