@@ -12,6 +12,8 @@ import { ProviderRegistry } from "../src/wow/providers/provider-registry";
 import { createStateStore } from "../src/wow/storage/StateStore";
 import { DownloadService } from "../src/wow/downloads/DownloadService";
 import { NetworkClient } from "../src/wow/net/network";
+import { getClientTypeForGameType } from "../src/wow/utils/gametype";
+import { addInstallation, addWowFolder, type AddInstallationRequest, type AddWowFolderDeps } from "../../src/addWowFolder";
 
 const ROOT = "/tmp/opencode/wowdeck-tests/removed-installations";
 const HOME = join(ROOT, "home");
@@ -43,6 +45,60 @@ beforeEach(() => {
 });
 
 describe("removed installations", () => {
+  for (const layout of ["parent", "flavor", "custom"] as const) {
+    test.each([false, true])(`Add WoW folder restores a ${layout} folder through its modal (rename=%s)`, async (rename) => {
+      const path = layout === "custom" ? join(ROOT, "Custom WoW") : flavor("_retail_");
+      mkdirSync(join(path, "Data"), { recursive: true });
+      const picked = layout === "parent" ? WOW : path;
+      const installations = start();
+      const [original] = await installations.addManual(path, {
+        displayName: "My saved name", clientType: getClientTypeForGameType("retail"),
+      });
+      installations.update(original!.id, { autoUpdateEnabled: false, hidden: true });
+      await installations.remove(original!.id);
+
+      const restarted = start();
+      const modals: AddInstallationRequest[] = [];
+      const deps: AddWowFolderDeps = {
+        installations: [],
+        pickFolder: async () => picked,
+        inspect: (folder) => restarted.inspect(folder),
+        add: (params) => restarted.addManual(params.path, {
+          displayName: params.displayName,
+          clientType: params.clientType ? getClientTypeForGameType(params.clientType) : undefined,
+        }),
+        openModal: (request) => { modals.push(request); },
+        toast: () => {},
+        toastError: (_title, error) => { throw error; },
+      };
+      await addWowFolder(deps);
+      expect(modals).toEqual([{ path: picked, displayName: "My saved name", gameType: "retail" }]);
+      // Inspecting prepares the modal without restoring anything.
+      expect(restarted.listed()).toEqual([]);
+      const [modal] = modals;
+      const name = rename ? "My new name" : modal!.displayName;
+      // The real modal submits its current name even when it was never edited.
+      expect(await addInstallation(deps, {
+        path: modal!.path, displayName: name, clientType: modal!.gameType!,
+      })).toBe(true);
+      expect(start().listed()).toMatchObject([{
+        id: original!.id, displayName: name, autoUpdateEnabled: false, hidden: true,
+      }]);
+    });
+  }
+
+  test("inspection doesn't offer a removed custom folder without WoW markers or a missing folder", async () => {
+    const path = join(ROOT, "Custom WoW");
+    mkdirSync(join(path, "Data"), { recursive: true });
+    const installations = start();
+    const [original] = await installations.addManual(path, { clientType: getClientTypeForGameType("retail") });
+    await installations.remove(original!.id);
+    rmSync(join(path, "Data"), { recursive: true });
+    expect(await start().inspect(path)).toEqual([]);
+    rmSync(path, { recursive: true });
+    expect(await start().inspect(path)).toEqual([]);
+  });
+
   test.each(["find", "manual"] as const)("%s restores saved preferences and name after a restart", async (method) => {
     flavor("_classic_era_");
     const installations = start();

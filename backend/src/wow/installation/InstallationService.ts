@@ -193,18 +193,29 @@ export class InstallationService {
     return list;
   }
 
-  /** The installations a folder would add (addManual's detection), registering nothing. */
+  /** The installations a folder would add, including saved restore choices, registering nothing. */
   async inspect(path: string): Promise<FoundInstallation[]> {
     const normalized = normalizePath(path);
     if (!normalized.startsWith("/")) {
       return [];
     }
     const found: FoundInstallation[] = [];
+    const removed = this.store.removedInstallations;
     for (const dir of await findFlavorDirs(normalized).catch(() => [] as string[])) {
       const installation = await createInstallationForFlavorDir(dir).catch(() => undefined);
       if (installation) {
-        found.push({ gameType: getGameTypeForClientType(installation.clientType), displayName: installation.displayName });
+        const saved = removed.find((entry) => entry.id === installation.id);
+        found.push({
+          gameType: getGameTypeForClientType(installation.clientType),
+          displayName: saved?.displayName ?? installation.displayName,
+        });
       }
+    }
+    // Custom layouts have no detectable flavor. Reuse the player's saved
+    // game type only while the same folder still has WoW markers.
+    const custom = removed.find((entry) => entry.id === installationIdFor(normalized));
+    if (!found.length && custom && await classifyFlavorDir(normalized).catch(() => "invalid") !== "invalid") {
+      found.push({ gameType: getGameTypeForClientType(custom.clientType), displayName: custom.displayName });
     }
     return found;
   }
