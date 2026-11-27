@@ -53,6 +53,9 @@ export type InstallationSource = "detected" | "manual";
  * sit on a drive that isn't mounted.
  */
 export interface RemovedInstallation {
+  /** Saved preferences; absent in entries written before preference restoration. */
+  autoUpdateEnabled?: boolean;
+  hidden?: boolean;
   /** The removed installation's id (`installationIdFor` its location). */
   id: string;
   location: string;

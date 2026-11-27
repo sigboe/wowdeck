@@ -70,7 +70,10 @@ export type GameType =
 /** How an installation entered the installation list. */
 export type InstallationSource = "detected" | "manual";
 
-/** An installation a folder holds, before it is added (installations.inspect). */
+/**
+ * An installation a folder holds (installations.inspect). Restoration offers
+ * its saved name, and its saved game type when a custom layout has none to detect.
+ */
 export interface FoundInstallation {
   gameType: GameType;
   displayName: string;
@@ -1431,7 +1434,8 @@ export interface MethodMap {
    * What a folder holds, without adding it: one entry per WoW version folder
    * found there (the folder itself or flavors below a game root). Fills in
    * Add installation's display name and game version as soon as a folder is
-   * picked. Empty when nothing is recognised.
+   * picked. Offers a removed installation's saved name; a custom layout
+   * with WoW markers also offers its saved game type. Empty when nothing is recognised.
    */
   "installations.inspect": {
     params: { path: string };

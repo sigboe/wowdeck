@@ -62,8 +62,22 @@ function mergeInstallations(
   return [...byId.values()].sort((a, b) => a.clientType - b.clientType);
 }
 
-function removedEntry({ id, location, displayName, clientType }: WowInstallation): RemovedInstallation {
-  return { id, location, displayName, clientType };
+function removedEntry({ id, location, displayName, clientType, autoUpdateEnabled, hidden }: WowInstallation): RemovedInstallation {
+  return { id, location, displayName, clientType, autoUpdateEnabled, hidden };
+}
+
+/** Restore only player choices; detection supplies current disk and Steam metadata. */
+function restorePreferences(found: WowInstallation[], removed: RemovedInstallation[]): WowInstallation[] {
+  const byId = new Map(removed.map((entry) => [entry.id, entry]));
+  return found.map((installation) => {
+    const saved = byId.get(installation.id);
+    return saved ? {
+      ...installation,
+      displayName: saved.displayName,
+      autoUpdateEnabled: saved.autoUpdateEnabled ?? true,
+      hidden: saved.hidden ?? false,
+    } : installation;
+  });
 }
 
 export class InstallationService {
@@ -118,7 +132,7 @@ export class InstallationService {
     const removed = this.store.removedInstallations;
     const removedIds = new Set(removed.map((r) => r.id));
     const restored = new Set(restore ? found.filter((f) => removedIds.has(f.id)).map((f) => f.id) : []);
-    const kept = found.filter((f) => !removedIds.has(f.id) || restored.has(f.id));
+    const kept = restorePreferences(found.filter((f) => !removedIds.has(f.id) || restored.has(f.id)), removed);
     // Keep installations through an unmounted drive, but never keep stale shortcut links.
     this.store.setInstallations(
       mergeInstallations(this.store.installations.map(i => ({ ...i, steamGames: [] })), kept,
@@ -179,18 +193,29 @@ export class InstallationService {
     return list;
   }
 
-  /** The installations a folder would add (addManual's detection), registering nothing. */
+  /** The installations a folder would add, including saved restore choices, registering nothing. */
   async inspect(path: string): Promise<FoundInstallation[]> {
     const normalized = normalizePath(path);
     if (!normalized.startsWith("/")) {
       return [];
     }
     const found: FoundInstallation[] = [];
+    const removed = this.store.removedInstallations;
     for (const dir of await findFlavorDirs(normalized).catch(() => [] as string[])) {
       const installation = await createInstallationForFlavorDir(dir).catch(() => undefined);
       if (installation) {
-        found.push({ gameType: getGameTypeForClientType(installation.clientType), displayName: installation.displayName });
+        const saved = removed.find((entry) => entry.id === installation.id);
+        found.push({
+          gameType: getGameTypeForClientType(installation.clientType),
+          displayName: saved?.displayName ?? installation.displayName,
+        });
       }
+    }
+    // Custom layouts have no detectable flavor. Reuse the player's saved
+    // game type only while the same folder still has WoW markers.
+    const custom = removed.find((entry) => entry.id === installationIdFor(normalized));
+    if (!found.length && custom && await classifyFlavorDir(normalized).catch(() => "invalid") !== "invalid") {
+      found.push({ gameType: getGameTypeForClientType(custom.clientType), displayName: custom.displayName });
     }
     return found;
   }
@@ -251,6 +276,8 @@ export class InstallationService {
         `${normalized} does not contain a WoW flavor directory (like _retail_); set the game type explicitly for custom layouts`,
       );
     }
+
+    created = restorePreferences(created, this.store.removedInstallations);
 
     // A parent with one new installation is the same naming choice as a
     // single flavor directory. Never rename its already registered siblings.

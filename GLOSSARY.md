@@ -353,11 +353,12 @@ _Avoid_: product code, launch UID
 
 **Removed installation**:
 A WoW installation the player removed in Installation details. WoWDeck
-forgets it and its addon records, and the scan when Steam starts leaves it
-out even while its folder still holds WoW. Find WoW installations brings back
+removes it from the list and forgets its addon records. The scan when Steam
+starts leaves it out even while its folder still holds WoW. Find WoW installations brings back
 every removed installation it finds, and adding its folder by hand brings it
 back too. One whose folder isn't there, such as on an SD card that's out,
-stays removed. No files are deleted.
+stays removed. Restoring keeps its Auto updates, Hide and display name. A name
+supplied when adding its folder replaces the saved name. No files are deleted.
 _Avoid_: blacklist, ignored installation, deleted installation
 
 **Linked game**:
