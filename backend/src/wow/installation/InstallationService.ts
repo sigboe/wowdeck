@@ -62,8 +62,22 @@ function mergeInstallations(
   return [...byId.values()].sort((a, b) => a.clientType - b.clientType);
 }
 
-function removedEntry({ id, location, displayName, clientType }: WowInstallation): RemovedInstallation {
-  return { id, location, displayName, clientType };
+function removedEntry({ id, location, displayName, clientType, autoUpdateEnabled, hidden }: WowInstallation): RemovedInstallation {
+  return { id, location, displayName, clientType, autoUpdateEnabled, hidden };
+}
+
+/** Restore only player choices; detection supplies current disk and Steam metadata. */
+function restorePreferences(found: WowInstallation[], removed: RemovedInstallation[]): WowInstallation[] {
+  const byId = new Map(removed.map((entry) => [entry.id, entry]));
+  return found.map((installation) => {
+    const saved = byId.get(installation.id);
+    return saved ? {
+      ...installation,
+      displayName: saved.displayName,
+      autoUpdateEnabled: saved.autoUpdateEnabled ?? true,
+      hidden: saved.hidden ?? false,
+    } : installation;
+  });
 }
 
 export class InstallationService {
@@ -118,7 +132,7 @@ export class InstallationService {
     const removed = this.store.removedInstallations;
     const removedIds = new Set(removed.map((r) => r.id));
     const restored = new Set(restore ? found.filter((f) => removedIds.has(f.id)).map((f) => f.id) : []);
-    const kept = found.filter((f) => !removedIds.has(f.id) || restored.has(f.id));
+    const kept = restorePreferences(found.filter((f) => !removedIds.has(f.id) || restored.has(f.id)), removed);
     // Keep installations through an unmounted drive, but never keep stale shortcut links.
     this.store.setInstallations(
       mergeInstallations(this.store.installations.map(i => ({ ...i, steamGames: [] })), kept,
@@ -251,6 +265,8 @@ export class InstallationService {
         `${normalized} does not contain a WoW flavor directory (like _retail_); set the game type explicitly for custom layouts`,
       );
     }
+
+    created = restorePreferences(created, this.store.removedInstallations);
 
     // A parent with one new installation is the same naming choice as a
     // single flavor directory. Never rename its already registered siblings.

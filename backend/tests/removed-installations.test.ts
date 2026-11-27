@@ -43,6 +43,60 @@ beforeEach(() => {
 });
 
 describe("removed installations", () => {
+  test.each(["find", "manual"] as const)("%s restores saved preferences and name after a restart", async (method) => {
+    flavor("_classic_era_");
+    const installations = start();
+    const [era] = await installations.addManual(WOW, { displayName: "My Era" });
+    installations.update(era!.id, { autoUpdateEnabled: false, hidden: true });
+    await installations.remove(era!.id);
+
+    const restarted = start();
+    expect(await restarted.scan(HOME)).toEqual([]);
+    const restored = method === "find"
+      ? (await restarted.find(HOME)).installations
+      : await restarted.addManual(WOW);
+    expect(restored).toMatchObject([{
+      id: era!.id, displayName: "My Era", autoUpdateEnabled: false, hidden: true,
+    }]);
+    expect(restarted.automatic()).toEqual([]);
+    expect(await start().scan(HOME)).toMatchObject([{
+      id: era!.id, displayName: "My Era", autoUpdateEnabled: false, hidden: true,
+    }]);
+  });
+
+  test.each(["find", "manual"] as const)("%s restores legacy removed entries with default preferences", async (method) => {
+    flavor("_retail_");
+    const installations = start();
+    const [retail] = await installations.addManual(WOW, { displayName: "Old Retail" });
+    await installations.remove(retail!.id);
+    const statePath = join(DATA, "state.json");
+    const state = JSON.parse(readFileSync(statePath, "utf8"));
+    for (const entry of state.removedInstallations) {
+      delete entry.autoUpdateEnabled;
+      delete entry.hidden;
+    }
+    writeFileSync(statePath, JSON.stringify(state));
+
+    const restarted = start();
+    const restored = method === "find"
+      ? (await restarted.find(HOME)).installations
+      : await restarted.addManual(WOW);
+    expect(restored).toMatchObject([{
+      id: retail!.id, displayName: "Old Retail", autoUpdateEnabled: true, hidden: false,
+    }]);
+  });
+
+  test("a new name supplied during a manual restore overrides the saved name", async () => {
+    flavor("_retail_");
+    const installations = start();
+    const [retail] = await installations.addManual(WOW, { displayName: "Old Retail" });
+    installations.update(retail!.id, { autoUpdateEnabled: false, hidden: true });
+    await installations.remove(retail!.id);
+    expect(await start().addManual(WOW, { displayName: "New Retail" })).toMatchObject([{
+      id: retail!.id, displayName: "New Retail", autoUpdateEnabled: false, hidden: true,
+    }]);
+  });
+
   test("one Find WoW installations can't find stays removed until its folder is back", async () => {
     flavor("_retail_");
     const era = flavor("_classic_era_");
