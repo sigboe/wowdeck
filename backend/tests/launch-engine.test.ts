@@ -4,8 +4,18 @@
  * the machine's.
  */
 
+import { createHash } from "node:crypto";
 import { afterEach, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import type { LaunchCompletion } from "../src/api/contracts";
@@ -64,7 +74,12 @@ async function fixture(setup: Setup = {}) {
   const home = join(root, "home");
   const steam = join(home, ".local/share/Steam");
   const wow = join(home, "Games/World of Warcraft");
-  for (const [flavor, exe] of [["_retail_", "Wow.exe"], ["_classic_", "WowClassic.exe"], ["_classic_era_", "WowClassic.exe"], ["_forever_", "Wow.exe"]]) {
+  for (const [flavor, exe] of [
+    ["_retail_", "Wow.exe"],
+    ["_classic_", "WowClassic.exe"],
+    ["_classic_era_", "WowClassic.exe"],
+    ["_forever_", "Wow.exe"],
+  ]) {
     mkdirSync(join(wow, flavor!), { recursive: true });
     writeFileSync(join(wow, flavor!, exe!), "");
   }
@@ -81,28 +96,49 @@ async function fixture(setup: Setup = {}) {
   let tick: (() => void) | undefined;
   const asks: number[] = [];
   const observation: Omit<Observation, "targetRunning"> & { running?: string } = {
-    entryRunning: false, renderer: null, gameRunning: "not_running",
+    entryRunning: false,
+    renderer: null,
+    gameRunning: "not_running",
   };
   const world: LaunchWorld = {
     now: () => now,
-    wait: () => new Promise<void>((resolve) => { tick = resolve; }),
+    wait: () =>
+      new Promise<void>((resolve) => {
+        tick = resolve;
+      }),
     // `running` names the flavor folder of a WoW client running in the prefix.
     observe: async (entry) => {
       const { running, ...rest } = observation;
       const target = entry.targetFolders?.find(({ path }) => basename(path) === running);
-      return { ...rest, ...(running && { gameRunning: "running" }), targetRunning: target?.path ?? null };
+      return {
+        ...rest,
+        ...(running && { gameRunning: "running" }),
+        targetRunning: target?.path ?? null,
+      };
     },
     ask: async () => {
       asks.push(now);
       return { startupFailed: Promise.resolve(false) };
     },
   };
+  const iconChanges: Array<{ appId: number; targetId: string }> = [];
+  let iconChanged!: () => void;
+  const changed = new Promise<void>((resolve) => {
+    iconChanged = resolve;
+  });
   const completions: LaunchCompletion[] = [];
   const out = (line: string) => {
     const message = JSON.parse(line) as { event?: string; params?: LaunchCompletion };
+    if (message.event === "launch.iconChanged") {
+      iconChanges.push(message.params as unknown as { appId: number; targetId: string });
+      iconChanged();
+    }
     if (message.event === "launch.completed") completions.push(message.params!);
   };
-  const base = configFromEnv({ HOME: home, WOWDECK_DATA_DIR: setup.dataDir ?? join(root, "data") }, setup.version ?? "9.9.9");
+  const base = configFromEnv(
+    { HOME: home, WOWDECK_DATA_DIR: setup.dataDir ?? join(root, "data") },
+    setup.version ?? "9.9.9",
+  );
   const engine: Engine = await startEngine({
     ...base,
     network: new ReplayNetwork(await loadCassette("wowup-hub")),
@@ -116,8 +152,17 @@ async function fixture(setup: Setup = {}) {
   // A direct client shortcut discovers its own flavor only.
   const id = (flavor: string) => installations.find((i) => i.path.endsWith(flavor))?.id ?? "";
   return {
-    root, engine, observation, asks, completions,
-    retail: id("_retail_"), classic: id("_classic_"), era: id("_classic_era_"), forever: id("_forever_"),
+    root,
+    engine,
+    observation,
+    asks,
+    completions,
+    iconChanges,
+    changed,
+    retail: id("_retail_"),
+    classic: id("_classic_"),
+    era: id("_classic_era_"),
+    forever: id("_forever_"),
     selected: async () =>
       (await engine.call("installations.list", {})).installations.find((i) => i.selected)?.id,
     state: async () => (await engine.call("launch.state", { appId: APP_ID })).state,
@@ -159,7 +204,11 @@ test("a saved choice survives an engine restart", async () => {
   const first = await fixture();
   await first.select(first.forever);
   const again = await fixture({ root: first.root });
-  expect((await again.state())?.target).toMatchObject({ kind: "wow", id: first.forever, shortName: "Forever" });
+  expect((await again.state())?.target).toMatchObject({
+    kind: "wow",
+    id: first.forever,
+    shortName: "Forever",
+  });
 });
 
 /** Writes a launch target the way an earlier picker saved it. */
@@ -174,7 +223,11 @@ test("a choice saved by #284's first picker still resolves", async () => {
   const first = await fixture();
   saveTarget(first.root, first.forever);
   const again = await fixture({ root: first.root });
-  expect((await again.state())?.target).toMatchObject({ kind: "wow", id: first.forever, shortName: "Forever" });
+  expect((await again.state())?.target).toMatchObject({
+    kind: "wow",
+    id: first.forever,
+    shortName: "Forever",
+  });
 });
 
 test("a saved Mists or Classic Era installation is the Classic row", async () => {
@@ -203,7 +256,9 @@ test("starting Battle.net starts the Steam entry and never sends a launch ask", 
   f.observation.renderer = 11;
   for (const ms of [5_000, 20_000, 35_000]) await f.at(ms);
   expect(f.asks).toEqual([]);
-  expect(f.completions).toEqual([{ appId: APP_ID, clientName: "Battle.net", outcome: "confirmed" }]);
+  expect(f.completions).toEqual([
+    { appId: APP_ID, clientName: "Battle.net", outcome: "confirmed" },
+  ]);
 
   // Battle.net already open: nothing more to start.
   expect(await f.start()).toEqual({ state: expect.objectContaining({ busy: false }) });
@@ -214,7 +269,9 @@ test("a Steam refusal of a Battle.net start is reported", async () => {
   const { steamStart } = await f.start();
   await f.engine.call("launch.steamRefused", { attemptId: steamStart!.attemptId });
   await f.at(1_000);
-  expect(f.completions).toEqual([{ appId: APP_ID, clientName: "Battle.net", outcome: "steam-refused" }]);
+  expect(f.completions).toEqual([
+    { appId: APP_ID, clientName: "Battle.net", outcome: "steam-refused" },
+  ]);
 });
 
 test("starting a chosen client asks Battle.net once it is ready and names the client on completion", async () => {
@@ -240,7 +297,9 @@ test("Classic is confirmed by whichever Classic starts, and the completion names
   expect(f.asks).toEqual([15_000]);
   f.observation.running = "_classic_era_";
   await f.at(16_000);
-  expect(f.completions).toEqual([{ appId: APP_ID, clientName: "Classic Era", outcome: "confirmed" }]);
+  expect(f.completions).toEqual([
+    { appId: APP_ID, clientName: "Classic Era", outcome: "confirmed" },
+  ]);
 });
 
 test("Classic that never starts in the window ends as not started, with Battle.net left open", async () => {
@@ -290,7 +349,6 @@ test("a client's icon is read from that client's executable", async () => {
   expect(await f.icon(f.era)).toBeNull();
 });
 
-
 test("launch icons survive restart and executable replacement without changing saved choices", async () => {
   const pe = syntheticPe([{ id: 1, width: 16, height: 16, payload: BMP }]);
   const first = await fixture({ launcher: pe });
@@ -305,16 +363,21 @@ test("launch icons survive restart and executable replacement without changing s
   expect(await again.selected()).toBe(active);
 });
 
-
 test("restart reads persistent icons without reading the executable, even when it is absent", async () => {
   const pe = syntheticPe([{ id: 1, width: 16, height: 16, payload: BMP }]);
   const first = await fixture({ launcher: pe });
   const icon = await first.icon("battlenet");
   let sourceReads = 0;
-  const again = await fixture({ root: first.root, readIcon: async (path, limit) => {
-    if (path.endsWith(".exe")) { sourceReads++; return undefined; }
-    return readLaunchIconFile(path, limit);
-  } });
+  const again = await fixture({
+    root: first.root,
+    readIcon: async (path, limit) => {
+      if (path.endsWith(".exe")) {
+        sourceReads++;
+        return undefined;
+      }
+      return readLaunchIconFile(path, limit);
+    },
+  });
   rmSync(join(first.root, "home/Games/World of Warcraft/Battle.net Launcher.exe"));
   expect(await again.icon("battlenet")).toBe(icon);
   expect(sourceReads).toBe(0);
@@ -323,13 +386,21 @@ test("restart reads persistent icons without reading the executable, even when i
 test("concurrent launch.icon requests share one executable extraction", async () => {
   let entered!: () => void;
   let release!: () => void;
-  const reading = new Promise<void>((resolve) => { entered = resolve; });
-  const gate = new Promise<void>((resolve) => { release = resolve; });
+  const reading = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
   let reads = 0;
   const f = await fixture({
     launcher: syntheticPe([{ id: 1, width: 16, height: 16, payload: PNG }]),
     readIcon: async (path, limit) => {
-      if (path.endsWith(".exe")) { reads++; entered(); await gate; }
+      if (path.endsWith(".exe")) {
+        reads++;
+        entered();
+        await gate;
+      }
       return readLaunchIconFile(path, limit);
     },
   });
@@ -342,11 +413,13 @@ test("concurrent launch.icon requests share one executable extraction", async ()
   expect(reads).toBe(1);
 });
 
-
 test("unrelated shortcuts and prefixes sharing persistent data keep their own icon", async () => {
-  const first = await fixture({ launcher: syntheticPe([{ id: 1, width: 16, height: 16, payload: BMP }]) });
+  const first = await fixture({
+    launcher: syntheticPe([{ id: 1, width: 16, height: 16, payload: BMP }]),
+  });
   const firstIcon = await first.icon("battlenet");
-  const other = await fixture({ dataDir: join(first.root, "data"),
+  const other = await fixture({
+    dataDir: join(first.root, "data"),
     launcher: syntheticPe([{ id: 1, width: 16, height: 16, payload: PNG }]),
   });
   const otherIcon = await other.icon("battlenet");
@@ -363,8 +436,14 @@ test("missing, corrupt and incompatible cache entries rebuild through launch.ico
     const icon = await first.icon("battlenet");
     const cache = join(first.root, "data/launch-icons");
     const files = readdirSync(cache);
-    const manifest = join(cache, files.find((name) => name.endsWith(".json"))!);
-    const asset = join(cache, files.find((name) => name.endsWith(".ico"))!);
+    const manifest = join(
+      cache,
+      files.find((name) => name.endsWith(".json"))!,
+    );
+    const asset = join(
+      cache,
+      files.find((name) => name.endsWith(".ico"))!,
+    );
     if (damage === "missing") rmSync(asset);
     if (damage === "manifest") writeFileSync(manifest, "{");
     if (damage === "version") {
@@ -382,34 +461,45 @@ test("missing, corrupt and incompatible cache entries rebuild through launch.ico
 });
 
 test("cache write failure returns the available icon and does not prevent launching", async () => {
-  const f = await fixture({ launcher: syntheticPe([{ id: 1, width: 16, height: 16, payload: BMP }]) });
+  const f = await fixture({
+    launcher: syntheticPe([{ id: 1, width: 16, height: 16, payload: BMP }]),
+  });
   writeFileSync(join(f.root, "data/launch-icons"), "unwritable cache directory");
   expect(await f.icon("battlenet")).toStartWith("data:image/x-icon;base64,");
   expect((await f.start()).steamStart).toBeDefined();
 });
 
 test("interrupted cache publication leaves the last usable image available", async () => {
-  const first = await fixture({ launcher: syntheticPe([{ id: 1, width: 16, height: 16, payload: BMP }]) });
+  const first = await fixture({
+    launcher: syntheticPe([{ id: 1, width: 16, height: 16, payload: BMP }]),
+  });
   const icon = await first.icon("battlenet");
   const cache = join(first.root, "data/launch-icons");
   // An interrupted replacement left partial files beside the published entry.
-  for (const name of readdirSync(cache)) writeFileSync(join(cache, `${name}.interrupted.tmp`), "partial");
+  for (const name of readdirSync(cache))
+    writeFileSync(join(cache, `${name}.interrupted.tmp`), "partial");
   const again = await fixture({ root: first.root });
   expect(await again.icon("battlenet")).toBe(icon);
 });
 
-
 test("failed manifest replacement preserves the previously published icon", async () => {
-  const first = await fixture({ launcher: syntheticPe([{ id: 1, width: 16, height: 16, payload: BMP }]) });
+  const first = await fixture({
+    launcher: syntheticPe([{ id: 1, width: 16, height: 16, payload: BMP }]),
+  });
   const previous = await first.icon("battlenet");
   const { rename } = await import("node:fs/promises");
   let failed = false;
-  const replacing = await fixture({ root: first.root,
+  const replacing = await fixture({
+    root: first.root,
     launcher: syntheticPe([{ id: 1, width: 16, height: 16, payload: PNG }]),
     // A transient read fault forces a rebuild while the old entry remains intact.
-    readIcon: async (path, limit) => path.endsWith(".json") ? undefined : readLaunchIconFile(path, limit),
+    readIcon: async (path, limit) =>
+      path.endsWith(".json") ? undefined : readLaunchIconFile(path, limit),
     renameIcon: async (from, to) => {
-      if (to.endsWith(".json")) { failed = true; throw new Error("simulated rename failure"); }
+      if (to.endsWith(".json")) {
+        failed = true;
+        throw new Error("simulated rename failure");
+      }
       await rename(from, to);
     },
   });
@@ -419,4 +509,258 @@ test("failed manifest replacement preserves the previously published icon", asyn
   expect(failed).toBe(true);
   const again = await fixture({ root: first.root });
   expect(await again.icon("battlenet")).toBe(previous);
+});
+
+const RETAIL_SVG =
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><path fill="#ffcc00" d="M0 0h48v48z"/></svg>';
+function cacheFile(root: string, content: string) {
+  const hash = createHash("md5").update(content).digest("hex");
+  const dir = join(
+    root,
+    "home/.local/share/Steam/steamapps/compatdata/42/pfx/drive_c/users/steamuser/AppData/Local/Battle.net/Cache",
+    hash.slice(0, 2),
+    hash.slice(2, 4),
+  );
+  mkdirSync(dir, { recursive: true });
+  const path = join(dir, hash);
+  writeFileSync(path, content);
+  return { hash, path };
+}
+function retailArtwork(root: string, svg = RETAIL_SVG) {
+  const asset = cacheFile(root, svg);
+  const catalogue = cacheFile(
+    root,
+    JSON.stringify({
+      fragment_id: "world_of_warcraft",
+      products: [{ id: "WoW", base: { icon_svg: "wow#RETAIL_ICON" } }],
+      files: { default: { "wow#RETAIL_ICON": { hash: asset.hash } } },
+    }),
+  );
+  return { asset, catalogue };
+}
+test("Retail returns ICO before shared background artwork completes, updates and survives restart", async () => {
+  let release!: () => void;
+  let entered!: () => void;
+  const gate = new Promise<void>((r) => {
+    release = r;
+  });
+  const reading = new Promise<void>((r) => {
+    entered = r;
+  });
+  let reads = 0;
+  const f = await fixture({
+    readIcon: async (path, limit) => {
+      if (path.includes("Battle.net/Cache")) {
+        reads++;
+        entered();
+        await gate;
+      }
+      return readLaunchIconFile(path, limit);
+    },
+  });
+  retailArtwork(f.root);
+  writeFileSync(
+    join(f.root, "home/Games/World of Warcraft/_retail_/Wow.exe"),
+    syntheticPe([{ id: 1, width: 16, height: 16, payload: BMP }]),
+  );
+  const fallback = await f.icon(f.retail);
+  expect(fallback).toStartWith("data:image/x-icon;base64,");
+  await reading;
+  expect(await f.icon(f.retail)).toBe(fallback);
+  expect(reads).toBe(1);
+  release();
+  await f.changed;
+  expect(f.iconChanges).toEqual([{ appId: 42, targetId: f.retail }]);
+  const svg = await f.icon(f.retail);
+  expect(svg).toBe(`data:image/svg+xml;base64,${Buffer.from(RETAIL_SVG).toString("base64")}`);
+  const again = await fixture({
+    root: f.root,
+    readIcon: async (path, limit) => {
+      if (path.includes("Battle.net/Cache") || path.endsWith(".exe"))
+        throw Error("cached artwork must avoid sources");
+      return readLaunchIconFile(path, limit);
+    },
+  });
+  expect(await again.icon(again.retail)).toBe(svg);
+  expect(readdirSync(join(f.root, "data/launch-icons")).some((name) => name.endsWith(".ico"))).toBe(
+    true,
+  );
+});
+
+test("invalid catalogue and SVG candidates cannot hide an older valid Retail image", async () => {
+  for (const invalid of [
+    '<svg xmlns="http://www.w3.org/2000/svg"><script/></svg>',
+    '<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"/>',
+    '<svg xmlns="http://www.w3.org/2000/svg"><image href="https://example.test/a"/></svg>',
+    '<svg xmlns="http://www.w3.org/2000/svg"><path fill="url(https://example.test/a)"/></svg>',
+    '<!DOCTYPE svg [<!ENTITY x "bad">]><svg xmlns="http://www.w3.org/2000/svg"/>',
+    '<svg xmlns="http://www.w3.org/2000/svg"><g></svg>',
+    '<svg xmlns="http://www.w3.org/2000/svg" width="1" width="2"/>',
+    '<svg xmlns="http://www.w3.org/2000/svg"><foreignObject/></svg>',
+    '<svg xmlns="http://www.w3.org/2000/svg"><path style="fill:red"/></svg>',
+    "x".repeat(256 * 1024 + 1),
+    "hash mismatch",
+    "catalogue mismatch",
+    "escaped asset",
+    "bad shape",
+  ]) {
+    const f = await fixture();
+    const valid = retailArtwork(f.root);
+    utimesSync(valid.catalogue.path, 100, 100);
+    const bad = retailArtwork(f.root, invalid);
+    utimesSync(bad.catalogue.path, 200, 200);
+    if (invalid === "hash mismatch") writeFileSync(bad.asset.path, RETAIL_SVG);
+    if (invalid === "catalogue mismatch")
+      writeFileSync(bad.catalogue.path, readFileSync(valid.catalogue.path));
+    if (invalid === "bad shape") writeFileSync(bad.catalogue.path, '{"products":null}');
+    if (invalid === "escaped asset") {
+      const external = join(f.root, "outside.svg");
+      writeFileSync(external, RETAIL_SVG);
+      rmSync(bad.asset.path);
+      symlinkSync(external, bad.asset.path);
+    }
+    expect(await f.icon(f.retail)).toBeNull();
+    await f.changed;
+    expect(await f.icon(f.retail)).toBe(
+      `data:image/svg+xml;base64,${Buffer.from(RETAIL_SVG).toString("base64")}`,
+    );
+  }
+});
+
+test("foreground reads suppress a failed scan, launcher activity retries missing artwork", async () => {
+  let scanned!: () => void;
+  const scanning = new Promise<void>((r) => {
+    scanned = r;
+  });
+  let reads = 0;
+  let missing = true;
+  const f = await fixture({
+    readIcon: async (path, limit) => {
+      if (path.includes("Battle.net/Cache")) {
+        reads++;
+        if (missing) {
+          scanned();
+          return undefined;
+        }
+      }
+      return readLaunchIconFile(path, limit);
+    },
+  });
+  cacheFile(f.root, JSON.stringify({ fragment_id: "world_of_warcraft", products: [] }));
+  expect(await f.icon(f.retail)).toBeNull();
+  await scanning;
+  for (let i = 0; i < 8; i++) expect(await f.icon(f.retail)).toBeNull();
+  expect(reads).toBe(1);
+  missing = false;
+  retailArtwork(f.root);
+  await f.start();
+  await f.changed;
+  expect(await f.icon(f.retail)).toStartWith("data:image/svg+xml;base64,");
+});
+
+test("an unavailable source can recover on a later engine load", async () => {
+  const first = await fixture();
+  expect(await first.icon(first.retail)).toBeNull();
+  const again = await fixture({ root: first.root });
+  retailArtwork(again.root);
+  expect(await again.icon(again.retail)).toBeNull();
+  await again.changed;
+  expect(await again.icon(again.retail)).toStartWith("data:image/svg+xml;base64,");
+});
+
+test("equal-time catalogue candidates use the hash tie-break and Battle.net keeps its ICO", async () => {
+  const f = await fixture({
+    launcher: syntheticPe([{ id: 1, width: 16, height: 16, payload: BMP }]),
+  });
+  const first = retailArtwork(f.root);
+  const otherSvg = RETAIL_SVG.replace("#ffcc00", "#cc00ff");
+  const second = retailArtwork(f.root, otherSvg);
+  for (const candidate of [first, second]) utimesSync(candidate.catalogue.path, 100, 100);
+  const expected = first.catalogue.hash > second.catalogue.hash ? RETAIL_SVG : otherSvg;
+  const ico = await f.icon("battlenet");
+  expect(ico).toStartWith("data:image/x-icon;base64,");
+  await f.changed;
+  expect(await f.icon(f.retail)).toBe(
+    `data:image/svg+xml;base64,${Buffer.from(expected).toString("base64")}`,
+  );
+  expect(await f.icon("battlenet")).toBe(ico);
+  expect(await f.icon("classic")).toBeNull();
+  expect(await f.icon(f.forever)).toBeNull();
+});
+
+test("a failed SVG replacement retains the published artwork and its ICO fallback", async () => {
+  const first = await fixture();
+  retailArtwork(first.root);
+  writeFileSync(
+    join(first.root, "home/Games/World of Warcraft/_retail_/Wow.exe"),
+    syntheticPe([{ id: 1, width: 16, height: 16, payload: BMP }]),
+  );
+  const ico = await first.icon(first.retail);
+  await first.changed;
+  const saved = await first.icon(first.retail);
+  let failed!: () => void;
+  const failure = new Promise<void>((r) => {
+    failed = r;
+  });
+  const { rename } = await import("node:fs/promises");
+  const replacing = await fixture({
+    root: first.root,
+    readIcon: async (path, limit) =>
+      path.endsWith(".svg.json") ? undefined : readLaunchIconFile(path, limit),
+    renameIcon: async (from, to) => {
+      if (to.endsWith(".svg.json")) {
+        failed();
+        throw Error("interrupted SVG manifest replacement");
+      }
+      await rename(from, to);
+    },
+  });
+  retailArtwork(first.root, RETAIL_SVG.replace("#ffcc00", "#cc00ff"));
+  expect(await replacing.icon(replacing.retail)).toBe(ico);
+  await failure;
+  expect(await replacing.icon(replacing.retail)).toBe(ico);
+  const again = await fixture({ root: first.root });
+  expect(await again.icon(again.retail)).toBe(saved);
+});
+
+test("preferred artwork stays isolated by prefix and a corrupt saved SVG rebuilds with the retained ICO", async () => {
+  const first = await fixture();
+  retailArtwork(first.root);
+  writeFileSync(
+    join(first.root, "home/Games/World of Warcraft/_retail_/Wow.exe"),
+    syntheticPe([{ id: 1, width: 16, height: 16, payload: BMP }]),
+  );
+  const ico = await first.icon(first.retail);
+  await first.changed;
+  const saved = await first.icon(first.retail);
+  const other = await fixture({ dataDir: join(first.root, "data") });
+  expect(await other.icon(other.retail)).toBeNull();
+  expect(await first.icon(first.retail)).toBe(saved);
+  const cache = join(first.root, "data/launch-icons");
+  for (const name of readdirSync(cache))
+    if (name.endsWith(".svg")) writeFileSync(join(cache, name), "corrupt");
+  const again = await fixture({ root: first.root });
+  expect(await again.icon(again.retail)).toBe(ico);
+  await again.changed;
+  expect(await again.icon(again.retail)).toBe(saved);
+});
+
+test("well-hashed malformed catalogue field shapes do not block another valid catalogue", async () => {
+  const f = await fixture();
+  const valid = retailArtwork(f.root);
+  utimesSync(valid.catalogue.path, 100, 100);
+  for (const shape of [
+    null,
+    [],
+    { products: null },
+    { products: [null], files: { default: {} } },
+    { products: [{ id: "WoW", base: { icon_svg: "__proto__" } }], files: { default: {} } },
+    { products: [{ id: "WoW", base: { icon_svg: 42 } }], files: { default: {} } },
+  ]) {
+    const bad = cacheFile(f.root, JSON.stringify({ fragment_id: "world_of_warcraft", ...shape }));
+    utimesSync(bad.path, 200, 200);
+  }
+  expect(await f.icon(f.retail)).toBeNull();
+  await f.changed;
+  expect(await f.icon(f.retail)).toStartWith("data:image/svg+xml;base64,");
 });

@@ -342,7 +342,8 @@ export function assembleEngine(config: EngineConfig): Engine & { start(): Promis
     () => steam.steamShortcutAppIds(),
     playOwner,
   );
-  const launchIcons = new LaunchIcons(dataDir, config.launchIconRead, config.launchIconRename);
+  const launchIcons = new LaunchIcons(dataDir, config.launchIconRead, config.launchIconRename, (change) => server.emit("launch.iconChanged", change));
+  installationService.foundListeners.add(() => launchIcons.retryMissing());
   const launch = new LaunchService(
     // Only a linked game's page launches through WoWDeck (Show in Steam on).
     async (appId, preferredId) => linkedGames.isLinked(appId)

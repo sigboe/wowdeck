@@ -1,3 +1,5 @@
+import { discoverArtwork, preferredArtworkProducts, type Artwork } from "./LaunchArtwork";
+import { isLaunchSvg } from "./LaunchSvg";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
@@ -25,6 +27,7 @@ export const readLaunchIconFile: LaunchIconRead = async (path, limit) => {
 type Source = {
   /** Canonical prefix resolved by launch eligibility. */
   prefix: string;
+  appId: number;
   target: string;
   /** Battle.net launch product code, or battlenet for the launcher. */
   product: string;
@@ -44,6 +47,110 @@ const MAX_ICO = 1024 * 1024 + 22;
  * write is interrupted. Separate manifests avoid lost updates between targets.
  */
 export class LaunchIcons {
+  private scanQueue: Promise<unknown> = Promise.resolve();
+  private readonly sources = new Map<string, Source>();
+  private readonly attempts = new Map<string, Promise<void>>();
+  private readonly completedAttempts = new Set<string>();
+
+  register(source: Source): void {
+    if (preferredArtworkProducts.has(source.product))
+      this.sources.set(`${this.key(source).key}:${source.appId}`, source);
+  }
+
+  /** Relevant activity permits missing artwork to retry; complete entries are
+   * checked before discovery and never refreshed. Active work stays shared. */
+  retryMissing(prefix?: string): void {
+    const prefixes = new Set([...this.sources.values()].map((source) => source.prefix));
+    for (const candidate of prefixes) {
+      if (prefix && candidate !== prefix) continue;
+      this.completedAttempts.delete(candidate);
+      this.populate(candidate);
+    }
+  }
+
+  private key(source: Source) {
+    const identity = JSON.stringify([
+      source.prefix,
+      source.target,
+      source.product,
+      source.directory ? "client" : "launcher",
+      resolve(source.directory ?? source.executable!),
+    ]);
+    return { identity, key: hash(identity) };
+  }
+
+  private async preferred(source: Source): Promise<string | undefined> {
+    const { key, identity } = this.key(source);
+    try {
+      const manifest = await this.read(join(this.directory, `${key}.svg.json`), 16 * 1024);
+      const entry = manifest && JSON.parse(new TextDecoder().decode(manifest));
+      if (
+        entry?.version !== 1 ||
+        entry.identity !== identity ||
+        entry.product !== source.product ||
+        entry.format !== "svg" ||
+        !/^[a-f0-9]{64}$/.test(entry.asset) ||
+        !/^[a-f0-9]{32}$/.test(entry.catalogue) ||
+        !/^[a-f0-9]{32}$/.test(entry.sourceAsset)
+      )
+        return undefined;
+      const bytes = await this.read(join(this.directory, `${entry.asset}.svg`), 256 * 1024);
+      return bytes && hash(bytes) === entry.asset && isLaunchSvg(bytes)
+        ? `data:image/svg+xml;base64,${Buffer.from(bytes).toString("base64")}`
+        : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  private populate(prefix: string): void {
+    if (this.attempts.has(prefix) || this.completedAttempts.has(prefix)) return;
+    const work = (async () => {
+      const missing: Source[] = [];
+      for (const source of this.sources.values()) {
+        if (source.prefix === prefix && !(await this.preferred(source))) missing.push(source);
+      }
+      if (!missing.length) return;
+      const scan = this.scanQueue.then(() => discoverArtwork(prefix, this.read));
+      this.scanQueue = scan.catch(() => undefined);
+      const artwork = await scan;
+      for (const source of missing) {
+        const image = artwork.get(source.product);
+        if (image) await this.savePreferred(source, image);
+      }
+    })()
+      .catch(() => {})
+      .finally(() => {
+        this.attempts.delete(prefix);
+        this.completedAttempts.add(prefix);
+      });
+    this.attempts.set(prefix, work);
+  }
+
+  private async savePreferred(source: Source, image: Artwork): Promise<void> {
+    const { key, identity } = this.key(source);
+    const asset = hash(image.bytes);
+    try {
+      await mkdir(this.directory, { recursive: true });
+      await this.publish(join(this.directory, `${asset}.svg`), image.bytes);
+      await this.publish(
+        join(this.directory, `${key}.svg.json`),
+        JSON.stringify({
+          version: 1,
+          identity,
+          product: source.product,
+          format: "svg",
+          asset,
+          catalogue: image.catalogue,
+          sourceAsset: image.asset,
+        }),
+      );
+      this.changed({ appId: source.appId, targetId: source.target });
+    } catch {
+      /* Retain the ICO and any previously published preferred entry. */
+    }
+  }
+
   private readonly inFlight = new Map<string, Promise<string | undefined>>();
   private readonly executables: ExecutableIconCache;
   private readonly directory: string;
@@ -52,6 +159,7 @@ export class LaunchIcons {
     dataDir: string,
     private readonly read: LaunchIconRead = readLaunchIconFile,
     private readonly replace: (from: string, to: string) => Promise<void> = rename,
+    private readonly changed: (change: { appId: number; targetId: string }) => void = () => {},
   ) {
     this.directory = join(dataDir, "launch-icons");
     this.executables = new ExecutableIconCache(
@@ -64,19 +172,19 @@ export class LaunchIcons {
   }
 
   icon(source: Source): Promise<string | undefined> {
-    // Include the path as well as the prefix and row: different installations
-    // and launchers in the same prefix must not borrow each other's image.
-    const identity = JSON.stringify([
-      source.prefix,
-      source.target,
-      source.product,
-      source.directory ? "client" : "launcher",
-      resolve(source.directory ?? source.executable!),
-    ]);
-    const key = hash(identity);
+    this.register(source);
+    const { key, identity } = this.key(source);
     const hit = this.inFlight.get(key);
     if (hit) return hit;
-    const work = this.load(key, identity, source)
+    const work = (async () => {
+      const preferred = preferredArtworkProducts.has(source.product)
+        ? await this.preferred(source)
+        : undefined;
+      if (preferred) return preferred;
+      const fallback = await this.load(key, identity, source);
+      this.populate(source.prefix);
+      return fallback;
+    })()
       .catch(() => undefined)
       .finally(() => {
         this.inFlight.delete(key);

@@ -1347,7 +1347,8 @@ export interface MethodMap {
   };
   /**
    * One client's icon for the Play button: a data: URL of a single-image
-   * ICO, the smallest image of at least 48 px. Null means WoWDeck's glyph
+   * ICO, the smallest image of at least 48 px, or validated SVG
+   * (`data:image/svg+xml;base64,`). Null means WoWDeck's glyph
    * (no such client, no icon, or the read failed; a failed read is tried
    * again on the next call). Kept out of `launch.state`, which the page
    * polls every 2 s.
@@ -2319,6 +2320,8 @@ export type UpdateAllProgress = {
 
 export interface EventMap {
   "launch.completed": LaunchCompletion;
+  /** Preferred artwork became available for this target. No image payload. */
+  "launch.iconChanged": { appId: number; targetId: string };
   /** The linked games or Show in Steam changed: after a scan, an add, a remove or a switch change. */
   "linkedGames.changed": LinkedGames;
   /** An automatic update ran and updated or failed something (WF-02). */
